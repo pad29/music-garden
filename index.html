@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Music Garden — prototype</title>
+<style>
+  :root{
+    --bg1:#1a1033; --bg2:#241654; --accent:#ffd56b; --accent2:#7cf0d0;
+    --cell:#3a2a6b; --cellOn:#ffd56b; --tonic:#5a3f9e; --card:#2c1d5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Segoe UI',system-ui,sans-serif; color:#eee;
+    background:radial-gradient(circle at 50% 0%,var(--bg2),var(--bg1));
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100%; padding:18px; transition:background .25s; overflow-x:hidden;
+  }
+  body.settle{ background:radial-gradient(circle at 50% 40%,#3a2f7e,var(--bg1)); }
+  h1{ margin:.1em 0 .05em; font-size:1.6rem; letter-spacing:.5px;}
+  .sub{ opacity:.65; font-size:.85rem; margin-bottom:12px; text-align:center; max-width:620px;}
+  .controls{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:8px;}
+  button, select{
+    font:inherit; color:#1a1033; background:var(--accent); border:none;
+    padding:9px 16px; border-radius:999px; cursor:pointer; font-weight:600;
+    box-shadow:0 3px 0 rgba(0,0,0,.25); transition:transform .06s, filter .15s;
+  }
+  button:active{ transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.25);}
+  button.secondary{ background:#4a3a85; color:#eee; }
+  button.toggle.on{ background:var(--accent2); color:#1a1033; }
+  select{ background:#4a3a85; color:#eee; padding-right:30px;}
+  #craft{ min-width:108px; }   /* fixed width so 🔨 Fuse ↔ ✓ Save (N) doesn't reflow the toolbar */
+  .settings{ margin-top:-2px; opacity:.95; }
+  label.ctl{ display:flex; align-items:center; gap:6px; font-size:.85rem; opacity:.85;}
+  input[type=range]{ accent-color:var(--accent); }
+  .status{ min-height:22px; font-size:.85rem; opacity:.85; margin:4px 0 12px; text-align:center; }
+  .status b{ color:var(--accent2); }
+
+  .mainscroll{ width:100%; overflow-x:auto;}                                  /* desktop: scroll the app row if the window is too narrow */
+  .main{ display:flex; gap:14px; align-items:flex-start; flex-wrap:nowrap; width:max-content; margin:0 auto;}
+  .fieldcol{ flex:0 0 auto; }
+  @media (max-width:760px){ .main{ width:auto; flex-wrap:wrap;} .sidebar,.fieldcol{ width:100%;} }  /* mobile: stack the columns */
+  .stage{ position:relative; padding-left:72px; display:flex; align-items:stretch; gap:8px; }   /* left gutter so field cells line up with drum cells */
+  .moremenu{ display:flex; flex-direction:column; gap:6px; flex:0 0 auto; }
+  .moreside{ display:flex; align-items:center; justify-content:center; width:44px; padding:0;
+    font-size:1.6rem; line-height:1; border-radius:14px; flex:1 1 0; }
+  #sidetools{ position:fixed; top:16px; right:16px; display:flex; flex-direction:column; gap:8px; z-index:40;}
+  #sidetools button{ width:46px; height:46px; padding:0; font-size:1.25rem; border-radius:50%; background:#4a3a85; color:#eee;}
+  .grid{ display:grid; gap:4px; padding:10px; border-radius:16px;
+    background:rgba(0,0,0,.18); box-shadow:0 10px 40px rgba(0,0,0,.4);}
+  .scroller{ max-width:100%; overflow-x:auto; overflow-y:hidden; border-radius:16px;}
+  #drumArea{ max-width:100%; overflow-x:auto; }
+  .track{ position:relative; display:inline-block;}
+  .drumrows{ display:inline-block; padding:10px; border-radius:16px; background:rgba(0,0,0,.18); box-shadow:0 10px 40px rgba(0,0,0,.4);}
+  .drumrow{ display:flex; align-items:center; gap:0; margin-bottom:4px;}
+  .drumrow:last-child{ margin-bottom:0;}
+  .drumlabel{ width:72px; font-size:.78rem; text-align:right; opacity:.85; padding-right:8px;}
+  .dcellgrid{ display:grid; grid-template-columns:repeat(16,34px); gap:4px;}
+  /* round "pads" in a different palette so beats look distinct from square seed tiles */
+  .dcell{ width:34px; height:30px; border-radius:50%; background:#2b3566; cursor:pointer;
+    box-shadow:inset 0 -2px 0 rgba(0,0,0,.25); transition:transform .05s, box-shadow .2s, background .2s;}
+  .dcell.beat{ background:#3a4685;}
+  .dcell:hover{ filter:brightness(1.3);}
+  .dcell.on{ background:#ff9a5b; box-shadow:0 0 12px #ff9a5b;}
+  .dcell.col-playing{ filter:brightness(1.55);}
+  .cell{ width:34px; height:30px; border-radius:7px; background:var(--cell);
+    cursor:pointer; position:relative; transition:transform .05s, box-shadow .2s, background .2s;}
+  .cell.tonicRow{ background:var(--tonic); }
+  .cell:hover{ filter:brightness(1.25); }
+  .cell.on{ background:var(--cellOn); box-shadow:0 0 14px var(--accent); }
+  .cell.tonicRow.on{ background:#ffe39a; }
+  .cell.sel{ outline:3px solid var(--accent2); outline-offset:-1px; }
+  .col-playing .cell{ filter:brightness(1.35); }
+  .cell.pulse{ animation:pulse .4s ease-out; }
+  @keyframes pulse{ 0%{ transform:scale(1.35); box-shadow:0 0 26px var(--accent2);} 100%{ transform:scale(1);} }
+  .cell.stand{ animation:stand .55s ease-out; }
+  @keyframes stand{ 0%{ transform:translateY(7px) scale(.9);} 60%{ transform:translateY(-2px) scale(1.05);} 100%{ transform:translateY(0) scale(1);} }
+  .cell.wob{ animation:wob .55s ease-in-out; }
+  @keyframes wob{ 0%,100%{transform:rotate(0);} 20%{transform:rotate(-9deg);} 50%{transform:rotate(8deg);} 80%{transform:rotate(-4deg);} }
+  .playhead{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px;
+    background:rgba(255,255,255,.12); pointer-events:none; left:0; transition:left .04s linear; opacity:0;}
+  .playhead.on{ opacity:1; }
+  .vlabel{ position:absolute; left:18px; top:50%; transform:translateY(-50%) rotate(-90deg);
+    transform-origin:center; opacity:.4; font-size:.7rem; letter-spacing:2px;}
+  .hlabel{ opacity:.4; font-size:.7rem; letter-spacing:2px; margin-top:6px; text-align:center;}
+
+  .sidebar{ display:flex; flex-direction:column; gap:14px; width:205px; flex:0 0 auto; }
+  .card{ background:var(--card); border-radius:14px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,.3);}
+  .card h3{ margin:0 0 10px; font-size:1rem; }
+  .card .hint{ font-size:.72rem; opacity:.55; margin-top:8px; line-height:1.35;}
+  .card .intro{ font-size:.8rem; opacity:.82; line-height:1.42; margin-bottom:10px;}
+  #nextBtn{ margin-top:10px; width:100%; }
+  ul.goals{ list-style:none; margin:0; padding:0; font-size:.85rem; }
+  ul.goals li{ padding:5px 0; opacity:.7; transition:opacity .2s,color .2s; }
+  ul.goals li.done{ opacity:1; color:var(--accent2); font-weight:600; }
+  .bag{ display:flex; flex-wrap:wrap; gap:8px; min-height:42px; align-items:flex-end;
+    max-height:200px; overflow-y:auto;     /* ~3 rows of tools, then scroll — keep the Garden card in view */
+    scrollbar-gutter:stable; }             /* reserve the scrollbar lane up front so chips never reflow */
+  .bag::-webkit-scrollbar{ width:8px; }
+  .bag::-webkit-scrollbar-thumb{ background:#5b4aa0; border-radius:4px; }
+  .bag::-webkit-scrollbar-track{ background:rgba(0,0,0,.15); border-radius:4px; }
+  .chip{ background:#4a3a85; color:#eee; border:2px solid transparent; border-radius:10px;
+    padding:8px 10px; cursor:pointer; font-size:.78rem; text-align:center; line-height:1.2;
+    box-shadow:0 2px 0 rgba(0,0,0,.25); transition:transform .06s, border .15s;}
+  .chip:active{ transform:translateY(2px); }
+  .chip svg{ display:block; margin:0 auto 3px; }
+  .chip .lbl{ font-size:.72rem; }
+  .chip.active{ border-color:var(--accent2); background:#5b4aa0; }
+  .chip.pop{ animation:pop .5s ease-out; }
+  @keyframes pop{ 0%{ transform:scale(0) rotate(-15deg);} 70%{ transform:scale(1.25);} 100%{ transform:scale(1);} }
+
+  .toast{ position:fixed; left:50%; top:22%; transform:translate(-50%,-20px); z-index:60;
+    background:var(--accent); color:#1a1033; font-weight:700; padding:16px 26px; border-radius:14px;
+    box-shadow:0 12px 40px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    font-size:1.1rem; text-align:center;}
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:70;}
+  .mpanel{ width:340px; max-width:90vw; max-height:75vh; overflow:auto;}
+  .mrow{ display:flex; align-items:center; gap:6px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.08);}
+  .mname{ flex:1; font-size:.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .mrow button{ padding:6px 10px;}
+  #mclose, #homeclose{ margin-top:12px; width:100%;}
+  .mpanel input[type=text]{ background:#4a3a85; color:#eee; border:none; border-radius:8px; padding:7px 10px; font:inherit;}
+  .pkgcard{ background:#34256b; border-radius:12px; padding:10px 12px; margin-bottom:10px;}
+  .pkgcard.locked{ opacity:.55;}
+  .pkgtop{ display:flex; justify-content:space-between; align-items:center;}
+  .pkgname{ font-size:.95rem; font-weight:600;}
+  .pkgdone{ color:var(--accent2); font-size:.75rem;}
+  .pkgdesc{ font-size:.72rem; opacity:.7; margin:4px 0 6px;}
+  .pkgbar{ height:8px; border-radius:6px; background:rgba(0,0,0,.3); overflow:hidden; margin-bottom:4px;}
+  .pkgbar>div{ height:100%; background:var(--accent2);}
+  .pkgmeta{ font-size:.7rem; opacity:.7;}
+  .pkgactions{ display:flex; gap:6px; margin-top:8px;}
+  .pkgactions button{ padding:6px 10px;}
+  #authbox{ margin-bottom:12px;}
+  .authrow{ font-size:.85rem; margin-bottom:6px;}
+  .authform input{ width:100%; box-sizing:border-box; background:#4a3a85; color:#eee; border:none; border-radius:8px; padding:7px 10px; font:inherit; margin:4px 0;}
+  .authmsg{ margin-top:4px; min-height:1.1em;}
+  .bloom{ position:fixed; z-index:60; pointer-events:none; font-size:18px; animation:bloomUp 1.2s ease-out forwards;}
+  @keyframes bloomUp{ 0%{ transform:translateY(0) scale(.4); opacity:0;} 25%{ opacity:.95;} 100%{ transform:translateY(-46px) scale(1.05) rotate(18deg); opacity:0;} }
+  #gardenbed{ height:160px; overflow-y:auto; display:flex; flex-wrap:wrap; align-content:flex-start; gap:2px; padding:7px;
+    border-radius:10px; background:linear-gradient(rgba(70,180,120,.18), rgba(0,0,0,.14));}
+  #gardenbed .flower{ font-size:18px; line-height:1.05;}
+  #gardenbed:empty::before{ content:"Your garden grows here as you compose 🌱"; opacity:.5; font-size:.72rem; line-height:1.4;}
+  .confetti{ position:fixed; top:-14px; width:10px; height:14px; z-index:55; border-radius:2px; opacity:.95;
+    animation:fall linear forwards;}
+  @keyframes fall{ to{ transform:translateY(108vh) rotate(560deg); opacity:.85;} }
+  .arctag{ display:block; font-size:.62rem; letter-spacing:1.5px; text-transform:uppercase; opacity:.55; margin-bottom:3px;}
+  .intent{ color:var(--accent2);}
+  #world{ display:flex; gap:7px; margin:0 0 12px; font-size:1.1rem; min-height:1.3em;}
+  #world span{ filter:grayscale(1) opacity(.28); transition:filter .5s;}
+  #world span.lit{ filter:none; text-shadow:0 0 12px rgba(255,213,107,.65);}
+  #world span.pop{ animation:pop .55s ease-out;}
+  .powcard{ width:280px; max-width:88vw; text-align:center; padding:22px 18px;
+    background:linear-gradient(165deg,#3d2c80,#241654); border:1px solid rgba(255,213,107,.55);
+    box-shadow:0 0 50px rgba(255,213,107,.28); animation:pop .45s ease-out;}
+  .powtag{ font-size:.62rem; letter-spacing:4px; opacity:.6;}
+  .powem{ font-size:3.2rem; margin:12px 0 6px;}
+  .powname{ font-size:1.3rem; font-weight:700; color:var(--accent);}
+  .powline{ font-size:.85rem; opacity:.82; margin:8px 0 16px; line-height:1.45;}
+  #powclose{ width:100%;}
+  /* companion: a garden friend that grows one stage per completed arc */
+  .comprow{ display:flex; align-items:center; gap:12px;}
+  .compem{ font-size:2.6rem; line-height:1; width:50px; text-align:center; flex:0 0 auto;}
+  .compem.bob{ animation:cbob .26s ease;}
+  @keyframes cbob{ 0%,100%{ transform:translateY(0);} 45%{ transform:translateY(-7px) scale(1.12);} }
+  .compem.evolve{ animation:cevolve 1s ease;}
+  @keyframes cevolve{ 0%{ transform:scale(.4) rotate(-25deg); opacity:.2;}
+    45%{ transform:scale(1.6) rotate(8deg); opacity:1;} 70%{ transform:scale(.92);} 100%{ transform:scale(1);} }
+  .compinfo{ flex:1; min-width:0;}
+  .compdots{ display:flex; gap:5px; margin-bottom:5px;}
+  .compdots span{ width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.16); transition:background .3s;}
+  .compdots span.on{ background:var(--accent2); box-shadow:0 0 6px var(--accent2);}
+  .compchoices{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:16px 0 6px;}
+  .compchoice{ background:#4a3a85; border:2px solid transparent; border-radius:14px; padding:14px 12px;
+    cursor:pointer; text-align:center; transition:transform .06s, border .15s; min-width:84px;}
+  .compchoice:hover{ border-color:var(--accent2); transform:translateY(-2px);}
+  .compchoice:active{ transform:translateY(1px);}
+  .compchoice .ce{ font-size:2.6rem; line-height:1;}
+  .compchoice .cn{ font-size:.85rem; font-weight:600; margin-top:6px;}
+  .compchoice .cevo{ font-size:.7rem; opacity:.6; margin-top:5px; letter-spacing:1px;}
+  .mixrow{ display:flex; align-items:center; gap:10px; font-size:.9rem; padding:9px 0;}
+  .mixrow input[type=range]{ flex:1; accent-color:var(--accent);}
+  .mixrow span{ width:46px; text-align:right; opacity:.75; font-size:.8rem;}
+  .contourghost{ position:absolute; top:0; left:0; pointer-events:none; overflow:visible;}
+  .contourghost .cpath{ fill:none; stroke:var(--accent2); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round;
+    opacity:.55; stroke-dasharray:3 7; filter:drop-shadow(0 0 5px var(--accent2));}
+  .contourghost .fdot{ fill:#fff7c2; filter:drop-shadow(0 0 5px var(--accent)); animation:ffly 2.2s ease-in-out infinite;}
+  @keyframes ffly{ 0%,100%{ opacity:.3;} 50%{ opacity:.95;} }
+  #choiceRow{ margin:-2px 0 12px;}
+  .cell.beatcol{ box-shadow:inset 3px 0 0 rgba(124,240,208,.55); }
+  .cell.beatcol.on{ box-shadow:0 0 14px var(--accent), inset 3px 0 0 rgba(124,240,208,.55); }
+  /* surprise reveals: whole-garden sync pulse + a big structure rising */
+  .grid.gpulse, .drumrows.gpulse{ animation:gpulse .3s ease-out;}
+  @keyframes gpulse{ 0%{ transform:scale(1.018);} 100%{ transform:scale(1);} }
+  .bigrise{ position:fixed; left:50%; bottom:18%; transform:translateX(-50%); z-index:58; font-size:84px;
+    pointer-events:none; text-shadow:0 0 40px rgba(255,213,107,.8); animation:bigrise 2.4s ease-out forwards;}
+  @keyframes bigrise{ 0%{ transform:translateX(-50%) translateY(80px) scale(.3); opacity:0;}
+    35%{ opacity:1;} 75%{ transform:translateX(-50%) translateY(-30px) scale(1.15); opacity:1;}
+    100%{ transform:translateX(-50%) translateY(-60px) scale(1.1); opacity:0;} }
+</style>
+</head>
+<body>
+  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to level: <select id="devjump"></select></div>
+  <div id="sidetools">
+    <button id="home" title="Home / packages">🏡</button>
+    <button id="mixer" title="Mix / volume">🎚️</button>
+    <button id="save" title="Save melody">💾</button>
+    <button id="share" title="Share link">🔗</button>
+    <button id="melodies" title="My Melodies">📂</button>
+  </div>
+  <h1 id="title">🌱 Music Garden</h1>
+
+  <div class="controls">
+    <button id="play">▶ Play</button>
+    <button id="listen" class="secondary" style="display:none">🔊 Listen</button>
+    <button id="loop" class="secondary toggle">↻ Loop</button>
+    <button id="jam" class="secondary toggle">🎸 Jam</button>
+    <select id="groove" title="Groove style"></select>
+    <button id="beat" class="secondary toggle">🥁 Beat</button>
+    <button id="craft" class="secondary toggle">🔨 Fuse</button>
+    <button id="hint" class="secondary">💡 Hint</button>
+    <button id="clear" class="secondary">🧹 Clear</button>
+  </div>
+  <div class="controls settings">
+    <label class="ctl">Voice
+      <select id="instr">
+        <option value="musicbox">Music box</option>
+        <option value="marimba">Marimba</option>
+        <option value="pluck">Plucked string</option>
+        <option value="pad">Warm pad</option>
+      </select>
+    </label>
+    <label class="ctl">Tempo <input type="range" id="tempo" min="70" max="170" value="108" /></label>
+  </div>
+  <div class="status" id="status">Plant seeds 🌱 — click squares, then press <b>▶ Play</b>.</div>
+  <div id="world" title="The garden wakes as you play — one emblem per restored level"></div>
+  <div id="choiceRow" class="controls" style="display:none"></div>
+
+  <div class="mainscroll">
+  <div class="main">
+    <div class="sidebar">
+      <div class="card" id="levelCard">
+        <h3 id="levelTitle">Level</h3>
+        <div class="intro" id="levelIntro"></div>
+        <ul class="goals" id="goalList"></ul>
+        <div class="hint" id="goalHint"></div>
+        <button id="nextBtn" style="display:none">Next level ▶</button>
+      </div>
+    </div>
+    <div class="fieldcol">
+      <div id="pitchArea">
+        <div class="stage">
+          <div class="vlabel">PITCH →</div>
+          <div class="scroller" id="scroller">
+            <div class="track" id="track">
+              <div id="grid" class="grid"></div>
+              <svg id="contourGhost" class="contourghost" style="display:none"></svg>
+              <div id="playhead" class="playhead"></div>
+            </div>
+          </div>
+          <div id="moremenu" class="moremenu">
+            <button id="more" class="moreside secondary" title="Add a bar of room">＋</button>
+            <button id="less" class="moreside secondary" title="Remove a bar of room">－</button>
+          </div>
+        </div>
+        <div class="hlabel">TIME →</div>
+      </div>
+      <div id="drumArea" style="display:none">
+        <div class="drumrows" id="drumrows"></div>
+        <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="card" id="compcard" style="display:none">
+        <h3 id="compname">Companion</h3>
+        <div class="comprow">
+          <div class="compem" id="compem">🌱</div>
+          <div class="compinfo">
+            <div class="compdots" id="compdots"></div>
+            <div class="hint" id="comphint" style="margin-top:0">Grows when you complete each arc.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="toolboxCard">
+        <h3>🎒 Toolbox</h3>
+        <div class="bag" id="bag"></div>
+        <div class="hint" id="bagHint">Empty. Press 🔨 Fuse and pick 2–3 seeds to craft your first tool.</div>
+      </div>
+      <div class="card">
+        <h3>🌻 Garden</h3>
+        <div id="gardenbed" title="Your garden grows as you compose"></div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div id="compoverlay" class="overlay" style="display:none">
+    <div class="card mpanel" style="text-align:center">
+      <h3>🌟 Meet your garden friend</h3>
+      <div class="hint" style="margin-top:0">Pick a companion to grow with you as you wake the garden — it evolves with every arc you complete.</div>
+      <div class="compchoices" id="compchoices"></div>
+    </div>
+  </div>
+
+  <div id="congratsoverlay" class="overlay" style="display:none">
+    <div class="card powcard">
+      <div class="powtag">PACKAGE COMPLETE</div>
+      <div class="powem" id="congratsEm">🎉</div>
+      <div class="powname" id="congratsName"></div>
+      <div class="powline" id="congratsLine"></div>
+      <div class="pkgactions" style="justify-content:center;">
+        <button id="congratsHome" class="secondary">🏡 Home</button>
+        <button id="congratsStay">✨ Keep playing</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="powoverlay" class="overlay" style="display:none">
+    <div class="card powcard">
+      <div class="powtag">NEW POWER</div>
+      <div class="powem" id="powem"></div>
+      <div class="powname" id="powname"></div>
+      <div class="powline" id="powline"></div>
+      <button id="powclose">✨ Claim</button>
+    </div>
+  </div>
+
+  <div id="mixoverlay" class="overlay" style="display:none">
+    <div class="card mpanel">
+      <h3>🎚️ Mix</h3>
+      <div class="hint" style="margin-top:0">Balance how loud each part sounds — slide while it plays to hear it.</div>
+      <label class="mixrow">🎵 Melody <input type="range" id="mixVoice" min="0" max="200" value="100"><span id="mixVoiceV">100%</span></label>
+      <label class="mixrow">🎸 Band <input type="range" id="mixBand" min="0" max="200" value="100"><span id="mixBandV">100%</span></label>
+      <label class="mixrow">🥁 Drums <input type="range" id="mixDrums" min="0" max="200" value="100"><span id="mixDrumsV">100%</span></label>
+      <div class="pkgactions" style="margin-top:12px">
+        <button class="secondary" id="mixReset">↺ Reset</button>
+        <button class="secondary" id="mixClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="moverlay" class="overlay" style="display:none">
+    <div class="card mpanel">
+      <h3>📂 My Melodies</h3>
+      <div id="mlist"></div>
+      <button class="secondary" id="mclose">Close</button>
+    </div>
+  </div>
+
+  <div id="homeoverlay" class="overlay" style="display:none">
+    <div class="card mpanel">
+      <h3>🏡 Your Garden</h3>
+      <label class="ctl" style="display:flex; gap:6px; margin-bottom:10px;">Name
+        <input id="pname" type="text" maxlength="20" placeholder="Gardener" style="flex:1;">
+      </label>
+      <div id="authbox"></div>
+      <div id="pkglist"></div>
+      <button class="secondary" id="homeclose">Close</button>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6/dist/amazon-cognito-identity.min.js"></script>
+<script>
+// ---------- Music model: pentatonic ladder = nothing can sound bad ----------
+const MIDI  = [81,79,76,74,72, 69,67,64,62,60];   // A5..C4 (top->bottom)
+const NAMES = ["A5","G5","E5","D5","C5","A4","G4","E4","D4","C4"];
+const TONIC_PC = 0;
+let COLS = 16; const ROWS = MIDI.length;
+const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
+const isTonic = r => MIDI[r]%12===TONIC_PC;
+let grid = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+
+// ---------- Tools: defined by ladder-step offsets from the bottom note ----------
+// pair => [0,g]; chord => [0,g1,g1+g2]. Staying on ladder keeps everything consonant.
+const sig = offs => offs.join("-");
+// "apartness" is measured in real pitch (semitones), NOT uneven ladder rungs:
+// a 3rd-or-wider (>=3) stands; a 2nd (<=2) wobbles. So both inversions of a chord agree.
+const stableMidis = midis => { for(let i=1;i<midis.length;i++) if(midis[i]-midis[i-1]<3) return false; return true; };
+function pairMeta(g){ g=g%12===0&&g>0?12:g;
+  return g>=12 ? {em:"🌟",name:"Octave twins"} : g<=2 ? {em:"🌿",name:"Neighbors"}
+    : g<=4 ? {em:"🌸",name:"Bright pair"} : g===5 ? {em:"🍃",name:"Open pair"}
+    : g===7 ? {em:"⭐",name:"Strong pair"} : {em:"✨",name:"Wide pair"}; }
+function toolMeta(offs, midis){
+  if(offs.length===2) return pairMeta(midis[midis.length-1]-midis[0]);
+  return stableMidis(midis) ? {em:"🏛️",name:"Tower"} : {em:"🌀",name:"Wobbler"};
+}
+
+// ---- real note/interval/chord names (computed from the actual crafted notes) ----
+const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+const INTERVALS={0:"unison",1:"minor 2nd",2:"major 2nd",3:"minor 3rd",4:"major 3rd",5:"perfect 4th",
+  6:"tritone",7:"perfect 5th",8:"minor 6th",9:"major 6th",10:"minor 7th",11:"major 7th"};
+const CHORD_TPL={"0,4,7":"major","0,3,7":"minor","0,2,7":"sus2","0,5,7":"sus4","0,3,6":"diminished","0,4,8":"augmented"};
+function intervalName(g){ if(g>0&&g%12===0) return "octave";
+  const oct=g>=12?" + octave":""; return (INTERVALS[g%12]||((g%12)+" semitones"))+oct; }
+function chordName(midis){
+  const pcs=[...new Set(midis.map(m=>((m%12)+12)%12))].sort((a,b)=>a-b);
+  if(pcs.length<=1) return "unison";
+  if(pcs.length===2) return intervalName(midis[midis.length-1]-midis[0])
+    +" ("+NOTE_NAMES[midis[0]%12]+"–"+NOTE_NAMES[midis[midis.length-1]%12]+")";
+  for(const r of pcs){ const key=pcs.map(p=>((p-r)%12+12)%12).sort((a,b)=>a-b).join(",");
+    if(CHORD_TPL[key]) return NOTE_NAMES[r]+" "+CHORD_TPL[key]; }
+  let cluster=((pcs[0]+12)-pcs[pcs.length-1])<=2;
+  for(let i=1;i<pcs.length;i++) if(pcs[i]-pcs[i-1]<=2) cluster=true;
+  return cluster?"cluster voicing":"open / quartal voicing";
+}
+const toolRealName = tool => chordName(tool.midis);
+// tiny stacked-dots picture of the tool's shape (root = teal, bottom)
+function miniSVG(offs){
+  const stepPx=4.5, pad=4, top=Math.max(...offs), h=top*stepPx+pad*2+2, w=16, cx=w/2;
+  const y0=h-pad-1; let dots="";
+  offs.forEach(o=>{ dots+=`<circle cx="${cx}" cy="${y0-o*stepPx}" r="3.1" fill="${o===0?'#7cf0d0':'#ffd56b'}"/>`; });
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    +`<line x1="${cx}" y1="${y0}" x2="${cx}" y2="${y0-top*stepPx}" stroke="rgba(255,255,255,.18)" stroke-width="2"/>`
+    +dots+`</svg>`;
+}
+
+let toolbox=[];          // array of {offs, midis}
+let activeTool=null;     // {offs, midis} currently picked up
+
+// ---------- Audio (unchanged engine) ----------
+let actx, master, reverb, voiceBus, jamBus, drumBus;
+// the mixer: three player-controllable buses (×base gain) under master — Melody / Band / Drums
+let mix={voice:1, band:1, drums:1};
+function applyMix(){ if(!actx) return;
+  if(voiceBus) voiceBus.gain.value=1.0*mix.voice;     // base gains chosen so 100% = the original balance
+  if(jamBus)   jamBus.gain.value =0.45*mix.band;
+  if(drumBus)  drumBus.gain.value=0.45*mix.drums; }
+function initAudio(){
+  if(actx) return;
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  master=actx.createGain(); master.gain.value=0.85; master.connect(actx.destination);
+  voiceBus=actx.createGain(); voiceBus.connect(master);   // player melody / previews / echo
+  jamBus=actx.createGain(); jamBus.connect(master);       // jam band: bass + chords + jam's own drums
+  drumBus=actx.createGain(); drumBus.connect(master);     // the player's drum sequencer
+  applyMix();
+  reverb=actx.createConvolver();
+  const len=actx.sampleRate*1.6, buf=actx.createBuffer(2,len,actx.sampleRate);
+  for(let ch=0;ch<2;ch++){ const d=buf.getChannelData(ch);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.5); }
+  reverb.buffer=buf;
+  const rg=actx.createGain(); rg.gain.value=0.22; reverb.connect(rg); rg.connect(master);
+}
+function env(p,now,a,peak,sustain,dur){
+  p.cancelScheduledValues(now); p.setValueAtTime(0,now);
+  p.linearRampToValueAtTime(peak*0.5,now+a);
+  p.exponentialRampToValueAtTime(Math.max(sustain,0.001)*0.5+0.0005,now+dur*0.8);
+  p.linearRampToValueAtTime(0.0001,now+dur);
+}
+function voice(instr,freq,now){
+  const out=actx.createGain(); out.connect(voiceBus); out.connect(reverb);
+  if(instr==="pad"){
+    [-0.08,0.08,0].forEach(det=>{ const o=actx.createOscillator(); o.type="sawtooth";
+      o.frequency.value=freq*Math.pow(2,det/12);
+      const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=1800;
+      o.connect(lp); lp.connect(out); o.start(now); o.stop(now+1.4); });
+    env(out.gain,now,0.18,0.3,0.25,1.4);   // pad: 3 saws stack up — keep it gentle
+  } else if(instr==="pluck"){
+    const o=actx.createOscillator(); o.type="sawtooth"; o.frequency.value=freq;
+    const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(4500,now);
+    lp.frequency.exponentialRampToValueAtTime(700,now+0.4); o.connect(lp); lp.connect(out);
+    o.start(now); o.stop(now+0.9); env(out.gain,now,0.005,0.5,0.0,0.8);   // pluck: saw is bright — tame it
+  } else if(instr==="marimba"){
+    const o=actx.createOscillator(); o.type="triangle"; o.frequency.value=freq;
+    const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*4;
+    const g2=actx.createGain(); g2.gain.value=0.15; o2.connect(g2); g2.connect(out);
+    o.connect(out); o.start(now); o.stop(now+0.7); o2.start(now); o2.stop(now+0.25);
+    env(out.gain,now,0.004,1.0,0.0,0.6);
+  } else {
+    const o=actx.createOscillator(); o.type="sine"; o.frequency.value=freq;
+    const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*2.01;
+    const g2=actx.createGain(); g2.gain.value=0.25; o2.connect(g2); g2.connect(out);
+    o.connect(out); o.start(now); o.stop(now+1.2); o2.start(now); o2.stop(now+0.6);
+    env(out.gain,now,0.005,1.0,0.0,1.1);
+  }
+}
+function playRow(r,t){ initAudio(); voice(instrEl.value, midiToFreq(MIDI[r]), t); }
+
+// ---------- Jam backing: drums + bass + chords (C – G – Am – F) ----------
+// dest defaults to jamBus (the band); the drum sequencer passes drumBus so its pads mix separately
+function bTone(t,freq,dur,type,peak,att,dest){ att=att||0.02; const o=actx.createOscillator(); o.type=type; o.frequency.value=freq;
+  const g=actx.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(peak,t+att);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g); g.connect(dest||jamBus); o.start(t); o.stop(t+dur+0.03); }
+function kick(t,peak,dest){ const o=actx.createOscillator(),g=actx.createGain();
+  o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(50,t+0.12);
+  g.gain.setValueAtTime(peak||0.9,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.16);
+  o.connect(g); g.connect(dest||jamBus); o.start(t); o.stop(t+0.18); }
+function noiseHit(t,dur,type,freq,peak,dest){ const len=Math.max(1,(actx.sampleRate*dur)|0);
+  const b=actx.createBuffer(1,len,actx.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+  const n=actx.createBufferSource(); n.buffer=b;
+  const f=actx.createBiquadFilter(); f.type=type; f.frequency.value=freq;
+  const g=actx.createGain(); g.gain.setValueAtTime(peak,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  n.connect(f); f.connect(g); g.connect(dest||jamBus); n.start(t); n.stop(t+dur); }
+const snare=(t,peak,dest)=>noiseHit(t,0.16,"bandpass",1800,peak||0.4,dest);
+const hat=(t,peak,dest)=>noiseHit(t,0.04,"highpass",8000,peak||0.18,dest);
+const ch=(bass,chord)=>({bass,chord});
+const GROOVES=[                                                  // swing 0 = straight … ~0.33 = full triplet shuffle
+ {name:"🎵 Pop",     bpm:116, swing:0,    drums:"rock", bass:"drive",  prog:[ch(36,[60,64,67]),ch(43,[55,59,62]),ch(45,[57,60,64]),ch(41,[53,57,60])]}, // C  G  Am F
+ {name:"💗 Ballad",  bpm:78,  swing:0,    drums:"soft", bass:"half",   prog:[ch(45,[57,60,64]),ch(41,[53,57,60]),ch(36,[60,64,67]),ch(43,[55,59,62])]}, // Am F  C  G
+ {name:"🕺 Doo-wop", bpm:104, swing:0.33, drums:"rock", bass:"bounce", prog:[ch(36,[60,64,67]),ch(45,[57,60,64]),ch(41,[53,57,60]),ch(43,[55,59,62])]}, // C  Am F  G
+ {name:"🌙 Lo-fi",   bpm:82,  swing:0.25, drums:"lofi", bass:"sparse", prog:[ch(45,[57,60,64]),ch(38,[57,62,65]),ch(43,[55,59,62]),ch(48,[60,64,67])]}, // Am Dm G  C
+ {name:"🤠 Folk",    bpm:100, swing:0.12, drums:"soft", bass:"root5",  prog:[ch(36,[60,64,67]),ch(41,[53,57,60]),ch(36,[60,64,67]),ch(43,[55,59,62])]}, // C  F  C  G
+];
+let grooveIdx=0, jamMode=false, jamStartedPlayback=false;
+function jamStep(step,t){
+  const G=GROOVES[grooveIdx], s=((step%16)+16)%16, c=G.prog[(s/4)|0];
+  const seg=stepDur()*4/1000;                                        // a chord lasts its 4-step region
+  // sustained chord bed + bass = the parts that give each groove its character (now up front)
+  if(s%4===0) c.chord.forEach(m=>bTone(t,midiToFreq(m),seg*0.95,"triangle",0.16,0.05));
+  // bass — pattern varies per style
+  const bass=m=>bTone(t,midiToFreq(m),0.26,"sawtooth",0.5);
+  if(G.bass==="half"){ if(s%4===0) bass(c.bass); }                                   // ballad: one note per chord
+  else if(G.bass==="sparse"){ if(s%4===0||s===6||s===14) bass(c.bass); }             // lo-fi: laid-back
+  else if(G.bass==="bounce"){ if(s%2===0) bass(s%4===0?c.bass:c.bass+12); }          // doo-wop: octave bounce
+  else if(G.bass==="root5"){ if(s%4===0) bass(c.bass); else if(s%4===2) bass(c.bass+7); } // folk: root–fifth
+  else { if(s%2===0) bass(c.bass); }                                                 // pop: driving
+  // drums (kick unchanged; snare + hats a bit louder; distinct per style)
+  if(G.drums==="soft"){ if(s%8===0) kick(t,0.34); if(s%8===4) snare(t,0.26); }            // gentle, no hats
+  else if(G.drums==="lofi"){ if(s%4===0) kick(t,0.4); if(s%4===2) snare(t,0.28);
+                             if(s%2===1) hat(t,0.12); if(s%8===6) kick(t,0.28); }         // laid-back, offbeat hats
+  else { if(s%4===0) kick(t,0.46); if(s%4===2) snare(t,0.3); hat(t,0.14); }               // pop/rock, steady hats
+}
+
+// ---------- Rhythm: a 16-step drum sequencer (kick / snare / hi-hat) ----------
+const DRUMS=[{name:"Kick",emoji:"🥁",play:t=>kick(t,1.0,drumBus)},
+             {name:"Snare",emoji:"👏",play:t=>snare(t,0.7,drumBus)},
+             {name:"Hi-hat",emoji:"🎩",play:t=>hat(t,0.4,drumBus)}];
+let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false;
+function buildDrums(){ const rows=document.getElementById("drumrows"); rows.innerHTML="";
+  DRUMS.forEach((dm,d)=>{ dcells[d]=[];
+    const row=document.createElement("div"); row.className="drumrow";
+    const lab=document.createElement("div"); lab.className="drumlabel"; lab.textContent=`${dm.emoji} ${dm.name}`; row.appendChild(lab);
+    const g=document.createElement("div"); g.className="dcellgrid"; g.style.gridTemplateColumns=`repeat(${COLS},34px)`;
+    for(let c=0;c<COLS;c++){ const el=document.createElement("div");
+      el.className="dcell"+(c%4===0?" beat":"")+(drumG[d][c]?" on":"");
+      el.addEventListener("mousedown",()=>drumClick(d,c)); g.appendChild(el); dcells[d][c]=el; }
+    row.appendChild(g); rows.appendChild(row); });
+}
+function drumClick(d,c){ initAudio(); actx.resume();
+  drumG[d][c]=!drumG[d][c]; dcells[d][c].classList.toggle("on",drumG[d][c]);
+  if(drumG[d][c]) DRUMS[d].play(actx.currentTime+0.01);
+  ev.played=false;                 // editing means "Play" must be pressed again to count
+  checkLevel(); }
+function wipeDrums(){ drumG=DRUMS.map(()=>Array(COLS).fill(false));
+  dcells.forEach(row=>row&&row.forEach(e=>e.classList.remove("on"))); }
+function placeDrums(list){ list.forEach(([d,c])=>{ drumG[d][c]=true; if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("on"); }); }
+
+// ---------- Grid ----------
+const gridEl=document.getElementById("grid"), scroller=document.getElementById("scroller");
+const cells=[];
+function buildGrid(){
+  gridEl.style.gridTemplateColumns=`repeat(${COLS},34px)`; gridEl.innerHTML="";
+  for(let r=0;r<ROWS;r++){ cells[r]=[];
+    for(let c=0;c<COLS;c++){
+      const el=document.createElement("div");
+      el.className="cell"+(isTonic(r)?" tonicRow":"")+(grid[r][c]?" on":"");
+      el.title=NAMES[r];
+      el.addEventListener("mousedown",()=>cellClick(r,c,el));
+      gridEl.appendChild(el); cells[r][c]=el;
+    }
+  }
+}
+buildGrid();
+function addColumns(n){ for(let r=0;r<ROWS;r++) for(let k=0;k<n;k++) grid[r].push(false);
+  for(let d=0;d<DRUMS.length;d++) for(let k=0;k<n;k++) drumG[d].push(false);
+  COLS+=n; buildGrid(); buildDrums(); }
+function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
+  for(let r=0;r<ROWS;r++) grid[r].length=c2;
+  for(let d=0;d<DRUMS.length;d++) drumG[d].length=c2;
+  COLS=c2; buildGrid(); buildDrums(); updateGarden(); }
+function setCell(r,c,on){ grid[r][c]=on; cells[r][c].classList.toggle("on",on); }
+function flash(el,r){ el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse");
+  if(isTonic(r)) settle(); }
+function anim(el,cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  setTimeout(()=>el.classList.remove(cls),600); }
+let settleT;
+function settle(){ document.body.classList.add("settle");
+  clearTimeout(settleT); settleT=setTimeout(()=>document.body.classList.remove("settle"),420); }
+
+// ---------- Interaction: plant / fuse / stamp ----------
+let craftMode=false, craftSel=[];
+function cellClick(r,c,el){
+  initAudio(); actx.resume();
+  if(activeTool){ stampTool(r,c); return; }
+  if(craftMode){ pickForFuse(r,c,el); return; }
+  setCell(r,c,!grid[r][c]);
+  if(grid[r][c]){ playRow(r,actx.currentTime); flash(el,r); bloom(el, noteFlower(r)); compReact(); }
+  ev.played=false;                 // editing means "Play" must be pressed again to count
+  checkLevel();
+}
+function pickForFuse(r,c,el){
+  if(!grid[r][c]){ setStatus("Plant the seed first 🌱, then fuse it."); return; }   // only fuse planted seeds
+  const i=craftSel.findIndex(s=>s.r===r&&s.c===c);
+  if(i>=0){ craftSel.splice(i,1); el.classList.remove("sel"); updateFuseLabel(); return; }
+  if(craftSel.length && c!==craftSel[0].c){                                          // chords live in ONE column (same time)
+    setStatus("Stack seeds in the <b>same column</b> 📍 (one above another) to make a chord."); return; }
+  if(craftSel.length>=3){ setStatus("Up to <b>3</b> seeds — press <b>✓ Save</b>, or unpick one."); return; }
+  craftSel.push({r,c}); el.classList.add("sel"); playRow(r,actx.currentTime); flash(el,r);
+  updateFuseLabel();
+  setStatus(craftSel.length===1 ? "Good — now stack 1–2 more seeds in the <b>same column</b>, then ✓ Save."
+                                : `${craftSel.length} seeds stacked — press <b>✓ Save</b>, or add one more.`);
+}
+function updateFuseLabel(){ craftBtn.textContent = craftMode ? `✓ Save (${craftSel.length})` : "🔨 Fuse"; }
+function exitFuse(){ craftMode=false; craftBtn.classList.remove("on"); clearSel(); updateFuseLabel(); }
+function fuse(){
+  if(craftSel.length<2){ exitFuse(); return; }
+  const rows=craftSel.map(s=>s.r);
+  const base=Math.max(...rows);                    // bottom note = lowest pitch
+  const offs=[...new Set(rows.map(r=>base-r))].sort((a,b)=>a-b);
+  const midis=[...new Set(rows.map(r=>MIDI[r]))].sort((a,b)=>a-b);
+  if(offs.length<2){ setStatus("Pick seeds at <b>different heights</b> 🎵 (not the same row)."); return; }  // keep selection, let them fix it
+  const stable=stableMidis(midis);
+  const placed=craftSel.slice();
+  placed.forEach((s,i)=>{ cells[s.r][s.c].classList.remove("sel");
+    anim(cells[s.r][s.c], stable?"stand":"wob"); playRow(s.r,actx.currentTime+i*0.05); });
+  // record what kind of thing was crafted (counts even if the shape is a duplicate)
+  if(offs.length===2) ev.craftedPair=true; else if(stable) ev.craftedTower=true; else ev.craftedWobbler=true;
+  const m=toolMeta(offs,midis);
+  if(!toolbox.some(t=>sig(t.offs)===sig(offs))){ const tool={offs,midis}; toolbox.push(tool); renderBag(sig(offs));
+    setStatus(`Crafted <b>${m.em} ${m.name}</b> — ${toolRealName(tool)}! Click it in your 🎒 Toolbox to hear it.`);
+    toast(offs.length===2 ? `${m.em} New pair: ${m.name}!`
+          : stable ? "🏛️ Tower — smooth & open!" : "🌀 Wobbler — tense & clashy!");
+  } else setStatus(`That's a <b>${m.name}</b> — already in your toolbox.`);
+  bloom(cells[Math.min(...placed.map(s=>s.r))][placed[0].c], "💐");   // crafted pair/chord → bouquet
+  exitFuse();                                       // one-shot: back to planting after a craft
+  checkLevel(); saveProgress();
+}
+function stampTool(r,c){
+  const offs=activeTool.offs;
+  let rows=offs.map(o=>r-o);                        // stack upward from clicked cell
+  if(rows.some(x=>x<0)) rows=offs.map(o=>r+o);      // flip downward if it runs off the top
+  rows=rows.filter(x=>x>=0&&x<ROWS);
+  if(!rows.length) return;
+  rows.forEach((rr,i)=>{ setCell(rr,c,true); playRow(rr,actx.currentTime+i*0.05); });
+  const stable=stableMidis(rows.map(r2=>MIDI[r2]).sort((a,b)=>a-b));
+  rows.forEach(rr=>anim(cells[rr][c], stable?"stand":"wob"));
+  if(isTonic(rows[rows.length-1])||isTonic(rows[0])) settle();
+  bloom(cells[Math.min(...rows)][c], rows.length>=2?"💐":noteFlower(rows[0]));   // stamped interval/chord → bouquet
+  ev.stampedTool=true; ev.played=false;
+  activeTool=null; renderBag();                       // one-shot: back to planting after a stamp
+  setStatus("Stamped! 🌱 Back to planting — pick a tool to stamp again.");
+  checkLevel();
+}
+
+// ---------- Toolbox UI ----------
+const bagEl=document.getElementById("bag"), bagHint=document.getElementById("bagHint");
+function renderBag(popSig){
+  bagEl.innerHTML=""; bagHint.style.display=toolbox.length?"none":"block";
+  toolbox.forEach(tool=>{ const m=toolMeta(tool.offs, tool.midis);
+    const chip=document.createElement("button");
+    chip.className="chip"+(activeTool&&sig(activeTool.offs)===sig(tool.offs)?" active":"")+(popSig===sig(tool.offs)?" pop":"");
+    chip.title=`${m.name} · ${toolRealName(tool)}`;
+    chip.innerHTML=`${miniSVG(tool.offs)}<span class="lbl">${m.name}</span>`;
+    chip.onclick=()=>{ previewTool(tool); toggleStamp(tool); }; bagEl.appendChild(chip);
+  });
+}
+function toggleStamp(tool){
+  activeTool = (activeTool&&sig(activeTool.offs)===sig(tool.offs)) ? null : tool;
+  exitFuse(); renderBag();
+  if(activeTool){ const m=toolMeta(tool.offs, tool.midis);
+    setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the grid to stamp it once.`);
+  } else setStatus("Plant seeds 🌱, or 🔨 Fuse to craft.");
+}
+function clearSel(){ craftSel.forEach(s=>cells[s.r][s.c].classList.remove("sel")); craftSel=[]; }
+
+// ---------- Levels ----------
+function colCount(c){ let n=0; for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; return n; }
+function lastCol(){ for(let c=COLS-1;c>=0;c--) if(colCount(c)>0) return c; return -1; }
+function gridState(){
+  let placed=0,pair=false,chord=false;
+  for(let c=0;c<COLS;c++){ const n=colCount(c); placed+=n; if(n>=2) pair=true; if(n>=3) chord=true; }
+  const lc=lastCol(); let home=false;
+  if(lc>=0) for(let r=0;r<ROWS;r++) if(grid[r][lc]&&isTonic(r)){ home=true; break; }
+  return {placed,pair,chord,home};
+}
+function wipe(){ grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  cells.flat().forEach(e=>e.classList.remove("on")); clearSel(); }
+function freshEv(){ return {played:false,craftedPair:false,craftedTower:false,craftedWobbler:false,
+  stampedTool:false,previewed:false,previewedTower:false,previewedWobbler:false,jammed:false,choicePick:-1}; }
+let ev=freshEv();
+
+// hear a tool (block chord) — makes Tower vs Wobbler obvious by ear
+function playChordMidis(midis){ initAudio(); actx.resume(); const t=actx.currentTime+0.01;
+  midis.forEach(m=>voice(instrEl.value, midiToFreq(m), t)); }
+function previewTool(tool){ playChordMidis(tool.midis); ev.previewed=true;
+  if(tool.offs.length>=3){ stableMidis(tool.midis)?ev.previewedTower=true:ev.previewedWobbler=true; }
+  checkLevel(); }
+
+function placeTune(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+// count DISTINCT tools in the toolbox by type (toolbox dedupes by shape, so these enforce "different")
+const countTools=pred=>toolbox.filter(pred).length;
+const isPairTool=t=>t.offs.length===2;
+const isTowerTool=t=>t.offs.length>=3 && stableMidis(t.midis);
+const isWobTool=t=>t.offs.length>=3 && !stableMidis(t.midis);
+// ----- echo / call-and-response helpers -----
+function gridMatches(t){ let n=0; for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(grid[r][c]) n++;
+  return n===t.length && t.every(([r,c])=>grid[r]&&grid[r][c]); }
+const echoTarget=()=>curStage().echo||[];
+const echoMatch=()=>gridMatches(echoTarget());
+function echoHint(){ wipe(); echoTarget().forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+function playPhrase(notes){ initAudio(); actx.resume(); const t0=actx.currentTime+0.12, sd=stepDur()/1000;
+  notes.forEach(([r,c])=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd)); }
+// ARCS: the campaign groups into four player-facing "awakening arcs" — powers, not lessons.
+const ARCS=[{em:"🎤",name:"Voice"},{em:"💓",name:"Pulse"},{em:"🔗",name:"Shape"},{em:"🪄",name:"Weaving"}];
+const ROMAN=["I","II","III","IV"];
+const arcOf=i=>{ const L=LEVELS[i]; const a=L&&ARCS[L.arc]; return a?{em:a.em,name:a.name,n:ROMAN[L.arc]}:null; };
+
+// ---------- Follow the Fireflies: melodic contour (package PS-1) ----------
+// contour = a melody's shape over time; read the TOP note per occupied column as a height (0=low … ROWS-1=high)
+function contourSeq(){ const seq=[]; for(let c=0;c<COLS;c++){ for(let r=0;r<ROWS;r++){ if(grid[r][c]){ seq.push((ROWS-1)-r); break; } } } return seq; }
+const netRise = seq => seq.length<2?0:seq[seq.length-1]-seq[0];
+function dirSteps(seq){ let up=0,down=0; for(let i=1;i<seq.length;i++){ if(seq[i]>seq[i-1])up++; else if(seq[i]<seq[i-1])down++; } return {up,down}; }
+function maxDrop(seq){ let m=0; for(let i=1;i<seq.length;i++) m=Math.max(m,seq[i-1]-seq[i]); return m; }
+function maxRise(seq){ let m=0; for(let i=1;i<seq.length;i++) m=Math.max(m,seq[i]-seq[i-1]); return m; }
+// significant turning points (prominence>=prom merges tiny wiggles): one hill = ['peak'], two hills = ['peak','valley','peak']
+function extrema(seq, prom=2){ const res=[]; if(seq.length<2) return res; let dir=0, ext=seq[0];
+  for(let i=1;i<seq.length;i++){ const v=seq[i];
+    if(dir===1){ if(v>ext) ext=v; else if(ext-v>=prom){ res.push("peak"); dir=-1; ext=v; } }
+    else if(dir===-1){ if(v<ext) ext=v; else if(v-ext>=prom){ res.push("valley"); dir=1; ext=v; } }
+    else { if(v-ext>=1){ dir=1; ext=v; } else if(ext-v>=1){ dir=-1; ext=v; } } }
+  return res; }
+const hillCount = seq => extrema(seq).filter(x=>x==="peak").length;
+const isRising  = seq => seq.length>=3 && netRise(seq)>=3 && dirSteps(seq).up>dirSteps(seq).down;   // lenient: allows wiggle
+const isFalling = seq => seq.length>=3 && netRise(seq)<=-3 && dirSteps(seq).down>dirSteps(seq).up;
+const isHovering= seq => seq.length>=4 && (Math.max(...seq)-Math.min(...seq))<=2 && Math.abs(netRise(seq))<=1; // level, several notes, ends near start (no sneaky descent)
+const isArch    = seq => seq.length>=4 && hillCount(seq)===1;                                       // exactly one hill
+const isTwoArcs = seq => seq.length>=5 && hillCount(seq)>=2;                                        // two hills in a row (harder)
+const isSmoothRise = seq => seq.length>=3 && netRise(seq)>=3 && maxDrop(seq)<=1;                    // a clean climb (repair)
+const isSmoothFall = seq => seq.length>=3 && netRise(seq)<=-3 && maxRise(seq)<=1;                   // a clean descent (repair)
+const isJourney = seq => seq.length>=6 && extrema(seq).length>=2;                                   // a real journey: 2+ turns
+// a worked example melody matching a contour (for 💡 Hint)
+function placeContour(type){ wipe(); const top=ROWS-1, N=(type==="twohills"||type==="journey")?8:6;
+  for(let i=0;i<N;i++){ const t=i/(N-1); let f;
+    if(type==="rise") f=0.15+0.70*t;
+    else if(type==="fall") f=0.85-0.70*t;
+    else if(type==="hover") f=0.5+0.08*Math.sin(t*Math.PI*2);
+    else if(type==="twohills") f=0.18+0.64*(0.5-0.5*Math.cos(t*Math.PI*4));
+    else if(type==="journey") f=0.5-0.34*Math.cos(t*Math.PI*3);
+    else f=0.15+0.70*Math.sin(t*Math.PI);   // arch
+    setCell(Math.max(0,Math.min(top, Math.round(top-f*top))), i, true); }
+  checkLevel(); }
+// glowing target path drawn over the grid (guidance only — players match the SHAPE, never exact cells)
+function contourGhostPts(type){ const top=ROWS-1, N=11, span=Math.min(COLS,8), pts=[];
+  for(let i=0;i<N;i++){ const t=i/(N-1); let f;
+    if(type==="rise") f=0.18+0.64*t;
+    else if(type==="fall") f=0.82-0.64*t;
+    else if(type==="hover") f=0.5+0.06*Math.sin(t*Math.PI*3);
+    else if(type==="twohills") f=0.2+0.6*(0.5-0.5*Math.cos(t*Math.PI*4));
+    else if(type==="journey") f=0.5-0.32*Math.cos(t*Math.PI*3);
+    else f=0.2+0.62*Math.sin(t*Math.PI);   // arch
+    pts.push({x:27+38*(0.4+t*(span-0.8)), y:25+34*(top-f*top)}); }
+  return pts; }
+function drawContourGhost(type){ const svg=document.getElementById("contourGhost"); if(!svg) return;
+  if(!type){ svg.style.display="none"; svg.innerHTML=""; return; }
+  const W=gridEl.offsetWidth||624, H=gridEl.offsetHeight||356;
+  svg.setAttribute("width",W); svg.setAttribute("height",H); svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.style.display="";
+  const pts=contourGhostPts(type), d=pts.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)).join(" ");
+  const dots=pts.map((p,i)=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" class="fdot" style="animation-delay:${(i*0.16).toFixed(2)}s"/>`).join("");
+  svg.innerHTML=`<path d="${d}" class="cpath"/>${dots}`; }
+const clearContourGhost=()=>drawContourGhost(null);
+// "choose the matching path" levels (the `compare` pattern)
+let choiceOpts=null, choiceAnswer=-1, choiceViewed=[];
+function showChoices(opts,answer){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+  const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
+  opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
+    b.textContent="🎵 Path "+String.fromCharCode(65+i); b.onclick=()=>pickChoice(i); row.appendChild(b); });
+  setStatus("Tap each path to hear and see it — listen to <b>all three</b> first, then choose the one that traces the glowing arc."); }
+function hideChoices(){ const row=document.getElementById("choiceRow"); if(row){ row.style.display="none"; row.innerHTML=""; } choiceOpts=null; choiceAnswer=-1; choiceViewed=[]; }
+function pickChoice(i){ if(!choiceOpts) return; wipe();
+  placeTune(choiceOpts[i].map((r,c)=>[r,c]));
+  initAudio(); actx.resume(); const t0=actx.currentTime+0.05, sd=stepDur()/1000;
+  choiceOpts[i].forEach((r,c)=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));
+  choiceViewed[i]=true;
+  const row=document.getElementById("choiceRow"); if(row) [...row.children].forEach((b,bi)=>b.classList.toggle("on", bi===i));
+  if(!choiceViewed.every(Boolean)){ ev.choicePick=-1;             // can't pick until all three are heard
+    const left=choiceViewed.filter(x=>!x).length;
+    setStatus(`Good — keep listening: hear all three paths first (${left} to go).`); checkLevel(); return; }
+  ev.choicePick=i; checkLevel();
+  setStatus(i===choiceAnswer ? "✨ That path matches the glowing arc!" : "Not the match — tap the path that traces the arc above."); }
+
+// ---------- Footsteps: pulse helpers (package PW-1) ----------
+// count melody seeds that land on the strong-beat columns (0,4,8,12,…)
+function gridNotesOnBeats(){ let n=0; for(let c=0;c<COLS;c+=4) for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; return n; }
+// tint the beat columns on the field so the player can land a melody "on the beat"
+function setBeatGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c])
+  cells[r][c].classList.toggle("beatcol", !!on && c%4===0); }
+// drum version of the compare picker: options are kick-step patterns, played on the kick lane
+function showDrumChoices(opts,answer){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+  const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
+  opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
+    b.textContent="🥁 Walk "+String.fromCharCode(65+i); b.onclick=()=>pickDrumChoice(i); row.appendChild(b); });
+  setStatus("Tap each walk to hear it — listen to <b>all</b> of them first, then pick the one that stays steady."); }
+function pickDrumChoice(i){ if(!choiceOpts) return; wipeDrums();
+  placeDrums(choiceOpts[i].map(s=>[0,s]));
+  initAudio(); actx.resume(); const t0=actx.currentTime+0.05, sd=stepDur()/1000;
+  choiceOpts[i].forEach(s=>kick(t0+s*sd, 1.0, drumBus));
+  choiceViewed[i]=true;
+  const row=document.getElementById("choiceRow"); if(row) [...row.children].forEach((b,bi)=>b.classList.toggle("on", bi===i));
+  if(!choiceViewed.every(Boolean)){ ev.choicePick=-1;
+    const left=choiceViewed.filter(x=>!x).length;
+    setStatus(`Keep listening — hear all the walks first (${left} to go).`); checkLevel(); return; }
+  ev.choicePick=i; checkLevel();
+  setStatus(i===choiceAnswer ? "✨ That's the steady walk!" : "That one wobbles — find the even, steady walk."); }
+
+// PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
+// (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
+// Each level carries: arc (awakening arc), power {em,name,line} (the "power card" reward),
+// intent (an optional expressive prompt shown after the goals are done — never graded).
+const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", region:"first-garden",
+  desc:"Wake the garden — voice, pulse, shapes, and your own patch.", requires:[], version:2, author:"official", levels:[
+ // ---- ARC I — VOICE: "I can make the garden sing." ----
+ {name:"Wake the Seeds", arc:0, hint:()=>hintMelody(),
+  power:{em:"🎤",name:"Voice",line:"You can make the garden sing."},
+  intent:"Can you make the flowers bloom in a gentle line?",
+  intro:"The garden is asleep 🌙 — wake it! Click squares to plant singing seeds — up = higher, across = time — then press ▶ and hear the first flowers wake.",
+  goals:[{id:"p3",label:"Wake 3 sleeping seeds",chk:s=>s.placed>=3},
+         {id:"pl",label:"Press ▶ to hear your garden",play:true}]},
+ {name:"Find Home", arc:0, hint:()=>hintMelody(),
+  power:{em:"🏠",name:"Home Sense",line:"You can feel where music wants to rest."},
+  intent:"Can you make it feel complete?",
+  intro:"The glowing purple rows are HOME 🏠 — where melodies come to rest. Make a melody whose LAST seed lands on a glowing row, and feel the garden settle.",
+  goals:[{id:"hm",label:"End your melody on a HOME (glowing) row",chk:s=>s.home},
+         {id:"pl",label:"Press ▶ to hear it",play:true}]},
+ {name:"Call the Band", arc:0, unlock:["jam"], hint:()=>hintMelody(),
+  power:{em:"🎸",name:"Groove",line:"You can call the band and play inside its motion."},
+  reveal:()=>runReveal({jam:true,harm:true,msg:"✨ Listen — the garden answers your tune in harmony…"}),
+  intent:"Can you make the band feel sunny, sleepy, or bouncy?",
+  intro:"The garden found its voice — now wake the band! 🎸 Press Jam to start a groove (try the different styles!), and tap seeds to play along — every note fits.",
+  goals:[{id:"jam",label:"Turn on 🎸 Jam to call the band",chk:(s,e)=>e.jammed},
+         {id:"tap",label:"Tap some seeds to play along (3+)",chk:s=>s.placed>=3}]},
+ {name:"Finish the Path", arc:0,
+  power:{em:"🧭",name:"Path Sense",line:"You can hear where a melody wants to go."},
+  intent:"Which ending helps the melody come home?", steps:[
+   {intro:"A song-path runs through the garden, but its last stone went dark. Tune 1 — 'Mary Had a Little Lamb' 🐑: relight it! Add the missing note on a glowing HOME row 🏠, then press ▶.",
+    setup:()=>placeTune([[7,0],[8,1],[9,2],[8,3],[7,4],[7,5],[7,6],[8,8],[8,9],[7,10],[8,11]]),
+    hint:()=>setCell(9,12,true),
+    goals:[{id:"n",label:"Relight the path — add the missing note",chk:()=>grid[9][12]},
+           {id:"pl",label:"Press ▶ to hear the finished tune",play:true}]},
+   {intro:"Another dark stone! Tune 2 — 'Hot Cross Buns' 🥖. Add the missing note on a glowing HOME row 🏠, then press ▶.",
+    setup:()=>placeTune([[7,0],[8,1],[9,2],[7,4],[8,5]]),
+    hint:()=>setCell(9,6,true),
+    goals:[{id:"n",label:"Relight the path — add the missing note",chk:()=>grid[9][6]},
+           {id:"pl",label:"Press ▶ to hear the finished tune",play:true}]},
+   {intro:"One last stone. Tune 3 — 'Au clair de la lune' 🌙. Add the last note on a glowing HOME row 🏠, then press ▶.",
+    setup:()=>placeTune([[9,0],[9,1],[9,2],[8,3],[7,4],[8,6],[9,8],[7,9],[8,10],[8,11]]),
+    hint:()=>setCell(9,12,true),
+    goals:[{id:"n",label:"Relight the path — add the missing note",chk:()=>grid[9][12]},
+           {id:"pl",label:"Press ▶ to hear the finished tune",play:true}]},
+ ]},
+ {name:"Answer the Garden", arc:0,
+  power:{em:"🪞",name:"Echo",line:"You can catch a tune by ear and sing it back."},
+  intent:"Can you sing back exactly what the garden told you?", steps:[
+   {echo:[[9,0],[7,1],[9,2]],
+    intro:"A creature calls from the garden! 🔊 Press Listen to hear its little 3-note song, then ANSWER it — place the same notes in the first 3 columns and press ▶. Click cells to hear each pitch as you match.",
+    hint:echoHint,
+    goals:[{id:"m",label:"Echo the call — match all the notes",chk:echoMatch},
+           {id:"pl",label:"Press ▶ to sing your answer",play:true}]},
+   {echo:[[6,0],[5,1],[6,2]],
+    intro:"It liked that! 🔊 Listen again — a new 3-note call. Answer it in the first 3 columns and press ▶.",
+    hint:echoHint,
+    goals:[{id:"m",label:"Echo the call — match all the notes",chk:echoMatch},
+           {id:"pl",label:"Press ▶ to sing your answer",play:true}]},
+   {echo:[[9,0],[8,1],[7,2],[9,3]],
+    intro:"One more — a 4-note call! 🔊 Listen, then answer it in the first 4 columns and press ▶.",
+    hint:echoHint,
+    goals:[{id:"m",label:"Echo the call — match all the notes",chk:echoMatch},
+           {id:"pl",label:"Press ▶ to sing your answer",play:true}]},
+ ]},
+ // ---- ARC II — PULSE: "I can make the garden move." ----
+ {name:"Wake the Heartbeat", arc:1, unlock:["drums"], rhythm:true, hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  power:{em:"💓",name:"Pulse",line:"You can wake the garden's heartbeat."},
+  intent:"Can you make the garden's heart beat steadily?",
+  intro:"Deep under the garden, a heartbeat is waiting 💓. You've unlocked 🥁 Drums — the lanes below your field! Tap a Kick on each of the four marked beats, then press ▶ to wake the pulse.",
+  goals:[{id:"k",label:"Put a Kick on all 4 beats",chk:()=>[0,4,8,12].every(i=>drumG[0][i])},
+         {id:"pl",label:"Press ▶ to wake the heartbeat",play:true}]},
+ {name:"Make It March", arc:1, rhythm:true, hint:()=>placeDrums([[1,4],[1,12]]),
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  power:{em:"🚶",name:"Stride",line:"You can give the garden a walk."},
+  intent:"Can you make the garden walk proudly?",
+  intro:"The heart beats — now give the garden a walk! Add the CLAP 👏 (snare) on beats 2 and 4 — that's the 'backbeat' you nod your head to. Then play and feel it stride.",
+  goals:[{id:"sn",label:"Put a Snare on beats 2 and 4",chk:()=>drumG[1][4]&&drumG[1][12]},
+         {id:"pl",label:"Press ▶ to hear the boom-clap",play:true}]},
+ {name:"Hold the Pulse", arc:1, rhythm:true, hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  power:{em:"🕰️",name:"Timekeeper",line:"You can keep the whole garden moving together."},
+  reveal:()=>runReveal({sync:true,msg:"✨ Watch — the whole garden moves to your pulse…"}),
+  intent:"Can you make everything breathe together?",
+  intro:"Now keep everything moving together 🕰️ — add Hi-hats 🎩 on lots of steps for a steady shimmer. Then play your full groove and watch the garden move as one!",
+  goals:[{id:"hh",label:"Add at least 6 Hi-hats",chk:()=>drumG[2].filter(Boolean).length>=6},
+         {id:"pl",label:"Press ▶ to hear your groove",play:true}]},
+ // ---- ARC III — SHAPE: "I can bind notes into structures." ----
+ {name:"Bind Two Voices", arc:2, unlock:["fuse"],
+  power:{em:"🔗",name:"Binding",line:"You can fuse voices into one shape."},
+  intent:"Can you discover two different bonds?", steps:[
+   {intro:"You've unlocked 🔨 Fuse + the 🎒 Toolbox! Two voices can belong together: plant two seeds in the SAME column, one above the other, then 🔨 Fuse and ✓ Save the bond.",
+    hint:()=>hintSeeds([[9,4],[7,4]]),
+    goals:[{id:"cp",label:"Fuse a pair into your Toolbox",chk:(s,e)=>e.craftedPair},
+           {id:"hp",label:"Click your pair in the Toolbox to hear it",chk:(s,e)=>e.previewed}]},
+   {intro:"Now discover a DIFFERENT bond — two seeds a different distance apart (closer or farther) — then 🔨 Fuse and ✓ Save.",
+    hint:()=>hintSeeds([[9,5],[6,5]]),
+    goals:[{id:"cp2",label:"Craft a second, different pair",chk:()=>countTools(isPairTool)>=2}]},
+ ]},
+ {name:"Raise a Chorus", arc:2,
+  power:{em:"🏛️",name:"Structure",line:"You can build shapes strong enough to stand."},
+  reveal:structureReveal,
+  intent:"Can you build something that stands tall?", steps:[
+   {intro:"Build a shape strong enough to stand: stack THREE seeds in ONE column, SPREAD APART (gaps between them), then 🔨 Fuse and ✓ Save — a TOWER 🏛️ stands tall and sounds smooth & open.",
+    hint:()=>hintSeeds([[9,4],[7,4],[5,4]]),
+    goals:[{id:"ct",label:"Craft a TOWER chord into your Toolbox",chk:(s,e)=>e.craftedTower},
+           {id:"ht",label:"Click your Tower to hear how SMOOTH it sounds",chk:(s,e)=>e.previewedTower}]},
+   {intro:"Raise a DIFFERENT Tower — three spread-apart seeds in a new shape — then 🔨 Fuse and ✓ Save.",
+    hint:()=>hintSeeds([[8,4],[6,4],[4,4]]),
+    goals:[{id:"ct2",label:"Craft a second, different Tower",chk:()=>countTools(isTowerTool)>=2}]},
+ ]},
+ {name:"Wake the Storm", arc:2,
+  power:{em:"⛈️",name:"Tension",line:"You can stir the garden with tension — and calm it again."},
+  intent:"Can you make the garden shiver?", steps:[
+   {intro:"Not everything stable is alive ⛈️ — wake the garden with tension! Stack three seeds in ONE column with two of them RIGHT NEXT to each other, then 🔨 Fuse — a WOBBLER 🌀 sounds tense & clashy.",
+    hint:()=>hintSeeds([[9,4],[8,4],[6,4]]),
+    goals:[{id:"cw",label:"Craft a WOBBLER chord into your Toolbox",chk:(s,e)=>e.craftedWobbler},
+           {id:"hw",label:"Click your Wobbler to hear how TENSE it sounds",chk:(s,e)=>e.previewedWobbler}]},
+   {intro:"Stir a DIFFERENT storm — another clashy chord in a new shape — then 🔨 Fuse and ✓ Save.",
+    hint:()=>hintSeeds([[8,4],[7,4],[5,4]]),
+    goals:[{id:"cw2",label:"Craft a second, different Wobbler",chk:()=>countTools(isWobTool)>=2}]},
+ ]},
+ // ---- ARC IV — WEAVING: "I can combine powers into music of my own." ----
+ {name:"Make the Garden Sing", arc:3, drums:true,
+  power:{em:"🪄",name:"Weaving",line:"You can weave every power into living music."},
+  reveal:()=>runReveal({jam:true,harm:true,sync:true,msg:"✨ The clearing wakes — hear your music in full bloom…"}),
+  intent:"Can you make it feel complete, alive, and full?",
+  intro:"One last clearing is still asleep 🌑. Wake it with everything you have: call a 🎸 groove, wake a 🥁 heartbeat, raise a structure from your 🎒 Toolbox, and bring your melody HOME.",
+  goals:[{id:"jam",label:"Call a 🎸 groove",chk:(s,e)=>e.jammed},
+         {id:"beat",label:"Wake a 🥁 heartbeat (3+ hits)",chk:()=>drumG.reduce((n,row)=>n+row.filter(Boolean).length,0)>=3},
+         {id:"st",label:"Raise a structure from your 🎒 Toolbox",chk:(s,e)=>e.stampedTool},
+         {id:"hm",label:"Bring your tune HOME",chk:s=>s.home}]},
+ {name:"Your Garden", arc:3, unlock:["more"], drums:true, loop:true, hint:()=>hintMelody(),
+  power:{em:"🌻",name:"Gardener",line:"This patch is yours now — it grows with you."},
+  intro:"The garden is awake — and this patch is yours 🌻. Everything's unlocked. Need a spark? Make something sleepy… something bright… something that wanders. Save and share whenever you like!",
+  goals:[]},
+] },
+"follow-the-fireflies":{ id:"follow-the-fireflies", name:"✨ Follow the Fireflies", topic:"melody-contour", region:"paths-of-song",
+  desc:"Guide the fireflies — shape a melody that rises, falls, hovers, and arcs.", requires:["intro"], version:1, author:"official", levels:[
+ {name:"Wake the Trail", contour:"rise", hint:()=>placeContour("rise"),
+  power:{em:"🔼",name:"Rise",line:"You can lift a melody toward the sky."},
+  intro:"The fireflies sleep low in the meadow ✨. Follow the glowing path UP — plant a melody where each note climbs a little higher — then press ▶ to lift them.",
+  goals:[{id:"rise",label:"Make the melody climb (follow the path up)",chk:()=>isRising(contourSeq())},
+         {id:"pl",label:"Press ▶ to lift the fireflies",play:true}]},
+ {name:"Come Back Down", contour:"fall", hint:()=>placeContour("fall"),
+  power:{em:"🔽",name:"Fall",line:"You can let a melody settle downward."},
+  intro:"Now bring them home to the flowers — follow the path DOWN with a melody that drifts lower, then press ▶.",
+  goals:[{id:"fall",label:"Make the melody fall (follow the path down)",chk:()=>isFalling(contourSeq())},
+         {id:"pl",label:"Press ▶ to bring them down",play:true}]},
+ {name:"Hovering Lights", contour:"hover", hint:()=>placeContour("hover"),
+  power:{em:"🌫️",name:"Hover",line:"You can hold a line gently in place."},
+  intro:"Some lights like to hover 🌫️. Plant SEVERAL notes that all stay near one height — tiny steps, no climbing or falling away — then press ▶ to watch them float.",
+  goals:[{id:"hov",label:"Hover with several notes (stay level, don't drift up or down)",chk:()=>isHovering(contourSeq())},
+         {id:"pl",label:"Press ▶ to watch them hover",play:true}]},
+ {name:"Arc Across the Pond", contour:"arch", hint:()=>placeContour("arch"),
+  power:{em:"🌈",name:"Arc",line:"You can sweep a melody up and over."},
+  intro:"Trace one big arc over the water 🌈 — rise up, then come back down — then press ▶ to sweep across.",
+  goals:[{id:"arc",label:"Make one arc (up, then back down)",chk:()=>isArch(contourSeq())},
+         {id:"pl",label:"Press ▶ to sweep across",play:true}]},
+ {name:"Fix the Flight", power:{em:"🪶",name:"Steady Flight",line:"You can mend any broken flight path."}, steps:[
+   {contour:"rise", setup:()=>placeTune([[7,0],[5,1],[3,2],[8,3],[1,4],[0,5]]),
+    hint:()=>{ setCell(8,3,false); setCell(2,3,true); checkLevel(); },
+    intro:"A firefly path got tangled! 🪶 This one should CLIMB, but one light dropped too low and broke it. Lift that note so the line climbs smoothly, then press ▶.",
+    goals:[{id:"fix",label:"Smooth the climb (no big drops)",chk:()=>isSmoothRise(contourSeq())},
+           {id:"pl",label:"Press ▶ to test the flight",play:true}]},
+   {contour:"fall", setup:()=>placeTune([[0,0],[2,1],[4,2],[1,3],[6,4],[8,5]]),
+    hint:()=>{ setCell(1,3,false); setCell(5,3,true); checkLevel(); },
+    intro:"This path should DRIFT DOWN, but one light jumped up and broke it. Bring that note down so the line falls smoothly, then press ▶.",
+    goals:[{id:"fix",label:"Smooth the descent (no big jumps)",chk:()=>isSmoothFall(contourSeq())},
+           {id:"pl",label:"Press ▶ to test the flight",play:true}]},
+   {contour:"hover", setup:()=>placeTune([[5,0],[4,1],[5,2],[1,3],[4,4],[5,5]]),
+    hint:()=>{ setCell(1,3,false); setCell(4,3,true); checkLevel(); },
+    intro:"This path should HOVER level, but one light floated too high. Bring it back near the others so they hover together, then press ▶.",
+    goals:[{id:"fix",label:"Settle the hover (stay level)",chk:()=>isHovering(contourSeq())},
+           {id:"pl",label:"Press ▶ to test the flight",play:true}]},
+   {contour:"arch", setup:()=>placeTune([[8,0],[4,1],[1,2],[8,3],[4,4],[8,5]]),
+    hint:()=>{ setCell(8,3,false); setCell(3,3,true); checkLevel(); },
+    intro:"This path should ARC up and over, but one light dipped down in the middle and broke the curve. Lift it to round out the arc, then press ▶.",
+    goals:[{id:"fix",label:"Restore the arc (one smooth hill)",chk:()=>isArch(contourSeq())},
+           {id:"pl",label:"Press ▶ to test the flight",play:true}]},
+ ]},
+ {name:"Choose the Best Path", contour:"arch",
+  setup:()=>showChoices([[8,6,5,3,1],[8,5,2,5,8],[1,3,5,6,8]],1),
+  power:{em:"👁️",name:"Sky-Reading",line:"You can recognize a melody's shape."},
+  intro:"Which firefly path traces the glowing arc 🌈 above? Tap each one to hear and see it — listen to ALL THREE first — then choose the one that matches.",
+  goals:[{id:"pick",label:"Hear all three paths, then pick the matching arc",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Over the Twin Hills", contour:"twohills", hint:()=>placeContour("twohills"),
+  power:{em:"⛰️",name:"Twin Hills",line:"You can send a melody up and over two hills."},
+  intro:"A bigger flight now ⛰️⛰️ — make the fireflies hop over TWO hills in a row: up and over, down, then up and over again. Follow the double path, then press ▶.",
+  goals:[{id:"two",label:"Make two hills in a row (up-down-up-down)",chk:()=>isTwoArcs(contourSeq())},
+         {id:"pl",label:"Press ▶ to fly the twin hills",play:true}]},
+ {name:"Night Meadow Song", contour:"journey", loop:true, hint:()=>placeContour("journey"),
+  power:{em:"🪄",name:"Pathmaker",line:"You can draw whole journeys in sound."},
+  intent:"Can you give the fireflies their own adventure?",
+  intro:"The whole swarm is waiting ✨. Take them on a real journey — climb, dip, and turn at least a couple of times before the night ends — then press ▶ for the meadow song.",
+  goals:[{id:"journey",label:"Make a journey (climb and turn at least twice)",chk:()=>isJourney(contourSeq())},
+         {id:"pl",label:"Press ▶ for the meadow song",play:true}]},
+ {name:"Free Flight 🌙", loop:true, hint:()=>placeContour("journey"),
+  power:{em:"🦋",name:"Free Flight",line:"The whole meadow is yours to play in."},
+  intro:"You did it — the meadow is awake! 🌙 This sky is yours now. Make any firefly journey you like — rise, fall, hover, arc, hop the hills, or just wander. No goals here, only play. Head 🏡 Home whenever you'd like to follow a new path.",
+  goals:[]},
+]},
+"footsteps":{ id:"footsteps", name:"🐾 Footsteps", topic:"rhythm-pulse", region:"pulse-woods",
+  desc:"Wake the forest path with a steady pulse — then walk a melody over it.", requires:["intro"], version:1, author:"official", levels:[
+ {name:"Wake the Path", rhythm:true, unlock:["drums"], hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  power:{em:"💓",name:"Heartbeat",line:"You can wake a steady pulse."},
+  intro:"The forest path is asleep 🐾. Wake its heartbeat — tap a Kick 🥁 on each of the four marked beats, then press ▶ to feel it pulse.",
+  goals:[{id:"k",label:"Put a Kick on all 4 beats",chk:()=>[0,4,8,12].every(i=>drumG[0][i])},
+         {id:"pl",label:"Press ▶ to wake the pulse",play:true}]},
+ {name:"Walking Roots", rhythm:true, hint:()=>placeDrums([[0,0],[0,2],[0,4],[0,6],[0,8],[0,10],[0,12],[0,14]]),
+  power:{em:"🚶",name:"Walk",line:"You can make the forest walk at a steady pace."},
+  intro:"Now make the roots WALK — a steady step on every beat AND the in-between: eight even kicks across the bar. Then press ▶.",
+  goals:[{id:"k8",label:"Put a Kick on all 8 even steps (a steady walk)",chk:()=>[0,2,4,6,8,10,12,14].every(i=>drumG[0][i])},
+         {id:"pl",label:"Press ▶ to take a walk",play:true}]},
+ {name:"March Together", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  hint:()=>placeDrums([[1,4],[1,12]]),
+  power:{em:"👏",name:"Backbeat",line:"You can give the walk a march."},
+  intro:"Give the walk a march 👏 — add the CLAP (snare) on beats 2 and 4, the backbeat you nod your head to. Then press ▶.",
+  goals:[{id:"sn",label:"Put a Snare on beats 2 and 4",chk:()=>drumG[1][4]&&drumG[1][12]},
+         {id:"pl",label:"Press ▶ to hear the march",play:true}]},
+ {name:"Heartbeat & Melody", rhythm:true, beatGuide:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  hint:()=>setMelody([[7,0],[5,4],[7,8],[4,12]]),
+  power:{em:"🎶",name:"On the Beat",line:"You can land a melody right on the pulse."},
+  intro:"A pulse is playing 💓. Plant seeds RIGHT ON the glowing beat columns so your melody walks in time — at least 3 — then press ▶.",
+  goals:[{id:"onbeat",label:"Plant 3 seeds on the glowing beat columns",chk:()=>gridNotesOnBeats()>=3},
+         {id:"pl",label:"Press ▶ to hear it walk in time",play:true}]},
+ {name:"Fix the Drift", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,7],[0,12]]),
+  hint:()=>{ drumG[0][7]=false; if(dcells[0][7]) dcells[0][7].classList.remove("on"); placeDrums([[0,8]]); checkLevel(); },
+  power:{em:"🛠️",name:"Steady Hand",line:"You can fix a stumbling beat."},
+  intro:"This walk stumbles 🛠️ — one kick drifted off the beat. Move it back so every kick lands on a marked beat (and none in between), then press ▶.",
+  goals:[{id:"clean",label:"Kicks on all 4 beats, none off-beat",chk:()=>[0,4,8,12].every(i=>drumG[0][i]) && drumG[0].every((on,i)=>!on||i%4===0)},
+         {id:"pl",label:"Press ▶ to test the steady walk",play:true}]},
+ {name:"Choose the Steady Walk", rhythm:true,
+  setup:()=>showDrumChoices([[0,4,8,12],[0,4,7,12],[0,3,8,11]],0),
+  power:{em:"👂",name:"Steady Ear",line:"You can hear which walk keeps time."},
+  intro:"Three walks are waiting 🥁. Tap each one to hear it — listen to ALL of them — then pick the one that stays steady and even.",
+  goals:[{id:"pick",label:"Hear all the walks, then pick the steady one",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Stone Path Builder", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
+  power:{em:"🛤️",name:"Path Maker",line:"You can build a whole walking groove."},
+  intro:"Build the full path 🛤️ — you've got the kick and clap; now add Hi-hats 🎩 on lots of steps for a steady shimmer that lights the stones. Then press ▶.",
+  goals:[{id:"full",label:"Kick on 4 beats + Snare on 2&4 + 6 Hi-hats",
+          chk:()=>[0,4,8,12].every(i=>drumG[0][i]) && drumG[1][4]&&drumG[1][12] && drumG[2].filter(Boolean).length>=6},
+         {id:"pl",label:"Press ▶ to light the path",play:true}]},
+ {name:"The Long Walk", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  power:{em:"🌄",name:"Wanderer",line:"You can walk a melody over a steady groove."},
+  intent:"Where does your path lead?",
+  intro:"The big walk 🌄 — keep a steady groove going AND plant a little melody on top to walk along with it (try landing on the beats). Then press ▶.",
+  goals:[{id:"beat",label:"Keep a groove (4+ drum hits)",chk:()=>drumG.reduce((n,row)=>n+row.filter(Boolean).length,0)>=4},
+         {id:"mel",label:"Plant a melody (3+ seeds)",chk:s=>s.placed>=3},
+         {id:"pl",label:"Press ▶ for the long walk",play:true}]},
+ {name:"Free Path 🌲", drums:true, loop:true, hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  power:{em:"🦌",name:"Free Path",line:"The whole woodland path is yours to walk."},
+  intro:"The path is awake and the woods are walking 🌲. This grove is yours now — build any groove and melody you like, no goals, just play. Head 🏡 Home whenever you want a new path.",
+  goals:[]},
+]} };
+let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
+// unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
+const isPkgCompleted = id => !!(progress.packages[id] && progress.packages[id].completed);
+const reqMet = r => Array.isArray(r) ? r.some(isPkgCompleted) : isPkgCompleted(r);
+const isPkgUnlocked = id => ((PACKAGES[id]&&PACKAGES[id].requires)||[]).every(reqMet);
+function unlockedSet(idx){ const s=new Set();
+  for(let i=0;i<=idx && i<LEVELS.length;i++) (LEVELS[i].unlock||[]).forEach(f=>s.add(f)); return s; }
+function featName(f){ return {jam:"🎸 Jam — call the band",fuse:"🔨 Fuse & 🎒 Toolbox — bind voices",
+  drums:"🥁 Drums — the heartbeat",more:"➕ More room — grow the garden"}[f]||f; }
+let levelIdx=0, levelDone=false, stepIdx=0, stepDone=false;
+const curStage=()=>{ const L=LEVELS[levelIdx]; return L.steps?L.steps[stepIdx]:L; };   // a level is either single or a list of steps
+const levelTitle=document.getElementById("levelTitle"), levelIntro=document.getElementById("levelIntro"),
+  goalList=document.getElementById("goalList"), goalHint=document.getElementById("goalHint"),
+  nextBtn=document.getElementById("nextBtn");
+const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
+  toolboxCard=document.getElementById("toolboxCard");
+function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
+  pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
+  clearContourGhost(); hideChoices(); setBeatGuide(false);               // drop any contour/pulse-package UI
+  if(playing) stop();
+  jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
+  activeTool=null; exitFuse();
+  ev=freshEv(); wipe(); wipeDrums(); renderBag();
+  step=0; shownPage=-1; playhead.classList.remove("on"); scroller.scrollLeft=0;
+}
+function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
+  const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
+  jamBtn.style.display=U.has("jam")?"":"none"; grooveEl.style.display=U.has("jam")?"":"none";
+  craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
+  moreMenu.style.display=U.has("more")?"":"none";
+  const drumsUnlocked=U.has("drums");
+  drumsOn = drumsUnlocked && (!!L.rhythm || !!L.drums);
+  drumBtn.style.display=(drumsUnlocked && !L.rhythm)?"":"none";
+  drumBtn.classList.toggle("on",drumsOn);
+  drumArea.style.display=drumsOn?"":"none"; pitchArea.style.display="";
+  looping=!!L.rhythm || !!L.loop; loopBtn.classList.toggle("on",looping);
+  if(L.unlock && L.unlock.length) toast("🔓 Unlocked: "+L.unlock.map(featName).join(", "));
+  stepIdx=0; renderStage(); saveProgress(); renderWorld();
+  companionStageShown=friendStage(); syncCompanion(); greetRegionFriend();   // show this region's friend; greet new ones
+  // entering the goal-less finale IS its completion moment (skipped when opening a shared song)
+  if(!finaleQuiet && levelIdx===LEVELS.length-1 && !(curStage().goals||[]).length){
+    const pp=pkgProg(currentPkg);
+    if((pp.done||0)<LEVELS.length){ pp.done=LEVELS.length; saveProgress(); renderWorld(true);
+      showCongrats(currentPkg, L.power); checkEvolve(); } }
+}
+let finaleQuiet=false;   // suppress the finale power card when jumping to Free Play for a shared song
+function renderStage(){   // render the current step (or the whole level if it has no steps)
+  const L=LEVELS[levelIdx], st=curStage(), U=unlockedSet(levelIdx);
+  resetTransient();
+  levelDone=false; stepDone=false; nextBtn.style.display="none";
+  const tag=L.steps?` &nbsp;(${stepIdx+1}/${L.steps.length})`:"";
+  const arc=arcOf(levelIdx);
+  levelTitle.innerHTML=(arc?`<span class="arctag">Arc ${arc.n} · ${arc.em} ${arc.name}</span>`:"")
+    +`Level ${levelIdx+1}/${LEVELS.length}: ${L.name}${tag}`;
+  levelIntro.textContent=st.intro||"";
+  const goals=st.goals||[]; goalList.innerHTML="";
+  goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
+  goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
+  hintBtn.style.display = st.hint?"":"none";
+  listenBtn.style.display = st.echo?"":"none";
+  if(st.echo) setTimeout(()=>playPhrase(st.echo),350);   // play the phrase once on entry
+  if(drumsOn && st.drumSetup) st.drumSetup();
+  if(st.setup) st.setup();
+  drawContourGhost(st.contour);                                          // glowing target path (contour packages)
+  setBeatGuide(!!st.beatGuide);                                          // tinted beat columns (pulse packages)
+  setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
+    : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
+    : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
+  const _ds=document.getElementById("devjump"); if(_ds&&_ds.options.length) _ds.value=levelIdx;
+  checkLevel();
+}
+function checkLevel(){
+  const st=curStage(), s=gridState(), goals=st.goals||[];
+  // a "play:true" goal only counts once every OTHER goal is done AND Play was pressed (after the last edit)
+  const othersDone=goals.filter(g=>!g.play).every(g=>g.chk(s,ev));
+  let all=true;
+  goals.forEach(g=>{ const ok = g.play ? (othersDone && ev.played) : g.chk(s,ev);
+    const li=document.getElementById("goal-"+g.id);
+    if(li){ li.textContent=(ok?"✅ ":"◻ ")+g.label; li.classList.toggle("done",ok); }
+    if(!ok) all=false; });
+  if(goals.length && all && !stepDone){ stepDone=true; stageComplete(); }
+  updateGarden();
+}
+function stageComplete(){ confetti(); const L=LEVELS[levelIdx];
+  if(L.steps && stepIdx<L.steps.length-1){
+    toast("🎉 Nice — next one!"); nextBtn.textContent="Next ▶"; nextBtn.style.display="";
+    goalHint.innerHTML="Great! Press <b>Next ▶</b> to continue."; return; }
+  levelDone=true; markLevelDone();
+  if(levelIdx<LEVELS.length-1){
+    nextBtn.textContent="Next level ▶"; nextBtn.style.display="";
+    goalHint.innerHTML="Great work! Press <b>Next level ▶</b> when you're ready."
+      +(L.intent?`<br><span class="intent">✨ ${L.intent}</span>`:""); }
+  else toast("🌟 You did it — the whole garden is awake!");
+  pendingReveal=L.reveal||null;                       // surprise reveal fires after the card is claimed
+  if(L.power) showPower(L.power); else toast("🎉 Level complete!");
+  checkEvolve();                                      // arc complete? companion evolves (deferred behind the card)
+}
+// "done" = levels COMPLETED in this package (maxLevel = levels reached) — drives the world strip
+function markLevelDone(){ const pp=pkgProg(currentPkg);
+  if((pp.done||0)<levelIdx+1){ pp.done=levelIdx+1; saveProgress(); renderWorld(true); } }
+// power card: each completed level awards a named "power" (unlocks re-framed as abilities)
+const powoverlay=document.getElementById("powoverlay");
+function showPower(p){ document.getElementById("powem").textContent=p.em;
+  document.getElementById("powname").textContent=p.name;
+  document.getElementById("powline").textContent=p.line;
+  powoverlay.style.display="flex"; }
+function closePow(){ powoverlay.style.display="none";
+  if(pendingEvolve){ pendingEvolve=false; playEvolve(); }                  // companion grows after the card is claimed
+  if(pendingReveal){ const r=pendingReveal; pendingReveal=null; setTimeout(r,350); } }
+document.getElementById("powclose").onclick=closePow;
+powoverlay.onclick=e=>{ if(e.target===powoverlay) closePow(); };
+// package-complete congrats (shown on the goal-less free-play finale): names newly unlocked packages
+const congratsoverlay=document.getElementById("congratsoverlay");
+const rewardOverlayUp = () => powoverlay.style.display==="flex" || congratsoverlay.style.display==="flex";
+function newlyUnlocked(pkgId){ return Object.keys(PACKAGES).filter(id => id!==pkgId
+  && (PACKAGES[id].requires||[]).flat().includes(pkgId) && isPkgUnlocked(id) && !pkgProg(id).completed); }
+function showCongrats(pkgId, finalPower){
+  document.getElementById("congratsEm").textContent=(finalPower&&finalPower.em)||"🎉";
+  document.getElementById("congratsName").textContent="You completed "+PACKAGES[pkgId].name+"!";
+  const u=newlyUnlocked(pkgId);
+  document.getElementById("congratsLine").innerHTML = u.length
+    ? "🔓 New path"+(u.length>1?"s":"")+" unlocked: <b>"+u.map(id=>PACKAGES[id].name).join(", ")+"</b><br>Find "+(u.length>1?"them":"it")+" on the 🏡 Home screen."
+    : "This whole path is yours to wander now. More gardens are growing — check back soon! 🌱";
+  congratsoverlay.style.display="flex"; }
+function dismissCongrats(goHome){ congratsoverlay.style.display="none";
+  if(pendingEvolve){ pendingEvolve=false; setTimeout(playEvolve,250); }
+  if(goHome) openHome(); }
+document.getElementById("congratsHome").onclick=()=>dismissCongrats(true);
+document.getElementById("congratsStay").onclick=()=>dismissCongrats(false);
+congratsoverlay.onclick=e=>{ if(e.target===congratsoverlay) dismissCongrats(false); };
+
+// ---- surprise reveals ("wait, I made THAT?") — one per arc, fired after the power card is claimed ----
+let pendingReveal=null, revealHarm=false, revealSync=false, revealRestore=null;
+// replay the player's own creation, briefly enhanced (harmony line / jam backing / whole-garden sync)
+function runReveal(o){
+  if(playing) stop();
+  const wasLoop=looping, wasJam=jamMode;
+  revealHarm=!!o.harm; revealSync=!!o.sync;
+  if(o.jam && !jamMode){ jamMode=true; jamBtn.classList.add("on"); applyGrooveTempo(); }
+  looping=false; loopBtn.classList.remove("on");
+  revealRestore=()=>{ revealHarm=revealSync=false; revealRestore=null;
+    if(o.jam && !wasJam){ jamMode=false; jamBtn.classList.remove("on"); }
+    looping=wasLoop; loopBtn.classList.toggle("on",wasLoop);
+    settle(); toast("🤩 You made that!"); };
+  setStatus(o.msg); toast(o.msg);
+  start();
+}
+// arc III: the player's first Tower rises as a real structure — arpeggio up, then it stands as one
+function structureReveal(){
+  const tower=toolbox.find(isTowerTool); if(!tower) return;
+  initAudio(); actx.resume(); const t0=actx.currentTime+0.15;
+  tower.midis.forEach((m,i)=>voice(instrEl.value, midiToFreq(m), t0+i*0.28));        // rises…
+  const tb=tower.midis.length*0.28+0.45;
+  tower.midis.forEach(m=>voice(instrEl.value, midiToFreq(m), t0+tb));                // …then stands as one
+  setStatus("✨ Your chord rises — a structure strong enough to stand!");
+  bigRise("🏛️", tower.midis.length*0.28*1000);
+  setTimeout(()=>{ settle(); toast("🤩 You built that!"); }, (tb+0.3)*1000);
+}
+function bigRise(em,delay){ setTimeout(()=>{ const d=document.createElement("div"); d.className="bigrise";
+  d.textContent=em; document.body.appendChild(d); setTimeout(()=>d.remove(),2600); }, delay||0); }
+// world strip: the garden visibly "wakes" — one glowing emblem per completed level (persistent)
+const worldEl=document.getElementById("world");
+function renderWorld(popLast){ worldEl.innerHTML="";
+  if(!LEVELS.some(L=>L.power)){ worldEl.style.display="none"; return; }
+  worldEl.style.display="flex";
+  const pp=pkgProg(currentPkg), done=pp.completed?LEVELS.length:(pp.done||0);
+  LEVELS.forEach((L,i)=>{ if(!L.power) return; const s=document.createElement("span");
+    s.textContent=L.power.em; s.title=L.power.name+" — "+L.name;
+    if(i<done){ s.classList.add("lit"); if(popLast&&i===done-1) s.classList.add("pop"); }
+    worldEl.appendChild(s); });
+}
+
+// ---- Companions: ONE friend per region; it grows as you complete that region's packages ----
+// First Garden (intro) friend = the player's PICKED starter, grown through the intro's arcs.
+const COMPANIONS={
+  sprout: {name:"Sprout",  stages:["🌱","🌿","☘️","🪴","🌳"]},
+  chirpy: {name:"Chirpy",  stages:["🥚","🐣","🐤","🐦","🕊️"]},
+  twinkle:{name:"Twinkle", stages:["✨","💫","⭐","🌟","🌠"]},
+};
+// Every later region has one signature friend that grows one stage per completed package in that region.
+const REGIONS={
+  "paths-of-song": { name:"Paths of Song", friend:{ name:"Flutter", stages:["🥚","🐛","🌿","🦋","🦋✨"] } },
+  "pulse-woods":   { name:"Pulse Woods",   friend:{ name:"Hopper",  stages:["🥚","🟢","🐸","🐸✨","👑🐸"] } },
+};
+const compoverlay=document.getElementById("compoverlay");
+const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
+const pkgFullyDone = id => { const p=PACKAGES[id]; return !!p && (pkgProg(id).done||0) >= p.levels.length; };
+// arc-end thresholds (count of levels) so the starter's stage = number of intro arcs fully completed
+function arcEnds(){ const ends=[]; for(let i=0;i<LEVELS.length;i++){ const a=LEVELS[i].arc; if(a==null) continue;
+  if(i===LEVELS.length-1 || LEVELS[i+1].arc!==a) ends.push(i+1); } return ends; }
+function companionStage(){ const pp=pkgProg(currentPkg), done=pp.completed?LEVELS.length:(pp.done||0);
+  return arcEnds().filter(e=>done>=e).length; }
+// the friend shown depends on the CURRENT package's region
+function currentFriend(){ const reg=regionOf(currentPkg);
+  if(reg==="first-garden"){ const c=progress.companion; return (c&&COMPANIONS[c.type])||null; }
+  return (REGIONS[reg]&&REGIONS[reg].friend)||null; }
+function friendStage(){ const reg=regionOf(currentPkg), f=currentFriend(); if(!f) return 0;
+  const s = reg==="first-garden" ? companionStage()
+    : Object.keys(PACKAGES).filter(id=>regionOf(id)===reg && pkgFullyDone(id)).length;   // packages completed in this region
+  return Math.min(s, f.stages.length-1); }
+let companionStageShown=0, pendingEvolve=false;
+function syncCompanion(){ const card=document.getElementById("compcard"); if(!card) return;
+  const f=currentFriend();
+  if(!f){ card.style.display="none"; return; }                          // first-garden, no starter picked yet → the picker handles it
+  compoverlay.style.display="none";
+  const stage=friendStage(); card.style.display="";
+  document.getElementById("compname").textContent=f.name;
+  document.getElementById("compem").textContent=f.stages[stage];
+  const dots=document.getElementById("compdots"); dots.innerHTML="";
+  for(let i=0;i<f.stages.length;i++){ const d=document.createElement("span"); if(i<=stage) d.className="on"; dots.appendChild(d); }
+  const reg=regionOf(currentPkg);
+  document.getElementById("comphint").textContent = stage>=f.stages.length-1 ? f.name+" is fully grown! 🌟"
+    : reg==="first-garden" ? "Grows as you complete each arc."
+    : "Grows as you complete "+((REGIONS[reg]&&REGIONS[reg].name)||"this region")+" packages.";
+}
+function checkEvolve(){ if(!currentFriend()) return; const stage=friendStage();
+  if(stage>companionStageShown){ companionStageShown=stage;
+    if(rewardOverlayUp()) pendingEvolve=true;                          // wait until the power card / congrats is claimed
+    else playEvolve(); }
+  else syncCompanion(); }
+function playEvolve(){ const f=currentFriend(); if(!f) return; syncCompanion();
+  const em=document.getElementById("compem"); em.classList.remove("evolve"); void em.offsetWidth; em.classList.add("evolve");
+  toast("✨ "+f.name+" grew into "+f.stages[friendStage()]+"!"); }
+function compReact(){ if(!currentFriend()) return; const em=document.getElementById("compem"); if(!em) return;
+  em.classList.remove("bob"); void em.offsetWidth; em.classList.add("bob"); }
+// greet a region's signature friend the first time you enter that region
+function greetRegionFriend(){ const reg=regionOf(currentPkg); if(reg==="first-garden"||!currentFriend()) return;
+  progress.metRegions=progress.metRegions||[];
+  if(!progress.metRegions.includes(reg)){ progress.metRegions.push(reg); saveProgress();
+    toast("✨ A new friend joined your garden — "+currentFriend().name+"!"); } }
+function showCompPicker(){ const wrap=document.getElementById("compchoices"); wrap.innerHTML="";
+  Object.keys(COMPANIONS).forEach(type=>{ const def=COMPANIONS[type];
+    const b=document.createElement("div"); b.className="compchoice";
+    b.innerHTML=`<div class="ce">${def.stages[0]}</div><div class="cn">${def.name}</div><div class="cevo">${def.stages.join(" → ")}</div>`;
+    b.onclick=()=>pickCompanion(type); wrap.appendChild(b); });
+  compoverlay.style.display="flex"; }
+function pickCompanion(type){ progress.companion={type}; saveProgress();
+  companionStageShown=friendStage(); compoverlay.style.display="none"; syncCompanion();
+  toast(COMPANIONS[type].name+" joined your garden! "+COMPANIONS[type].stages[0]); }
+nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
+  if(!levelDone && L.steps && stepIdx<L.steps.length-1){ stepIdx++; renderStage(); }
+  else if(levelIdx<LEVELS.length-1){ levelIdx++; renderLevel(); } };
+
+// ---------- Playback ----------
+const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
+const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");
+const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");
+const playhead=document.getElementById("playhead");
+let playing=false, step=0, timer=null, looping=false, shownPage=-1;
+const stepDur=()=>60000/tempoEl.value/2;
+function start(){ initAudio(); actx.resume(); playing=true; step=0;
+  playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; tick(); timer=setInterval(tick,stepDur());
+  ev.played=true; checkLevel(); }
+function stop(){ playing=false; clearInterval(timer); timer=null;
+  playBtn.textContent="▶ Play"; playhead.classList.remove("on");
+  document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
+  if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
+}
+function tick(){
+  document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
+  if(step>=COLS){ if(looping){ step=0; } else { stop(true); return; } }
+  const sw=(jamMode && step%2===1) ? GROOVES[grooveIdx].swing*stepDur()/1000 : 0;   // shuffle = delay off-beats
+  const t=actx.currentTime+0.02+sw;
+  if(jamMode) jamStep(step,t);
+  const onRows=[];
+  for(let r=0;r<ROWS;r++){ if(grid[r][step]){ playRow(r,t); flash(cells[r][step],r); onRows.push(r); }
+    cells[r][step].classList.add("col-playing"); }
+  if(onRows.length===1) bloom(cells[onRows[0]][step], noteFlower(onRows[0]));        // single note → its flower
+  else if(onRows.length>=2) bloom(cells[onRows[0]][step], "💐");                     // interval/chord → bouquet
+  if(onRows.length) compReact();                                                     // companion dances to the music
+  if(revealHarm) onRows.forEach(r=>{ const h=r+2;                                    // reveal: a gentle in-key 3rd under the melody
+    if(h<ROWS) bTone(t+0.02, midiToFreq(MIDI[h]), 0.5, "triangle", 0.14, 0.03); });
+  if(revealSync && step%4===0){ [gridEl,document.getElementById("drumrows")].forEach(el=>{   // reveal: the whole garden pulses on the beat
+    el.classList.remove("gpulse"); void el.offsetWidth; el.classList.add("gpulse"); }); }
+  if(drumsOn){ for(let d=0;d<DRUMS.length;d++){ if(drumG[d][step]) DRUMS[d].play(t);   // drums span the whole field now
+    if(dcells[d][step]) dcells[d][step].classList.add("col-playing"); } }
+  playhead.style.left=(10+step*38)+"px";
+  const page=Math.floor(step/16);                                              // scroll one 16-column span at a time
+  if(page!==shownPage){ shownPage=page; scroller.scrollTo({left:page*16*38, behavior:"smooth"}); }
+  step++;
+}
+playBtn.onclick=()=> playing?stop():start();
+loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
+drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
+  drumArea.style.display=drumsOn?"":"none";
+  setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
+const listenBtn=document.getElementById("listen");
+listenBtn.onclick=()=>playPhrase(echoTarget());
+function applyGrooveTempo(){ tempoEl.value=GROOVES[grooveIdx].bpm;
+  if(playing){ clearInterval(timer); timer=setInterval(tick,stepDur()); } }
+jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
+  if(jamMode){ initAudio(); actx.resume(); applyGrooveTempo(); ev.jammed=true;
+    if(!playing){ looping=true; loopBtn.classList.add("on"); jamStartedPlayback=true; start(); }
+    setStatus(`🎸 Jam on — <b>${GROOVES[grooveIdx].name}</b>! Tap the grid to play along; every note fits! 🎶`);
+    checkLevel(); }
+  else { setStatus("Jam off 🌱"); if(jamStartedPlayback){ jamStartedPlayback=false; stop(); } }
+};
+const grooveEl=document.getElementById("groove");
+GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=g.name; grooveEl.appendChild(o); });
+grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
+  if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };
+craftBtn.onclick=()=>{
+  if(activeTool){ activeTool=null; renderBag(); }                 // drop any picked tool first
+  if(!craftMode){ craftMode=true; craftBtn.classList.add("on"); updateFuseLabel();
+    setStatus("Fuse: click <b>2–3 planted seeds in one column</b>, then press <b>✓ Save</b>."); }
+  else if(craftSel.length>=2){ fuse(); }                          // fuse() crafts, then exits to planting
+  else { exitFuse(); setStatus("Fuse cancelled — plant seeds, or 🔨 Fuse again."); }
+};
+tempoEl.oninput=()=>{ if(playing){ clearInterval(timer); timer=setInterval(tick,stepDur()); } };
+tempoEl.addEventListener("change",saveProgress); instrEl.addEventListener("change",saveProgress);
+document.getElementById("clear").onclick=()=>{ wipe(); if(drumsOn) wipeDrums(); checkLevel(); };
+const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(16);   // extend the timeline by one bar
+const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(16);
+const moreMenu=document.getElementById("moremenu");
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ activeTool=null; exitFuse(); renderBag();
+  setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); }});
+
+// ---------- helpers ----------
+const statusEl=document.getElementById("status");
+function setStatus(html){ statusEl.innerHTML=html; }
+let toastT; const toastEl=document.createElement("div"); toastEl.className="toast"; document.body.appendChild(toastEl);
+function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
+  clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("show"),2600); }
+function confetti(){ const colors=["#ffd56b","#7cf0d0","#ff7ca8","#9b8cff","#7cc8ff"];
+  for(let i=0;i<48;i++){ const d=document.createElement("div"); d.className="confetti";
+    d.style.left=Math.random()*100+"vw"; d.style.background=colors[i%colors.length];
+    d.style.animationDuration=(1.6+Math.random()*1.6)+"s"; d.style.animationDelay=(Math.random()*0.3)+"s";
+    document.body.appendChild(d); setTimeout(()=>d.remove(),3600); } }
+
+// ---------- starter content + per-level hints ----------
+function setMelody(pairs){ wipe();
+  pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); checkLevel(); }
+function hintMelody(){ const pairs=[]; let r=Math.floor(Math.random()*ROWS);
+  for(let c=0;c<COLS;c+=2){ r=Math.max(0,Math.min(ROWS-1,r+(Math.floor(Math.random()*3)-1)*(1+Math.floor(Math.random()*2)))); pairs.push([r,c]); }
+  const tr=[...MIDI.keys()].filter(isTonic); pairs[pairs.length-1]=[tr[Math.floor(Math.random()*tr.length)],14];
+  setMelody(pairs); }
+function hintSeeds(pairs){ wipe(); pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+const hintBtn=document.getElementById("hint");
+hintBtn.onclick=()=>{ const st=curStage(); if(st.hint){ st.hint(); ev.played=false; checkLevel();
+  setStatus("💡 Here's an example — now try it yourself!"); } };
+// ---------- Persistence: one Store seam (localStorage now → cloud/Cognito later) ----------
+const Store={ get(k,def){ try{ const v=localStorage.getItem("mg_"+k); return v==null?def:JSON.parse(v); }catch(e){ return def; } },
+  set(k,v){ try{ localStorage.setItem("mg_"+k, JSON.stringify(v)); }catch(e){} } };
+let progress = Object.assign({ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }, Store.get("progress",{}));
+if(!progress.packages || typeof progress.packages!=="object") progress.packages={};
+function pkgProg(id){ return progress.packages[id] || (progress.packages[id]={ level:0, maxLevel:0, completed:false }); }
+function saveProgress(){ progress.current=currentPkg; const pp=pkgProg(currentPkg);
+  pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
+  if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
+  progress.toolbox=toolbox; progress.settings={voice:instrEl.value, tempo:+tempoEl.value, mix:mix};
+  progress.updatedAt=Date.now();
+  Store.set("progress", progress); scheduleCloud(); }
+
+// ---------- Save & Share (client-side, P2P links — no backend) ----------
+const saveBtn=document.getElementById("save"), shareBtn=document.getElementById("share"), melodiesBtn=document.getElementById("melodies");
+function currentSong(){
+  const notes=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(grid[r][c]) notes.push([r,c]);
+  const drums=[]; for(let d=0;d<DRUMS.length;d++) for(let c=0;c<16;c++) if(drumG[d][c]) drums.push([d,c]);
+  return {v:1,cols:COLS,notes,drums,groove:grooveIdx,tempo:+tempoEl.value,voice:instrEl.value};
+}
+function applySong(s){
+  COLS=Math.max(16,s.cols||16); grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  (s.notes||[]).forEach(([r,c])=>{ if(r>=0&&r<ROWS&&c>=0&&c<COLS) grid[r][c]=true; });
+  buildGrid();
+  wipeDrums(); (s.drums||[]).forEach(([d,c])=>{ if(d>=0&&d<DRUMS.length&&c>=0&&c<16){ drumG[d][c]=true; if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("on"); } });
+  if(typeof s.groove==="number"&&GROOVES[s.groove]){ grooveIdx=s.groove; grooveEl.value=s.groove; }
+  if(s.tempo) tempoEl.value=s.tempo;
+  if(s.voice) instrEl.value=s.voice;
+  updateGarden();
+}
+const encodeSong=s=>encodeURIComponent(JSON.stringify(s));
+const decodeSong=str=>{ try{ return JSON.parse(decodeURIComponent(str)); }catch(e){ return null; } };
+const songLink=s=>location.href.split("#")[0].split("?")[0]+"#s="+encodeSong(s);   // drop ?dev / #dev from shared links
+function copyLink(url){ if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copied — paste it to a friend!"),()=>prompt("Copy this link:",url));
+  else prompt("Copy this link:",url); }
+shareBtn.onclick=()=>copyLink(songLink(currentSong()));
+function getSaves(){ return Store.get("saves",[]); }
+function setSaves(a){ Store.set("saves",a); }
+saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim(); if(!n) return;
+  const a=getSaves(); a.unshift({name:n,song:currentSong(),ts:Date.now()}); setSaves(a); toast("💾 Saved to My Melodies!"); };
+const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
+function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
+function loadSong(s){ levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false;
+  applySong(s); overlay.style.display="none";
+  setStatus("Loaded — press <b>▶ Play</b>!"); }
+function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
+  if(!a.length) mlist.innerHTML="<div class='hint'>No saved melodies yet — make something, then press 💾 Save!</div>";
+  a.forEach((it,i)=>{ const row=document.createElement("div"); row.className="mrow";
+    const nm=document.createElement("span"); nm.className="mname"; nm.textContent=it.name; row.appendChild(nm);
+    row.appendChild(mkBtn("▶ Load",()=>loadSong(it.song)));
+    row.appendChild(mkBtn("🔗",()=>copyLink(songLink(it.song))));
+    row.appendChild(mkBtn("🗑",()=>{ const arr=getSaves(); arr.splice(i,1); setSaves(arr); openMelodies(); }));
+    mlist.appendChild(row); });
+  overlay.style.display="flex";
+}
+melodiesBtn.onclick=openMelodies;
+document.getElementById("mclose").onclick=()=>overlay.style.display="none";
+overlay.onclick=e=>{ if(e.target===overlay) overlay.style.display="none"; };
+
+// ---------- Mixer: one 🎚️ icon → Melody / Band / Drums sliders (live, persisted in settings) ----------
+const mixoverlay=document.getElementById("mixoverlay");
+const mixVoice=document.getElementById("mixVoice"), mixBand=document.getElementById("mixBand"), mixDrums=document.getElementById("mixDrums");
+function mixLabels(){ document.getElementById("mixVoiceV").textContent=mixVoice.value+"%";
+  document.getElementById("mixBandV").textContent=mixBand.value+"%";
+  document.getElementById("mixDrumsV").textContent=mixDrums.value+"%"; }
+function syncMixSliders(){ mixVoice.value=Math.round(mix.voice*100); mixBand.value=Math.round(mix.band*100);
+  mixDrums.value=Math.round(mix.drums*100); mixLabels(); }
+document.getElementById("mixer").onclick=()=>{ syncMixSliders(); mixoverlay.style.display="flex"; };
+function onMixSlide(){ mix.voice=+mixVoice.value/100; mix.band=+mixBand.value/100; mix.drums=+mixDrums.value/100;
+  initAudio(); applyMix(); mixLabels(); saveProgress(); }
+[mixVoice,mixBand,mixDrums].forEach(s=>s.addEventListener("input",onMixSlide));
+document.getElementById("mixReset").onclick=()=>{ mix={voice:1,band:1,drums:1}; syncMixSliders(); applyMix(); saveProgress(); };
+document.getElementById("mixClose").onclick=()=>mixoverlay.style.display="none";
+mixoverlay.onclick=e=>{ if(e.target===mixoverlay) mixoverlay.style.display="none"; };
+
+// ---------- Home / profile + package graph ----------
+const homeBtn=document.getElementById("home"), homeoverlay=document.getElementById("homeoverlay"),
+  pname=document.getElementById("pname"), pkglist=document.getElementById("pkglist");
+homeBtn.onclick=openHome;
+document.getElementById("homeclose").onclick=()=>homeoverlay.style.display="none";
+homeoverlay.onclick=e=>{ if(e.target===homeoverlay) homeoverlay.style.display="none"; };
+pname.oninput=()=>{ progress.name=pname.value.trim(); saveProgress(); updateTitle(); };
+function updateTitle(){ const n=(progress.name||"").trim();
+  document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Music Garden" : "Music Garden"); }
+function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
+function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
+  homeoverlay.style.display="none"; renderLevel(); }
+function renderPkgs(){ pkglist.innerHTML="";
+  Object.keys(PACKAGES).forEach(id=>{
+    const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
+    const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
+    const card=document.createElement("div"); card.className="pkgcard"+(unlocked?"":" locked");
+    let html=`<div class="pkgtop"><span class="pkgname">${pk.name}</span>`
+      +(pp.completed?`<span class="pkgdone">✓ done</span>`:unlocked?"":`<span>🔒</span>`)+`</div>`
+      +`<div class="pkgdesc">${pk.desc||""}</div>`;
+    if(unlocked){ const pct=Math.round(100*reached/total);
+      html+=`<div class="pkgbar"><div style="width:${pct}%"></div></div><div class="pkgmeta">${reached}/${total} levels</div>`;
+    } else { const reqs=(pk.requires||[]).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
+      html+=`<div class="pkgmeta">🔒 Complete first: ${reqs}</div>`; }
+    card.innerHTML=html;
+    if(unlocked){ const row=document.createElement("div"); row.className="pkgactions";
+      row.append(mkBtn(pp.level&&!pp.completed?"▶ Resume":"▶ Play",()=>openPkg(id, pp.completed?0:(pp.level||0))),
+                 mkBtn("↺ Restart",()=>openPkg(id,0)));
+      card.appendChild(row); }
+    pkglist.appendChild(card);
+  });
+}
+
+// ---------- Cloud accounts & sync (AWS Cognito + progress API) ----------
+const AUTH={ region:"us-east-1", userPoolId:"us-east-1_Ikzq1qoTI", clientId:"44vulb0g89acopnl86svibaitf",
+  apiUrl:"https://xush1pnxc7.execute-api.us-east-1.amazonaws.com" };
+const cognitoReady=()=> typeof AmazonCognitoIdentity!=="undefined";
+let userPool = cognitoReady() ? new AmazonCognitoIdentity.CognitoUserPool({ UserPoolId:AUTH.userPoolId, ClientId:AUTH.clientId }) : null;
+let cloudOn=false;
+function cogSignUp(username,password,email){ return new Promise((res,rej)=>{
+  const attrs=[]; if(email) attrs.push(new AmazonCognitoIdentity.CognitoUserAttribute({Name:"email",Value:email}));
+  userPool.signUp(username,password,attrs,null,(err,r)=>err?rej(err):res(r)); }); }
+function cogSignIn(username,password){ return new Promise((res,rej)=>{
+  const u=new AmazonCognitoIdentity.CognitoUser({Username:username,Pool:userPool});
+  const d=new AmazonCognitoIdentity.AuthenticationDetails({Username:username,Password:password});
+  u.authenticateUser(d,{ onSuccess:s=>res(s), onFailure:e=>rej(e) }); }); }
+function doSignOut(){ const u=userPool&&userPool.getCurrentUser(); if(u) u.signOut(); cloudOn=false; renderAuth(); }
+function freshToken(){ return new Promise(res=>{ const u=userPool&&userPool.getCurrentUser(); if(!u) return res(null);
+  u.getSession((err,sess)=>res((err||!sess||!sess.isValid())?null:sess.getIdToken().getJwtToken())); }); }
+async function cloudPull(){ const t=await freshToken(); if(!t) return null;
+  try{ const r=await fetch(AUTH.apiUrl+"/progress",{headers:{Authorization:"Bearer "+t}}); return r.ok?await r.json():null; }catch(e){ return null; } }
+async function cloudPush(){ const t=await freshToken(); if(!t) return false;
+  try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(progress)}); return r.ok; }catch(e){ return false; } }
+let _pushT; function scheduleCloud(){ if(!cloudOn) return; clearTimeout(_pushT); _pushT=setTimeout(()=>cloudPush(),900); }
+function applyProgress(){   // re-apply the progress object to the running game
+  if(progress.settings){ if(progress.settings.voice) instrEl.value=progress.settings.voice; if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
+    if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix(); }
+  toolbox.length=0; if(Array.isArray(progress.toolbox)) toolbox.push(...progress.toolbox);
+  currentPkg=(progress.current&&PACKAGES[progress.current])?progress.current:"intro"; LEVELS=PACKAGES[currentPkg].levels;
+  levelIdx=Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
+  renderBag(); renderLevel(); updateTitle(); }   // renderLevel now syncs the region companion
+// uploadLocal=true on sign-UP (push guest progress up); false on sign-IN/reload (pull cloud down).
+async function onSignedIn(uploadLocal){ const t=await freshToken(); if(!t){ cloudOn=false; renderAuth(); return; } cloudOn=true;
+  let status;
+  const cloud = uploadLocal ? null : await cloudPull();
+  if(cloud && typeof cloud==="object" && cloud.packages){ progress=cloud; Store.set("progress",progress); applyProgress(); status="loaded from cloud"; }
+  else { status = (await cloudPush()) ? "saved to cloud" : "⚠️ cloud sync failed"; }
+  renderAuth(status); }
+const authbox=document.getElementById("authbox");
+function renderAuth(status){ if(!authbox) return; authbox.innerHTML="";
+  if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";
+    d.textContent="Cloud sign-in unavailable right now — your progress is still saved on this device."; authbox.appendChild(d); return; }
+  const u=userPool.getCurrentUser();
+  if(u && cloudOn){ const row=document.createElement("div"); row.className="authrow";
+    row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=u.getUsername();
+    row.appendChild(b); row.appendChild(document.createTextNode(" — progress syncs across your devices."));
+    if(status){ const s=document.createElement("span"); s.className="hint"; s.textContent=" — "+status; row.appendChild(s); }
+    authbox.appendChild(row); authbox.appendChild(mkBtn("Sign out",doSignOut)); return; }
+  const hint=document.createElement("div"); hint.className="hint";
+  hint.textContent="Playing as a guest (saved on this device). Make an account to sync across devices."; authbox.appendChild(hint);
+  const row=document.createElement("div"); row.className="pkgactions";
+  row.append(mkBtn("Create account",()=>showAuthForm("up")), mkBtn("Sign in",()=>showAuthForm("in")));
+  authbox.appendChild(row); }
+function showAuthForm(mode){ authbox.innerHTML="";
+  const form=document.createElement("div"); form.className="authform";
+  const user=document.createElement("input"); user.placeholder="Username"; user.maxLength=24;
+  const pass=document.createElement("input"); pass.placeholder="Password (8+ characters)"; pass.type="password";
+  form.append(user,pass);
+  let email=null; if(mode==="up"){ email=document.createElement("input"); email.placeholder="Email (optional — for password recovery)"; email.type="email"; form.append(email); }
+  const msg=document.createElement("div"); msg.className="authmsg hint";
+  const go=mkBtn(mode==="up"?"Create account":"Sign in",()=>submitAuth(mode,user.value.trim(),pass.value,email?email.value.trim():"",msg));
+  const cancel=mkBtn("Cancel",renderAuth);
+  const actions=document.createElement("div"); actions.className="pkgactions"; actions.append(go,cancel);
+  form.append(msg,actions); authbox.appendChild(form); user.focus(); }
+async function submitAuth(mode,username,password,email,msg){
+  if(!username||!password){ msg.textContent="Enter a username and password."; return; }
+  msg.textContent="Working…";
+  try{ if(mode==="up") await cogSignUp(username,password,email);
+    await cogSignIn(username,password); await onSignedIn(mode==="up"); pname.value=progress.name||""; renderPkgs(); }
+  catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
+
+// ---------- Living garden: per-note flowers bloom on play, bouquets for chords, a growing flower bed ----------
+const NOTE_FLOWER={0:"🌸",2:"🌼",4:"🌷",7:"🌻",9:"🌺"};      // C D E G A — one flower per note (→ 12 later)
+const noteFlower=r=>NOTE_FLOWER[((MIDI[r]%12)+12)%12]||"🌷";
+const colFlower=c=>{ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+  return rows.length===0?null : rows.length>=2?"💐" : noteFlower(rows[0]); };   // same flower the cell blooms
+const gardenbed=document.getElementById("gardenbed");
+function bloom(el,emoji){ if(!el) return; const b=el.getBoundingClientRect(); const p=document.createElement("div");
+  p.className="bloom"; p.textContent=emoji||"🌷";
+  p.style.left=(b.left+b.width/2-9)+"px"; p.style.top=b.top+"px";
+  document.body.appendChild(p); setTimeout(()=>p.remove(),1300); }
+function updateGarden(){ gardenbed.innerHTML="";
+  for(let c=0;c<COLS;c++){ const fl=colFlower(c); if(!fl) continue;
+    const f=document.createElement("span"); f.className="flower"; f.textContent=fl; gardenbed.appendChild(f); } }
+
+// restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
+if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }; }
+if(progress.settings && progress.settings.voice) instrEl.value=progress.settings.voice;
+if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
+if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
+if(Array.isArray(progress.toolbox) && progress.toolbox.length) toolbox.push(...progress.toolbox);
+currentPkg = (progress.current && PACKAGES[progress.current]) ? progress.current : "intro";
+LEVELS = PACKAGES[currentPkg].levels;
+levelIdx = Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
+
+renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs the region companion
+
+// open a shared melody if the URL carries one (#s=...) — land in the editable Free Play studio
+(function(){ const m=(location.hash||"").match(/(?:^#|&)s=([^&]+)/); if(!m) return;
+  const s=decodeSong(m[1]); if(!s) return;
+  levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false; applySong(s);
+  setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A melody from a friend!"); })();
+
+// ---------- dev-only level jump (enable by adding ?dev or #dev to the URL) ----------
+if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
+  const bar=document.getElementById("devbar"), sel=document.getElementById("devjump"); bar.style.display="";
+  LEVELS.forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); });
+  sel.value=levelIdx; sel.onchange=()=>{ levelIdx=+sel.value; renderLevel(); };
+}
+
+// first visit (no companion yet): meet your garden friend — skipped for shared-melody visitors
+if(!progress.companion && !/[#&]s=/.test(location.hash)) showCompPicker();
+
+// signed-in users: resume cloud sync on load (unless opening a shared melody link)
+if(cognitoReady() && userPool && userPool.getCurrentUser() && !/[#&]s=/.test(location.hash)) onSignedIn(false);
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+# Feedback / brainstorm source documents — not needed in the repo
+*.docx
+
+# Generated Netlify deploy copy (regenerate with: cp index.html site/index.html)
+/site/
+
+# AWS SAM build artifacts
+backend/.aws-sam/
+
+# Node
+node_modules/
+
+# Local Claude config (keep only launch.json for the dev preview)
+.claude/*
+!.claude/launch.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+*.tmp
+*-extracted.txt

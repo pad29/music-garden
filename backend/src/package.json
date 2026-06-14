@@ -1,0 +1,6 @@
+{
+  "name": "music-garden-functions",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Lambdas for Music Garden (AWS SDK v3 is provided by the Node.js 20 Lambda runtime — no dependencies to install)."
+}

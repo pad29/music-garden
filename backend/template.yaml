@@ -1,0 +1,148 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Music Garden backend — Cognito (username+password) auth + per-user progress API on DynamoDB.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    MemorySize: 128
+    Timeout: 10
+
+Resources:
+
+  # --- Auth: a Cognito User Pool. Username + password sign-in; email is OPTIONAL (recovery only). ---
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: music-garden-users
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+      # Forgot-password works only for users who chose to add a (verified) email.
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      # Auto-confirm accounts so there's no email step for the common (no-email) case.
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpFn.Arn
+
+  # Public browser client (no secret).
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: music-garden-web
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 365
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # Pre-sign-up trigger: auto-confirm the user (and auto-verify email if one was supplied).
+  PreSignUpFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: presignup.handler
+
+  PreSignUpPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PreSignUpFn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
+
+  # --- Storage: one tiny item per user (PK = Cognito sub) holding the progress JSON. ---
+  ProgressTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: music-garden-progress
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+
+  # --- API: GET/PUT /progress, scoped to the caller's own row via the JWT `sub`. ---
+  ProgressFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: progress.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProgressTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProgressTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /progress
+            Method: GET
+        Put:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /progress
+            Method: PUT
+
+  # HTTP API with a built-in Cognito JWT authorizer (validates the ID token; audience = app client).
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - https://music-garden.netlify.app
+        AllowHeaders:
+          - authorization
+          - content-type
+        AllowMethods:
+          - GET
+          - PUT
+          - OPTIONS
+      Auth:
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience:
+                - !Ref UserPoolClient
+        DefaultAuthorizer: CognitoJwt
+
+Outputs:
+  Region:
+    Description: AWS region the stack is deployed in
+    Value: !Ref AWS::Region
+  UserPoolId:
+    Description: Cognito User Pool ID (public — safe to embed in the client)
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID (public — safe to embed in the client)
+    Value: !Ref UserPoolClient
+  ApiUrl:
+    Description: Base URL for the progress API
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
