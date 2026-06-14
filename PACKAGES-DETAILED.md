@@ -63,19 +63,21 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 - **New systems:** beat-stability evaluation (kicks on strong beats; melody notes landing on beat columns 0/4/8/12); pulse visualizer; stronger pulse→world coupling. Mostly reuses the drum lane.
 - **Ramp shape:** one pulse → fill the beats → add a backbeat layer → align melody to beat → repair drift → compare steadiness → build a full groove → integrate melody over a held groove.
 
+**Redesigned 2026-06-14** after playtest: the first cut re-taught the intro's rhythm levels (kick-on-beats + backbeat) and felt too easy. Now it teaches genuinely *new* rhythm: subdivision, three snare feels, three hi-hat patterns, multi-lane repair. Many levels are multi-step to drill each idea.
+
 | # | Level *(pattern · success · stage)* | Goal |
 |---|---|---|
-| 1 | Wake the Trail *(build_constraint · targeted · teach)* | a kick on each of the 4 strong beats |
-| 2 | Walking Roots *(build_constraint · targeted · teach)* | hold that steady kick across a full bar; roots pulse in time |
-| 3 | March Together *(build_constraint · targeted · combine)* | add the backbeat (snare on 2 & 4) — two parts locked together |
-| 4 | Heartbeat & Melody *(build_constraint · targeted · combine)* | place melody notes *on* the beats (first melody↔pulse alignment) |
-| 5 | Fix the Drift *(repair · targeted · apply)* | repair an uneven pattern (one beat off the grid) |
-| 6 | Choose the Stronger Walk *(compare · targeted · recognize)* | hear two grooves, pick the one that stays steady |
-| 7 | Stone Path Builder *(build_constraint · targeted · compound)* | build a full kick+snare+hat groove that opens the path tile-by-tile (all three lanes, steady) |
-| 8 | The Long Walk *(capstone · broad · capstone)* | keep a dependable groove going *while* laying melody on top |
+| 1 | Wake the Path **[2 steps]** *(build_constraint · targeted · teach)* | 4-beat kick → then a walking 8th-note kick (subdivision) |
+| 2 | Find the Backbeat **[3 steps]** *(build_constraint · targeted · combine)* | snare on 2&4 → **half-time** (snare on beat 3 only) → a **pushed** snare (2,4 + the last "and") |
+| 3 | Heartbeat & Melody *(build_constraint · targeted · combine)* | place melody notes *on* the beats (melody↔pulse alignment) |
+| 4 | Hi-hat Shimmer **[3 steps]** *(build_constraint · targeted · combine)* | steady 8th hats → **offbeat** hats only → busy **16th** hats |
+| 5 | Fix the Drift **[3 steps]** *(repair · targeted · apply)* | fix 2 drifted kicks → 2 drifted snares → a tangled kick+snare groove (move multiple) |
+| 6 | Choose the Steady Walk *(compare · targeted · recognize)* | hear all 3 walks, pick the even one |
+| 7 | Build the Groove *(build_constraint · targeted · compound)* | full kick + backbeat + steady 8th-note hi-hats |
+| 8 | The Long Walk *(capstone · targeted/broad · capstone)* | build a FULL 3-lane groove **and** an on-beat melody (4+ seeds, 3 on beats) |
 | 9 | Free Path 🌲 *(— · none · finale)* | optional free-play groove+melody sandbox; entering it = package complete → congrats |
 
-*As built:* region friend **Hopper** 🥚→🟢→🐸→🐸✨→👑🐸 (Pulse Woods). New helpers: `gridNotesOnBeats()` (melody-on-beat count), `setBeatGuide()` + `.beatcol` tint (the `beatGuide` level flag highlights beat columns on the field), `showDrumChoices`/`pickDrumChoice` (drum version of the compare picker, reusing the all-options-heard gate). L2 uses 8-even-step subdivision to stay distinct from L1's 4-beat pulse; L5 repair requires "all 4 beats AND none off-beat" (removes the drift).
+*As built:* region friend **Hopper** 🥚→🟢→🐸→🐸✨→👑🐸 (Pulse Woods). Helpers: `gridNotesOnBeats()`, `setBeatGuide()`+`.beatcol` tint (the `beatGuide` flag), `showDrumChoices`/`pickDrumChoice` (drum compare picker), and drum-pattern checks `kickOn4/kickClean/snareBackbeat/snareBackbeatClean/hat8ths`. Repair steps drift **2+ hits** and require "right spots AND nothing off-beat." Lesson: an expansion package must teach *new* skill, not re-skin the intro — depth came from multi-step levels + new concepts (subdivision / snare feels / hat patterns / multi-lane repair).
 
 - **Quest:** *The Root Path* — dormant roots wake only when the pulse is steady. **Sandbox:** pulse visualizer, clearer beat guides, prompt cards (steady / walking / grounded / marching).
 - **Ramp note:** complexity climbs from 1 lane → 3 lanes → 3 lanes + coordinated melody. Tolerances: L1 allows extra hits; L7 requires all three lanes present and on-grid.

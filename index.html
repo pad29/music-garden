@@ -191,6 +191,15 @@
   #choiceRow{ margin:-2px 0 12px;}
   .cell.beatcol{ box-shadow:inset 3px 0 0 rgba(124,240,208,.55); }
   .cell.beatcol.on{ box-shadow:0 0 14px var(--accent), inset 3px 0 0 rgba(124,240,208,.55); }
+  .landingcard{ width:400px; max-width:92vw; text-align:center; padding:28px 24px;
+    background:linear-gradient(165deg,#3d2c80,#241654); border:1px solid rgba(255,213,107,.4);
+    box-shadow:0 0 50px rgba(0,0,0,.55); animation:pop .4s ease-out;}
+  .landingtitle{ font-size:1.9rem; font-weight:700; letter-spacing:.5px;}
+  .landingtag{ color:var(--accent2); font-size:1rem; margin:4px 0 14px;}
+  .landingdesc{ font-size:.92rem; opacity:.85; line-height:1.5; margin-bottom:20px;}
+  .landingbtn{ display:block; width:100%; margin:8px 0; font-size:1.05rem; padding:13px;}
+  #landingauth .authform input{ width:100%; box-sizing:border-box; background:#4a3a85; color:#eee; border:none;
+    border-radius:8px; padding:9px 11px; font:inherit; margin:5px 0;}
   /* surprise reveals: whole-garden sync pulse + a big structure rising */
   .grid.gpulse, .drumrows.gpulse{ animation:gpulse .3s ease-out;}
   @keyframes gpulse{ 0%{ transform:scale(1.018);} 100%{ transform:scale(1);} }
@@ -295,6 +304,30 @@
       </div>
     </div>
   </div>
+  </div>
+
+  <div id="landingoverlay" class="overlay" style="display:none">
+    <div class="card landingcard">
+      <div class="landingtitle">🌱 Music Garden</div>
+      <div class="landingtag">Grow real music from simple seeds.</div>
+      <div class="landingdesc">Plant glowing seeds to make melodies, wake a beat, and craft chords — and discover how music works just by playing. No music knowledge needed.</div>
+      <div id="landingmain">
+        <button id="landingStart" class="landingbtn">▶ Start playing</button>
+        <button id="landingSignin" class="secondary landingbtn">☁️ Sign in to resume</button>
+        <div class="hint" style="margin-top:10px">No account needed to play — make one later to save across devices.</div>
+      </div>
+      <div id="landingauth" style="display:none">
+        <div class="authform">
+          <input id="landingUser" type="text" placeholder="Username" maxlength="24" />
+          <input id="landingPass" type="password" placeholder="Password" />
+          <div id="landingMsg" class="authmsg hint"></div>
+          <div class="pkgactions" style="justify-content:center;">
+            <button id="landingDo">Sign in</button>
+            <button id="landingBack" class="secondary">← Back</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="compoverlay" class="overlay" style="display:none">
@@ -784,6 +817,12 @@ function pickChoice(i){ if(!choiceOpts) return; wipe();
 // ---------- Footsteps: pulse helpers (package PW-1) ----------
 // count melody seeds that land on the strong-beat columns (0,4,8,12,…)
 function gridNotesOnBeats(){ let n=0; for(let c=0;c<COLS;c+=4) for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; return n; }
+// drum-pattern checks (lane 0=kick, 1=snare, 2=hat); "clean" = on the right spots AND nothing off-beat
+const kickOn4 = () => [0,4,8,12].every(i=>drumG[0][i]);
+const kickClean = () => kickOn4() && drumG[0].every((on,i)=>!on||i%4===0);
+const snareBackbeat = () => drumG[1][4]&&drumG[1][12];
+const snareBackbeatClean = () => snareBackbeat() && drumG[1].every((on,i)=>!on||i===4||i===12);
+const hat8ths = () => [0,2,4,6,8,10,12,14].every(i=>drumG[2][i]);
 // tint the beat columns on the field so the player can land a melody "on the beat"
 function setBeatGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c])
   cells[r][c].classList.toggle("beatcol", !!on && c%4===0); }
@@ -1008,52 +1047,93 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
 ]},
 "footsteps":{ id:"footsteps", name:"🐾 Footsteps", topic:"rhythm-pulse", region:"pulse-woods",
   desc:"Wake the forest path with a steady pulse — then walk a melody over it.", requires:["intro"], version:1, author:"official", levels:[
- {name:"Wake the Path", rhythm:true, unlock:["drums"], hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
-  power:{em:"💓",name:"Heartbeat",line:"You can wake a steady pulse."},
-  intro:"The forest path is asleep 🐾. Wake its heartbeat — tap a Kick 🥁 on each of the four marked beats, then press ▶ to feel it pulse.",
-  goals:[{id:"k",label:"Put a Kick on all 4 beats",chk:()=>[0,4,8,12].every(i=>drumG[0][i])},
-         {id:"pl",label:"Press ▶ to wake the pulse",play:true}]},
- {name:"Walking Roots", rhythm:true, hint:()=>placeDrums([[0,0],[0,2],[0,4],[0,6],[0,8],[0,10],[0,12],[0,14]]),
-  power:{em:"🚶",name:"Walk",line:"You can make the forest walk at a steady pace."},
-  intro:"Now make the roots WALK — a steady step on every beat AND the in-between: eight even kicks across the bar. Then press ▶.",
-  goals:[{id:"k8",label:"Put a Kick on all 8 even steps (a steady walk)",chk:()=>[0,2,4,6,8,10,12,14].every(i=>drumG[0][i])},
-         {id:"pl",label:"Press ▶ to take a walk",play:true}]},
- {name:"March Together", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
-  hint:()=>placeDrums([[1,4],[1,12]]),
-  power:{em:"👏",name:"Backbeat",line:"You can give the walk a march."},
-  intro:"Give the walk a march 👏 — add the CLAP (snare) on beats 2 and 4, the backbeat you nod your head to. Then press ▶.",
-  goals:[{id:"sn",label:"Put a Snare on beats 2 and 4",chk:()=>drumG[1][4]&&drumG[1][12]},
-         {id:"pl",label:"Press ▶ to hear the march",play:true}]},
- {name:"Heartbeat & Melody", rhythm:true, beatGuide:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+ {name:"Wake the Path", rhythm:true, unlock:["drums"], power:{em:"💓",name:"Walking Pulse",line:"You can wake a steady pulse and make it walk."}, steps:[
+   {hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+    intro:"The forest path is asleep 🐾. Start with its heartbeat — a Kick 🥁 on each of the four marked beats — then press ▶.",
+    goals:[{id:"k",label:"Kick on all 4 beats",chk:()=>kickOn4()},
+           {id:"pl",label:"Press ▶ to wake the pulse",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+    hint:()=>placeDrums([[0,2],[0,6],[0,10],[0,14]]),
+    intro:"Now take it further — make it WALK. Add a kick in BETWEEN each beat too, so it steps evenly eight times across the bar. Then press ▶.",
+    goals:[{id:"k8",label:"Kick on all 8 even steps (a steady walk)",chk:()=>[0,2,4,6,8,10,12,14].every(i=>drumG[0][i])},
+           {id:"pl",label:"Press ▶ to take a walk",play:true}]},
+ ]},
+ {name:"Find the Backbeat", rhythm:true, power:{em:"👏",name:"Backbeat",line:"You can shape the snare three different ways."}, steps:[
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+    hint:()=>placeDrums([[1,4],[1,12]]),
+    intro:"A march needs a CLAP 👏. Add the snare on beats 2 and 4 — the 'backbeat' you nod your head to. Then press ▶.",
+    goals:[{id:"bb",label:"Snare on beats 2 and 4",chk:()=>snareBackbeat()},
+           {id:"pl",label:"Press ▶ to hear the march",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+    hint:()=>placeDrums([[1,8]]),
+    intro:"Now a different feel — HALF-TIME. Put just ONE snare right in the middle (beat 3) and leave 2 and 4 empty. It feels slower and bigger. Then press ▶.",
+    goals:[{id:"ht",label:"Snare on beat 3 only (none on 2 or 4)",chk:()=>drumG[1][8]&&!drumG[1][4]&&!drumG[1][12]},
+           {id:"pl",label:"Press ▶ to feel half-time",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+    hint:()=>placeDrums([[1,14]]),
+    intro:"Last one — a PUSH. Keep the backbeat (2 and 4) and add one extra snare right before the bar repeats (the 'and' after beat 4). It pulls you into the next bar. Then press ▶.",
+    goals:[{id:"push",label:"Backbeat (2 & 4) plus a snare on the last 'and'",chk:()=>snareBackbeat()&&drumG[1][14]},
+           {id:"pl",label:"Press ▶ to hear the push",play:true}]},
+ ]},
+ {name:"Heartbeat & Melody", rhythm:true, beatGuide:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
   hint:()=>setMelody([[7,0],[5,4],[7,8],[4,12]]),
   power:{em:"🎶",name:"On the Beat",line:"You can land a melody right on the pulse."},
-  intro:"A pulse is playing 💓. Plant seeds RIGHT ON the glowing beat columns so your melody walks in time — at least 3 — then press ▶.",
+  intro:"A groove is playing 💓. Plant seeds RIGHT ON the glowing beat columns so your melody walks in time — at least 3 — then press ▶.",
   goals:[{id:"onbeat",label:"Plant 3 seeds on the glowing beat columns",chk:()=>gridNotesOnBeats()>=3},
          {id:"pl",label:"Press ▶ to hear it walk in time",play:true}]},
- {name:"Fix the Drift", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,7],[0,12]]),
-  hint:()=>{ drumG[0][7]=false; if(dcells[0][7]) dcells[0][7].classList.remove("on"); placeDrums([[0,8]]); checkLevel(); },
-  power:{em:"🛠️",name:"Steady Hand",line:"You can fix a stumbling beat."},
-  intro:"This walk stumbles 🛠️ — one kick drifted off the beat. Move it back so every kick lands on a marked beat (and none in between), then press ▶.",
-  goals:[{id:"clean",label:"Kicks on all 4 beats, none off-beat",chk:()=>[0,4,8,12].every(i=>drumG[0][i]) && drumG[0].every((on,i)=>!on||i%4===0)},
-         {id:"pl",label:"Press ▶ to test the steady walk",play:true}]},
+ {name:"Hi-hat Shimmer", rhythm:true, power:{em:"🎩",name:"Shimmer",line:"You can sprinkle hi-hats three different ways."}, steps:[
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+    hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
+    intro:"Time for sparkle ✨. Add Hi-hats 🎩 on every even step — a steady 'tss-tss-tss' eight times across the bar. Then press ▶.",
+    goals:[{id:"h8",label:"Hi-hats on all 8 even steps (steady shimmer)",chk:()=>hat8ths()},
+           {id:"pl",label:"Press ▶ to hear the shimmer",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+    hint:()=>placeDrums([[2,2],[2,6],[2,10],[2,14]]),
+    intro:"Now the OFF-beats only — hi-hats just in BETWEEN the main beats, and nothing on the beats themselves. It floats and bounces. Then press ▶.",
+    goals:[{id:"hoff",label:"Hi-hats on the 4 off-beats only (none on the main beats)",chk:()=>[2,6,10,14].every(i=>drumG[2][i])&&[0,4,8,12].every(i=>!drumG[2][i])},
+           {id:"pl",label:"Press ▶ to hear it bounce",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+    hint:()=>placeDrums([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(s=>[2,s])),
+    intro:"And the BUSY one — fill nearly every step with a hi-hat for a fast, driving shimmer. Then press ▶.",
+    goals:[{id:"h16",label:"Hi-hats on (nearly) every step — a driving shimmer",chk:()=>drumG[2].filter(Boolean).length>=14},
+           {id:"pl",label:"Press ▶ to hear it drive",play:true}]},
+ ]},
+ {name:"Fix the Drift", rhythm:true, power:{em:"🛠️",name:"Steady Hand",line:"You can mend a stumbling groove."}, steps:[
+   {drumSetup:()=>placeDrums([[0,0],[0,5],[0,8],[0,13]]),
+    hint:()=>{ [5,13].forEach(s=>{ drumG[0][s]=false; if(dcells[0][s]) dcells[0][s].classList.remove("on"); }); placeDrums([[0,4],[0,12]]); checkLevel(); },
+    intro:"This walk stumbles 🛠️ — TWO kicks drifted off the beat. Move them both back so every kick lands on a marked beat (none in between), then press ▶.",
+    goals:[{id:"k",label:"Kicks on all 4 beats, none off-beat",chk:()=>kickClean()},
+           {id:"pl",label:"Press ▶ to test the walk",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,3],[1,11]]),
+    hint:()=>{ [3,11].forEach(s=>{ drumG[1][s]=false; if(dcells[1][s]) dcells[1][s].classList.remove("on"); }); placeDrums([[1,4],[1,12]]); checkLevel(); },
+    intro:"Now the CLAP is off — both snares landed a touch early. Move them onto beats 2 and 4 (and nowhere else), then press ▶.",
+    goals:[{id:"sn",label:"Snare on 2 & 4 only",chk:()=>snareBackbeatClean()},
+           {id:"pl",label:"Press ▶ to test the backbeat",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,9],[0,12],[1,4],[1,14]]),
+    hint:()=>{ drumG[0][9]=false; if(dcells[0][9]) dcells[0][9].classList.remove("on"); drumG[1][14]=false; if(dcells[1][14]) dcells[1][14].classList.remove("on"); placeDrums([[0,8],[1,12]]); checkLevel(); },
+    intro:"The whole groove is tangled — a kick AND a snare are off. Fix both: kicks on all 4 beats, snare on 2 & 4, nothing off-beat. Then press ▶.",
+    goals:[{id:"both",label:"Clean kicks (4 beats) AND clean backbeat (2 & 4)",chk:()=>kickClean()&&snareBackbeatClean()},
+           {id:"pl",label:"Press ▶ to hear it groove",play:true}]},
+ ]},
  {name:"Choose the Steady Walk", rhythm:true,
   setup:()=>showDrumChoices([[0,4,8,12],[0,4,7,12],[0,3,8,11]],0),
   power:{em:"👂",name:"Steady Ear",line:"You can hear which walk keeps time."},
   intro:"Three walks are waiting 🥁. Tap each one to hear it — listen to ALL of them — then pick the one that stays steady and even.",
   goals:[{id:"pick",label:"Hear all the walks, then pick the steady one",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
- {name:"Stone Path Builder", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+ {name:"Build the Groove", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
   hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
   power:{em:"🛤️",name:"Path Maker",line:"You can build a whole walking groove."},
-  intro:"Build the full path 🛤️ — you've got the kick and clap; now add Hi-hats 🎩 on lots of steps for a steady shimmer that lights the stones. Then press ▶.",
-  goals:[{id:"full",label:"Kick on 4 beats + Snare on 2&4 + 6 Hi-hats",
-          chk:()=>[0,4,8,12].every(i=>drumG[0][i]) && drumG[1][4]&&drumG[1][12] && drumG[2].filter(Boolean).length>=6},
+  intro:"Build the full path 🛤️ — you've got the kick and backbeat; now lay the steady 8th-note hi-hats over the top (every even step). Then press ▶ to light the stones.",
+  goals:[{id:"full",label:"Kick on 4 beats + Snare on 2&4 + steady 8th hi-hats",
+          chk:()=>kickOn4()&&snareBackbeat()&&hat8ths()},
          {id:"pl",label:"Press ▶ to light the path",play:true}]},
- {name:"The Long Walk", rhythm:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
-  power:{em:"🌄",name:"Wanderer",line:"You can walk a melody over a steady groove."},
+ {name:"The Long Walk", rhythm:true, beatGuide:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
+  power:{em:"🌄",name:"Wanderer",line:"You can walk a melody over a full groove."},
   intent:"Where does your path lead?",
-  intro:"The big walk 🌄 — keep a steady groove going AND plant a little melody on top to walk along with it (try landing on the beats). Then press ▶.",
-  goals:[{id:"beat",label:"Keep a groove (4+ drum hits)",chk:()=>drumG.reduce((n,row)=>n+row.filter(Boolean).length,0)>=4},
-         {id:"mel",label:"Plant a melody (3+ seeds)",chk:s=>s.placed>=3},
+  intro:"The big walk 🌄 — build a FULL groove (kick, backbeat, AND a shimmer of hi-hats) and plant a melody on top that lands on the beats. Then press ▶.",
+  goals:[{id:"groove",label:"Full groove: kick 4 + snare 2&4 + 6 hi-hats",chk:()=>kickOn4()&&snareBackbeat()&&drumG[2].filter(Boolean).length>=6},
+         {id:"mel",label:"A melody on the beat (4+ seeds, 3 on beats)",chk:s=>s.placed>=4&&gridNotesOnBeats()>=3},
          {id:"pl",label:"Press ▶ for the long walk",play:true}]},
  {name:"Free Path 🌲", drums:true, loop:true, hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
   power:{em:"🦌",name:"Free Path",line:"The whole woodland path is yours to walk."},
@@ -1616,11 +1696,33 @@ if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   sel.value=levelIdx; sel.onchange=()=>{ levelIdx=+sel.value; renderLevel(); };
 }
 
-// first visit (no companion yet): meet your garden friend — skipped for shared-melody visitors
-if(!progress.companion && !/[#&]s=/.test(location.hash)) showCompPicker();
+// ---------- Landing / welcome screen ----------
+const landingoverlay=document.getElementById("landingoverlay");
+const landingMain=document.getElementById("landingmain"), landingAuth=document.getElementById("landingauth");
+function showLanding(){ landingMain.style.display=""; landingAuth.style.display="none";
+  document.getElementById("landingSignin").style.display = cognitoReady() ? "" : "none";   // hide sign-in if cloud unavailable
+  landingoverlay.style.display="flex"; }
+function hideLanding(){ landingoverlay.style.display="none"; }
+document.getElementById("landingStart").onclick=()=>{ hideLanding(); showCompPicker(); };
+document.getElementById("landingSignin").onclick=()=>{ landingMain.style.display="none"; landingAuth.style.display="";
+  document.getElementById("landingUser").focus(); };
+document.getElementById("landingBack").onclick=()=>{ landingAuth.style.display="none"; landingMain.style.display=""; };
+async function doLandingSignIn(){
+  const u=document.getElementById("landingUser").value.trim(), p=document.getElementById("landingPass").value;
+  const msg=document.getElementById("landingMsg");
+  if(!u||!p){ msg.textContent="Enter your username and password."; return; }
+  msg.textContent="Signing in…";
+  try{ await cogSignIn(u,p); await onSignedIn(false);            // pulls cloud progress → applyProgress resumes the game
+    pname.value=progress.name||""; renderPkgs(); hideLanding(); }
+  catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
+document.getElementById("landingDo").onclick=doLandingSignIn;
+document.getElementById("landingPass").addEventListener("keydown",e=>{ if(e.key==="Enter") doLandingSignIn(); });
 
-// signed-in users: resume cloud sync on load (unless opening a shared melody link)
-if(cognitoReady() && userPool && userPool.getCurrentUser() && !/[#&]s=/.test(location.hash)) onSignedIn(false);
+// First-load gate: shared link → straight to the studio; signed-in session → resume; else fresh visitor → landing.
+(function(){ if(/[#&]s=/.test(location.hash)) return;
+  if(cognitoReady() && userPool && userPool.getCurrentUser()){ onSignedIn(false); return; }   // resume an existing session
+  if(!progress.companion) showLanding();                                                       // brand-new / signed-out visitor
+})();
 </script>
 </body>
 </html>
