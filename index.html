@@ -200,6 +200,34 @@
   .landingbtn{ display:block; width:100%; margin:8px 0; font-size:1.05rem; padding:13px;}
   #landingauth .authform input{ width:100%; box-sizing:border-box; background:#4a3a85; color:#eee; border:none;
     border-radius:8px; padding:9px 11px; font:inherit; margin:5px 0;}
+  /* ---- World map (Home) ---- */
+  .mappanel{ width:440px; max-width:94vw;}
+  .maphead{ font-size:.78rem; opacity:.7; text-align:center; margin:2px 0 14px;}
+  .region{ position:relative; border-radius:14px; padding:12px 13px; margin-bottom:14px;
+    background:linear-gradient(160deg, rgba(255,255,255,.05), rgba(0,0,0,.14)); border-left:4px solid var(--accent2);}
+  .region.locked, .region.soon{ opacity:.62;}
+  .region-head{ display:flex; align-items:center; gap:11px; margin-bottom:10px;}
+  .region-emoji{ font-size:1.9rem; line-height:1; flex:0 0 auto;}
+  .region-info{ flex:1; min-width:0;}
+  .region-name{ font-weight:700; font-size:1.02rem;}
+  .region-blurb{ font-size:.72rem; opacity:.65; line-height:1.3;}
+  .region-friend{ display:flex; flex-direction:column; align-items:center; gap:4px; flex:0 0 auto; cursor:default;}
+  .region-friend .rf-emoji{ font-size:1.6rem; line-height:1;}
+  .region-friend .rf-dots{ display:flex; gap:3px;}
+  .region-friend .rf-dots span{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.18);}
+  .region-friend .rf-dots span.on{ background:var(--accent2); box-shadow:0 0 5px var(--accent2);}
+  .region-soon{ font-size:.78rem; opacity:.75; text-align:center; padding:4px 0 2px; font-style:italic;}
+  .region-pkgs{ display:flex; flex-direction:column; gap:8px;}
+  .pnode{ background:#34256b; border-radius:11px; padding:9px 11px;}
+  .pnode.locked{ opacity:.6;}
+  .pnode-top{ display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  .pnode-name{ font-size:.9rem; font-weight:600;}
+  .pnode-done{ color:var(--accent2); font-size:.72rem; white-space:nowrap;}
+  .pnode-bar{ height:7px; border-radius:5px; background:rgba(0,0,0,.3); overflow:hidden; margin:6px 0 4px;}
+  .pnode-bar>div{ height:100%; background:var(--accent2);}
+  .pnode-meta{ font-size:.68rem; opacity:.72;}
+  .pnode-actions{ display:flex; gap:6px; margin-top:8px;}
+  .pnode-actions button{ padding:5px 11px; font-size:.82rem;}
   /* surprise reveals: whole-garden sync pulse + a big structure rising */
   .grid.gpulse, .drumrows.gpulse{ animation:gpulse .3s ease-out;}
   @keyframes gpulse{ 0%{ transform:scale(1.018);} 100%{ transform:scale(1);} }
@@ -384,8 +412,8 @@
   </div>
 
   <div id="homeoverlay" class="overlay" style="display:none">
-    <div class="card mpanel">
-      <h3>🏡 Your Garden</h3>
+    <div class="card mpanel mappanel">
+      <h3>🗺️ Your World</h3>
       <label class="ctl" style="display:flex; gap:6px; margin-bottom:10px;">Name
         <input id="pname" type="text" maxlength="20" placeholder="Gardener" style="flex:1;">
       </label>
@@ -1327,19 +1355,27 @@ const REGIONS={
 const compoverlay=document.getElementById("compoverlay");
 const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
 const pkgFullyDone = id => { const p=PACKAGES[id]; return !!p && (pkgProg(id).done||0) >= p.levels.length; };
-// arc-end thresholds (count of levels) so the starter's stage = number of intro arcs fully completed
-function arcEnds(){ const ends=[]; for(let i=0;i<LEVELS.length;i++){ const a=LEVELS[i].arc; if(a==null) continue;
-  if(i===LEVELS.length-1 || LEVELS[i+1].arc!==a) ends.push(i+1); } return ends; }
-function companionStage(){ const pp=pkgProg(currentPkg), done=pp.completed?LEVELS.length:(pp.done||0);
-  return arcEnds().filter(e=>done>=e).length; }
-// the friend shown depends on the CURRENT package's region
-function currentFriend(){ const reg=regionOf(currentPkg);
-  if(reg==="first-garden"){ const c=progress.companion; return (c&&COMPANIONS[c.type])||null; }
+// the player-facing world map: ordered regions (incl. teasers for ones with no packages yet)
+const REGION_MAP=[
+  {id:"first-garden",        emoji:"🌱", name:"The First Garden",    blurb:"Where every gardener begins.",            color:"#7cf0d0"},
+  {id:"paths-of-song",       emoji:"🎶", name:"Paths of Song",       blurb:"Shape melodies that feel alive.",          color:"#9b8cff"},
+  {id:"pulse-woods",         emoji:"🥁", name:"Pulse Woods",         blurb:"Make the forest walk, march, and dance.",  color:"#ffb46b"},
+  {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0", soon:true},
+  {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff", soon:true},
+];
+// arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
+function arcEndsFor(levels){ const ends=[]; for(let i=0;i<levels.length;i++){ const a=levels[i].arc; if(a==null) continue;
+  if(i===levels.length-1 || levels[i+1].arc!==a) ends.push(i+1); } return ends; }
+// a region's friend + its growth stage — works for ANY region (used both in-game and on the map)
+function regionFriend(reg){ if(reg==="first-garden"){ const c=progress.companion; return (c&&COMPANIONS[c.type])||null; }
   return (REGIONS[reg]&&REGIONS[reg].friend)||null; }
-function friendStage(){ const reg=regionOf(currentPkg), f=currentFriend(); if(!f) return 0;
-  const s = reg==="first-garden" ? companionStage()
-    : Object.keys(PACKAGES).filter(id=>regionOf(id)===reg && pkgFullyDone(id)).length;   // packages completed in this region
+function regionStage(reg){ const f=regionFriend(reg); if(!f) return 0; let s;
+  if(reg==="first-garden"){ const pp=pkgProg("intro"), L=PACKAGES.intro.levels, done=pp.completed?L.length:(pp.done||0);
+    s=arcEndsFor(L).filter(e=>done>=e).length; }                                       // intro: grow per arc
+  else s=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg && pkgFullyDone(id)).length;   // others: grow per completed package
   return Math.min(s, f.stages.length-1); }
+const currentFriend = () => regionFriend(regionOf(currentPkg));
+const friendStage   = () => regionStage(regionOf(currentPkg));
 let companionStageShown=0, pendingEvolve=false;
 function syncCompanion(){ const card=document.getElementById("compcard"); if(!card) return;
   const f=currentFriend();
@@ -1568,24 +1604,46 @@ function updateTitle(){ const n=(progress.name||"").trim();
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
 function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
   homeoverlay.style.display="none"; renderLevel(); }
+// one package as a node on the map (progress bar, lock state, Play/Resume/Restart)
+function pkgNode(id){ const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
+  const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
+  const node=document.createElement("div"); node.className="pnode"+(unlocked?"":" locked");
+  let html=`<div class="pnode-top"><span class="pnode-name">${pk.name}</span>`
+    +(pp.completed?`<span class="pnode-done">✓ done</span>`:unlocked?"":`<span>🔒</span>`)+`</div>`;
+  if(unlocked){ const pct=Math.round(100*reached/total);
+    html+=`<div class="pnode-bar"><div style="width:${pct}%"></div></div><div class="pnode-meta">${reached}/${total} levels</div>`;
+  } else { const reqs=(pk.requires||[]).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
+    html+=`<div class="pnode-meta">🔒 Finish first: ${reqs}</div>`; }
+  node.innerHTML=html;
+  if(unlocked){ const row=document.createElement("div"); row.className="pnode-actions";
+    row.append(mkBtn(pp.level&&!pp.completed?"▶ Resume":"▶ Play",()=>openPkg(id, pp.completed?0:(pp.level||0))),
+               mkBtn("↺ Restart",()=>openPkg(id,0)));
+    node.appendChild(row); }
+  return node;
+}
+// the world map: regions (biomes) with their friend + packages, plus teasers for worlds still growing
 function renderPkgs(){ pkglist.innerHTML="";
-  Object.keys(PACKAGES).forEach(id=>{
-    const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
-    const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
-    const card=document.createElement("div"); card.className="pkgcard"+(unlocked?"":" locked");
-    let html=`<div class="pkgtop"><span class="pkgname">${pk.name}</span>`
-      +(pp.completed?`<span class="pkgdone">✓ done</span>`:unlocked?"":`<span>🔒</span>`)+`</div>`
-      +`<div class="pkgdesc">${pk.desc||""}</div>`;
-    if(unlocked){ const pct=Math.round(100*reached/total);
-      html+=`<div class="pkgbar"><div style="width:${pct}%"></div></div><div class="pkgmeta">${reached}/${total} levels</div>`;
-    } else { const reqs=(pk.requires||[]).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
-      html+=`<div class="pkgmeta">🔒 Complete first: ${reqs}</div>`; }
-    card.innerHTML=html;
-    if(unlocked){ const row=document.createElement("div"); row.className="pkgactions";
-      row.append(mkBtn(pp.level&&!pp.completed?"▶ Resume":"▶ Play",()=>openPkg(id, pp.completed?0:(pp.level||0))),
-                 mkBtn("↺ Restart",()=>openPkg(id,0)));
-      card.appendChild(row); }
-    pkglist.appendChild(card);
+  let powers=0; Object.keys(PACKAGES).forEach(id=>{ powers+=Math.min(pkgProg(id).done||0, PACKAGES[id].levels.length); });
+  const head=document.createElement("div"); head.className="maphead";
+  head.textContent = powers ? `🌟 ${powers} power${powers>1?"s":""} earned on your journey` : "Your journey begins here 🌱";
+  pkglist.appendChild(head);
+  REGION_MAP.forEach(reg=>{
+    const pkgs=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg.id);
+    const soon = reg.soon || pkgs.length===0;
+    const open = reg.id==="first-garden" || pkgs.some(id=>isPkgUnlocked(id));
+    const panel=document.createElement("div"); panel.className="region"+(soon?" soon":(open?"":" locked"));
+    if(reg.color) panel.style.borderLeftColor=reg.color;
+    const f=regionFriend(reg.id), st=regionStage(reg.id);
+    let h=`<div class="region-head"><span class="region-emoji">${reg.emoji}</span>`
+      +`<div class="region-info"><div class="region-name">${reg.name}</div><div class="region-blurb">${reg.blurb}</div></div>`;
+    if(f && open && !soon){ let dots=""; for(let i=0;i<f.stages.length;i++) dots+=`<span class="${i<=st?'on':''}"></span>`;
+      h+=`<div class="region-friend" title="${f.name} — your friend here, grows as you finish this world">`
+        +`<span class="rf-emoji">${f.stages[st]}</span><span class="rf-dots">${dots}</span></div>`; }
+    h+=`</div>`; panel.innerHTML=h;
+    if(soon){ const s=document.createElement("div"); s.className="region-soon"; s.textContent="✨ A new world, still growing — coming soon"; panel.appendChild(s); }
+    else { const list=document.createElement("div"); list.className="region-pkgs";
+      pkgs.forEach(id=>list.appendChild(pkgNode(id))); panel.appendChild(list); }
+    pkglist.appendChild(panel);
   });
 }
 
