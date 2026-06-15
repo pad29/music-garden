@@ -84,7 +84,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 3. `stepping-stones` — Stepping Stones  [PS-2]  — pentatonic · buildable now
+## 3. `stepping-stones` — Stepping Stones  [PS-2]  ✅ BUILT (2026-06-14) — pentatonic
 
 - **Region / cluster:** Paths of Song / voice · **Palette:** pentatonic *(ladder steps are uneven in semitones — embodied smooth/leap feel reads fine; true diatonic steps arrive later)* · **Prereqs:** garden-basics, follow-the-fireflies · **Build:** now (step/leap detector over row-adjacency; builds on contour).
 - **Fantasy:** "Cross the water by choosing smooth steps or bold leaps." Stepwise = close stones; leaps = long jumps.
@@ -92,19 +92,23 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 - **New systems:** "mostly stepwise vs. contains leaps" detector (adjacent-row = step, skip ≥2 rows = leap); phrase motion tags (smooth / bold / jumpy / gliding); stone-spacing visual.
 - **Ramp shape:** steps → one leap → smooth feel → bold feel → repair over-jumpy → compare → produce *both* styles → integrate steps + a leap in one phrase.
 
+*As built (2026-06-14), enriched past the original draft (per the Footsteps lesson) with multi-step levels and two genuinely musical ideas — scale runs and leap-resolution:*
+
 | # | Level *(pattern · success · stage)* | Goal |
 |---|---|---|
-| 1 | Small Steps *(build_constraint · targeted · teach)* | cross using mostly adjacent stones (stepwise) |
-| 2 | One Big Jump *(build_constraint · targeted · teach)* | reach the far pad with one clear leap in a smooth line |
-| 3 | Gentle Path *(match_feel · broad · combine)* | a phrase that "feels easy to walk" (smooth-tagged) |
-| 4 | Bold Path *(match_feel · broad · combine)* | a phrase for a daring creature (more leaps) |
-| 5 | Fix the Broken Bridge *(repair · targeted · apply)* | repair a line that jumps too wildly (smooth one or two notes) |
-| 6 | Choose the Better Route *(compare · targeted · recognize)* | hear both, pick the smooth crossing |
-| 7 | Two Travelers *(build_constraint · targeted · compound)* | make a cautious path (steps) **and** a brave path (leaps) — two distinct phrases |
-| 8 | River Crossing Song *(capstone · broad · capstone)* | a melody that uses both steps **and** one dramatic leap |
+| 1 | Small Steps *(build_constraint · targeted · teach)* | cross by steps only (no leaps) — `isStepwise` |
+| 2 | One Big Jump *(build_constraint · targeted · teach)* | one big leap in an otherwise smooth line — `isOneJump` |
+| 3 | Gentle & Bold **[2 steps]** *(match_feel · broad · combine)* | make a gentle path, then a bold path — `isGentle` / `isBold` |
+| 4 | Climb the Stairs *(build_constraint · targeted · compound)* | a staircase: 4+ steps in a row, same direction (scale run) — `isStaircase` |
+| 5 | Land Softly *(build_constraint · targeted · apply)* | a leap, then a step back the *other* way (leap-resolution) — `isLandSoftly` |
+| 6 | Fix the Broken Bridge **[2 steps]** *(repair · targeted · apply)* | smooth a wildly-jumping line — 1 culprit, then 2 — `isGentle` |
+| 7 | Choose the Smooth Crossing *(compare · targeted · recognize)* | hear all 3, pick the stepwise one (reuses melody `showChoices`) |
+| 8 | River Crossing Song *(capstone · broad · capstone)* | mostly steps with one bold leap — `isRiverCrossing` |
+| 9 | Free Steps 🪨 *(— · none · finale)* | free-play sandbox → completion congrats |
 
-- **Quest:** *Crossing the Silver Stream* — careful creature needs steps, adventurous creature needs leaps. **Sandbox:** motion tags + optional step-bias / leap-bias assist; "make it gentle / make it daring" cards.
-- **Ramp note:** L7 (produce both styles) is the compound; L8 asks for controlled mixing — a real composing choice, not just "more notes."
+- **Region:** Paths of Song (2nd package there) — completing it grows **Flutter** 🐛→🌿. **Prereqs:** intro, follow-the-fireflies (builds on the contour detector / `contourSeq`).
+- **New mechanic:** `motionsOf()` (signed row-moves) + detectors `isStepwise/isOneJump/isGentle/isBold/isStaircase/isLandSoftly/isRiverCrossing`. No ghost (motion *size* isn't a shape) — hints place worked-example melodies via `setMelody`.
+- **Ramp note:** beyond the draft — added **Climb the Stairs** (sustained scale run) and **Land Softly** (a leap resolving by step the opposite way — a real melodic principle), so the package teaches *new* musical craft, not just "steps vs leaps."
 
 ---
 

@@ -792,6 +792,18 @@ const isTwoArcs = seq => seq.length>=5 && hillCount(seq)>=2;                    
 const isSmoothRise = seq => seq.length>=3 && netRise(seq)>=3 && maxDrop(seq)<=1;                    // a clean climb (repair)
 const isSmoothFall = seq => seq.length>=3 && netRise(seq)<=-3 && maxRise(seq)<=1;                   // a clean descent (repair)
 const isJourney = seq => seq.length>=6 && extrema(seq).length>=2;                                   // a real journey: 2+ turns
+
+// ---------- Stepping Stones: stepwise motion vs leaps (package PS-2) ----------
+// motion = the row-distance between consecutive notes: 1 rung = a step, 2 = small leap, 3+ = a big/bold leap
+function motionsOf(){ const s=contourSeq(); const m=[]; for(let i=1;i<s.length;i++) m.push(s[i]-s[i-1]); return m; }   // signed
+const absMo = () => motionsOf().map(Math.abs);
+function isStepwise(){ const s=contourSeq(); if(s.length<4) return false; const a=absMo(); return a.every(d=>d<=1) && a.filter(d=>d===1).length>=2; }      // only steps
+function isOneJump(){ const s=contourSeq(); if(s.length<4) return false; const a=absMo(); return a.filter(d=>d>=3).length===1 && a.every(d=>d>=3||d<=1); }  // one big leap, rest steps
+function isGentle(){ const s=contourSeq(); if(s.length<4) return false; const a=absMo(); return a.every(d=>d<=2) && a.filter(d=>d<=1).length>=Math.ceil(a.length/2); }  // smooth: no big leaps, mostly steps
+function isBold(){ const s=contourSeq(); if(s.length<4) return false; return absMo().filter(d=>d>=2).length>=2; }                                          // bold: 2+ leaps
+function isStaircase(){ const m=motionsOf(); let best=0,run=0,prev=0; for(const d of m){ if(d===1||d===-1){ if(d===prev) run++; else { run=1; prev=d; } } else { run=0; prev=0; } if(run>best) best=run; } return best>=4; }  // 4+ steps in a row, same way
+function isLandSoftly(){ const m=motionsOf(); for(let i=0;i<m.length-1;i++) if(Math.abs(m[i])>=3 && Math.abs(m[i+1])===1 && Math.sign(m[i+1])===-Math.sign(m[i])) return true; return false; }  // a big leap, then a step back the other way
+function isRiverCrossing(){ const s=contourSeq(); if(s.length<5) return false; const a=absMo(); return a.filter(d=>d>=3).length>=1 && a.filter(d=>d<=1).length>=Math.ceil(a.length/2); }  // mostly steps + one bold leap
 // a worked example melody matching a contour (for 💡 Hint)
 function placeContour(type){ wipe(); const top=ROWS-1, N=(type==="twohills"||type==="journey")?8:6;
   for(let i=0;i<N;i++){ const t=i/(N-1); let f;
@@ -1166,6 +1178,65 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
  {name:"Free Path 🌲", drums:true, loop:true, hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
   power:{em:"🦌",name:"Free Path",line:"The whole woodland path is yours to walk."},
   intro:"The path is awake and the woods are walking 🌲. This grove is yours now — build any groove and melody you like, no goals, just play. Head 🏡 Home whenever you want a new path.",
+  goals:[]},
+]},
+"stepping-stones":{ id:"stepping-stones", name:"🪨 Stepping Stones", topic:"melody-motion", region:"paths-of-song",
+  desc:"Cross the water — move gently by steps or boldly by leaps.", requires:["intro","follow-the-fireflies"], version:1, author:"official", levels:[
+ {name:"Small Steps", power:{em:"👣",name:"Steps",line:"You can move gently, one stone at a time."},
+  hint:()=>setMelody([[5,0],[4,1],[3,2],[4,3],[5,4]]),
+  intro:"Cross the stream on the close stones 🪨 — plant a melody that only moves to NEARBY notes (one step at a time, no big jumps). Then press ▶.",
+  goals:[{id:"step",label:"Cross using small steps (no leaps)",chk:()=>isStepwise()},
+         {id:"pl",label:"Press ▶ to cross",play:true}]},
+ {name:"One Big Jump", power:{em:"🦘",name:"Leap",line:"You can leap across a gap on purpose."},
+  hint:()=>setMelody([[5,0],[4,1],[0,2],[1,3]]),
+  intro:"A wide gap! 🦘 Make a smooth line with ONE big jump to reach the far lily pad — most notes close together, then a single leap. Then press ▶.",
+  goals:[{id:"jump",label:"One big leap in an otherwise smooth line",chk:()=>isOneJump()},
+         {id:"pl",label:"Press ▶ to make the jump",play:true}]},
+ {name:"Gentle & Bold", power:{em:"⚖️",name:"Motion",line:"You can make a line gentle or bold."}, steps:[
+   {hint:()=>setMelody([[5,0],[4,1],[3,2],[4,3],[5,4]]),
+    intro:"Two creatures need paths. First the SHY one — a gentle line that's easy to walk (mostly small steps, no wild jumps). Then press ▶.",
+    goals:[{id:"g",label:"A gentle, easy-to-walk path",chk:()=>isGentle()},
+           {id:"pl",label:"Press ▶",play:true}]},
+   {hint:()=>setMelody([[6,0],[1,1],[7,2],[2,3]]),
+    intro:"Now the BOLD one — a daring line with big jumps for a brave creature. Then press ▶.",
+    goals:[{id:"b",label:"A bold, jumpy path",chk:()=>isBold()},
+           {id:"pl",label:"Press ▶",play:true}]},
+ ]},
+ {name:"Climb the Stairs", power:{em:"🪜",name:"Stairs",line:"You can run up or down the stones like stairs."},
+  hint:()=>setMelody([[7,0],[6,1],[5,2],[4,3],[3,4]]),
+  intro:"These stones are stairs 🪜 — climb (or descend) them one rung at a time, the SAME direction, at least five stones in a row. Then press ▶.",
+  goals:[{id:"stair",label:"A staircase: 4+ steps in a row, same way",chk:()=>isStaircase()},
+         {id:"pl",label:"Press ▶ to climb",play:true}]},
+ {name:"Land Softly", power:{em:"🪂",name:"Soft Landing",line:"You can leap, then step back to land softly."},
+  hint:()=>setMelody([[5,0],[4,1],[0,2],[1,3],[2,4]]),
+  intro:"A big leap feels best when you LAND SOFTLY 🪂 — right after a jump, take one small step back the OTHER way. Make a leap, then step gently in the opposite direction. Then press ▶.",
+  goals:[{id:"soft",label:"Leap, then step softly the other way",chk:()=>isLandSoftly()},
+         {id:"pl",label:"Press ▶ to land softly",play:true}]},
+ {name:"Fix the Broken Bridge", power:{em:"🌉",name:"Bridge Mender",line:"You can smooth a path that jumps too wildly."}, steps:[
+   {setup:()=>setMelody([[6,0],[5,1],[0,2],[4,3],[3,4]]),
+    hint:()=>{ setCell(0,2,false); setCell(4,2,true); checkLevel(); },
+    intro:"This bridge is broken 🌉 — one stone is too far to jump to. Move it closer so the path is easy to walk again (gentle, no wild leaps). Then press ▶.",
+    goals:[{id:"f1",label:"Smooth the path (no wild jumps)",chk:()=>isGentle()},
+           {id:"pl",label:"Press ▶ to test the bridge",play:true}]},
+   {setup:()=>setMelody([[5,0],[0,1],[4,2],[8,3],[3,4]]),
+    hint:()=>{ setCell(0,1,false); setCell(3,1,true); setCell(8,3,false); setCell(4,3,true); checkLevel(); },
+    intro:"This one's worse — TWO stones are too far. Bring them both closer to make the whole path easy to walk. Then press ▶.",
+    goals:[{id:"f2",label:"Smooth the whole path (no wild jumps)",chk:()=>isGentle()},
+           {id:"pl",label:"Press ▶ to test the bridge",play:true}]},
+ ]},
+ {name:"Choose the Smooth Crossing", power:{em:"👂",name:"Smooth Ear",line:"You can hear which path is easy to walk."},
+  setup:()=>showChoices([[5,4,3,4,5],[6,1,7,2,8],[5,7,4,8,5]],0),
+  intro:"Three paths cross the river 🪨. Tap each to hear it — listen to ALL three — then pick the SMOOTH one that's easy to walk (small steps, no big jumps).",
+  goals:[{id:"pick",label:"Hear all three, then pick the smooth crossing",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"River Crossing Song", loop:true, power:{em:"🎵",name:"Wayfarer",line:"You can weave steps and a leap into one journey."},
+  intent:"What does your crossing sound like?",
+  hint:()=>setMelody([[6,0],[5,1],[4,2],[0,3],[1,4],[2,5]]),
+  intro:"The big crossing 🎵 — make a melody that walks mostly in small steps but takes ONE bold leap along the way. Then press ▶.",
+  goals:[{id:"river",label:"Mostly steps, with one bold leap",chk:()=>isRiverCrossing()},
+         {id:"pl",label:"Press ▶ for your crossing",play:true}]},
+ {name:"Free Steps 🪨", loop:true, hint:()=>setMelody([[5,0],[4,1],[3,2],[4,3],[5,4]]),
+  power:{em:"🦋",name:"Free Steps",line:"This crossing is yours to wander."},
+  intro:"You crossed it all! 🪨 This river is yours now — wander it however you like, gentle or bold, no goals, just play. Head 🏡 Home whenever you want a new path.",
   goals:[]},
 ]} };
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
