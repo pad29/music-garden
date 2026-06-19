@@ -212,13 +212,13 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (S):** beat-stability evaluation + stronger pulse→world coupling. Builds on existing drum sequencer.
 - **Why:** pulse is the fastest route to "this feels like real music"; foundational for every later style/quest.
 
-#### `wind-and-gaps` — Wind and Gaps  [PW-2]
+#### `wind-and-gaps` — Wind and Gaps  [PW-2]  — **BUILT ✅ (2026-06-18, R2-lite)**
 - **Capability:** use rests and space intentionally ("not everything valuable is more notes").
-- **Theory:** rests, density, rhythmic breath, negative space. **Palette:** pentatonic. **Rhythm tier:** R2 (lite ships now on R1 grid; full needs R3 duration). **Prereqs:** garden-basics, footsteps.
+- **Theory:** rests, density, rhythmic breath, negative space. **Palette:** pentatonic. **Rhythm tier:** R2 (lite shipped on the R1 grid; full needs R3 duration). **Prereqs:** garden-basics, footsteps.
 - **Patterns:** repair, transform, compare, match_feel, build_constraint. **Success:** broad/targeted.
 - **Quest:** *The Night Grove* — move through the garden in the spaces between sounds.
 - **Sandbox:** rest tool; sparse/dense prompts; optional density meter.
-- **System needs (M–L):** a **rhythm-density version ships now** on the on/off drum grid ("remove hits to breathe"); the full **melodic note-duration / rest-as-object** version needs the parked **bars & plots** editor (DESIGN §12). Scope the lite version for Wave A; defer duration to the editor build.
+- **System needs (M–L) — lite built:** the **rhythm-density version shipped** on the on/off drum grid ("remove hits to breathe") + a live **density meter** + a full-pattern compare picker (`showPatternChoices`); the full **melodic note-duration / rest-as-object** version still needs the parked **bars & plots** editor (DESIGN §12) and is deferred to that build.
 - **Why:** disproportionately improves the *maturity* of player creations without new theory.
 
 #### `off-the-path` — Off the Path  [PW-3]

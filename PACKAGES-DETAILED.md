@@ -194,9 +194,9 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 7. `wind-and-gaps` — Wind and Gaps  [PW-2]  — pentatonic · R2-lite now (full R3 later)
+## 7. `wind-and-gaps` — Wind and Gaps  [PW-2]  ✅ BUILT (2026-06-18) — pentatonic · R2-lite (drum-grid density)
 
-- **Region / cluster:** Pulse Woods / pulse · **Palette:** pentatonic · **Rhythm tier:** R2 *(lite version ships now on the on/off drum grid as density control; the full melodic note-duration/rest version needs the R3 bars & plots editor)* · **Prereqs:** garden-basics, footsteps · **Build:** now (lite); flag R3 dependency for the full version.
+- **Region / cluster:** Pulse Woods / pulse · **Palette:** pentatonic · **Rhythm tier:** R2 *(lite version shipped on the on/off drum grid as density control; the full melodic note-duration/rest version still needs the R3 bars & plots editor)* · **Prereqs:** garden-basics, footsteps · **Build:** done (lite); R3 duration version deferred to the editor.
 - **Fantasy:** "Use silence so the garden can breathe." Wind moves through the openings.
 - **Capability:** use rests and rhythmic space intentionally — "not everything valuable is more notes." **Hidden theory:** rests, density, rhythmic breath, negative space.
 - **New systems:** density evaluation; a "remove-to-improve" level style; world response to sparse vs. dense; (later) the rest tool on the melody grid.
@@ -212,9 +212,11 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 | 6 | Quiet Footsteps *(match_feel · targeted · apply)* | build a very sparse "sneaking" pattern |
 | 7 | Two Versions *(transform · targeted · compound)* | make a crowded version, then improve it by removing |
 | 8 | Breathing Grove *(capstone · broad · capstone)* | a pulse+melody texture that feels open and alive, not crowded |
+| 9 | Free Air 🍃 *(— · none · finale)* | free-play rhythm+melody sandbox → completion congrats |
 
 - **Quest:** *The Night Grove* — move through the garden in the spaces between sounds. **Sandbox:** rest tool, sparse/dense prompts, optional density meter; cards (airy / breathing / quiet / roomy).
 - **Ramp note:** L5 (groove from *strategic* gaps) is the conceptual peak — absence creating rhythm — and is meaningfully harder than "just remove some."
+- **As built (2026-06-18) — 2nd Pulse Woods package (grows **Hopper** 🐸→🐸✨):** "density" = total drum hits in the first 16-step bar. Detectors (in a new "Wind and Gaps" block): `drumHits()`, `isBreathing` (≤6 hits), `isVerySparse` (≤4), `isSyncopated` (≥2 off-beat hits, off-beats outnumber strong beats, total ≤8 — *groove from gaps*); `STRONG`/`OFFBEATS` step sets. The repair/transform levels pre-fill a crowded pattern via `drumSetup` and the player taps pads to **remove** hits (no new placement UI — reuses the drum sequencer's toggle). New **density meter** (`#densityMeter`, `setDensityMeter`/`updateDensityMeter`): a live airy↔crowded bar under the drum lanes, shown on `density:true` levels (flag resolves from level OR step, like the Q&A phrase flag), refreshed on every `checkLevel`. New `showPatternChoices`/`pickPatternChoice` — a compare picker that auditions **full multi-lane** patterns (vs. the kick-only `showDrumChoices`). **Prereqs:** intro, footsteps. All goals verified against their hint patterns; a fully-crowded control correctly fails the sparse checks.
 
 ---
 
@@ -252,7 +254,7 @@ Buildable on today's engine (pentatonic + small additions), in suggested order �
 4. **twin-blooms** (pair color) — labels over fuse recognizer
 5. **standing-towers** (triads) — extends intro Tower + stability meter
 6. **question-and-answer** ✅ (phrase Q&A) — built (added the phrase A/B timeline split)
-7. **wind-and-gaps** (rests, R2-lite) — density eval on the drum grid
+7. **wind-and-gaps** ✅ (rests, R2-lite) — built (density eval on the drum grid + density meter)
 
 Then, after the **`two-new-colors`** milestone (diatonic widening):
 

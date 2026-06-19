@@ -95,12 +95,12 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **`twin-blooms`** (Stone Chorus Canyon, 9 levels) — interval/**pair personality**: close / bright / open pairs, the "same distance, new feel" uneven-ladder insight, pair compare, mood-matching, contrasting beds. Companion: Geo 💎.
 - **`standing-towers`** (Stone Chorus Canyon, 9 levels) — **triads / stable shapes**: build, complete, recognize stand-vs-wobble, twin towers, repair, stamp/reuse, ring a canyon.
 - **`question-and-answer`** (Paths of Song, 9 levels) — phrase **open/closed**: a call/answer timeline split (cols 0–7 = call, 8–15 = answer); reply → recognize the closed ending → land home → mirror the call → same-thought-new-ending → calm vs. bold answers → repair an open answer → compose both halves.
+- **`wind-and-gaps`** (Pulse Woods, 9 levels) — rhythmic **density / rests** (R2-lite): open a crowded beat → build sparse → trim an overfilled groove → compare densities → groove-from-gaps (syncopation) → tiptoe sparse → crowded→improved → breathing pulse+melody capstone. Adds a live density meter.
 - **Platform:** profiles + progress persistence (local-first, `Store` seam); **AWS backend deployed** (Cognito username+password, no email required; per-user progress on DynamoDB); 🗺️ Home **world map** (regions + companions + lock state from the DAG); landing/welcome screen; Save/Share via `#s=` links; 🎚️ Mixer.
 
 **Next up (build order, per `PACKAGES-DETAILED.md`):**
-1. `wind-and-gaps` — rests & rhythmic space (R2-lite on the drum grid)
-2. **`two-new-colors` milestone** — the pentatonic→diatonic widening (engine work; also resolves the tool-transposition model)
-3. `ways-home` — cadence strength (requires the diatonic milestone; grades the same open/closed seam by *degree*)
+1. **`two-new-colors` milestone** — the pentatonic→diatonic widening (engine work; also resolves the tool-transposition model)
+2. `ways-home` — cadence strength (requires the diatonic milestone; grades the same open/closed seam by *degree*)
 
 The bigger long-term threads (logged in `DESIGN.md` §12): a player-facing **world-map UI**, a **collection/menagerie view** for companions, living-world visuals, the **bars & plots** duration editor, multi-voice arrangement, and the Styles/Eras "Atlas of Styles."
 
