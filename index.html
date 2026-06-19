@@ -440,10 +440,12 @@ const sig = offs => offs.join("-");
 // "apartness" is measured in real pitch (semitones), NOT uneven ladder rungs:
 // a 3rd-or-wider (>=3) stands; a 2nd (<=2) wobbles. So both inversions of a chord agree.
 const stableMidis = midis => { for(let i=1;i<midis.length;i++) if(midis[i]-midis[i-1]<3) return false; return true; };
-function pairMeta(g){ g=g%12===0&&g>0?12:g;
-  return g>=12 ? {em:"🌟",name:"Octave twins"} : g<=2 ? {em:"🌿",name:"Neighbors"}
-    : g<=4 ? {em:"🌸",name:"Bright pair"} : g===5 ? {em:"🍃",name:"Open pair"}
-    : g===7 ? {em:"⭐",name:"Strong pair"} : {em:"✨",name:"Wide pair"}; }
+// pair "personality" bands by real semitone gap: close (2nd) / bright (3rd) / open (a 4th and wider) / octave twins
+function widthBand(g){ g=(g%12===0&&g>0)?12:g; return g>=12?"octave": g<=2?"close": g<=4?"bright":"open"; }
+function pairMeta(g){ const b=widthBand(g);
+  return b==="octave" ? {em:"🌟",name:"Octave twins"} : b==="close" ? {em:"🌿",name:"Close pair"}
+    : b==="bright" ? {em:"🌸",name:"Bright pair"} : {em:"🍃",name:"Open pair"}; }
+function pairKind(midis){ return widthBand(midis[midis.length-1]-midis[0]); }
 function toolMeta(offs, midis){
   if(offs.length===2) return pairMeta(midis[midis.length-1]-midis[0]);
   return stableMidis(midis) ? {em:"🏛️",name:"Tower"} : {em:"🌀",name:"Wobbler"};
@@ -678,7 +680,9 @@ function fuse(){
   placed.forEach((s,i)=>{ cells[s.r][s.c].classList.remove("sel");
     anim(cells[s.r][s.c], stable?"stand":"wob"); playRow(s.r,actx.currentTime+i*0.05); });
   // record what kind of thing was crafted (counts even if the shape is a duplicate)
-  if(offs.length===2) ev.craftedPair=true; else if(stable) ev.craftedTower=true; else ev.craftedWobbler=true;
+  if(offs.length===2){ ev.craftedPair=true; const k=pairKind(midis); ev.lastPairKind=k;   // also track pair personality, ladder-span + real gap (Twin Blooms)
+    ev.pairKinds.push(k); ev.pairs.push({span:offs[offs.length-1], kind:k, gap:midis[midis.length-1]-midis[0]}); }
+  else if(stable){ ev.craftedTower=true; ev.towerSigs.push(midis.join("-")); } else ev.craftedWobbler=true;  // distinct by actual NOTES (the uneven ladder makes offs collide)
   const m=toolMeta(offs,midis);
   if(!toolbox.some(t=>sig(t.offs)===sig(offs))){ const tool={offs,midis}; toolbox.push(tool); renderBag(sig(offs));
     setStatus(`Crafted <b>${m.em} ${m.name}</b> — ${toolRealName(tool)}! Click it in your 🎒 Toolbox to hear it.`);
@@ -701,8 +705,8 @@ function stampTool(r,c){
   if(isTonic(rows[rows.length-1])||isTonic(rows[0])) settle();
   bloom(cells[Math.min(...rows)][c], rows.length>=2?"💐":noteFlower(rows[0]));   // stamped interval/chord → bouquet
   ev.stampedTool=true; ev.played=false;
-  activeTool=null; renderBag();                       // one-shot: back to planting after a stamp
-  setStatus("Stamped! 🌱 Back to planting — pick a tool to stamp again.");
+  // keep the tool active so you can stamp it again and again (click the tool again, or Esc, to stop)
+  setStatus("Stamped! 🌸 Click the field again to stamp more — click the bloom again (or press Esc) to stop.");
   checkLevel();
 }
 
@@ -740,7 +744,26 @@ function gridState(){
 function wipe(){ grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   cells.flat().forEach(e=>e.classList.remove("on")); clearSel(); }
 function freshEv(){ return {played:false,craftedPair:false,craftedTower:false,craftedWobbler:false,
-  stampedTool:false,previewed:false,previewedTower:false,previewedWobbler:false,jammed:false,choicePick:-1}; }
+  stampedTool:false,previewed:false,previewedTower:false,previewedWobbler:false,jammed:false,choicePick:-1,
+  pairKinds:[],pairs:[],lastPairKind:null,towerSigs:[]}; }
+// Twin Blooms goal helpers — read this-stage crafts (ev.pairs) by real semitone gap; widthBand defined up top
+const craftedClose  = () => (ev.pairs||[]).some(p=>p.gap<=2);
+const craftedBright = () => (ev.pairs||[]).some(p=>p.gap>=3 && p.gap<=4);
+const craftedOpen   = () => (ev.pairs||[]).some(p=>p.gap>=5);
+const craftedSpanBand = (span,band) => (ev.pairs||[]).some(p=>p.span===span && widthBand(p.gap)===band);
+const distinctBands = () => new Set((ev.pairs||[]).map(p=>widthBand(p.gap))).size;
+// for levels that PLACE pairs on the grid: classify each 2-note column by width band, then tally
+function colBand(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+  return rows.length===2 ? widthBand(Math.abs(MIDI[rows[0]]-MIDI[rows[1]])) : null; }
+function countColBands(){ const n={close:0,bright:0,open:0,octave:0}; for(let c=0;c<COLS;c++){ const b=colBand(c); if(b) n[b]++; } return n; }
+// Standing Towers: a column "stands" if its 3 notes form a stable stack (each adjacent pair a 3rd or wider)
+function colStands(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+  return rows.length===3 && stableMidis(rows.map(r=>MIDI[r]).sort((a,b)=>a-b)); }
+function countColStands(){ let n=0; for(let c=0;c<COLS;c++) if(colStands(c)) n++; return n; }
+const colSig = c => { const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r); return rows.map(r=>MIDI[r]).sort((a,b)=>a-b).join("-"); };
+// "two different towers" — distinct standing towers whether CRAFTED (ev.towerSigs) or just PLACED on the field, keyed by actual notes
+function twinTowersCount(){ const set=new Set(ev.towerSigs);
+  for(let c=0;c<COLS;c++) if(colStands(c)) set.add(colSig(c)); return set.size; }
 let ev=freshEv();
 
 // hear a tool (block chord) — makes Tower vs Wobbler obvious by ear
@@ -883,6 +906,22 @@ function pickDrumChoice(i){ if(!choiceOpts) return; wipeDrums();
     setStatus(`Keep listening — hear all the walks first (${left} to go).`); checkLevel(); return; }
   ev.choicePick=i; checkLevel();
   setStatus(i===choiceAnswer ? "✨ That's the steady walk!" : "That one wobbles — find the even, steady walk."); }
+// pair version of the compare picker: options are note-pairs played as a block chord (Twin Blooms)
+function showPairChoices(opts,answer,prompt,label){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+  const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
+  opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
+    b.textContent=(label||"🌸 Pair ")+String.fromCharCode(65+i); b.onclick=()=>pickPairChoice(i); row.appendChild(b); });
+  setStatus(prompt||"Tap each one to hear it — listen to <b>all</b> of them, then pick the right one."); }
+function pickPairChoice(i){ if(!choiceOpts) return; wipe();
+  const p=choiceOpts[i]; p.forEach(r=>setCell(r,0,true));
+  initAudio(); actx.resume(); const t=actx.currentTime+0.03; p.forEach(r=>voice(instrEl.value,midiToFreq(MIDI[r]),t));
+  choiceViewed[i]=true;
+  const row=document.getElementById("choiceRow"); if(row) [...row.children].forEach((b,bi)=>b.classList.toggle("on", bi===i));
+  if(!choiceViewed.every(Boolean)){ ev.choicePick=-1;
+    const left=choiceViewed.filter(x=>!x).length;
+    setStatus(`Keep listening — hear all of them first (${left} to go).`); checkLevel(); return; }
+  ev.choicePick=i; checkLevel();
+  setStatus(i===choiceAnswer ? "✨ That's the one!" : "Not that one — listen again."); }
 
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
@@ -1238,6 +1277,117 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   power:{em:"🦋",name:"Free Steps",line:"This crossing is yours to wander."},
   intro:"You crossed it all! 🪨 This river is yours now — wander it however you like, gentle or bold, no goals, just play. Head 🏡 Home whenever you want a new path.",
   goals:[]},
+]},
+"twin-blooms":{ id:"twin-blooms", name:"🌸 Twin Blooms", topic:"harmony-intervals", region:"stone-chorus-canyon",
+  desc:"Bind two notes into a bloom — and discover that every pair has a feeling.", requires:["intro"], version:1, author:"official", levels:[
+ {name:"First Bond", unlock:["fuse"], power:{em:"🌷",name:"Bond",line:"You can bind two notes into one bloom."},
+  hint:()=>hintSeeds([[8,4],[6,4]]),
+  intro:"Two flowers can bloom together 🌸. Plant TWO seeds stacked in one column, press 🔨 Fuse, click both seeds, then ✓ Save — and click your new bloom in the 🎒 Toolbox to HEAR it.",
+  goals:[{id:"bond",label:"Fuse a pair of notes into your Toolbox",chk:(s,e)=>e.craftedPair},
+         {id:"hear",label:"Click your bloom to hear how the two notes feel together",chk:(s,e)=>e.previewed}]},
+ {name:"Open & Close", power:{em:"↔️",name:"Spacing",line:"You can make a pair feel open or close."}, steps:[
+   {hint:()=>hintSeeds([[9,4],[6,4]]),
+    intro:"Some pairs feel OPEN and spacious 🍃 — the two notes sit FAR apart, an airy gap. The farther apart, the more open it feels. Fuse a wide one and ✓ Save.",
+    goals:[{id:"o",label:"Craft an OPEN pair (notes far apart)",chk:()=>craftedOpen()}]},
+   {hint:()=>hintSeeds([[9,4],[8,4]]),
+    intro:"Others feel CLOSE and cozy 🌿 — two notes right next to each other, humming together. Fuse a close one and ✓ Save.",
+    goals:[{id:"c",label:"Craft a CLOSE pair (neighbouring notes)",chk:()=>craftedClose()}]},
+ ]},
+ {name:"Bright Bloom", power:{em:"🌸",name:"Bright",line:"You can find the sweet, bright pairs."},
+  hint:()=>hintSeeds([[9,4],[7,4]]),
+  intro:"In between is the BRIGHT bloom 🌸 — a sweet, sunny pair with a small gap (a little wider than CLOSE, but not far apart like OPEN). Fuse one and ✓ Save.",
+  goals:[{id:"b",label:"Craft a BRIGHT pair (a small gap)",chk:()=>craftedBright()}]},
+ {name:"Same Distance, New Feel", power:{em:"🔍",name:"Listener",line:"You can hear that the same shape can feel different."}, steps:[
+   {hint:()=>hintSeeds([[9,4],[8,4]]),
+    intro:"Here's a secret 🔍 — two seeds ONE step apart usually hum CLOSE together. Craft a close, neighbouring pair (like the two lowest stones). ✓ Save.",
+    goals:[{id:"s1",label:"Craft a CLOSE pair, one step apart",chk:()=>craftedSpanBand(1,"close")}]},
+   {hint:()=>hintSeeds([[7,4],[6,4]]),
+    intro:"But some stones, the SAME one step apart, sound BRIGHT instead! 🌸 Find two neighbouring stones higher up that bloom bright, and ✓ Save. (Same shape — different feeling!)",
+    goals:[{id:"s2",label:"Craft a BRIGHT pair, also one step apart",chk:()=>craftedSpanBand(1,"bright")}]},
+ ]},
+ {name:"Hear the Bloom", power:{em:"👂",name:"Pair Ear",line:"You can pick a pair's feeling by ear."},
+  setup:()=>showPairChoices([[9,8],[9,7],[9,5]],2,"Three blooms are humming 🌸. Tap each to hear it — listen to ALL three — then pick the OPEN, spacious one (the two notes farthest apart)."),
+  intro:"Three blooms are humming 🌸. Tap each one to hear it — listen to all three — then pick the OPEN, spacious-sounding pair (the notes farthest apart).",
+  goals:[{id:"pick",label:"Hear all three, then pick the OPEN pair",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Find the Match", power:{em:"💞",name:"Matchmaker",line:"You can give a creature the pair that fits its mood."}, steps:[
+   {hint:()=>hintSeeds([[9,4],[8,4]]),
+    intro:"A sleepy mole wants a CALM, cozy song 😴. Craft a CLOSE pair to soothe it, then ✓ Save.",
+    goals:[{id:"m1",label:"Give the sleepy mole a CLOSE pair",chk:()=>craftedClose()}]},
+   {hint:()=>hintSeeds([[9,4],[6,4]]),
+    intro:"A soaring hawk wants a WIDE-OPEN, spacious song 🦅. Craft an OPEN pair (notes far apart) for it, then ✓ Save.",
+    goals:[{id:"m2",label:"Give the soaring hawk an OPEN pair",chk:()=>craftedOpen()}]},
+ ]},
+ {name:"Two Gardens", loop:true, power:{em:"🏡",name:"Bond Gardener",line:"You can plant a whole bed of feelings."},
+  hint:()=>hintSeeds([[9,0],[8,0],[8,1],[7,1],[6,2],[5,2],[9,4],[6,4],[8,5],[5,5],[9,6],[5,6]]),
+  intro:"Two flower beds, two feelings 🏡. Fill the first bed with 3 CLOSE pairs (cozy neighbours), then the second with 3 OPEN pairs (far apart). Stamp blooms from your 🎒 Toolbox (click a bloom, then click the field) or plant fresh ones — then press ▶ to loop and hear the two beds.",
+  goals:[{id:"close",label:"Plant 3 CLOSE pairs (the cozy bed)",chk:()=>countColBands().close>=3},
+         {id:"open",label:"Plant 3 OPEN pairs (the sunny bed)",chk:()=>countColBands().open>=3},
+         {id:"pl",label:"Press ▶ to loop and hear the difference",play:true}]},
+ {name:"The Twin Bloom Song", loop:true, intent:"What story do your blooms tell?",
+  power:{em:"🎶",name:"Bloom Song",line:"You can sing with every feeling at once."},
+  hint:()=>hintSeeds([[9,0],[8,0],[9,2],[7,2],[9,4],[5,4]]),
+  intro:"Now a little song 🎶 — line up pairs that use ALL THREE feelings side by side: at least one CLOSE, one BRIGHT, and one OPEN pair. Stamp blooms from your 🎒 Toolbox or plant fresh — then press ▶ to hear your bloom song.",
+  goals:[{id:"c",label:"Place a CLOSE pair",chk:()=>countColBands().close>=1},
+         {id:"b",label:"Place a BRIGHT pair",chk:()=>countColBands().bright>=1},
+         {id:"o",label:"Place an OPEN pair",chk:()=>countColBands().open>=1},
+         {id:"pl",label:"Press ▶ to hear your bloom song",play:true}]},
+ {name:"Free Blooms 🌸", power:{em:"💎",name:"Free Blooms",line:"This shrine of pairs is yours to explore."},
+  intro:"The canyon is singing 🌸. This shrine of blooms is yours now — craft any pairs you like and hear how they feel, no goals, just explore. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"standing-towers":{ id:"standing-towers", name:"🏛️ Standing Towers", topic:"harmony-triads", region:"stone-chorus-canyon",
+  desc:"Stack three notes into a tower that stands tall — and learn to build, mend, and ring them.", requires:["intro","twin-blooms"], version:1, author:"official", levels:[
+ {name:"Raise the First Tower", unlock:["fuse"], power:{em:"🏛️",name:"Tower",line:"You can stack notes into a shape that stands."},
+  hint:()=>hintSeeds([[9,4],[7,4],[6,4]]),
+  intro:"Stack THREE seeds in one column, SPREAD APART (a gap between each), then 🔨 Fuse and ✓ Save — a TOWER 🏛️ stands tall and sounds smooth. Click it in your 🎒 Toolbox to hear how solid it is.",
+  goals:[{id:"t",label:"Build a TOWER chord into your Toolbox",chk:(s,e)=>e.craftedTower},
+         {id:"h",label:"Click your Tower to hear how solid it sounds",chk:(s,e)=>e.previewedTower}]},
+ {name:"Missing Stone", power:{em:"🧩",name:"Completion",line:"You can find the stone a tower is missing."}, steps:[
+   {setup:()=>{ setCell(9,4,true); setCell(6,4,true); },
+    hint:()=>{ setCell(7,4,true); checkLevel(); },
+    intro:"A tower is missing its middle stone 🧩. Add ONE more seed in the column so all three are spread apart and the tower STANDS, then press ▶.",
+    goals:[{id:"c1",label:"Add the missing stone so the tower stands",chk:()=>colStands(4)},
+           {id:"pl",label:"Press ▶ to hear it stand",play:true}]},
+   {setup:()=>{ setCell(5,4,true); setCell(2,4,true); },
+    hint:()=>{ setCell(4,4,true); checkLevel(); },
+    intro:"Another gap! 🧩 Add the missing stone so these three stand together, then press ▶.",
+    goals:[{id:"c2",label:"Complete this tower so it stands",chk:()=>colStands(4)},
+           {id:"pl",label:"Press ▶ to hear it stand",play:true}]},
+ ]},
+ {name:"Tower or Wobbler?", power:{em:"👂",name:"Steady Ear",line:"You can hear which shapes stand."},
+  setup:()=>showPairChoices([[9,7,6],[9,8,7],[6,5,4]],0,"Three stone shapes are humming 🏛️. Tap each to hear it — listen to ALL three — then pick the one that STANDS (smooth and solid, not clashing).","🏛️ Shape "),
+  intro:"Three stone shapes 🏛️. Tap each to hear it — listen to all three — then pick the one that STANDS smooth and solid (the others wobble and clash).",
+  goals:[{id:"pick",label:"Hear all three, then pick the one that stands",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Twin Towers", power:{em:"🏗️",name:"Builder",line:"You can raise towers of different shapes."},
+  hint:()=>hintSeeds([[9,2],[7,2],[6,2],[5,5],[4,5],[2,5]]),
+  intro:"Raise TWO towers that stand 🏛️🏛️ — stack three SPREAD-APART seeds in one column, then build a second tower with DIFFERENT notes in another column. Each must stand on its own (you can leave them on the field or Fuse them).",
+  goals:[{id:"two",label:"Stand two different towers (in two columns)",chk:()=>twinTowersCount()>=2}]},
+ {name:"Repair the Ruin", power:{em:"🛠️",name:"Stonemason",line:"You can steady a shape that wobbles."}, steps:[
+   {setup:()=>{ setCell(8,4,true); setCell(7,4,true); setCell(6,4,true); },
+    hint:()=>{ setCell(8,4,false); setCell(9,4,true); checkLevel(); },
+    intro:"This tower wobbles 🛠️ — two stones are crammed too close. Move one so all three are spread apart and it STANDS, then press ▶.",
+    goals:[{id:"r1",label:"Spread the stones so the tower stands",chk:()=>colStands(4)},
+           {id:"pl",label:"Press ▶ to test it",play:true}]},
+   {setup:()=>{ setCell(7,4,true); setCell(6,4,true); setCell(5,4,true); },
+    hint:()=>{ setCell(5,4,false); setCell(4,4,true); checkLevel(); },
+    intro:"Another wobbler! 🛠️ Move the crammed stone apart so this one stands too, then press ▶.",
+    goals:[{id:"r2",label:"Steady this tower so it stands",chk:()=>colStands(4)},
+           {id:"pl",label:"Press ▶ to test it",play:true}]},
+ ]},
+ {name:"Stamp the Strong Shape", power:{em:"📐",name:"Reuse",line:"You can stamp a tower again and again."},
+  hint:()=>hintSeeds([[9,4],[7,4],[6,4]]),
+  intro:"Now REUSE a tower 🏛️ — craft one, then click it in your 🎒 Toolbox and STAMP it onto the field (you can stamp it again and again!). Build once, place anywhere.",
+  goals:[{id:"craft",label:"Craft a tower into your Toolbox",chk:(s,e)=>e.craftedTower},
+         {id:"stamp",label:"Stamp it onto the field",chk:(s,e)=>e.stampedTool}]},
+ {name:"Canyon Resonance", loop:true, intent:"How will your canyon ring?",
+  power:{em:"🎶",name:"Resonance",line:"You can ring a whole canyon of towers."},
+  hint:()=>hintSeeds([[9,0],[7,0],[6,0],[9,2],[7,2],[6,2],[9,4],[7,4],[6,4]]),
+  intro:"Awaken the canyon 🏛️ — line up THREE or more towers across the field (stamp from your 🎒 Toolbox or build fresh), then press ▶ to loop and hear them ring out together.",
+  goals:[{id:"three",label:"Stand 3+ towers across the field",chk:()=>countColStands()>=3},
+         {id:"pl",label:"Press ▶ to ring the canyon",play:true}]},
+ {name:"Free Towers 🏛️", loop:true, power:{em:"💎",name:"Free Towers",line:"This canyon of stone is yours to build."},
+  intro:"The canyon stands tall 🏛️. This place is yours now — raise any towers you like, stamp and ring them, no goals, just build. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
 ]} };
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
@@ -1307,8 +1457,16 @@ function renderStage(){   // render the current step (or the whole level if it h
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
     : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
-  const _ds=document.getElementById("devjump"); if(_ds&&_ds.options.length) _ds.value=levelIdx;
+  populateDevJump();
   checkLevel();
+}
+// dev jump dropdown: rebuild the options whenever the package changes (so names match the current package)
+let devJumpPkg=null;
+function populateDevJump(){ const bar=document.getElementById("devbar"); if(!bar || bar.style.display==="none") return;
+  const sel=document.getElementById("devjump");
+  if(devJumpPkg!==currentPkg){ devJumpPkg=currentPkg; sel.innerHTML="";
+    LEVELS.forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); }); }
+  sel.value=levelIdx;
 }
 function checkLevel(){
   const st=curStage(), s=gridState(), goals=st.goals||[];
@@ -1422,6 +1580,7 @@ const COMPANIONS={
 const REGIONS={
   "paths-of-song": { name:"Paths of Song", friend:{ name:"Flutter", stages:["🥚","🐛","🌿","🦋","🦋✨"] } },
   "pulse-woods":   { name:"Pulse Woods",   friend:{ name:"Hopper",  stages:["🥚","🟢","🐸","🐸✨","👑🐸"] } },
+  "stone-chorus-canyon": { name:"Stone Chorus Canyon", friend:{ name:"Geo", stages:["🪨","🔸","🔶","💎","💎✨"] } },
 };
 const compoverlay=document.getElementById("compoverlay");
 const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
@@ -1431,7 +1590,7 @@ const REGION_MAP=[
   {id:"first-garden",        emoji:"🌱", name:"The First Garden",    blurb:"Where every gardener begins.",            color:"#7cf0d0"},
   {id:"paths-of-song",       emoji:"🎶", name:"Paths of Song",       blurb:"Shape melodies that feel alive.",          color:"#9b8cff"},
   {id:"pulse-woods",         emoji:"🥁", name:"Pulse Woods",         blurb:"Make the forest walk, march, and dance.",  color:"#ffb46b"},
-  {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0", soon:true},
+  {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0"},
   {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff", soon:true},
 ];
 // arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
@@ -1820,9 +1979,9 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
 
 // ---------- dev-only level jump (enable by adding ?dev or #dev to the URL) ----------
 if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
-  const bar=document.getElementById("devbar"), sel=document.getElementById("devjump"); bar.style.display="";
-  LEVELS.forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); });
-  sel.value=levelIdx; sel.onchange=()=>{ levelIdx=+sel.value; renderLevel(); };
+  document.getElementById("devbar").style.display="";
+  document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
+  populateDevJump();                                  // populate from the current package (refreshes on package change)
 }
 
 // ---------- Landing / welcome screen ----------

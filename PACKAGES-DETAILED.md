@@ -112,7 +112,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 4. `twin-blooms` — Twin Blooms  [SC-1]  — pentatonic (early stage) · buildable now
+## 4. `twin-blooms` — Twin Blooms  [SC-1]  ✅ BUILT (2026-06-14) — pentatonic (early stage)
 
 - **Region / cluster:** Stone Chorus Canyon / shape · **Palette:** pentatonic *(open/bright/close-ish pairs only; true tense pairs need diatonic → `twin-blooms-plus`)* · **Prereqs:** garden-basics · **Build:** now (pair-personality labels over the existing Fuse/interval recognizer).
 - **Fantasy:** "Discover how two blooms can belong together." Two flowers resonate differently per pair.
@@ -120,23 +120,28 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 - **New systems:** pair "personality" descriptors mapped from the existing semitone-gap classifier (neighbors / bright / open / strong / wide); a pair-collection shelf.
 - **Ramp shape:** any pair → open → close → bright → match-to-mood → produce two contrasting → sort/classify → an intentional pair set.
 
+*As built (2026-06-14) — first **harmony** package; opens the **Stone Chorus Canyon** region on the map (friend **Geo** 🪨→🔸→🔶→💎→💎✨):*
+
 | # | Level *(pattern · success · stage)* | Goal |
 |---|---|---|
-| 1 | First Bond *(discover · broad · teach)* | fuse any pleasant pair; "a pair has a feeling" |
-| 2 | Wide Sky *(discover · targeted · teach)* | find an **open** pair (4th/5th) |
-| 3 | Close Whisper *(discover · targeted · teach)* | make a **close** pair (a 2nd) *(as close as pentatonic gets — true tension later)* |
-| 4 | Bright Bloom *(discover · targeted · combine)* | make a **bright** pair (a 3rd) |
-| 5 | Find the Match *(match_feel · targeted · apply)* | give a creature the pair that fits its mood (shy / bright / peaceful) |
-| 6 | Pair Sorting *(classify · targeted · recognize)* | sort discovered pairs into calm / bright / open |
-| 7 | Two Gardens *(build_constraint · targeted · compound)* | one pair for the sunny bed, a *different* pair for the shaded bed |
-| 8 | The Twin Bloom Archive *(capstone · broad · capstone)* | discover two distinct pair types that serve different purposes |
+| 1 | First Bond *(discover · broad · teach)* | fuse any pair + click it to hear ("a pair has a feeling") |
+| 2 | Open & Close **[2 steps]** *(discover · targeted · teach)* | craft an **open** pair, then a **close** pair |
+| 3 | Bright Bloom *(discover · targeted · combine)* | craft a **bright** pair (a 3rd) |
+| 4 | Same Distance, New Feel **[2 steps]** *(discover · targeted · apply)* | craft a close 1-step pair, then a *bright* 1-step pair — same shape, different feel (the uneven-ladder insight) |
+| 5 | Hear the Bloom *(compare · targeted · recognize)* | hear 3 pairs as block chords, pick the open one |
+| 6 | Find the Match **[2 steps]** *(match_feel · targeted · apply)* | calm mole → close pair; soaring hawk → open pair |
+| 7 | Two Gardens *(build_constraint · targeted · compound)* | **place** 3 close pairs + 3 open pairs (loop & hear the contrast) — *uses the toolbox* |
+| 8 | The Twin Bloom Song *(capstone · targeted · capstone)* | **place** a sequence using a close, a bright, and an open pair (3 checkboxes) |
+| 9 | Free Blooms 🌸 *(— · none · finale)* | free-craft sandbox → completion congrats |
 
-- **Quest:** *The Shrine of Two Flowers* — each side responds to a fitting pair-bond. **Sandbox:** expanded pair library, non-theory personality labels, pair collection shelf.
-- **Palette flag:** "Close Whisper" tops out at a major 2nd in pentatonic; `twin-blooms-plus` (post-`two-new-colors`) adds real semitone tension and strong pull — presented as the shelf *growing*, not changing.
+- **Mechanic:** built on the intro's Fuse/Toolbox. `widthBand(gap)` classifies a pair into 4 clear bands — **close** (2nd) / **bright** (3rd) / **open** (a 4th *and wider* — 5ths/6ths count) / **octave twins**; `pairMeta`/`pairKind` both use it (so toolbox names match the goals). `fuse()` records each pair's gap/span into `ev.pairs`. Goal helpers `craftedClose`/`craftedBright`/`craftedOpen`/`craftedSpanBand`; `colBand`/`countColBands` classify *placed* pairs (for L7/L8). New `showPairChoices` (pair compare — plays a block chord). **Stamping is now repeatable** (pick a bloom, stamp it many times; re-click or Esc to stop) so the toolbox is actually useful. **Prereqs:** intro only.
+- **Playtest fixes (2026-06-14):** "open" was a *perfect 4th only*, so wider pairs failed despite "far apart" wording → now open = a 4th and wider. L7/L8 rewritten to **place** pairs (use the toolbox), not just craft. Dev level-jump now rebuilds names per package.
+- **Highlight — "Same Distance, New Feel":** teaches the engine's core truth playfully — two seeds *one ladder-step apart* can be **close** (C–D) or **bright** (E–G) because the pentatonic ladder is uneven. Real ear-opening, pentatonic-native.
+- **Palette flag:** "close" tops out at a major 2nd here; `twin-blooms-plus` (post-`two-new-colors`) adds real semitone tension — presented as the shelf *growing*, not changing.
 
 ---
 
-## 5. `standing-towers` — Standing Towers  [SC-2]  — pentatonic-thin · buildable now
+## 5. `standing-towers` — Standing Towers  [SC-2]  ✅ BUILT (2026-06-14) — pentatonic
 
 - **Region / cluster:** Stone Chorus Canyon / shape · **Palette:** pentatonic *(only C-major & A-minor families stand cleanly — enough to teach, thin for variety; blooms to F/G-maj, D/E-min after `two-new-colors`)* · **Prereqs:** garden-basics, twin-blooms · **Build:** now (extends the intro Tower mechanic + stability preview).
 - **Fantasy:** "Raise towers that hold the canyon together." Stable 3-note shapes power bridges & mechanisms.
@@ -144,19 +149,21 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 - **New systems:** stability preview / "stands vs wobbles" meter; chord-completion challenges; structure collection display.
 - **Ramp shape:** one tower → complete a tower → a specific supporting tower → compare stand vs wobble → two *distinct* towers → repair a wobble → stamp/reuse a tower → a sequence of towers.
 
+*As built (2026-06-14) — 2nd Stone Chorus Canyon package (grows **Geo** 🔸→🔶); builds on the intro's tower mechanic with completion / recognition / repair / **reuse**:*
+
 | # | Level *(pattern · success · stage)* | Goal |
 |---|---|---|
-| 1 | Raise the First Tower *(build_constraint · targeted · teach)* | build any standing 3-stack |
-| 2 | Missing Stone *(finish · targeted · teach)* | complete a tower with one note missing |
-| 3 | Bridge Support *(build_constraint · targeted · combine)* | build a tower that powers a bridge (specific stable shape, world consequence) |
-| 4 | Choose the Stronger Shape *(compare · targeted · recognize)* | hear several 3-note shapes, pick the one that *stands* (vs a wobbler) |
-| 5 | Twin Towers *(build_constraint · targeted · compound)* | build **two different** standing shapes *(near the pentatonic ceiling — hint "new colors coming")* |
-| 6 | Repair the Ruin *(repair · targeted · apply)* | fix a structure that wobbles too much |
-| 7 | Stamp the Strong Shape *(build_constraint · targeted · compound)* | use a crafted tower as a reusable stamp in the right place |
-| 8 | Canyon Resonance *(capstone · broad · capstone)* | build a *sequence* of standing structures across the field to wake the canyon |
+| 1 | Raise the First Tower *(build_constraint · targeted · teach)* | craft a standing 3-stack + hear it — `craftedTower` |
+| 2 | Missing Stone **[2 steps]** *(finish · targeted · teach)* | add the missing stone so the column stands — `colStands` |
+| 3 | Tower or Wobbler? *(compare · targeted · recognize)* | hear 3 three-note shapes, pick the one that stands (reuses `showPairChoices` w/ a "Shape" label) |
+| 4 | Twin Towers *(build_constraint · targeted · compound)* | stand **two** different towers — `twinTowersCount()` accepts CRAFTED *or* PLACED standing columns, keyed by actual notes (placement-consistent with L2/L5/L7; offs would collide C-maj/A-min) |
+| 5 | Repair the Ruin **[2 steps]** *(repair · targeted · apply)* | move the crammed stone so a wobbler stands — `colStands` |
+| 6 | Stamp the Strong Shape *(build_constraint · targeted · apply)* | craft a tower, then **stamp** it onto the field (toolbox reuse) |
+| 7 | Canyon Resonance *(capstone · targeted · capstone)* | stand 3+ towers across the field, loop & ring them — `countColStands>=3` |
+| 8 | Free Towers 🏛️ *(— · none · finale)* | free-build sandbox → completion congrats |
 
-- **Quest:** *The Broken Causeway* — canyon bridges powered by stable structures. **Sandbox:** stable-tower collection, richer chord stamps, structure decor; prompt cards (strong / grounded / supportive / rising).
-- **Palette flag:** Twin Towers is deliberately at the pentatonic limit (~2 clean triads); it's the natural on-ramp to wanting `two-new-colors`.
+- **Mechanic:** the intro's Fuse → tower/wobbler (`stableMidis`); new `colStands(c)`/`countColStands()` classify *placed* 3-note columns; `ev.towerSigs` tracks distinct towers crafted this stage; `showPairChoices` gained a `label` param (chord compare). Uses the new **repeatable stamping** for the placement levels. **Prereqs:** intro, twin-blooms.
+- **Note:** pentatonic actually offers more than 2 standing shapes (C-maj & A-min triads *plus* quartal/6th stacks like D-G-C), so "two different towers" is comfortable. The major/minor *flavor* distinction is saved for a later package.
 
 ---
 
