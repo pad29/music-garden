@@ -203,6 +203,16 @@
   .densitymeter .dmtrack{ height:7px; border-radius:5px; background:rgba(0,0,0,.3); overflow:hidden; margin-bottom:4px; }
   .densitymeter .dmfill{ height:100%; width:0; background:linear-gradient(90deg,var(--accent2),#ff9a5b); transition:width .25s; }
   .densitymeter .dmlabel{ opacity:.75; }
+  /* Two New Colors: a not-yet-discovered note row is shown as a visible "locked" row (striped), not invisible */
+  .cell.lockednote{ background:repeating-linear-gradient(45deg,#3a3070,#3a3070 5px,#2b2356 5px,#2b2356 10px);
+    opacity:.85; cursor:not-allowed; box-shadow:inset 0 0 0 1px rgba(255,255,255,.07); }
+  .cell.lockednote:hover{ filter:none; }
+  .cell.newcolor:not(.on){ box-shadow:inset 0 0 0 2px rgba(255,120,200,.5); }   /* a freshly revealed note glows softly */
+  /* hover tooltip: the note's name appears when you pause on a cell (requirement #6 — names on hover) */
+  .notetip{ position:fixed; z-index:70; transform:translate(-50%,-100%);
+    background:#fff7c2; color:#1a1033; font-weight:700; font-size:.82rem;
+    padding:3px 9px; border-radius:8px; pointer-events:none; white-space:nowrap;
+    box-shadow:0 4px 14px rgba(0,0,0,.45); }
   .landingcard{ width:400px; max-width:92vw; text-align:center; padding:28px 24px;
     background:linear-gradient(165deg,#3d2c80,#241654); border:1px solid rgba(255,213,107,.4);
     box-shadow:0 0 50px rgba(0,0,0,.55); animation:pop .4s ease-out;}
@@ -441,14 +451,34 @@
 
 <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6/dist/amazon-cognito-identity.min.js"></script>
 <script>
-// ---------- Music model: pentatonic ladder = nothing can sound bad ----------
-const MIDI  = [81,79,76,74,72, 69,67,64,62,60];   // A5..C4 (top->bottom)
-const NAMES = ["A5","G5","E5","D5","C5","A4","G4","E4","D4","C4"];
-const TONIC_PC = 0;
-let COLS = 16; const ROWS = MIDI.length;
+// ---------- Music model: palettes (per-package pitch sets) ----------
+// Palette is per-package/level, NOT a global mode (DESIGN §11 "Palette-system architecture").
+// The physics (isTonic/stableMidis/chordName/intervalName) already reason in real semitones (MIDI[r]%12),
+// so widening the palette is just swapping these arrays + rebuilding the grid — no physics changes.
+const PALETTES = {
+  // today's world — 10 rows, C D E G A across two octaves (A5..C4). The "can't-sound-bad" default.
+  pentatonic: { id:"pentatonic", name:"Pentatonic", tonicPC:0,
+    MIDI:[81,79,76,74,72, 69,67,64,62,60],
+    NAMES:["A5","G5","E5","D5","C5","A4","G4","E4","D4","C4"] },
+  // widened world — 14 rows, full C major (adds F & B), two octaves (B5..C4). Unlocks real triads/cadence/tension.
+  diatonic: { id:"diatonic", name:"Diatonic", tonicPC:0,
+    MIDI:[83,81,79,77,76,74,72, 71,69,67,65,64,62,60],
+    NAMES:["B5","A5","G5","F5","E5","D5","C5","B4","A4","G4","F4","E4","D4","C4"] },
+};
+let paletteId="pentatonic";
+let MIDI  = PALETTES.pentatonic.MIDI;     // current-palette pitch set (top→bottom); reassigned by setPalette()
+let NAMES = PALETTES.pentatonic.NAMES;
+let TONIC_PC = PALETTES.pentatonic.tonicPC;
+let COLS = 16, ROWS = MIDI.length;        // ROWS is now palette-derived (was const) — future vertical expansion = a palette change
 const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
 const isTonic = r => MIDI[r]%12===TONIC_PC;
 let grid = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+// swap the active palette and rebuild the grid; no-op if already active (so it's cheap to call on every level entry)
+function setPalette(id){ const p=PALETTES[id]||PALETTES.pentatonic;
+  if(p.id===paletteId) return;
+  paletteId=p.id; MIDI=p.MIDI; NAMES=p.NAMES; TONIC_PC=p.tonicPC; ROWS=MIDI.length;
+  grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  buildGrid(); }
 
 // ---------- Tools: defined by ladder-step offsets from the bottom note ----------
 // pair => [0,g]; chord => [0,g1,g1+g2]. Staying on ladder keeps everything consonant.
@@ -638,13 +668,26 @@ function buildGrid(){
     for(let c=0;c<COLS;c++){
       const el=document.createElement("div");
       el.className="cell"+(isTonic(r)?" tonicRow":"")+(grid[r][c]?" on":"");
-      el.title=NAMES[r];
+      el.dataset.note=NOTE_NAMES[((MIDI[r]%12)+12)%12];   // letter name for the hover tooltip (no octave clutter)
       el.addEventListener("mousedown",()=>cellClick(r,c,el));
       gridEl.appendChild(el); cells[r][c]=el;
     }
   }
 }
 buildGrid();
+// ---- hover tooltip: show a cell's note name only after the cursor pauses on it (requirement #6) ----
+let noteTipEl=null, noteTipTimer=null;
+function hideNoteTip(){ if(noteTipTimer){ clearTimeout(noteTipTimer); noteTipTimer=null; }
+  if(noteTipEl){ noteTipEl.remove(); noteTipEl=null; } }
+gridEl.addEventListener("mouseover",e=>{ const cell=e.target.closest(".cell"); if(!cell||!cell.dataset.note){ hideNoteTip(); return; }
+  hideNoteTip();                                                              // entering a (new) cell: clear any tip/timer
+  noteTipTimer=setTimeout(()=>{                                               // ~450ms pause → name appears (not while sweeping across)
+    const b=cell.getBoundingClientRect();
+    noteTipEl=document.createElement("div"); noteTipEl.className="notetip"; noteTipEl.textContent=cell.dataset.note;
+    noteTipEl.style.left=(b.left+b.width/2)+"px"; noteTipEl.style.top=(b.top-6)+"px";
+    document.body.appendChild(noteTipEl); }, 450); });
+gridEl.addEventListener("mouseleave",hideNoteTip);                            // left the field entirely
+scroller.addEventListener("scroll",hideNoteTip);                              // don't leave a stale tip when the field scrolls
 function addColumns(n){ for(let r=0;r<ROWS;r++) for(let k=0;k<n;k++) grid[r].push(false);
   for(let d=0;d<DRUMS.length;d++) for(let k=0;k<n;k++) drumG[d].push(false);
   COLS+=n; buildGrid(); buildDrums(); }
@@ -664,7 +707,8 @@ function settle(){ document.body.classList.add("settle");
 // ---------- Interaction: plant / fuse / stamp ----------
 let craftMode=false, craftSel=[];
 function cellClick(r,c,el){
-  initAudio(); actx.resume();
+  initAudio(); actx.resume(); hideNoteTip();
+  if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
   if(activeTool){ stampTool(r,c); return; }
   if(craftMode){ pickForFuse(r,c,el); return; }
   setCell(r,c,!grid[r][c]);
@@ -945,6 +989,44 @@ function pickPatternChoice(i){ if(!choiceOpts) return; wipeDrums();
     setStatus(`Keep listening — hear all the patterns first (${left} to go).`); checkLevel(); return; }
   ev.choicePick=i; checkLevel();
   setStatus(i===choiceAnswer ? "✨ That's the one that breathes!" : "That one's crowded — find the pattern with room to breathe."); }
+
+// ---------- Two New Colors: staged reveal of F then B on the diatonic grid (palette milestone) ----------
+// On a diatonic palette, F (pc 5) and B (pc 11) are the "new colors". A level reveals a subset; the rest stay
+// dimmed & locked (un-clickable) so the one-at-a-time reveal feels physical without needing a third palette.
+const NEW_PC = { F:5, B:11 };
+let revealedPCs = null;   // null = no restriction (all notes free); otherwise a Set of new-note pitch-classes that ARE revealed
+function setColorReveal(list){   // list e.g. ["F"] or ["F","B"]; null/undefined removes all locks
+  revealedPCs = list ? new Set(list.map(n=>NEW_PC[n])) : null;
+  applyColorLocks(); }
+function isLockedRow(r){ if(!revealedPCs) return false; const pc=((MIDI[r]%12)+12)%12;
+  return (pc===NEW_PC.F || pc===NEW_PC.B) && !revealedPCs.has(pc); }   // a new note that hasn't been revealed yet
+function applyColorLocks(){ for(let r=0;r<ROWS;r++){ const locked=isLockedRow(r);
+  const pc=((MIDI[r]%12)+12)%12;
+  const justRevealed = !!revealedPCs && (pc===NEW_PC.F||pc===NEW_PC.B) && revealedPCs.has(pc);
+  for(let c=0;c<COLS;c++){ const el=cells[r]&&cells[r][c]; if(!el) continue;
+    el.classList.toggle("lockednote", locked);
+    el.classList.toggle("newcolor", justRevealed); } } }
+// goal helpers: did the player PLACE a given pitch-class on the grid?
+function placedPC(pc){ for(let r=0;r<ROWS;r++) if(((MIDI[r]%12)+12)%12===pc) for(let c=0;c<COLS;c++) if(grid[r][c]) return true; return false; }
+const placedF = () => placedPC(NEW_PC.F);
+const placedB = () => placedPC(NEW_PC.B);
+const placedNewColor = () => placedF() || placedB();
+// a column whose 3 notes form a standing triad that USES F or B (impossible in pentatonic — the payoff of widening)
+function colStandsWithNew(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+  if(rows.length!==3) return false; const ms=rows.map(r=>MIDI[r]).sort((a,b)=>a-b);
+  const usesNew = rows.some(r=>{ const pc=((MIDI[r]%12)+12)%12; return pc===NEW_PC.F||pc===NEW_PC.B; });
+  return usesNew && stableMidis(ms); }
+const countColStandsWithNew = () => { let n=0; for(let c=0;c<COLS;c++) if(colStandsWithNew(c)) n++; return n; };
+// L5: a B immediately followed (next column) by a C — the leading-tone pull resolving up to home
+function bThenC(){ for(let c=0;c<COLS-1;c++){
+  let hasB=false; for(let r=0;r<ROWS;r++) if(grid[r][c] && ((MIDI[r]%12)+12)%12===NEW_PC.B) hasB=true;
+  if(!hasB) continue;
+  for(let r=0;r<ROWS;r++) if(grid[r][c+1] && ((MIDI[r]%12)+12)%12===0) return true;   // C in the very next column
+} return false; }
+// L6: this stage crafted a standing triad (tower) that uses a new color — read ev.towerSigs (midi-note signatures)
+function craftedNewTriad(){ return (ev.towerSigs||[]).some(sig=>{
+  const ms=sig.split("-").map(Number); if(ms.length!==3) return false;
+  return ms.some(m=>{ const pc=((m%12)+12)%12; return pc===NEW_PC.F||pc===NEW_PC.B; }); }); }
 // drum version of the compare picker: options are kick-step patterns, played on the kick lane
 function showDrumChoices(opts,answer){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
   const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
@@ -1027,7 +1109,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
  {name:"Wake the Seeds", arc:0, hint:()=>hintMelody(),
   power:{em:"🎤",name:"Voice",line:"You can make the garden sing."},
   intent:"Can you make the flowers bloom in a gentle line?",
-  intro:"The garden is asleep 🌙 — wake it! Click squares to plant singing seeds — up = higher, across = time — then press ▶ and hear the first flowers wake.",
+  intro:"The garden is asleep 🌙 — wake it! Click squares to plant singing seeds — up = higher, across = time — then press ▶ and hear the first flowers wake. (Tip: pause your cursor over any square to see its note name.)",
   goals:[{id:"p3",label:"Wake 3 sleeping seeds",chk:s=>s.placed>=3},
          {id:"pl",label:"Press ▶ to hear your garden",play:true}]},
  {name:"Find Home", arc:0, hint:()=>hintMelody(),
@@ -1611,6 +1693,59 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   power:{em:"🦌",name:"Free Air",line:"This breathing grove is yours to fill — or leave open."},
   intro:"The grove breathes on its own now 🍃. This place is yours — make any rhythm you like, crowded or airy, with melody on top, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
+]},
+"two-new-colors":{ id:"two-new-colors", name:"🌈 Two New Colors", topic:"palette-diatonic", region:"color-spring",
+  palette:"diatonic", desc:"The world discovers two new colors — F, then B. Your garden widens to the full scale.",
+  requires:["standing-towers"], version:1, author:"official", levels:[
+ {name:"A Hint of More", colors:[], unlock:["jam"], hint:()=>setMelody([[6,0],[5,2],[4,4],[2,6]]),
+  power:{em:"👂",name:"Wider Ears",line:"You can hear there's more color in the world than you can plant — yet."},
+  intro:"Something new is stirring 🌈. Call the 🎸 band and listen — there are colors in its song your garden can't grow yet (the dim, locked rows). Plant a few of your own notes along to it, then press ▶. Soon you'll find those colors.",
+  goals:[{id:"jam",label:"Turn on 🎸 Jam and hear the hidden colors",chk:(s,e)=>e.jammed},
+         {id:"tap",label:"Plant a few notes along with it (3+)",chk:s=>s.placed>=3}]},
+ {name:"The First Color — F", colors:["F"],
+  power:{em:"🪻",name:"F",line:"You found the first new color — F."},
+  hint:()=>setMelody([[4,0],[3,1],[2,2]]),
+  intro:"A new color woke up 🪻 — meet F! It glows between E and G (it was locked before). Plant an F note somewhere, then press ▶ to hear how it fills a gap the old garden couldn't.",
+  goals:[{id:"f",label:"Plant the new note F (the glowing row)",chk:()=>placedF()},
+         {id:"pl",label:"Press ▶ to hear F sing",play:true}]},
+ {name:"Sing with F", colors:["F"],
+  power:{em:"🎶",name:"Fuller Voice",line:"You can weave the new color into a melody that comes home."},
+  hint:()=>setMelody([[4,0],[3,1],[2,2],[3,4],[4,6],[6,8]]),
+  intro:"Now use F in a real tune 🎶. Make a melody that includes at least one F and brings it HOME (end on a glowing C row). Then press ▶.",
+  goals:[{id:"f",label:"Use F in your melody",chk:()=>placedF()},
+         {id:"home",label:"End on HOME (a C row)",chk:s=>s.home},
+         {id:"n",label:"At least 4 notes",chk:s=>s.placed>=4},
+         {id:"pl",label:"Press ▶ to hear it",play:true}]},
+ {name:"The Second Color — B", colors:["F","B"],
+  power:{em:"🌹",name:"B",line:"You found the second new color — B."},
+  hint:()=>setMelody([[7,0],[6,1]]),
+  intro:"One more color opens 🌹 — meet B! It sits just below C, at the very top of each octave. Plant a B note, then press ▶. Notice how it leans, wanting to rise to C…",
+  goals:[{id:"b",label:"Plant the new note B (the glowing row)",chk:()=>placedB()},
+         {id:"pl",label:"Press ▶ to hear B lean",play:true}]},
+ {name:"The Pull Home (B→C)", colors:["F","B"],
+  power:{em:"🧲",name:"Leading Tone",line:"You can use B's pull to land powerfully on home."},
+  hint:()=>setMelody([[2,0],[1,1],[0,2],[6,3]]),
+  intro:"B has a secret 🧲 — it badly wants to climb the tiny last step UP to C (home). End your melody with a B going straight up to a C right after it. Feel the pull resolve. Then press ▶.",
+  goals:[{id:"bc",label:"Place a B with a C right after it (B→C)",chk:()=>bThenC()},
+         {id:"pl",label:"Press ▶ to feel the pull home",play:true}]},
+ {name:"A Brand-New Tower", colors:["F","B"], unlock:["fuse"],
+  power:{em:"🏛️",name:"New Harmony",line:"You can build towers the old garden never could."},
+  hint:()=>hintSeeds([[3,4],[1,4],[6,4]]),
+  intro:"The new colors unlock new TOWERS 🏛️. Stack three spread-apart seeds in one column using at least one new color (F or B), then 🔨 Fuse — a chord that was impossible before now stands. Then click it to hear it.",
+  goals:[{id:"t",label:"Build a standing tower that uses F or B",chk:()=>craftedNewTriad()},
+         {id:"h",label:"Click your new tower to hear it",chk:(s,e)=>e.previewedTower}]},
+ {name:"The Whole Scale", colors:["F","B"], loop:true, intent:"How does the fuller garden feel?",
+  power:{em:"🌈",name:"Full Color",line:"You can sing with every color the garden knows."},
+  hint:()=>setMelody([[6,0],[5,1],[4,2],[3,3],[2,4],[1,5],[0,6],[6,7]]),
+  intro:"Your whole garden is awake now 🌈 — all seven colors, C through B. Make a melody that climbs through the new notes and comes HOME. Use at least one F and one B, end on C. Then press ▶.",
+  goals:[{id:"f",label:"Use F",chk:()=>placedF()},
+         {id:"b",label:"Use B",chk:()=>placedB()},
+         {id:"home",label:"End on HOME (a C row)",chk:s=>s.home},
+         {id:"pl",label:"Press ▶ to hear the full scale",play:true}]},
+ {name:"Free Colors 🌈", loop:true, hint:()=>setMelody([[6,0],[3,2],[0,4],[6,6]]),
+  power:{em:"💎",name:"Free Colors",line:"The full-color spring is yours to explore."},
+  intro:"The Color Spring is in full bloom 🌈. Every color is yours now — F and B included. Make anything you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
 ]} };
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
@@ -1630,7 +1765,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false);   // drop any contour/pulse/phrase-package UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null);   // drop any contour/pulse/phrase/density/color-reveal UI
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitFuse();
@@ -1639,6 +1774,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
 }
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
   const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
+  setPalette(PACKAGES[currentPkg].palette || L.palette || "pentatonic");   // swap pitch set + rebuild grid (per-package palette)
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
   jamBtn.style.display=U.has("jam")?"":"none"; grooveEl.style.display=U.has("jam")?"":"none";
   craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
@@ -1683,6 +1819,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   if(phraseOn && COLS>16) removeColumns(COLS-16);                        // Q&A assumes a single 16-col bar (call 0–7 / answer 8–15)
   setPhraseGuide(phraseOn);                                              // split the field into call / answer halves (Q&A package)
   setDensityMeter(!!(L.density || st.density));                          // airy↔crowded readout (Wind & Gaps package)
+  setColorReveal(st.colors || L.colors || null);                         // staged F/B reveal — lock undiscovered notes (Two New Colors)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
@@ -1814,6 +1951,7 @@ const REGIONS={
   "paths-of-song": { name:"Paths of Song", friend:{ name:"Flutter", stages:["🥚","🐛","🌿","🦋","🦋✨"] } },
   "pulse-woods":   { name:"Pulse Woods",   friend:{ name:"Hopper",  stages:["🥚","🟢","🐸","🐸✨","👑🐸"] } },
   "stone-chorus-canyon": { name:"Stone Chorus Canyon", friend:{ name:"Geo", stages:["🪨","🔸","🔶","💎","💎✨"] } },
+  "color-spring":  { name:"The Color Spring", friend:{ name:"Prism", stages:["🌫️","💧","🔷","🌈","🌈✨"] } },
 };
 const compoverlay=document.getElementById("compoverlay");
 const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
@@ -1824,6 +1962,7 @@ const REGION_MAP=[
   {id:"paths-of-song",       emoji:"🎶", name:"Paths of Song",       blurb:"Shape melodies that feel alive.",          color:"#9b8cff"},
   {id:"pulse-woods",         emoji:"🥁", name:"Pulse Woods",         blurb:"Make the forest walk, march, and dance.",  color:"#ffb46b"},
   {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0"},
+  {id:"color-spring",        emoji:"🌈", name:"The Color Spring",      blurb:"Discover two new colors — the world widens.", color:"#ff7ac8"},
   {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff", soon:true},
 ];
 // arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
@@ -1990,6 +2129,7 @@ function pkgProg(id){ return progress.packages[id] || (progress.packages[id]={ l
 function saveProgress(){ progress.current=currentPkg; const pp=pkgProg(currentPkg);
   pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
   if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
+  if(currentPkg==="two-new-colors"){ progress.colors=["F","B"]; }   // persistent: the world has discovered F & B (future sandbox reads this)
   progress.toolbox=toolbox; progress.settings={voice:instrEl.value, tempo:+tempoEl.value, mix:mix};
   progress.updatedAt=Date.now();
   Store.set("progress", progress); scheduleCloud(); }
@@ -1999,9 +2139,12 @@ const saveBtn=document.getElementById("save"), shareBtn=document.getElementById(
 function currentSong(){
   const notes=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(grid[r][c]) notes.push([r,c]);
   const drums=[]; for(let d=0;d<DRUMS.length;d++) for(let c=0;c<16;c++) if(drumG[d][c]) drums.push([d,c]);
-  return {v:1,cols:COLS,notes,drums,groove:grooveIdx,tempo:+tempoEl.value,voice:instrEl.value};
+  // v2: tag the palette so a creation reopens in the right pitch set (notes are still palette-relative row indices —
+  // the durable pitch-based redesign is deferred; see DESIGN §11). Absent palette ⇒ pentatonic (back-compat).
+  return {v:2,palette:paletteId,cols:COLS,notes,drums,groove:grooveIdx,tempo:+tempoEl.value,voice:instrEl.value};
 }
 function applySong(s){
+  setPalette(s.palette||"pentatonic");   // v2 palette tag; older saves/links have none ⇒ pentatonic
   COLS=Math.max(16,s.cols||16); grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   (s.notes||[]).forEach(([r,c])=>{ if(r>=0&&r<ROWS&&c>=0&&c<COLS) grid[r][c]=true; });
   buildGrid();
@@ -2181,7 +2324,7 @@ async function submitAuth(mode,username,password,email,msg){
   catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
 
 // ---------- Living garden: per-note flowers bloom on play, bouquets for chords, a growing flower bed ----------
-const NOTE_FLOWER={0:"🌸",2:"🌼",4:"🌷",7:"🌻",9:"🌺"};      // C D E G A — one flower per note (→ 12 later)
+const NOTE_FLOWER={0:"🌸",2:"🌼",4:"🌷",5:"🪻",7:"🌻",9:"🌺",11:"🌹"};   // C D E F G A B — one flower per note (F & B are the diatonic "new colors")
 const noteFlower=r=>NOTE_FLOWER[((MIDI[r]%12)+12)%12]||"🌷";
 const colFlower=c=>{ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
   return rows.length===0?null : rows.length>=2?"💐" : noteFlower(rows[0]); };   // same flower the cell blooms

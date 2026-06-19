@@ -49,9 +49,10 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Data model**
-- `MIDI` / `NAMES` — the pentatonic pitch set (C D E G A across octaves). The engine reasons in **real semitones**, even though the player thinks in even "ladder steps" (see the architectural note in `DESIGN.md` §7).
-- `PACKAGES = { <id>: { id, name, region, requires:[…], levels:[…] } }` — the flat catalog keyed by **stable slug IDs**; dependencies form a DAG via `requires`. Currently holds `intro`, `follow-the-fireflies`, `footsteps`.
-- A **level** is a data object: `{ name, intro, goals:[{id,label,chk,play}], hint, setup, power, … }`. Multi-step levels use `steps:[…]`. Levels can carry flags like `contour`, `beatGuide`, `rhythm`, `drums`, `unlock:[…]`, `loop`.
+- `PALETTES` / `setPalette()` — the per-package pitch sets. `pentatonic` (10 rows: C D E G A) is the default; `diatonic` (14 rows: adds F & B) is the widened world from the `two-new-colors` milestone. A package declares `palette:"diatonic"`; `setPalette` swaps the active `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid on entry. The physics reason in **real semitones**, so they work for any palette unchanged (see `DESIGN.md` §11 "Palette-system architecture").
+- `MIDI` / `NAMES` — the **active** palette's pitch set (reassigned by `setPalette`). The player thinks in even "ladder steps" even though the rungs are uneven in semitones (see `DESIGN.md` §7).
+- `PACKAGES = { <id>: { id, name, region, requires:[…], palette?, levels:[…] } }` — the flat catalog keyed by **stable slug IDs**; dependencies form a DAG via `requires`. An optional `palette` widens that package's pitch set.
+- A **level** is a data object: `{ name, intro, goals:[{id,label,chk,play}], hint, setup, power, … }`. Multi-step levels use `steps:[…]`. Levels can carry flags like `contour`, `beatGuide`, `phrase`, `density`, `colors:[…]` (staged F/B reveal), `rhythm`, `drums`, `unlock:[…]`, `loop`.
 - `REGIONS = { <id>: { name, friend:{name,stages} } }` — per-region companion creatures.
 
 **Engine**
@@ -79,7 +80,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **Hidden curriculum, visible powers.** Internally a theory DAG; to the player it's regions, powers, and discoveries — never "scales-7." (`DESIGN.md` §2b.)
 - **The difficulty-ramp doctrine** (`PACKAGES-DETAILED.md` §0): every ~8-level package escalates — teach the atoms → combine → apply/repair → recognize/compare → a harder *compound* challenge → an integrative capstone — and ends with an **optional free-play finale** that fires the completion congrats. Tolerances tighten as levels climb.
 - **Success logic per level:** `broad` by default (many valid answers — expression leakage is good), `targeted` for the structural middle, `exact` almost never (echo/ear-training only). No quizzes.
-- **Palette staging:** the engine is **pentatonic** today (can't-sound-bad). Harmony/function/modes need a future **`two-new-colors`** milestone that progressively widens to diatonic (add F, then B). Melody & rhythm packages ship on the current engine; cadence-style packages are gated. (`PACKAGES.md` §1a.)
+- **Palette staging:** the engine is **per-palette** — pentatonic (10 rows: C D E G A) is the default; the **`two-new-colors` milestone** widens to **diatonic** (14 rows, adds F then B). Palette is a per-package property (`PALETTES` table + `setPalette()` swaps the pitch set & rebuilds the grid); the physics already reason in real semitones so they need no change. Cadence-style packages are gated behind the diatonic milestone. (`PACKAGES.md` §1a; `DESIGN.md` §11.)
 - **IDs are stable slugs**, never positional codes — referenced by both `requires` and saved progress. Never renumber.
 - **Companions:** one friend per region; you pick a starter for the intro; each later region has its own creature that grows one stage per completed package. Players don't swap their main friend.
 
@@ -96,11 +97,13 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **`standing-towers`** (Stone Chorus Canyon, 9 levels) — **triads / stable shapes**: build, complete, recognize stand-vs-wobble, twin towers, repair, stamp/reuse, ring a canyon.
 - **`question-and-answer`** (Paths of Song, 9 levels) — phrase **open/closed**: a call/answer timeline split (cols 0–7 = call, 8–15 = answer); reply → recognize the closed ending → land home → mirror the call → same-thought-new-ending → calm vs. bold answers → repair an open answer → compose both halves.
 - **`wind-and-gaps`** (Pulse Woods, 9 levels) — rhythmic **density / rests** (R2-lite): open a crowded beat → build sparse → trim an overfilled groove → compare densities → groove-from-gaps (syncopation) → tiptoe sparse → crowded→improved → breathing pulse+melody capstone. Adds a live density meter.
+- **`two-new-colors`** ★ milestone (The Color Spring, 9 levels) — the **pentatonic→diatonic** widening: a per-palette engine (`PALETTES` + `setPalette`) widens the grid to 14 rows; the package reveals **F then B** one at a time (locked rows un-dim), teaches the leading-tone pull (B→C), and builds chords impossible before. Companion: Prism 🌈. *(Diatonic creations aren't shareable yet — save/share redesign is deferred; see `DESIGN.md` §11.)*
 - **Platform:** profiles + progress persistence (local-first, `Store` seam); **AWS backend deployed** (Cognito username+password, no email required; per-user progress on DynamoDB); 🗺️ Home **world map** (regions + companions + lock state from the DAG); landing/welcome screen; Save/Share via `#s=` links; 🎚️ Mixer.
 
 **Next up (build order, per `PACKAGES-DETAILED.md`):**
-1. **`two-new-colors` milestone** — the pentatonic→diatonic widening (engine work; also resolves the tool-transposition model)
-2. `ways-home` — cadence strength (requires the diatonic milestone; grades the same open/closed seam by *degree*)
+1. `ways-home` — cadence strength (now unblocked by the diatonic milestone; grades the open/closed seam by *degree*)
+2. The rest of Regions 4–7 (harmony, function, color, weaving) — all now unblocked by diatonic
+3. Save/Share redesign (dedicated sandbox + backend + palette-aware; diatonic sharing depends on it)
 
 The bigger long-term threads (logged in `DESIGN.md` §12): a player-facing **world-map UI**, a **collection/menagerie view** for companions, living-world visuals, the **bars & plots** duration editor, multi-voice arrangement, and the Styles/Eras "Atlas of Styles."
 

@@ -256,9 +256,9 @@ Buildable on today's engine (pentatonic + small additions), in suggested order �
 6. **question-and-answer** ✅ (phrase Q&A) — built (added the phrase A/B timeline split)
 7. **wind-and-gaps** ✅ (rests, R2-lite) — built (density eval on the drum grid + density meter)
 
-Then, after the **`two-new-colors`** milestone (diatonic widening):
+Then, after the **`two-new-colors`** milestone (diatonic widening) — **BUILT ✅ 2026-06-18** (palette system: `PALETTES` + `setPalette` swaps pitch set/grid per package; diatonic = 14 rows + F/B; staged reveal via per-level row-locking; sets persistent `progress.colors`):
 
-8. **ways-home** (cadence strength) — closure-strength evaluation
+8. **ways-home** (cadence strength) — closure-strength evaluation. **Now unblocked** by the diatonic milestone; reuses the `question-and-answer` phrase A/B split, graded by degree.
 
 DAG (per PACKAGES.md): garden-basics → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps, twin-blooms → standing-towers}; (question-and-answer + standing-towers + two-new-colors) → ways-home.
 

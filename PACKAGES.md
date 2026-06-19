@@ -36,6 +36,8 @@ The engine today is **pentatonic-only** (C D E G A — no F, no B). That is the 
 - **Phase 2 — Guided exposure (`two-new-colors`):** unlock the new notes **one at a time — F first, then B** — each framed as "a new color the world discovered," can't-sound-bad rails still on.
 - **Phase 3 — Free diatonic:** all 7 notes freely placeable.
 
+> **Engine architecture for this — RESOLVED 2026-06-18 (see DESIGN §11 "Palette-system architecture").** Palette is **per-package/per-level** via a `PALETTES` table (the engine swaps the active `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` + rebuilds the grid on entry); pentatonic packages stay on the 10-row world untouched, diatonic packages get a 14-row world (F between E–G, B between A–C). The physics (`isTonic`/`stableMidis`/`chordName`/`intervalName`) already reason in real semitones, so they need no change. Two palettes only — the F-then-B reveal is staged through level design + per-level row-dimming, not a third palette; a persistent `progress.colors` flag remembers discovered notes. No active rails (dissonance is the lesson). **Save/share does not support diatonic yet** (it stores palette-relative row indices) — see the deferred redesign in DESIGN §11/§12.
+
 **Tool-transposition fork — RESOLVED as a phased hybrid** (was DESIGN §11's open "big one"):
 - *Pentatonic + early diatonic →* **shape-based** stamping (current model; always in key; best for exploration/intuition).
 - *Mid-diatonic →* add a **soft per-tool toggle** — *"keep this sound"* vs *"adapt to place"* (no theory terms exposed; default stays shape-based).
@@ -268,13 +270,14 @@ Tag every rhythm-touching package with the tier it needs.
 
 ### ★ MILESTONE
 
-#### `two-new-colors` — Two New Colors  [palette milestone]
+#### `two-new-colors` — Two New Colors  [palette milestone]  — **BUILT ✅ (2026-06-18)**
 - **Capability:** the world gains two new notes — **F first, then B** (the full major scale opens) — via a progressive reveal (§1a Phase 2).
-- **Theory:** diatonic scale; the 4th, then the leading tone. **Palette:** pentatonic → **diatonic** (staged). **Prereqs:** standing-towers (and ideally the Wave-A melody set).
+- **Theory:** diatonic scale; the 4th, then the leading tone. **Palette:** pentatonic → **diatonic** (staged). **Prereqs:** standing-towers.
 - **Patterns:** discover, match_feel, transform. **Success:** broad.
-- **Quest:** *(diegetic)* — hidden doors/seasons open only once the player finds each "missing color."
-- **Sandbox:** each new note becomes placeable across unlocked tools **as it is revealed** (not all at once).
-- **System needs (L):** **engine work** — widen `MIDI`/scale arrays behind a **staged gate** (hidden-color → F → B → free), apply the **phased hybrid transposition** (§1a; shape-based default, soft "keep this sound" toggle mid-diatonic), keep can't-sound-bad rails (constrain to diatonic; new notes as gentle color first). The pivotal mid-term build.
+- **Quest:** *(diegetic)* — the new "Color Spring" region; the world widens as each color is found.
+- **Sandbox:** each new note becomes placeable as it is revealed (locked rows un-dim one at a time).
+- **System needs (L) — built:** the **palette system** (§1a engine note) — a `PALETTES` table + `setPalette()` that swaps `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid per-package; the package runs on the new **14-row `diatonic`** palette. The staged gate is done via **per-level row-locking** (`colors:["F"]` → `["F","B"]`; `setColorReveal`/`isLockedRow` dim & block undiscovered notes) rather than a third palette. Detectors: `placedF`/`placedB`, `bThenC` (leading-tone pull), `craftedNewTriad` (a standing tower using F or B). Sets a persistent `progress.colors=["F","B"]` on completion (future sandbox reads it). The **phased transposition toggle is deferred** (shape-based default works unchanged on the diatonic grid); **no active rails** (dissonance is the lesson). Save/share does NOT support diatonic yet (see DESIGN §11/§12).
+- **9 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
 - **Why:** unblocks Regions 4–7. Framed as wonder, introduced one note at a time so intuition never breaks.
 
 ### REGION 4 — Weather of Wanting  *(cluster: flow/home · diatonic)*
