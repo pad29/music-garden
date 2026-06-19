@@ -191,6 +191,13 @@
   #choiceRow{ margin:-2px 0 12px;}
   .cell.beatcol{ box-shadow:inset 3px 0 0 rgba(124,240,208,.55); }
   .cell.beatcol.on{ box-shadow:0 0 14px var(--accent), inset 3px 0 0 rgba(124,240,208,.55); }
+  /* Question & Answer phrase split: left = the call (dim), right = your answer (bright); home rows glow through both */
+  .cell.callcol:not(.on){ background:#241654; }
+  .cell.callcol.tonicRow:not(.on){ background:#3c2a73; }
+  .cell.answercol:not(.on){ background:#473596; }
+  .cell.answercol.tonicRow:not(.on){ background:#6a4fc0; }
+  .cell.answercol.answeredge{ box-shadow:inset 4px 0 0 rgba(255,213,107,.6); }
+  .cell.answercol.answeredge.on{ box-shadow:0 0 14px var(--accent), inset 4px 0 0 rgba(255,213,107,.6); }
   .landingcard{ width:400px; max-width:92vw; text-align:center; padding:28px 24px;
     background:linear-gradient(165deg,#3d2c80,#241654); border:1px solid rgba(255,213,107,.4);
     box-shadow:0 0 50px rgba(0,0,0,.55); animation:pop .4s ease-out;}
@@ -239,7 +246,7 @@
 </style>
 </head>
 <body>
-  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to level: <select id="devjump"></select></div>
+  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select></div>
   <div id="sidetools">
     <button id="home" title="Home / packages">🏡</button>
     <button id="mixer" title="Mix / volume">🎚️</button>
@@ -859,11 +866,11 @@ function drawContourGhost(type){ const svg=document.getElementById("contourGhost
 const clearContourGhost=()=>drawContourGhost(null);
 // "choose the matching path" levels (the `compare` pattern)
 let choiceOpts=null, choiceAnswer=-1, choiceViewed=[];
-function showChoices(opts,answer){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+function showChoices(opts,answer,prompt){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
   const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
   opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
     b.textContent="🎵 Path "+String.fromCharCode(65+i); b.onclick=()=>pickChoice(i); row.appendChild(b); });
-  setStatus("Tap each path to hear and see it — listen to <b>all three</b> first, then choose the one that traces the glowing arc."); }
+  setStatus(prompt||"Tap each path to hear and see it — listen to <b>all three</b> first, then choose the one that traces the glowing arc."); }
 function hideChoices(){ const row=document.getElementById("choiceRow"); if(row){ row.style.display="none"; row.innerHTML=""; } choiceOpts=null; choiceAnswer=-1; choiceViewed=[]; }
 function pickChoice(i){ if(!choiceOpts) return; wipe();
   placeTune(choiceOpts[i].map((r,c)=>[r,c]));
@@ -922,6 +929,44 @@ function pickPairChoice(i){ if(!choiceOpts) return; wipe();
     setStatus(`Keep listening — hear all of them first (${left} to go).`); checkLevel(); return; }
   ev.choicePick=i; checkLevel();
   setStatus(i===choiceAnswer ? "✨ That's the one!" : "Not that one — listen again."); }
+
+// ---------- Question & Answer: phrase A (call) / phrase B (answer) split (package PS-3) ----------
+// The field splits in two: cols 0–7 = the CALL (phrase A), cols 8–15 = your ANSWER (phrase B).
+// "open" = a phrase ends AWAY from HOME (a question); "closed" = it lands on HOME/tonic (an answer).
+// Reuses the intro's home/tonic concept — no new pitch system, just a timeline boundary.
+const PHRASE_SPLIT = 8;
+function setPhraseGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const el=cells[r]&&cells[r][c]; if(!el) continue;
+  el.classList.toggle("callcol",   !!on && c<PHRASE_SPLIT);
+  el.classList.toggle("answercol", !!on && c>=PHRASE_SPLIT);
+  el.classList.toggle("answeredge",!!on && c===PHRASE_SPLIT); } }
+const curCall = () => curStage().call || [];
+function placeCall(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c<PHRASE_SPLIT) setCell(r,c,true); }); }   // pre-place the call in phrase A
+function placeAnswer(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c>=PHRASE_SPLIT&&c<COLS) setCell(r,c,true); }); checkLevel(); }  // worked-example answers (hints), leaves the call intact
+const playCall = () => playPhrase(curCall());
+// top-note height per occupied column, restricted to one half (like contourSeq)
+function halfSeq(lo,hi){ const seq=[]; for(let c=lo;c<hi;c++){ for(let r=0;r<ROWS;r++){ if(grid[r][c]){ seq.push((ROWS-1)-r); break; } } } return seq; }
+const answerSeq = () => halfSeq(PHRASE_SPLIT, COLS);
+const callSeq   = () => { const c=curCall().slice().sort((a,b)=>a[1]-b[1]); return c.map(([r])=>(ROWS-1)-r); };  // the displayed call's shape
+function lastColIn(lo,hi){ for(let c=hi-1;c>=lo;c--) if(colCount(c)>0) return c; return -1; }
+function colHome(c){ if(c<0) return false; for(let r=0;r<ROWS;r++) if(grid[r][c]&&isTonic(r)) return true; return false; }
+function countIn(lo,hi){ let n=0; for(let c=lo;c<hi;c++) n+=colCount(c); return n; }
+// answer-half (phrase B) readouts
+const answerCount   = () => countIn(PHRASE_SPLIT, COLS);
+const answerEndsHome= () => { const lc=lastColIn(PHRASE_SPLIT,COLS); return lc>=0 && colHome(lc); };   // closed
+const answerEndsOpen= () => { const lc=lastColIn(PHRASE_SPLIT,COLS); return lc>=0 && !colHome(lc); };  // open / hanging
+function answerMotions(){ const s=answerSeq(); const m=[]; for(let i=1;i<s.length;i++) m.push(Math.abs(s[i]-s[i-1])); return m; }
+const answerDir = () => { const s=answerSeq(); return s.length>=2?Math.sign(s[s.length-1]-s[0]):0; };
+const callDir   = () => { const s=callSeq();   return s.length>=2?Math.sign(s[s.length-1]-s[0]):0; };
+// L4: an answer that echoes the call's direction and then lands home
+const answerMirrorsCall = () => answerSeq().length>=3 && answerEndsHome() && (callDir()===0 || answerDir()===callDir());
+// L5: an answer that starts like the call's opening, but resolves home (same thought, new ending)
+const answerEchoesOpening = () => { const cs=callSeq(), as=answerSeq(); return cs.length>=1 && as.length>=3 && Math.abs(as[0]-cs[0])<=1 && answerEndsHome(); };
+// L6: two genuinely different closed answers — a calm (stepwise) one and a bold (leaping) one
+const answerCalm = () => { const m=answerMotions(); return answerSeq().length>=3 && m.length>0 && m.every(d=>d<=2) && answerEndsHome(); };
+const answerBold = () => { const m=answerMotions(); return answerSeq().length>=3 && m.filter(d=>d>=3).length>=1 && answerEndsHome(); };
+// L8 capstone: the player builds BOTH halves — an open call and a closed answer
+const callCount    = () => countIn(0, PHRASE_SPLIT);
+const callEndsOpen = () => { const lc=lastColIn(0,PHRASE_SPLIT); return lc>=0 && !colHome(lc); };
 
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
@@ -1388,6 +1433,69 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
  {name:"Free Towers 🏛️", loop:true, power:{em:"💎",name:"Free Towers",line:"This canyon of stone is yours to build."},
   intro:"The canyon stands tall 🏛️. This place is yours now — raise any towers you like, stamp and ring them, no goals, just build. Head 🏡 Home whenever you want a new world.",
   goals:[]},
+]},
+"question-and-answer":{ id:"question-and-answer", name:"💬 Question & Answer", topic:"phrase-form", region:"paths-of-song",
+  desc:"Answer the garden when it calls — make one phrase ask, and another reply.", requires:["intro","follow-the-fireflies"], version:1, author:"official", levels:[
+ {name:"The First Call", phrase:true, power:{em:"💬",name:"Reply",line:"You can answer when the garden calls."},
+  call:[[8,0],[7,1],[6,2],[7,3]],
+  hint:()=>placeAnswer([[7,8],[6,9],[5,10],[2,11]]),
+  intro:"A bird sings a little tune in the LEFT half (the call 💬). 🔊 Listen, then ANSWER it — plant a few seeds in the brighter RIGHT half (cols after the gold line). Anything that replies is welcome. Then press ▶.",
+  goals:[{id:"ans",label:"Plant an answer in the right half (3+ seeds)",chk:()=>answerCount()>=3},
+         {id:"pl",label:"Press ▶ to hear the call and your reply",play:true}]},
+ {name:"Open and Closed", power:{em:"🏁",name:"Closure Ear",line:"You can hear which ending truly answers."},
+  setup:()=>showChoices([[6,7,5,7,9],[9,7,5,3,1],[4,5,6,7,8]],0,
+    "A call is asking a question 💬. Two of these replies leave it hanging; one lands HOME and feels like a real answer. Tap each to hear all three, then pick the one that truly finishes."),
+  intro:"When does a reply feel FINISHED? 🏁 One of these endings lands HOME and settles; the others hang open, still asking. Hear all three, then pick the one that truly answers.",
+  goals:[{id:"pick",label:"Hear all three, then pick the ending that lands home",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Complete the Conversation", phrase:true, power:{em:"🏠",name:"Soft Close",line:"You can land a reply gently at home."},
+  call:[[8,0],[6,1],[7,2],[5,3]],
+  hint:()=>placeAnswer([[6,8],[7,9],[8,10],[9,11]]),
+  intro:"Now WRITE the answer. The call hangs open 💬 — reply in the right half and make your LAST seed land on a glowing HOME row 🏠 so the conversation feels complete. Then press ▶.",
+  goals:[{id:"home",label:"End your answer on a HOME row (a closed reply)",chk:()=>answerEndsHome()},
+         {id:"n",label:"Use at least 3 seeds in your answer",chk:()=>answerCount()>=3},
+         {id:"pl",label:"Press ▶ to hear the full conversation",play:true}]},
+ {name:"Bird Across the Canyon", phrase:true, power:{em:"🪞",name:"Echo Reply",line:"You can answer in a way that mirrors the call."},
+  call:[[9,0],[8,1],[7,2],[6,3]],
+  hint:()=>placeAnswer([[8,8],[7,9],[6,10],[4,11]]),
+  intro:"This bird's call CLIMBS up 🪞. Reply in the same spirit — let your answer move the SAME way the call does, then bring it HOME to close. Then press ▶.",
+  goals:[{id:"mirror",label:"Answer that follows the call's direction and lands home",chk:()=>answerMirrorsCall()},
+         {id:"pl",label:"Press ▶ to send your reply across the canyon",play:true}]},
+ {name:"Same Thought, New Ending", phrase:true, power:{em:"✒️",name:"Resolver",line:"You can take an idea and bring it to rest."},
+  call:[[7,0],[8,1],[6,2],[8,3]],
+  hint:()=>placeAnswer([[7,8],[8,9],[6,10],[9,11]]),
+  intro:"Begin your answer like the call begins ✒️ — start on a seed near the call's FIRST note — but this time guide it HOME so it finally resolves. Same thought, new ending. Then press ▶.",
+  goals:[{id:"echo",label:"Start near the call's opening, then land home",chk:()=>answerEchoesOpening()},
+         {id:"pl",label:"Press ▶ to hear it resolve",play:true}]},
+ {name:"Calm Reply, Bold Reply", phrase:true, power:{em:"⚖️",name:"Two Voices",line:"You can answer the same call in different moods."}, steps:[
+   {call:[[8,0],[7,1],[8,2],[6,3]],
+    hint:()=>placeAnswer([[6,8],[7,9],[8,10],[9,11]]),
+    intro:"One call, two replies ⚖️. First the CALM answer — move in gentle small steps and land HOME. Then press ▶.",
+    goals:[{id:"calm",label:"A calm, stepwise answer that lands home",chk:()=>answerCalm()},
+           {id:"pl",label:"Press ▶ to hear the calm reply",play:true}]},
+   {call:[[8,0],[7,1],[8,2],[6,3]],
+    hint:()=>placeAnswer([[3,8],[8,9],[4,10],[9,11]]),
+    intro:"Now answer the SAME call boldly — leap across big gaps, but still land HOME at the end. Then press ▶.",
+    goals:[{id:"bold",label:"A bold, leaping answer that still lands home",chk:()=>answerBold()},
+           {id:"pl",label:"Press ▶ to hear the bold reply",play:true}]},
+ ]},
+ {name:"Fix the Mismatch", phrase:true, power:{em:"🛠️",name:"Mender",line:"You can repair a reply that doesn't belong."},
+  call:[[8,0],[7,1],[6,2],[7,3]],
+  setup:()=>placeAnswer([[7,8],[6,9],[4,10],[3,11]]),
+  hint:()=>{ setCell(3,11,false); setCell(9,11,true); checkLevel(); },
+  intro:"This answer hangs open 🛠️ — it climbs away and never comes home, so the conversation feels unfinished. Move its LAST seed onto a glowing HOME row so it lands. Then press ▶.",
+  goals:[{id:"fix",label:"Repair the ending so the answer lands home",chk:()=>answerEndsHome()&&answerCount()>=3},
+         {id:"pl",label:"Press ▶ to hear it resolve",play:true}]},
+ {name:"The Talking Tree", phrase:true, loop:true, intent:"What does your garden ask, and how does it answer?",
+  power:{em:"🌳",name:"Conversation",line:"You can write a whole question and its answer."},
+  hint:()=>{ placeCall([[7,0],[8,1],[9,2],[6,3]]); placeAnswer([[6,8],[7,9],[8,10],[9,11]]); checkLevel(); },
+  intro:"Now BOTH halves are yours 🌳. In the left half, write a CALL that hangs open (don't end it on home). In the right half, write an ANSWER that lands HOME. Together they wake the talking tree. Then press ▶.",
+  goals:[{id:"q",label:"An open call in the left half (3+ seeds, not ending home)",chk:()=>callCount()>=3&&callEndsOpen()},
+         {id:"a",label:"A closed answer in the right half (lands home)",chk:()=>answerEndsHome()&&answerCount()>=3},
+         {id:"pl",label:"Press ▶ to hear the whole conversation",play:true}]},
+ {name:"Free Talk 💬", loop:true, hint:()=>{ setMelody([[7,0],[8,1],[6,2],[7,3],[6,8],[7,9],[8,10],[9,11]]); },
+  power:{em:"🗣️",name:"Free Talk",line:"This canyon of voices is yours to fill."},
+  intro:"The whole canyon is talking now 💬. This place is yours — write any calls and answers you like, open or closed, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
 ]} };
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
@@ -1407,7 +1515,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false);               // drop any contour/pulse-package UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false);     // drop any contour/pulse/phrase-package UI
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitFuse();
@@ -1448,22 +1556,29 @@ function renderStage(){   // render the current step (or the whole level if it h
   goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
   hintBtn.style.display = st.hint?"":"none";
-  listenBtn.style.display = st.echo?"":"none";
+  listenBtn.style.display = (st.echo||st.call)?"":"none";
   if(st.echo) setTimeout(()=>playPhrase(st.echo),350);   // play the phrase once on entry
   if(drumsOn && st.drumSetup) st.drumSetup();
   if(st.setup) st.setup();
   drawContourGhost(st.contour);                                          // glowing target path (contour packages)
   setBeatGuide(!!st.beatGuide);                                          // tinted beat columns (pulse packages)
+  const phraseOn = !!(L.phrase || st.phrase);                            // flag may sit on the level OR a step (multi-step Q&A levels)
+  if(phraseOn && COLS>16) removeColumns(COLS-16);                        // Q&A assumes a single 16-col bar (call 0–7 / answer 8–15)
+  setPhraseGuide(phraseOn);                                              // split the field into call / answer halves (Q&A package)
+  if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
     : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
   populateDevJump();
   checkLevel();
 }
-// dev jump dropdown: rebuild the options whenever the package changes (so names match the current package)
+// dev jump dropdowns: a package selector (any package, ignoring lock state) + a level selector that refreshes per package
 let devJumpPkg=null;
 function populateDevJump(){ const bar=document.getElementById("devbar"); if(!bar || bar.style.display==="none") return;
-  const sel=document.getElementById("devjump");
+  const pkgSel=document.getElementById("devpkg"), sel=document.getElementById("devjump");
+  if(pkgSel && !pkgSel.options.length){ Object.keys(PACKAGES).forEach(id=>{    // package list is static — build once
+    const o=document.createElement("option"); o.value=id; o.textContent=PACKAGES[id].name; pkgSel.appendChild(o); }); }
+  if(pkgSel) pkgSel.value=currentPkg;
   if(devJumpPkg!==currentPkg){ devJumpPkg=currentPkg; sel.innerHTML="";
     LEVELS.forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); }); }
   sel.value=levelIdx;
@@ -1693,7 +1808,7 @@ drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   drumArea.style.display=drumsOn?"":"none";
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
-listenBtn.onclick=()=>playPhrase(echoTarget());
+listenBtn.onclick=()=>playPhrase(curStage().call ? curCall() : echoTarget());
 function applyGrooveTempo(){ tempoEl.value=GROOVES[grooveIdx].bpm;
   if(playing){ clearInterval(timer); timer=setInterval(tick,stepDur()); } }
 jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
@@ -1977,11 +2092,13 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
   levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false; applySong(s);
   setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A melody from a friend!"); })();
 
-// ---------- dev-only level jump (enable by adding ?dev or #dev to the URL) ----------
+// ---------- dev-only jump (enable by adding ?dev or #dev to the URL) ----------
 if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   document.getElementById("devbar").style.display="";
+  // package selector jumps to any package's first level (ignores lock state — dev only)
+  document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==currentPkg) openPkg(e.target.value,0); };
   document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
-  populateDevJump();                                  // populate from the current package (refreshes on package change)
+  populateDevJump();                                  // populate both dropdowns (refreshes on package change)
 }
 
 // ---------- Landing / welcome screen ----------

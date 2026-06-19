@@ -91,16 +91,16 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **Intro — `intro` "🌱 Garden Basics"** (13 levels, 4 "awakening arcs": Voice / Pulse / Shape / Weaving). Plant, home/resolution, jam grooves, drum sequencer, crafting (intervals/chords), power cards, per-arc surprise reveals, starter companion.
 - **`follow-the-fireflies`** (Paths of Song region, 9 levels) — melodic **contour**: rise/fall/hover/arc → repair (4 steps) → compare → two-hills → journey capstone → free-play finale. Companion: Flutter 🦋.
 - **`footsteps`** (Pulse Woods region, 9 levels) — steady **pulse**: 4-beat → walking subdivision → backbeat → melody-on-beat → repair the drift → drum-compare → full groove → groove+melody capstone → finale. Companion: Hopper 🐸.
-- **Platform:** profiles + progress persistence (local-first, `Store` seam); **AWS backend deployed** (Cognito username+password, no email required; per-user progress on DynamoDB); 🏡 Home screen with package cards + lock state from the DAG; Save/Share via `#s=` links; 🎚️ Mixer.
+- **`stepping-stones`** (Paths of Song, 9 levels) — melodic **motion**: steps vs. leaps, staircases (scale runs), leap-then-step landings, smooth-the-bridge repair, compare, steps+leap capstone.
+- **`twin-blooms`** (Stone Chorus Canyon, 9 levels) — interval/**pair personality**: close / bright / open pairs, the "same distance, new feel" uneven-ladder insight, pair compare, mood-matching, contrasting beds. Companion: Geo 💎.
+- **`standing-towers`** (Stone Chorus Canyon, 9 levels) — **triads / stable shapes**: build, complete, recognize stand-vs-wobble, twin towers, repair, stamp/reuse, ring a canyon.
+- **`question-and-answer`** (Paths of Song, 9 levels) — phrase **open/closed**: a call/answer timeline split (cols 0–7 = call, 8–15 = answer); reply → recognize the closed ending → land home → mirror the call → same-thought-new-ending → calm vs. bold answers → repair an open answer → compose both halves.
+- **Platform:** profiles + progress persistence (local-first, `Store` seam); **AWS backend deployed** (Cognito username+password, no email required; per-user progress on DynamoDB); 🗺️ Home **world map** (regions + companions + lock state from the DAG); landing/welcome screen; Save/Share via `#s=` links; 🎚️ Mixer.
 
 **Next up (build order, per `PACKAGES-DETAILED.md`):**
-1. `stepping-stones` — step vs. leap melody (builds on the contour detector)
-2. `twin-blooms` — interval/pair personality
-3. `standing-towers` — triads / stable shapes
-4. `question-and-answer` — phrase open/closed (pentatonic-native; needs a phrase A/B timeline split)
-5. `wind-and-gaps` — rests & rhythmic space
-6. **`two-new-colors` milestone** — the pentatonic→diatonic widening (engine work; also resolves the tool-transposition model)
-7. `ways-home` — cadence strength (requires the diatonic milestone)
+1. `wind-and-gaps` — rests & rhythmic space (R2-lite on the drum grid)
+2. **`two-new-colors` milestone** — the pentatonic→diatonic widening (engine work; also resolves the tool-transposition model)
+3. `ways-home` — cadence strength (requires the diatonic milestone; grades the same open/closed seam by *degree*)
 
 The bigger long-term threads (logged in `DESIGN.md` §12): a player-facing **world-map UI**, a **collection/menagerie view** for companions, living-world visuals, the **bars & plots** duration editor, multi-voice arrangement, and the Styles/Eras "Atlas of Styles."
 
@@ -115,7 +115,7 @@ To redeploy backend changes:
 cd backend
 sam build && sam deploy
 ```
-See `backend/README.md` for the full first-time setup (IAM key → AWS CLI → SAM CLI). Pre-launch TODOs: tighten CORS `*` → the Netlify origin, AWS budget alert.
+See `backend/README.md` for the full first-time setup (IAM key → AWS CLI → SAM CLI). CORS is scoped to the Netlify origin; remaining pre-launch TODO: AWS budget alert.
 
 ---
 

@@ -183,13 +183,13 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (S):** "mostly stepwise vs. contains leaps" detector; stone-spacing visual.
 - **Why:** turns note choice into *movement style* — pairs with PS-1 to form the whole melody-writing basis.
 
-#### `question-and-answer` — Question and Answer  [PS-3]
+#### `question-and-answer` — Question and Answer  [PS-3]  — **BUILT ✅ (2026-06-18)**
 - **Capability:** make one phrase that feels open, and another that answers it.
 - **Theory:** antecedent/consequent, open vs. closed phrasing. **Palette:** pentatonic. **Prereqs:** garden-basics, follow-the-fireflies.
 - **Patterns:** answer, finish, compare, transform. **Success:** broad/targeted.
 - **Quest:** *Voices Across the Canyon* — a musical conversation between separated creatures.
 - **Sandbox:** phrase-pair tool; call/response playback; "write a question, then answer it" prompt.
-- **System needs (M):** **phrase A/B boundaries** on the timeline (the grid is currently one undivided region) + phrase-pair evaluation.
+- **System needs (M) — built:** **phrase A/B boundary** on the timeline (the field splits into a call half, cols 0–7, and an answer half, cols 8–15) + phrase-pair evaluation (open = ends away from HOME, closed = lands on HOME — reuses the existing tonic detection, no new pitch system). The phrase-split seam is reused by `ways-home`.
 - **Why:** teaches deep formal logic intuitively; the first real bridge from melody toward form.
 
 #### `tiny-motifs` — Tiny Motifs  [PS-4]

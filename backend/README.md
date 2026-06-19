@@ -93,6 +93,6 @@ sam delete --stack-name music-garden
 
 ## Notes
 - **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
-- **CORS** is currently `*` for easy testing; before launch we'll restrict it to your Netlify origin (one line in `template.yaml`).
+- **CORS** is scoped to the Netlify origin (`https://music-garden.netlify.app`) in `template.yaml`. Update `AllowOrigins` there if the deploy URL changes.
 - **Recovery:** accounts are username+password with no email by default (no password reset). A user can optionally add an email at sign-up to enable forgot-password; a custom "recovery code" flow can be added later.
 - **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. Consider setting an AWS **Budget alert** ($1–5) for peace of mind.

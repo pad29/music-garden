@@ -167,9 +167,9 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 6. `question-and-answer` — Question and Answer  [PS-3]  — pentatonic · needs phrase A/B system (M)
+## 6. `question-and-answer` — Question and Answer  [PS-3]  ✅ BUILT (2026-06-18) — pentatonic · phrase A/B split
 
-- **Region / cluster:** Paths of Song / voice · **Palette:** pentatonic · **Prereqs:** garden-basics, follow-the-fireflies · **Build:** soon (needs a phrase A/B split on the timeline; reuses the existing **home/tonic** concept for open-vs-closed).
+- **Region / cluster:** Paths of Song / voice · **Palette:** pentatonic · **Prereqs:** garden-basics, follow-the-fireflies · **Build:** done (added the phrase A/B split on the timeline; reuses the existing **home/tonic** concept for open-vs-closed).
 - **Fantasy:** "Answer the garden when it calls." Birds/lanterns send a phrase; you reply.
 - **Capability:** make one phrase that feels **open** (a question), and another that feels like an **answer** (closed). **Hidden theory:** antecedent/consequent, open vs. closed phrasing, musical syntax.
 - **Key insight (pentatonic-native):** *open = ends away from HOME; closed = ends on HOME.* We already have tonic/home detection — so Q&A needs no new pitch system, only a **phrase A/B boundary** (e.g. columns 0–7 = call, 8–15 = answer) + the ability to replay phrase A.
@@ -186,9 +186,11 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 | 6 | Calm Reply / Bold Reply *(build_constraint · broad · recognize)* | make two *different* valid answers to the same call |
 | 7 | Fix the Mismatch *(repair · targeted · compound)* | an answer that hangs open / clashes — repair it so it belongs |
 | 8 | The Talking Tree *(capstone · broad · capstone)* | compose your own open call **and** closed answer that wake the tree |
+| 9 | Free Talk 💬 *(— · none · finale)* | free-play sandbox → completion congrats |
 
 - **Quest:** *Voices Across the Canyon* — a musical conversation between separated creatures. **Sandbox:** phrase-pair tool, call/response playback, "write a question, then answer it" prompt.
 - **Ramp note:** the jump from "recognize closed" (L2) to "relate B to A" (L5) to "compose both halves" (L8) is the real escalation — formal phrase logic, taught entirely through feel.
+- **As built (2026-06-18) — 3rd Paths of Song package (grows **Flutter** 🌿→🦋):** the new **phrase A/B split** is the package's mechanic — the 16-col field divides into a dim **call** half (cols 0–7) and a bright **answer** half (cols 8–15), with a gold edge on the boundary (`setPhraseGuide`, `.callcol`/`.answercol`/`.answeredge` CSS). A level carries `phrase:true` plus an optional `call:[[r,c]…]` that's pre-placed in phrase A and auto-played on entry; the 🔊 Listen button replays the call (`playCall`). Open/closed is read straight off the existing tonic rows — `answerEndsHome()`/`answerEndsOpen()` test whether the answer half's last occupied column lands on a HOME row. Detectors (all in the "Question & Answer" block): `answerCount`, `answerMirrorsCall` (L4: same direction + closes), `answerEchoesOpening` (L5: starts near the call's first note + closes), `answerCalm`/`answerBold` (L6: stepwise vs. leaping, both closed), and `callEndsOpen`+`callCount` for the L8 capstone where the player writes *both* halves. `showChoices` gained an optional `prompt` param (L2 reuses the melody picker — no phrase tint there since it wipes the whole field). On entry, a phrase level normalizes the field back to one 16-col bar (`removeColumns`) so the halves stay aligned. Reusable for `ways-home` (which grades the same open/closed seam by *degree* after the diatonic milestone). All eight goals + the L7 repair were verified against their hint melodies.
 
 ---
 
@@ -249,7 +251,7 @@ Buildable on today's engine (pentatonic + small additions), in suggested order �
 3. **stepping-stones** (step/leap) — step detector, builds on contour
 4. **twin-blooms** (pair color) — labels over fuse recognizer
 5. **standing-towers** (triads) — extends intro Tower + stability meter
-6. **question-and-answer** (phrase Q&A) — *needs the phrase A/B timeline split*
+6. **question-and-answer** ✅ (phrase Q&A) — built (added the phrase A/B timeline split)
 7. **wind-and-gaps** (rests, R2-lite) — density eval on the drum grid
 
 Then, after the **`two-new-colors`** milestone (diatonic widening):
