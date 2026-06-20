@@ -115,6 +115,10 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowOrigins:
+          - https://tunegarden.game
+          - https://www.tunegarden.game
+          # Transition fallback: the original Netlify subdomain still serves the app.
+          # Safe to remove once everyone is on tunegarden.game.
           - https://music-garden.netlify.app
         AllowHeaders:
           - authorization
