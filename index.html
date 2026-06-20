@@ -198,6 +198,12 @@
   .cell.answercol.tonicRow:not(.on){ background:#6a4fc0; }
   .cell.answercol.answeredge{ box-shadow:inset 4px 0 0 rgba(255,213,107,.6); }
   .cell.answercol.answeredge.on{ box-shadow:0 0 14px var(--accent), inset 4px 0 0 rgba(255,213,107,.6); }
+  /* Sun & Moon Garden: a warm (day) or cool (night) wash over the field; HOME row glows gold by day, blue by night */
+  #pitchArea{ transition:background .35s, box-shadow .35s; border-radius:12px; }
+  #pitchArea.sunmood{ background:rgba(244,201,93,.08); box-shadow:inset 0 0 38px rgba(244,201,93,.16); }
+  #pitchArea.moonmood{ background:rgba(96,140,235,.11); box-shadow:inset 0 0 38px rgba(96,140,235,.20); }
+  #pitchArea.sunmood .cell.tonicRow:not(.on){ background:#8a6a22; }
+  #pitchArea.moonmood .cell.tonicRow:not(.on){ background:#2c3a7a; }
   /* Wind & Gaps density meter: airy ↔ crowded readout under the drum lanes */
   .densitymeter{ margin-top:8px; font-size:.72rem; opacity:.85; }
   .densitymeter .dmtrack{ height:7px; border-radius:5px; background:rgba(0,0,0,.3); overflow:hidden; margin-bottom:4px; }
@@ -1111,6 +1117,29 @@ const fullArrival = () => endPC()===0 && approachPC()===11;  // B→C leading-to
 const softArrival = () => endPC()===0 && approachPC()!==11;  // home, but gently (not via the leading tone)
 const halfClose   = () => endPC()===7;                       // ends on G (the dominant) — paused, "not yet"
 
+// ---------- Sun & Moon Garden: mood — major (bright) vs minor (wistful) (package CC-1, diatonic) ----------
+// Same 7 notes, two feelings: the SUN garden centers on C (major/bright), the MOON garden on A (minor/wistful) —
+// the relative major/minor truth. A triad's THIRD sets its mood: a major 3rd (+4) is bright, a minor 3rd (+3) is wistful.
+// setMood shifts HOME (which row glows) + washes the field warm/cool; it's an authoring lens, not stored in the song.
+let moodKey=null;   // null | "sun" | "moon"
+function setMood(m){
+  moodKey = (m==="sun"||m==="moon") ? m : null;
+  TONIC_PC = moodKey==="moon" ? 9 : ((PALETTES[paletteId]&&PALETTES[paletteId].tonicPC)||0);   // moon → A is home; else palette default (C)
+  if(pitchArea){ pitchArea.classList.toggle("sunmood", moodKey==="sun"); pitchArea.classList.toggle("moonmood", moodKey==="moon"); }
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const el=cells[r]&&cells[r][c]; if(!el) continue;
+    el.classList.toggle("tonicRow", isTonic(r)); }   // refresh which rows glow as HOME under the new center
+}
+function colMidisSorted(c){ const ms=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) ms.push(MIDI[r]); return ms.sort((a,b)=>a-b); }
+// classify 3 notes as bright (major 0-4-7) or wistful (minor 0-3-7) by real semitones — inversion-proof, like stableMidis
+function triadMood(midis){ if(midis.length!==3) return null;
+  const pcs=[...new Set(midis.map(m=>((m%12)+12)%12))].sort((a,b)=>a-b); if(pcs.length!==3) return null;
+  for(const root of pcs){ const k=pcs.map(p=>((p-root)%12+12)%12).sort((a,b)=>a-b).join(",");
+    if(k==="0,4,7") return "bright"; if(k==="0,3,7") return "wistful"; } return null; }
+const colMood = c => triadMood(colMidisSorted(c));
+const countBrightChords  = () => { let n=0; for(let c=0;c<COLS;c++) if(colMood(c)==="bright")  n++; return n; };
+const countWistfulChords = () => { let n=0; for(let c=0;c<COLS;c++) if(colMood(c)==="wistful") n++; return n; };
+const restsAtHome = () => endPC()===TONIC_PC;   // the tune comes to rest on this garden's HOME note (sun→C, moon→A)
+
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
 // Each level carries: arc (awakening arc), power {em,name,line} (the "power card" reward),
@@ -1817,7 +1846,68 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   power:{em:"☀️",name:"Free Endings",line:"This sky of endings is yours to explore."},
   intro:"The weather has cleared ☀️. This sky is yours now — end your tunes any way you like, settled or hanging, soft or strong, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
-]} };
+]},
+"sun-and-moon-garden":{ id:"sun-and-moon-garden", name:"🌗 Sun & Moon Garden", topic:"color-mood", region:"twin-gardens",
+  palette:"diatonic", desc:"The same notes, two feelings — bright like sunlight (major) or wistful like moonlight (minor).",
+  requires:["two-new-colors","ways-home"], version:1, author:"official", levels:[
+ {name:"Sun Garden", mood:"sun", power:{em:"☀️",name:"Bright Light",line:"You can build a bright, sunny chord."},
+  hint:()=>setMelody([[13,0],[11,0],[9,0]]),
+  intro:"Welcome to the SUN garden ☀️ — everything here feels bright and happy. Its home is C, and its special chord is a BRIGHT one: stack C, E and G in one column (a sunny tower). Then press ▶ and feel it shine.",
+  goals:[{id:"bright",label:"Stack a bright (major) chord — 3 notes in one column",chk:()=>countBrightChords()>=1},
+         {id:"pl",label:"Press ▶ to feel the sunshine",play:true}]},
+ {name:"Moon Garden", mood:"moon", power:{em:"🌙",name:"Wistful Light",line:"You can build a wistful, moonlit chord."},
+  hint:()=>setMelody([[8,0],[6,0],[4,0]]),
+  intro:"Now the MOON garden 🌙 — almost the same notes, but it feels wistful and dreamy. Its home is A. Its chord is a WISTFUL one: stack A, C and E in one column. Then press ▶ and feel the moonlight.",
+  goals:[{id:"wist",label:"Stack a wistful (minor) chord — 3 notes in one column",chk:()=>countWistfulChords()>=1},
+         {id:"pl",label:"Press ▶ to feel the moonlight",play:true}]},
+ {name:"Bright or Wistful?", power:{em:"👂",name:"Mood Ear",line:"You can hear bright from wistful."},
+  setup:()=>showPairChoices([[13,11,9],[8,6,4],[10,8,6]],1,
+    "Three chords 👂. Two are BRIGHT and sunny; one is WISTFUL, like moonlight. Tap each to hear it — listen to all three — then pick the wistful one.","🌗 Chord "),
+  intro:"Which chord feels wistful? 🌗 Two of these are bright and happy; one is dreamy and sad. Hear all three, then pick the wistful (moonlit) one.",
+  goals:[{id:"pick",label:"Hear all three, then pick the wistful chord",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Same Notes, Two Feelings", power:{em:"🌗",name:"Two Feelings",line:"You can flip a tune bright or wistful."}, steps:[
+   {mood:"sun", setup:()=>setMelody([[6,0],[5,1],[4,2],[2,3],[4,4],[6,5]]),
+    intro:"Here's a little path of notes, and the sun is up ☀️ — it climbs and ends on C (home), so it sounds BRIGHT. Press ▶ and listen to how happy it feels.",
+    goals:[{id:"pl",label:"Press ▶ — hear it bright",play:true}]},
+   {mood:"moon", setup:()=>setMelody([[4,0],[5,1],[6,2],[7,3],[8,4]]),
+    intro:"Almost the same notes — but now night falls 🌙 and the path ends on A (the moon's home). Same garden, completely different feeling. Press ▶ and hear how WISTFUL it turns.",
+    goals:[{id:"pl",label:"Press ▶ — hear it wistful",play:true}]},
+ ]},
+ {name:"Paint the Mood", power:{em:"🎨",name:"Mood Painter",line:"You can paint a scene bright or wistful."}, steps:[
+   {mood:"sun", hint:()=>setMelody([[13,2],[11,2],[9,2],[6,0],[4,1]]),
+    intro:"Paint a bright DAYTIME scene ☀️. Build a bright (major) chord somewhere so it shines, then scatter a few notes around it. Press ▶.",
+    goals:[{id:"b",label:"Include a bright (major) chord",chk:()=>countBrightChords()>=1},
+           {id:"pl",label:"Press ▶ for the daytime",play:true}]},
+   {mood:"moon", hint:()=>setMelody([[8,2],[6,2],[4,2],[8,0],[7,1]]),
+    intro:"Now paint a wistful NIGHT scene 🌙. Build a wistful (minor) chord, then a few notes around it. Press ▶.",
+    goals:[{id:"w",label:"Include a wistful (minor) chord",chk:()=>countWistfulChords()>=1},
+           {id:"pl",label:"Press ▶ for the night",play:true}]},
+ ]},
+ {name:"Fix the Mood", mood:"moon", power:{em:"🛠️",name:"Mood Mender",line:"You can fix a tune whose mood slipped."},
+  setup:()=>setMelody([[5,0],[6,1],[7,2],[6,3],[6,4]]),
+  hint:()=>{ setCell(6,4,false); setCell(8,4,true); checkLevel(); },
+  intro:"This is meant to be a moonlit tune 🌙, but it ends on C — a burst of daylight that breaks the mood. Move its LAST note home to A (the moon's home) so it feels wistful again. Then press ▶.",
+  goals:[{id:"fix",label:"End on A (the moon's home) so the mood matches",chk:s=>s.placed>=4&&restsAtHome()},
+         {id:"pl",label:"Press ▶ to hear it settle",play:true}]},
+ {name:"Two Gardens", loop:true, intent:"Can you make day and night sit side by side?",
+  power:{em:"🌓",name:"Day & Night",line:"You can hold both moods in one song."},
+  hint:()=>setMelody([[13,0],[11,0],[9,0],[8,3],[6,3],[4,3]]),
+  intro:"Make a garden that holds BOTH ☀️🌙 — build at least one bright (major) chord and one wistful (minor) chord in the same song. Loop it and hear day meet night. Then press ▶.",
+  goals:[{id:"b",label:"A bright (major) chord",chk:()=>countBrightChords()>=1},
+         {id:"w",label:"A wistful (minor) chord",chk:()=>countWistfulChords()>=1},
+         {id:"pl",label:"Press ▶ to hear both",play:true}]},
+ {name:"Twin Biomes", loop:true, intent:"Tell a story that travels from day into night.",
+  power:{em:"🌗",name:"Twin Biomes",line:"You can journey a tune through both moods."},
+  hint:()=>setMelody([[6,0],[4,1],[13,2],[11,2],[9,2],[8,4],[7,5],[8,6],[6,6],[4,6]]),
+  intro:"One last journey 🌗 — write a real little tune (six notes or more) that travels from the bright sun garden into the wistful moon garden: include a bright (major) chord AND a wistful (minor) chord along the way. Then press ▶.",
+  goals:[{id:"j",label:"A 6+ note tune with a bright AND a wistful chord",chk:s=>s.placed>=6&&countBrightChords()>=1&&countWistfulChords()>=1},
+         {id:"pl",label:"Press ▶ for the journey",play:true}]},
+ {name:"Free Light 🌗", loop:true, hint:()=>setMelody([[13,0],[11,0],[9,0]]),
+  power:{em:"🌗",name:"Free Light",line:"Both gardens are yours to roam."},
+  intro:"Sun and moon are both yours now 🌗. Paint bright, paint wistful, or blend them however you like — no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]}
+};
 // The Studio (SAVE-SHARE.md P2): a hidden, never-persisted free-play sandbox. NOT a DAG node — launched only from
 // Home or a package finale, never shown on the map. Unlocks every tool; opens in the widest palette you've unlocked.
 PACKAGES.studio = { id:"studio", name:"Studio", region:"first-garden", requires:[], hidden:true,
@@ -1841,7 +1931,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null);   // drop any contour/pulse/phrase/density/color-reveal UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null);   // drop any contour/pulse/phrase/density/color-reveal/mood UI
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitFuse();
@@ -1896,6 +1986,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setPhraseGuide(phraseOn);                                              // split the field into call / answer halves (Q&A package)
   setDensityMeter(!!(L.density || st.density));                          // airy↔crowded readout (Wind & Gaps package)
   setColorReveal(st.colors || L.colors || null);                         // staged F/B reveal — lock undiscovered notes (Two New Colors)
+  setMood(st.mood || L.mood || null);                                    // sun (C major / bright) or moon (A minor / wistful) field wash (Sun & Moon Garden)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
@@ -2032,6 +2123,7 @@ const REGIONS={
   "stone-chorus-canyon": { name:"Stone Chorus Canyon", friend:{ name:"Geo", stages:["🪨","🔸","🔶","💎","💎✨"] } },
   "color-spring":  { name:"The Color Spring", friend:{ name:"Prism", stages:["🌫️","💧","🔷","🌈","🌈✨"] } },
   "weather-of-wanting": { name:"Weather of Wanting", friend:{ name:"Sol", stages:["☁️","🌥️","⛅","🌤️","☀️"] } },
+  "twin-gardens":  { name:"The Twin Gardens", friend:{ name:"Solune", stages:["🌑","🌙","🌗","🌅","🌞"] } },
 };
 const compoverlay=document.getElementById("compoverlay");
 const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
@@ -2044,6 +2136,7 @@ const REGION_MAP=[
   {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0"},
   {id:"color-spring",        emoji:"🌈", name:"The Color Spring",      blurb:"Discover two new colors — the world widens.", color:"#ff7ac8"},
   {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff"},
+  {id:"twin-gardens",        emoji:"🌗", name:"The Twin Gardens",     blurb:"The same notes, bright or wistful — day and night.", color:"#c8a0ff"},
 ];
 // arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
 function arcEndsFor(levels){ const ends=[]; for(let i=0;i<levels.length;i++){ const a=levels[i].arc; if(a==null) continue;
