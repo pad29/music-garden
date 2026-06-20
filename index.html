@@ -400,6 +400,7 @@
       <div class="powline" id="congratsLine"></div>
       <div class="pkgactions" style="justify-content:center;">
         <button id="congratsHome" class="secondary">🏡 Home</button>
+        <button id="congratsStudio" class="secondary">🎵 Studio</button>
         <button id="congratsStay">✨ Keep playing</button>
       </div>
     </div>
@@ -1817,6 +1818,11 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"The weather has cleared ☀️. This sky is yours now — end your tunes any way you like, settled or hanging, soft or strong, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]} };
+// The Studio (SAVE-SHARE.md P2): a hidden, never-persisted free-play sandbox. NOT a DAG node — launched only from
+// Home or a package finale, never shown on the map. Unlocks every tool; opens in the widest palette you've unlocked.
+PACKAGES.studio = { id:"studio", name:"Studio", region:"first-garden", requires:[], hidden:true,
+  levels:[ { name:"Studio", studio:true, loop:true, drums:true, unlock:["jam","fuse","drums","more"], hint:()=>hintMelody() } ] };
+function widestPalette(){ const c=progress.colors||[]; return (c.includes("F")&&c.includes("B"))?"diatonic":"pentatonic"; }
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
 const isPkgCompleted = id => !!(progress.packages[id] && progress.packages[id].completed);
@@ -1859,7 +1865,7 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   stepIdx=0; renderStage(); saveProgress(); renderWorld();
   companionStageShown=friendStage(); syncCompanion(); greetRegionFriend();   // show this region's friend; greet new ones
   // entering the goal-less finale IS its completion moment (skipped when opening a shared song)
-  if(!finaleQuiet && levelIdx===LEVELS.length-1 && !(curStage().goals||[]).length){
+  if(!finaleQuiet && currentPkg!=="studio" && levelIdx===LEVELS.length-1 && !(curStage().goals||[]).length){
     const pp=pkgProg(currentPkg);
     if((pp.done||0)<LEVELS.length){ pp.done=LEVELS.length; saveProgress(); renderWorld(true);
       showCongrats(currentPkg, L.power); checkEvolve(); } }
@@ -1966,6 +1972,9 @@ function dismissCongrats(goHome){ congratsoverlay.style.display="none";
   if(goHome) openHome(); }
 document.getElementById("congratsHome").onclick=()=>dismissCongrats(true);
 document.getElementById("congratsStay").onclick=()=>dismissCongrats(false);
+// carry this finale's creation straight into the Studio (widest unlocked palette)
+document.getElementById("congratsStudio").onclick=()=>{ const s=currentSong();
+  congratsoverlay.style.display="none"; pendingEvolve=false; openStudioWith(s); };
 congratsoverlay.onclick=e=>{ if(e.target===congratsoverlay) dismissCongrats(false); };
 
 // ---- surprise reveals ("wait, I made THAT?") — one per arc, fired after the power card is claimed ----
@@ -2197,7 +2206,8 @@ const Store={ get(k,def){ try{ const v=localStorage.getItem("mg_"+k); return v==
 let progress = Object.assign({ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }, Store.get("progress",{}));
 if(!progress.packages || typeof progress.packages!=="object") progress.packages={};
 function pkgProg(id){ return progress.packages[id] || (progress.packages[id]={ level:0, maxLevel:0, completed:false }); }
-function saveProgress(){ progress.current=currentPkg; const pp=pkgProg(currentPkg);
+function saveProgress(){ if(currentPkg==="studio") return;   // the Studio is a transient sandbox — never persisted as the current package
+  progress.current=currentPkg; const pp=pkgProg(currentPkg);
   pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
   if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
   if(currentPkg==="two-new-colors"){ progress.colors=["F","B"]; }   // persistent: the world has discovered F & B (future sandbox reads this)
@@ -2318,6 +2328,13 @@ function updateTitle(){ const n=(progress.name||"").trim();
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
 function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
   homeoverlay.style.display="none"; renderLevel(); }
+// Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
+function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
+  currentPkg="studio"; LEVELS=PACKAGES.studio.levels; levelIdx=0;
+  homeoverlay.style.display="none";
+  finaleQuiet=true; renderLevel(); finaleQuiet=false;
+  setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
+function openStudioWith(song){ openStudio(); if(song) applySong(song); }   // carry a finale's creation into the Studio
 // one package as a node on the map (progress bar, lock state, Play/Resume/Restart)
 function pkgNode(id){ const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
   const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
@@ -2337,12 +2354,19 @@ function pkgNode(id){ const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnloc
 }
 // the world map: regions (biomes) with their friend + packages, plus teasers for worlds still growing
 function renderPkgs(){ pkglist.innerHTML="";
-  let powers=0; Object.keys(PACKAGES).forEach(id=>{ powers+=Math.min(pkgProg(id).done||0, PACKAGES[id].levels.length); });
+  let powers=0; Object.keys(PACKAGES).forEach(id=>{ if(PACKAGES[id].hidden) return; powers+=Math.min(pkgProg(id).done||0, PACKAGES[id].levels.length); });
   const head=document.createElement("div"); head.className="maphead";
   head.textContent = powers ? `🌟 ${powers} power${powers>1?"s":""} earned on your journey` : "Your journey begins here 🌱";
   pkglist.appendChild(head);
+  // Studio: a free-play sandbox, always available from Home
+  const sc=document.createElement("div"); sc.className="region studiocard"; sc.style.borderLeftColor="#ffd166";
+  sc.innerHTML=`<div class="region-head"><span class="region-emoji">🎵</span>`
+    +`<div class="region-info"><div class="region-name">Studio</div>`
+    +`<div class="region-blurb">Free play — build, save, and share anything you like.</div></div></div>`;
+  const sbtn=mkBtn("▶ Open Studio", openStudio); sbtn.className=""; sc.appendChild(sbtn);
+  pkglist.appendChild(sc);
   REGION_MAP.forEach(reg=>{
-    const pkgs=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg.id);
+    const pkgs=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg.id && !PACKAGES[id].hidden);
     const soon = reg.soon || pkgs.length===0;
     const open = reg.id==="first-garden" || pkgs.some(id=>isPkgUnlocked(id));
     const panel=document.createElement("div"); panel.className="region"+(soon?" soon":(open?"":" locked"));
