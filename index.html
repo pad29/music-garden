@@ -1099,6 +1099,17 @@ const answerBold = () => { const m=answerMotions(); return answerSeq().length>=3
 const callCount    = () => countIn(0, PHRASE_SPLIT);
 const callEndsOpen = () => { const lc=lastColIn(0,PHRASE_SPLIT); return lc>=0 && !colHome(lc); };
 
+// ---------- Ways Home: cadence strength — how firmly a melody comes home (package WW-1, diatonic) ----------
+// Melodic closure: end on C (home) = arrived; end on G (dominant) = paused; B→C = the strongest "pull home" (needs diatonic).
+function occColsList(){ const a=[]; for(let c=0;c<COLS;c++) if(colCount(c)>0) a.push(c); return a; }
+function topPCat(c){ for(let r=0;r<ROWS;r++) if(grid[r][c]) return ((MIDI[r]%12)+12)%12; return null; }
+function endPC(){ const cs=occColsList(); return cs.length?topPCat(cs[cs.length-1]):null; }
+function approachPC(){ const cs=occColsList(); return cs.length>=2?topPCat(cs[cs.length-2]):null; }
+const endsHome    = () => endPC()===0;                       // lands on C (home) — arrived
+const fullArrival = () => endPC()===0 && approachPC()===11;  // B→C leading-tone pull — the strongest arrival
+const softArrival = () => endPC()===0 && approachPC()!==11;  // home, but gently (not via the leading tone)
+const halfClose   = () => endPC()===7;                       // ends on G (the dominant) — paused, "not yet"
+
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
 // Each level carries: arc (awakening arc), power {em,name,line} (the "power card" reward),
@@ -1746,6 +1757,65 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   power:{em:"💎",name:"Free Colors",line:"The full-color spring is yours to explore."},
   intro:"The Color Spring is in full bloom 🌈. Every color is yours now — F and B included. Make anything you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
+]},
+"ways-home":{ id:"ways-home", name:"🏮 Ways Home", topic:"function-cadence", region:"weather-of-wanting",
+  palette:"diatonic", desc:"Bring a tune home — gently, strongly, or leave it hanging. The many ways a melody can end.", requires:["two-new-colors","question-and-answer","standing-towers"], version:1, author:"official", levels:[
+ {name:"Soft Landing", power:{em:"🛬",name:"Soft Landing",line:"You can bring a tune gently home."},
+  hint:()=>setMelody([[9,0],[8,1],[9,2],[11,3],[12,4],[13,5]]),
+  intro:"Every tune wants to come HOME 🛬 — to land on a glowing C row and feel settled. Make a little melody that ENDS on home, gently. Then press ▶ and feel it rest.",
+  goals:[{id:"home",label:"End your melody on HOME (a C row)",chk:s=>s.placed>=4&&endsHome()},
+         {id:"pl",label:"Press ▶ to feel it land",play:true}]},
+ {name:"Full Arrival", power:{em:"🏁",name:"Full Arrival",line:"You can land a tune firmly, all the way home."},
+  hint:()=>setMelody([[9,0],[11,1],[9,2],[8,3],[7,4],[13,5]]),
+  intro:"There's a STRONGER way home 🏁 — the note B sits one tiny step below C and badly wants to climb to it. End your melody with a B going straight UP to C (B→C). Feel how firmly it arrives. Then press ▶.",
+  goals:[{id:"full",label:"End with B → C (the strongest arrival)",chk:s=>s.placed>=4&&fullArrival()},
+         {id:"pl",label:"Press ▶ to hear it land hard",play:true}]},
+ {name:"Not Yet", power:{em:"⏸️",name:"Suspense",line:"You can leave a tune hanging, wanting more."},
+  hint:()=>setMelody([[13,0],[11,1],[9,2],[11,3],[9,4]]),
+  intro:"Sometimes you DON'T want to finish ⏸️ — you want to leave the listener hanging. End your melody on G (the restless note that feels paused, not done). Then press ▶ and feel it wait.",
+  goals:[{id:"half",label:"End on G — leave it hanging (paused, not home)",chk:s=>s.placed>=4&&halfClose()},
+         {id:"pl",label:"Press ▶ to feel the suspense",play:true}]},
+ {name:"Choose the Better Ending", power:{em:"👂",name:"Closing Ear",line:"You can hear which ending truly finishes."},
+  setup:()=>showChoices([[9,8,9,7,13],[13,12,11,12,9],[13,12,11,12,8]],0,
+    "Three tunes, three endings 👂. Two leave you hanging; one truly FINISHES and comes all the way home. Tap each to hear it — listen to all three — then pick the one that lands."),
+  intro:"Which ending truly closes the tune? 👂 Two of these hang unfinished; one lands firmly home. Hear all three, then pick the one that finishes.",
+  goals:[{id:"pick",label:"Hear all three, then pick the ending that lands home",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Match the Story", power:{em:"📖",name:"Storyteller",line:"You can choose the ending a moment needs."}, steps:[
+   {hint:()=>setMelody([[9,0],[8,1],[11,2],[12,3],[13,4]]),
+    intro:"A sleepy fox is settling down for the night 😴. Give it a tune that comes fully HOME so it can rest. Then press ▶.",
+    goals:[{id:"rest",label:"Land home for the resting fox",chk:s=>s.placed>=4&&endsHome()},
+           {id:"pl",label:"Press ▶",play:true}]},
+   {hint:()=>setMelody([[13,0],[11,1],[9,2],[8,3],[9,4]]),
+    intro:"A traveler is still walking, with miles to go 🚶. Give them a tune that DOESN'T finish — leave it paused on G, still going. Then press ▶.",
+    goals:[{id:"go",label:"Leave it hanging for the traveler (end on G)",chk:s=>s.placed>=4&&halfClose()},
+           {id:"pl",label:"Press ▶",play:true}]},
+ ]},
+ {name:"Repair the Landing", power:{em:"🛠️",name:"Lander",line:"You can fix an ending that never arrives."},
+  setup:()=>setMelody([[9,0],[8,1],[11,2],[12,3],[8,4]]),
+  hint:()=>{ setCell(8,4,false); setCell(13,4,true); checkLevel(); },
+  intro:"This tune climbs away and never lands 🛠️ — it just hangs there, unfinished. Move its LAST note onto a glowing HOME (C) row so it finally arrives. Then press ▶.",
+  goals:[{id:"fix",label:"Repair the ending so it lands home",chk:s=>s.placed>=4&&endsHome()},
+         {id:"pl",label:"Press ▶ to hear it resolve",play:true}]},
+ {name:"Two Roads Home", power:{em:"🔀",name:"Two Roads",line:"You can come home softly or strongly."}, steps:[
+   {hint:()=>setMelody([[9,0],[8,1],[9,2],[11,3],[12,4],[13,5]]),
+    intro:"There are two roads home 🔀. First the GENTLE one — come to rest on C softly, WITHOUT the big B→C pull. Then press ▶.",
+    goals:[{id:"soft",label:"A gentle landing home (no B→C)",chk:s=>s.placed>=4&&softArrival()},
+           {id:"pl",label:"Press ▶ to hear the soft road",play:true}]},
+   {hint:()=>setMelody([[9,0],[11,1],[9,2],[8,3],[7,4],[13,5]]),
+    intro:"Now the STRONG road — end with that B→C pull so it arrives with full force. Same home, bigger landing. Then press ▶.",
+    goals:[{id:"strong",label:"A strong landing home (B → C)",chk:s=>s.placed>=4&&fullArrival()},
+           {id:"pl",label:"Press ▶ to hear the strong road",play:true}]},
+ ]},
+ {name:"Lantern Shore", loop:true, intent:"How will your journey come to rest?",
+  power:{em:"🏮",name:"Homecoming",line:"You can guide a whole tune home."},
+  hint:()=>setMelody([[13,0],[12,1],[11,2],[9,3],[7,4],[6,5]]),
+  intro:"Guide the lanterns home 🏮. Make a real little journey — at least six notes that wander, then come all the way HOME with a strong B→C arrival at the very end. Then press ▶.",
+  goals:[{id:"journey",label:"A 6+ note tune that ends with a strong B → C arrival",chk:s=>s.placed>=6&&fullArrival()},
+         {id:"pl",label:"Press ▶ for the homecoming",play:true}]},
+ {name:"Free Endings 🏮", loop:true, hint:()=>setMelody([[9,0],[8,1],[7,2],[13,3]]),
+  power:{em:"☀️",name:"Free Endings",line:"This sky of endings is yours to explore."},
+  intro:"The weather has cleared ☀️. This sky is yours now — end your tunes any way you like, settled or hanging, soft or strong, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
 ]} };
 let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
@@ -1952,6 +2022,7 @@ const REGIONS={
   "pulse-woods":   { name:"Pulse Woods",   friend:{ name:"Hopper",  stages:["🥚","🟢","🐸","🐸✨","👑🐸"] } },
   "stone-chorus-canyon": { name:"Stone Chorus Canyon", friend:{ name:"Geo", stages:["🪨","🔸","🔶","💎","💎✨"] } },
   "color-spring":  { name:"The Color Spring", friend:{ name:"Prism", stages:["🌫️","💧","🔷","🌈","🌈✨"] } },
+  "weather-of-wanting": { name:"Weather of Wanting", friend:{ name:"Sol", stages:["☁️","🌥️","⛅","🌤️","☀️"] } },
 };
 const compoverlay=document.getElementById("compoverlay");
 const regionOf = id => (PACKAGES[id]&&PACKAGES[id].region) || "first-garden";
@@ -1963,7 +2034,7 @@ const REGION_MAP=[
   {id:"pulse-woods",         emoji:"🥁", name:"Pulse Woods",         blurb:"Make the forest walk, march, and dance.",  color:"#ffb46b"},
   {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#88a0c0"},
   {id:"color-spring",        emoji:"🌈", name:"The Color Spring",      blurb:"Discover two new colors — the world widens.", color:"#ff7ac8"},
-  {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff", soon:true},
+  {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7cc8ff"},
 ];
 // arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
 function arcEndsFor(levels){ const ends=[]; for(let i=0;i<levels.length;i++){ const a=levels[i].arc; if(a==null) continue;

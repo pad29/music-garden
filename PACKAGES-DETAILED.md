@@ -220,7 +220,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 8. `ways-home` — Ways Home  [WW-1]  — ⚠️ DIATONIC (gated behind `two-new-colors`)
+## 8. `ways-home` — Ways Home  [WW-1]  ✅ BUILT (2026-06-18) — DIATONIC
 
 - **Region / cluster:** Weather of Wanting / flow·home · **Palette:** **diatonic** *(cadence strength needs the leading tone B and the 4th — impossible in pentatonic; this package cannot ship until the `two-new-colors` milestone)* · **Prereqs:** two-new-colors, question-and-answer, standing-towers · **Build:** after the diatonic milestone.
 - **Fantasy:** "Guide things home — sometimes gently, sometimes completely." Travelers/lanterns respond to how firmly you bring the music to rest.
@@ -239,8 +239,22 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 | 7 | Two Roads Home *(build_constraint · targeted · compound)* | make two versions: one gentle arrival, one strong arrival |
 | 8 | Lantern Shore *(capstone · broad · capstone)* | bring several lanterns home with endings of *different* strengths, matched to each situation |
 
-- **Quest:** *The Lantern Shore* — lanterns return only if endings fit the emotional situation. **Sandbox:** ending mood cards, closure-strength preview; cards (complete / resting / waiting / almost-home).
-- **Ramp note:** this is the most advanced of the first 8 — it turns the intro's intuitive "home" into *graded* functional control, and is the payoff that justifies the diatonic widening.
+*As built (2026-06-18) — first **functional-harmony** package; opens the **Weather of Wanting** region (friend **Sol** ☁️→☀️, weather clearing as you master resolution). First diatonic package after `two-new-colors`.*
+
+| # | Level *(pattern · success · stage)* | Goal |
+|---|---|---|
+| 1 | Soft Landing *(finish · targeted · teach)* | end the tune on HOME (C) — `endsHome` |
+| 2 | Full Arrival *(finish · targeted · teach)* | end with **B→C** (leading-tone pull) — `fullArrival` |
+| 3 | Not Yet *(finish · targeted · teach)* | end on **G** (paused/half-close) — `halfClose` |
+| 4 | Choose the Better Ending *(compare · targeted · recognize)* | hear 3 endings, pick the one that truly closes |
+| 5 | Match the Story **[2 steps]** *(match_feel · targeted · apply)* | resting fox → land home; traveler → leave it hanging |
+| 6 | Repair the Landing *(repair · targeted · apply)* | move the last note onto home so it arrives |
+| 7 | Two Roads Home **[2 steps]** *(build_constraint · targeted · compound)* | a gentle landing (no B→C), then a strong one (B→C) |
+| 8 | Lantern Shore *(capstone · targeted · capstone)* | a 6+ note journey ending in a strong B→C arrival |
+| 9 | Free Endings 🏮 *(— · none · finale)* | free-play sandbox → completion congrats |
+
+- **Mechanic (melodic cadence):** `endPC()`/`approachPC()` read the tune's last two notes; `endsHome` (ends C) / `fullArrival` (B→C, the strongest — *needs the diatonic leading tone*) / `softArrival` (home but not via B) / `halfClose` (ends G, paused). Reuses `showChoices` for the compare. **Palette:** `diatonic`. **Prereqs:** two-new-colors, question-and-answer, standing-towers.
+- **Ramp note:** turns the intro's intuitive "home" into *graded* closure (gentle/strong/paused) and is the first real payoff of the diatonic widening — the B→C leading tone learned in Two New Colors becomes "the strongest way home."
 
 ---
 
