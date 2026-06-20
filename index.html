@@ -2271,10 +2271,21 @@ const decodeSong=str=>{ try{ return unpackSong(JSON.parse(unb64url(str))); }catc
 function copyLink(url){ if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copied — paste it to a friend!"),()=>prompt("Copy this link:",url));
   else prompt("Copy this link:",url); }
-// share a song as a #s= link, or refuse (with guidance) when it's too big to fit in a URL.
-function shareSong(s){ const enc=encodeSong(s);
-  if(enc.length>SHARE_MAX){ toast("🌱 Too big to link yet — press 💾 Save to keep it (cloud sharing coming soon)."); return; }
-  copyLink(location.href.split("#")[0].split("?")[0]+"#s="+enc); }   // drop ?dev / #dev from shared links
+const baseUrl  = () => location.href.split("#")[0].split("?")[0];   // drop ?dev / #dev from shared links
+const inlineLink= enc => baseUrl()+"#s="+enc;
+const cloudLink = id  => baseUrl()+"#song="+encodeURIComponent(id);
+// Share a song: small songs get an instant inline #s= link (no account). Big songs need the cloud (sign-in).
+// A song already pushed to the cloud (meta.cloudId) reuses its stable link.
+async function shareSong(s){
+  if(s.meta && s.meta.cloudId){ copyLink(cloudLink(s.meta.cloudId)); return; }
+  const enc=encodeSong(s);
+  if(enc.length<=SHARE_MAX){ copyLink(inlineLink(enc)); return; }
+  if(!signedIn()){ toast("🌱 This song's too big for a link — sign in (🏡 Home) to share it from the cloud."); return; }
+  toast("☁️ Saving to the cloud…");
+  const res=await cloudSongCreate(s, s.meta&&s.meta.title, "unlisted");
+  if(res&&res.id){ if(s.meta) s.meta.cloudId=res.id; copyLink(cloudLink(res.id)); }
+  else toast("⚠️ Couldn't reach the cloud — please try again.");
+}
 shareBtn.onclick=()=>shareSong(currentSong());
 function getSaves(){ return Store.get("saves",[]).filter(x=>x&&x.v===3); }   // clean break: ignore any v2 saves
 function setSaves(a){ Store.set("saves",a); }
@@ -2283,18 +2294,33 @@ saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim
   const a=getSaves(); a.unshift(s); setSaves(a); toast("💾 Saved to My Melodies!"); };
 const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
 function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
-function loadSong(s){ levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false;
-  applySong(s); overlay.style.display="none";
-  setStatus("Loaded — press <b>▶ Play</b>!"); }
-function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
-  if(!a.length) mlist.innerHTML="<div class='hint'>No saved melodies yet — make something, then press 💾 Save!</div>";
+function loadSong(s){ overlay.style.display="none"; openStudioWith(s); setStatus("Loaded into the Studio — press <b>▶ Play</b>!"); }
+function mhint(text,top){ const e=document.createElement("div"); e.className="hint"; if(top) e.style.marginTop="10px"; e.textContent=text; return e; }
+async function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
+  // --- On this device (localStorage) ---
+  mlist.appendChild(mhint("On this device"));
+  if(!a.length) mlist.appendChild(mhint("No saved melodies yet — make something, then press 💾 Save!"));
   a.forEach((it,i)=>{ const row=document.createElement("div"); row.className="mrow";
     const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.meta&&it.meta.title)||"Untitled"; row.appendChild(nm);
     row.appendChild(mkBtn("▶ Load",()=>loadSong(it)));
-    row.appendChild(mkBtn("🔗",()=>shareSong(it)));
+    row.appendChild(mkBtn("🔗",async()=>{ await shareSong(it); setSaves(a); }));   // persist a cloudId if shareSong minted one
     row.appendChild(mkBtn("🗑",()=>{ const arr=getSaves(); arr.splice(i,1); setSaves(arr); openMelodies(); }));
     mlist.appendChild(row); });
   overlay.style.display="flex";
+  // --- In the cloud (cross-device) — signed-in only ---
+  if(signedIn()){
+    mlist.appendChild(mhint("☁️ In the cloud", true));
+    const loading=mhint("Loading…"); mlist.appendChild(loading);
+    const cloud=await cloudSongList(); loading.remove();
+    if(!cloud.length) mlist.appendChild(mhint("Nothing here yet — share a big song to store it in the cloud."));
+    cloud.forEach(it=>{ const row=document.createElement("div"); row.className="mrow";
+      const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.title||"Untitled")+" ☁️"; row.appendChild(nm);
+      row.appendChild(mkBtn("▶ Load",async()=>{ const res=await cloudSongGet(it.id);
+        if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=it.id; loadSong(res.song); } else toast("⚠️ Couldn't load that song."); }));
+      row.appendChild(mkBtn("🔗",()=>copyLink(cloudLink(it.id))));
+      row.appendChild(mkBtn("🗑",async()=>{ if(await cloudSongDelete(it.id)) openMelodies(); else toast("⚠️ Couldn't delete."); }));
+      mlist.appendChild(row); });
+  }
 }
 melodiesBtn.onclick=openMelodies;
 document.getElementById("mclose").onclick=()=>overlay.style.display="none";
@@ -2406,6 +2432,17 @@ async function cloudPull(){ const t=await freshToken(); if(!t) return null;
 async function cloudPush(){ const t=await freshToken(); if(!t) return false;
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(progress)}); return r.ok; }catch(e){ return false; } }
 let _pushT; function scheduleCloud(){ if(!cloudOn) return; clearTimeout(_pushT); _pushT=setTimeout(()=>cloudPush(),900); }
+// ---- Cloud songs (SAVE-SHARE.md P3): store/share creations in DynamoDB via the /songs API ----
+const signedIn = () => !!(userPool && userPool.getCurrentUser());
+async function cloudSongCreate(song,title,visibility){ const t=await freshToken(); if(!t) return null;
+  try{ const r=await fetch(AUTH.apiUrl+"/songs",{method:"POST",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},
+    body:JSON.stringify({song,title,visibility:visibility||"unlisted"})}); return r.ok?await r.json():null; }catch(e){ return null; } }
+async function cloudSongGet(id){ const t=await freshToken(); const headers=t?{Authorization:"Bearer "+t}:{};   // public read; token only needed for private/mine
+  try{ const r=await fetch(AUTH.apiUrl+"/songs/"+encodeURIComponent(id),{headers}); return r.ok?await r.json():null; }catch(e){ return null; } }
+async function cloudSongList(){ const t=await freshToken(); if(!t) return [];
+  try{ const r=await fetch(AUTH.apiUrl+"/songs",{headers:{Authorization:"Bearer "+t}}); if(!r.ok) return []; return (await r.json()).songs||[]; }catch(e){ return []; } }
+async function cloudSongDelete(id){ const t=await freshToken(); if(!t) return false;
+  try{ const r=await fetch(AUTH.apiUrl+"/songs/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+t}}); return r.ok; }catch(e){ return false; } }
 function applyProgress(){   // re-apply the progress object to the running game
   if(progress.settings){ if(progress.settings.voice) instrEl.value=progress.settings.voice; if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix(); }
@@ -2479,11 +2516,20 @@ levelIdx = Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
 
 renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs the region companion
 
-// open a shared melody if the URL carries one (#s=...) — land in the editable Free Play studio
-(function(){ const m=(location.hash||"").match(/(?:^#|&)s=([^&]+)/); if(!m) return;
-  const s=decodeSong(m[1]); if(!s) return;
-  levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false; applySong(s);
-  setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A melody from a friend!"); })();
+// open a shared creation if the URL carries one — land in the editable Studio.
+// #s=<packed>  = an inline (small) song;  #song=<id> = a cloud-stored song fetched via the /songs API.
+(function(){
+  const inline=(location.hash||"").match(/(?:^#|&)s=([^&]+)/);
+  if(inline){ const s=decodeSong(inline[1]); if(!s) return;
+    openStudioWith(s);
+    setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A melody from a friend!"); return; }
+  const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]+)/);
+  if(cloud){ openStudio();
+    cloudSongGet(decodeURIComponent(cloud[1])).then(res=>{
+      if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; applySong(res.song);
+        setStatus("🎵 A song from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A song from a friend!"); }
+      else toast("⚠️ That song link didn't work — it may have been deleted."); }); }
+})();
 
 // ---------- dev-only jump (enable by adding ?dev or #dev to the URL) ----------
 if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
@@ -2517,7 +2563,7 @@ document.getElementById("landingDo").onclick=doLandingSignIn;
 document.getElementById("landingPass").addEventListener("keydown",e=>{ if(e.key==="Enter") doLandingSignIn(); });
 
 // First-load gate: shared link → straight to the studio; signed-in session → resume; else fresh visitor → landing.
-(function(){ if(/[#&]s=/.test(location.hash)) return;
+(function(){ if(/[#&](?:s|song)=/.test(location.hash)) return;
   if(cognitoReady() && userPool && userPool.getCurrentUser()){ onSignedIn(false); return; }   // resume an existing session
   if(!progress.companion) showLanding();                                                       // brand-new / signed-out visitor
 })();

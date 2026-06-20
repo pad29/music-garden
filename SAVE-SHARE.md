@@ -116,8 +116,8 @@ New serverless storage alongside the existing progress API (same `music-garden` 
 | `DELETE /songs/{id}` | required | owner-only delete |
 | `GET /songs?mine` | required | list caller's songs via `byOwner` |
 
-- `GET /songs/{id}` is the one **unauthenticated** route (per-route `Auth: Authorizer: NONE` override on the otherwise-default Cognito authorizer) so a friend can open a link without an account — the same openness as today's `#s=`, but server-stored. Long random ids make enumeration infeasible; `private` songs never return unauthenticated.
-- **Visibility today:** only `private` and `unlisted` (link-only). `public` / gallery listing is **not** built (see §7).
+- `GET /songs/{id}` is the one **unauthenticated** route (per-route `Auth: Authorizer: NONE` override on the otherwise-default Cognito authorizer) so a friend can open a link without an account — the same openness as today's `#s=`, but server-stored. Long random ids make enumeration infeasible.
+- **Visibility — P3 ships `unlisted` only** (link-shareable). *Finding during build (2026-06-20):* `private` (owner-only read) can't be served on the public `GET /songs/{id}` route because that route has **no authorizer**, so it has no identity to recognize the owner. Owner-only reads need an identity-aware read route, which is exactly what the gallery (`public`) also needs — so **`private` and `public` both defer to P4**. P3 coerces every create/update to `unlisted`; the `visibility` column stays in the schema for forward-compat.
 - **CORS:** add the `songs` routes to the same allow-list already tightened to `https://tunegarden.game` (+ `www`, + Netlify fallback).
 
 **Limits / abuse:**
@@ -151,8 +151,8 @@ In-scope this effort: **P1 + P2 + P3**. P4 deferred.
 
 - **P1 — durable client format (the core).** v3 pitch-based `currentSong`/`applySong`; packed URL form + size ceiling; v3-only localStorage library (no v2 migration). **Ships diatonic sharing.** No backend.
 - **P2 — Studio.** Dedicated sandbox entry from Home; widest-unlocked palette; finale "Keep building in the Studio" deep-links.
-- **P3 — cloud songs.** `music-garden-songs` table + `POST/GET/PUT/DELETE /songs` + `GET /songs?mine`; `#song=<id>` links; cross-device library; unauth `GET /songs/{id}` for link resolution; caps/throttle/title filter.
-- **P4 — public gallery (DEFERRED, gated on moderation).** Flip `visibility:"public"`, add a listing endpoint, title moderation, report/takedown flow.
+- **P3 — cloud songs. ✅ SHIPPED 2026-06-20.** `music-garden-songs` table + `POST/GET/PUT/DELETE /songs` + `GET /songs` (list mine); `#song=<id>` links; cross-device "☁️ In the cloud" section in My Melodies; unauth `GET /songs/{id}` for link resolution; per-user cap (200) + payload cap (100 KB) + title sanitize. Share flow: small songs → inline `#s=`; big songs → cloud `#song=<id>` (sign-in required). **Unlisted-only** (see §6 finding).
+- **P4 — public gallery + private (DEFERRED, gated on moderation).** Add an identity-aware read path (enables owner-only `private` reads), `visibility:"public"` + a listing endpoint, title moderation, report/takedown flow.
 
 ---
 

@@ -83,6 +83,78 @@ Resources:
         - AttributeName: userId
           KeyType: HASH
 
+  # --- Songs storage (SAVE-SHARE.md P3): one row per shared creation; GSI byOwner lists a user's songs. ---
+  SongsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: music-garden-songs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: songId
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+        - AttributeName: updated
+          AttributeType: N
+      KeySchema:
+        - AttributeName: songId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: byOwner
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+            - AttributeName: updated
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # Songs API. Most routes use the default Cognito authorizer; GET /songs/{id} is public (share-link resolution).
+  SongsFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: songs.handler
+      Environment:
+        Variables:
+          SONGS_TABLE: !Ref SongsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SongsTable
+      Events:
+        Create:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs
+            Method: POST
+        ListMine:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs
+            Method: GET
+        GetOne:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs/{id}
+            Method: GET
+            Auth:
+              Authorizer: NONE          # public read so a friend can open a share link without an account
+        Update:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs/{id}
+            Method: PUT
+        Delete:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs/{id}
+            Method: DELETE
+
   # --- API: GET/PUT /progress, scoped to the caller's own row via the JWT `sub`. ---
   ProgressFn:
     Type: AWS::Serverless::Function
@@ -125,7 +197,9 @@ Resources:
           - content-type
         AllowMethods:
           - GET
+          - POST
           - PUT
+          - DELETE
           - OPTIONS
       Auth:
         Authorizers:
