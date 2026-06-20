@@ -1,4 +1,4 @@
-# Music Garden — Detailed Package Specs (first 8)
+# Tune Garden — Detailed Package Specs (first 8)
 
 *Production-oriented, level-by-level specs for the first expansion wave. Sibling to PACKAGES.md (the catalog/DAG + template + standards). Each package is designed against the difficulty-ramp doctrine below.*
 Last updated: 2026-06-13

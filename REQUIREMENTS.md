@@ -1,4 +1,4 @@
-# Music Garden — Requirements
+# Tune Garden — Requirements
 
 *A game that teaches music theory through play. "Minecraft for music."*
 Last updated: 2026-06-11

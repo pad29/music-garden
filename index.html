@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Music Garden — prototype</title>
+<title>Tune Garden — where music grows through play</title>
 <style>
   :root{
     --bg1:#1a1033; --bg2:#241654; --accent:#ffd56b; --accent2:#7cf0d0;
@@ -269,7 +269,7 @@
     <button id="share" title="Share link">🔗</button>
     <button id="melodies" title="My Melodies">📂</button>
   </div>
-  <h1 id="title">🌱 Music Garden</h1>
+  <h1 id="title">🌱 Tune Garden</h1>
 
   <div class="controls">
     <button id="play">▶ Play</button>
@@ -362,8 +362,8 @@
 
   <div id="landingoverlay" class="overlay" style="display:none">
     <div class="card landingcard">
-      <div class="landingtitle">🌱 Music Garden</div>
-      <div class="landingtag">Grow real music from simple seeds.</div>
+      <div class="landingtitle">🌱 Tune Garden</div>
+      <div class="landingtag">Where music grows through play.</div>
       <div class="landingdesc">Plant glowing seeds to make melodies, wake a beat, and craft chords — and discover how music works just by playing. No music knowledge needed.</div>
       <div id="landingmain">
         <button id="landingStart" class="landingbtn">▶ Start playing</button>
@@ -2279,7 +2279,7 @@ document.getElementById("homeclose").onclick=()=>homeoverlay.style.display="none
 homeoverlay.onclick=e=>{ if(e.target===homeoverlay) homeoverlay.style.display="none"; };
 pname.oninput=()=>{ progress.name=pname.value.trim(); saveProgress(); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
-  document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Music Garden" : "Music Garden"); }
+  document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
 function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
   homeoverlay.style.display="none"; renderLevel(); }

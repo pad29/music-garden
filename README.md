@@ -1,4 +1,4 @@
-# 🌱 Music Garden
+# 🌱 Tune Garden
 
 A browser game that teaches music theory through play — **"Minecraft for music."** Players compose real-sounding music by placing simple visual elements and *feel* musical concepts (tension, resolution, harmony, contour, pulse) long before they meet the names. Audience skews to children 8+, but is meant to appeal broadly.
 

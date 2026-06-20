@@ -1,4 +1,4 @@
-# Music Garden — backend (Phase B)
+# Tune Garden — backend (Phase B)
 
 Cognito (username + password, email optional) + an HTTP API (`GET`/`PUT /progress`) backed by one DynamoDB row per user. Deployed with **AWS SAM**. All serverless, pay-per-use — at hobby traffic this is effectively free / pennies.
 

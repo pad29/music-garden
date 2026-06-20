@@ -1,4 +1,4 @@
-# Music Garden — High-Level Design
+# Tune Garden — High-Level Design
 
 *How we satisfy the requirements. Companion to REQUIREMENTS.md.*
 Last updated: 2026-06-11
@@ -250,7 +250,7 @@ Next-step plan (chosen 2026-06-13): finalize template → 24 high-level specs [d
 **Presentation rule (2026-06-11, see §2b):** package *IDs* stay topic-slugs internally, but packages are *presented* as capabilities/powers ("Create tension", "Resolve phrases"), surfaced through a world map of regions and nodes — never as a visible curriculum list.
 
 **Phased build:**
-- **Phase A (no backend, local) — DONE ✅:** `Store` seam (localStorage now → cloud later); progress persists/resumes across reloads (current package/level, toolbox, settings); levels generalized into the **package DAG**; **🏡 Home screen** = editable profile name + package cards (progress bar, lock state via `requires`, Resume/Restart); **personalized title** ("Pasha's Music Garden" once a name is set). `?reset` wipes local progress for testing.
+- **Phase A (no backend, local) — DONE ✅:** `Store` seam (localStorage now → cloud later); progress persists/resumes across reloads (current package/level, toolbox, settings); levels generalized into the **package DAG**; **🏡 Home screen** = editable profile name + package cards (progress bar, lock state via `requires`, Resume/Restart); **personalized title** ("Pasha's Tune Garden" once a name is set). `?reset` wipes local progress for testing.
 - **Phase B (Cognito) — SCAFFOLDED, awaiting deploy:** serverless architecture = **Cognito User Pool** (username+password, email optional for recovery; PreSignUp Lambda auto-confirms) → **API Gateway HTTP API** (built-in Cognito JWT authorizer) → **one Lambda** (`GET/PUT /progress`) → **DynamoDB** (one row per user, PK = `sub`). Anonymous = local-only (today's behavior); creating an account turns on **cloud sync** (local-first: load on login, debounced push; first sign-up uploads guest progress). Client stays a single static file (Cognito via `amazon-cognito-identity-js` CDN + `fetch` with the **ID token**). IaC lives in `backend/` (`template.yaml` SAM + `src/*.mjs` Lambdas + `README.md` deploy guide). **Remaining:** user runs `sam deploy`, sends the 4 outputs (Region/UserPoolId/ClientId/ApiUrl); then wire the client auth UI (in 🏡 Home) + flip the `Store` seam to sync. Hosting can move Netlify → AWS later (static file).
 
 ## 12. Parked ideas (backlog)
