@@ -2207,35 +2207,70 @@ function saveProgress(){ progress.current=currentPkg; const pp=pkgProg(currentPk
 
 // ---------- Save & Share (client-side, P2P links — no backend) ----------
 const saveBtn=document.getElementById("save"), shareBtn=document.getElementById("share"), melodiesBtn=document.getElementById("melodies");
+// --- Song format v3 (see SAVE-SHARE.md): notes store ABSOLUTE MIDI PITCH, not palette-relative row index. ---
+// A forward-compatible container (tracks[]/note.len/per-voice) is shipped now but only sparsely filled by today's
+// engine (one melody track + one drums track, len always 1). No back-compat with the v2 prototype (clean break).
 function currentSong(){
-  const notes=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(grid[r][c]) notes.push([r,c]);
-  const drums=[]; for(let d=0;d<DRUMS.length;d++) for(let c=0;c<16;c++) if(drumG[d][c]) drums.push([d,c]);
-  // v2: tag the palette so a creation reopens in the right pitch set (notes are still palette-relative row indices —
-  // the durable pitch-based redesign is deferred; see DESIGN §11). Absent palette ⇒ pentatonic (back-compat).
-  return {v:2,palette:paletteId,cols:COLS,notes,drums,groove:grooveIdx,tempo:+tempoEl.value,voice:instrEl.value};
+  const notes=[]; for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(grid[r][c]) notes.push({p:MIDI[r],c,len:1});
+  const hits=[];  for(let d=0;d<DRUMS.length;d++) for(let c=0;c<COLS;c++) if(drumG[d][c]) hits.push({lane:d,c});
+  const now=Date.now();
+  return { v:3,
+    meta:{ title:null, created:now, updated:now, author:null },   // author filled when cloud storage lands (P3)
+    palette:paletteId,
+    time:{ cols:COLS, tempo:+tempoEl.value, groove:grooveIdx },
+    tracks:[ { kind:"melody", voice:instrEl.value, notes },
+             { kind:"drums",  hits } ] };
 }
+// resolve a pitch to a row in the ACTIVE palette; if the exact pitch is absent (cross-palette open), snap to nearest.
+function rowForPitch(rowOf, p){ if(rowOf[p]!=null) return rowOf[p];
+  let best=null,bd=Infinity; for(let r=0;r<ROWS;r++){ const d=Math.abs(MIDI[r]-p); if(d<bd){ bd=d; best=r; } } return best; }
 function applySong(s){
-  setPalette(s.palette||"pentatonic");   // v2 palette tag; older saves/links have none ⇒ pentatonic
-  COLS=Math.max(16,s.cols||16); grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
-  (s.notes||[]).forEach(([r,c])=>{ if(r>=0&&r<ROWS&&c>=0&&c<COLS) grid[r][c]=true; });
+  if(!s||s.v!==3) return;                                   // clean break: only v3 loads; stale links fail gracefully
+  setPalette(s.palette||"pentatonic");                      // sets MIDI/NAMES/ROWS for the song's authoring palette
+  const mel=(s.tracks||[]).find(t=>t.kind==="melody")||{notes:[]};
+  const dr =(s.tracks||[]).find(t=>t.kind==="drums") ||{hits:[]};
+  COLS=Math.max(16,(s.time&&s.time.cols)||16); grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  const rowOf={}; for(let r=0;r<ROWS;r++) rowOf[MIDI[r]]=r;
+  (mel.notes||[]).forEach(n=>{ const r=rowForPitch(rowOf,n.p), c=n.c; if(r!=null&&c>=0&&c<COLS) grid[r][c]=true; });
   buildGrid();
-  wipeDrums(); (s.drums||[]).forEach(([d,c])=>{ if(d>=0&&d<DRUMS.length&&c>=0&&c<16){ drumG[d][c]=true; if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("on"); } });
-  if(typeof s.groove==="number"&&GROOVES[s.groove]){ grooveIdx=s.groove; grooveEl.value=s.groove; }
-  if(s.tempo) tempoEl.value=s.tempo;
-  if(s.voice) instrEl.value=s.voice;
+  wipeDrums(); (dr.hits||[]).forEach(h=>{ const d=h.lane,c=h.c; if(d>=0&&d<DRUMS.length&&c>=0&&c<COLS){ drumG[d][c]=true; if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("on"); } });
+  const t=s.time||{};
+  if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
+  if(t.tempo) tempoEl.value=t.tempo;
+  if(mel.voice) instrEl.value=mel.voice;
   updateGarden();
 }
-const encodeSong=s=>encodeURIComponent(JSON.stringify(s));
-const decodeSong=str=>{ try{ return JSON.parse(decodeURIComponent(str)); }catch(e){ return null; } };
-const songLink=s=>location.href.split("#")[0].split("?")[0]+"#s="+encodeSong(s);   // drop ?dev / #dev from shared links
+// --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
+// songs exceed SHARE_MAX and must be saved (cloud links arrive in P3). The in-memory object is always the v3 above. ---
+const SHARE_MAX=1800;   // encoded-char ceiling for a shareable link
+function packSong(s){
+  const mel=(s.tracks||[]).find(t=>t.kind==="melody")||{notes:[]};
+  const dr =(s.tracks||[]).find(t=>t.kind==="drums") ||{hits:[]};
+  const notes=(mel.notes||[]).map(n=> n.len===1?[n.p,n.c]:[n.p,n.c,n.len]);   // drop len when default (1)
+  const hits =(dr.hits||[]).map(h=>[h.lane,h.c]);
+  return [3, s.palette, s.time.cols, s.time.tempo, s.time.groove, mel.voice||"", notes, hits];
+}
+function unpackSong(a){ const [,palette,cols,tempo,groove,voice,notes,hits]=a; const now=Date.now();
+  return { v:3, meta:{title:null,created:now,updated:now,author:null}, palette, time:{cols,tempo,groove},
+    tracks:[ {kind:"melody",voice,notes:(notes||[]).map(n=>({p:n[0],c:n[1],len:n[2]||1}))},
+             {kind:"drums", hits:(hits||[]).map(h=>({lane:h[0],c:h[1]}))} ] }; }
+const b64url  =str=>btoa(unescape(encodeURIComponent(str))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const unb64url=b64=>decodeURIComponent(escape(atob(b64.replace(/-/g,"+").replace(/_/g,"/"))));
+const encodeSong=s=>b64url(JSON.stringify(packSong(s)));
+const decodeSong=str=>{ try{ return unpackSong(JSON.parse(unb64url(str))); }catch(e){ return null; } };
 function copyLink(url){ if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copied — paste it to a friend!"),()=>prompt("Copy this link:",url));
   else prompt("Copy this link:",url); }
-shareBtn.onclick=()=>copyLink(songLink(currentSong()));
-function getSaves(){ return Store.get("saves",[]); }
+// share a song as a #s= link, or refuse (with guidance) when it's too big to fit in a URL.
+function shareSong(s){ const enc=encodeSong(s);
+  if(enc.length>SHARE_MAX){ toast("🌱 Too big to link yet — press 💾 Save to keep it (cloud sharing coming soon)."); return; }
+  copyLink(location.href.split("#")[0].split("?")[0]+"#s="+enc); }   // drop ?dev / #dev from shared links
+shareBtn.onclick=()=>shareSong(currentSong());
+function getSaves(){ return Store.get("saves",[]).filter(x=>x&&x.v===3); }   // clean break: ignore any v2 saves
 function setSaves(a){ Store.set("saves",a); }
 saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim(); if(!n) return;
-  const a=getSaves(); a.unshift({name:n,song:currentSong(),ts:Date.now()}); setSaves(a); toast("💾 Saved to My Melodies!"); };
+  const s=currentSong(); s.meta.title=n;
+  const a=getSaves(); a.unshift(s); setSaves(a); toast("💾 Saved to My Melodies!"); };
 const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
 function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
 function loadSong(s){ levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel(); finaleQuiet=false;
@@ -2244,9 +2279,9 @@ function loadSong(s){ levelIdx=LEVELS.length-1; finaleQuiet=true; renderLevel();
 function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
   if(!a.length) mlist.innerHTML="<div class='hint'>No saved melodies yet — make something, then press 💾 Save!</div>";
   a.forEach((it,i)=>{ const row=document.createElement("div"); row.className="mrow";
-    const nm=document.createElement("span"); nm.className="mname"; nm.textContent=it.name; row.appendChild(nm);
-    row.appendChild(mkBtn("▶ Load",()=>loadSong(it.song)));
-    row.appendChild(mkBtn("🔗",()=>copyLink(songLink(it.song))));
+    const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.meta&&it.meta.title)||"Untitled"; row.appendChild(nm);
+    row.appendChild(mkBtn("▶ Load",()=>loadSong(it)));
+    row.appendChild(mkBtn("🔗",()=>shareSong(it)));
     row.appendChild(mkBtn("🗑",()=>{ const arr=getSaves(); arr.splice(i,1); setSaves(arr); openMelodies(); }));
     mlist.appendChild(row); });
   overlay.style.display="flex";

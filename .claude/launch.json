@@ -4,7 +4,8 @@
     {
       "name": "music-garden",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "http-server", "-p", "8377", "-c-1", "."],
+      "runtimeArgs": ["--yes", "http-server", "-c-1", "."],
+      "autoPort": true,
       "port": 8377
     }
   ]
