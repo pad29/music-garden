@@ -4,7 +4,7 @@ Description: Music Garden backend — Cognito (username+password) auth + per-use
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     MemorySize: 128
     Timeout: 10
 
