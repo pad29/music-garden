@@ -533,7 +533,8 @@ function miniSVG(offs){
     +dots+`</svg>`;
 }
 
-let toolbox=[];          // array of {offs, midis}
+let toolbox=[];          // array of {offs, midis} — PER-PACKAGE (reset on entering a different package; see loadPkgToolbox)
+let toolboxPkg=null;     // which package the current toolbox belongs to (cleared on a package switch, NOT between levels)
 let activeTool=null;     // {offs, midis} currently picked up
 
 // ---------- Audio (unchanged engine) ----------
@@ -825,6 +826,24 @@ const distinctBands = () => new Set((ev.pairs||[]).map(p=>widthBand(p.gap))).siz
 function colBand(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
   return rows.length===2 ? widthBand(Math.abs(MIDI[rows[0]]-MIDI[rows[1]])) : null; }
 function countColBands(){ const n={close:0,bright:0,open:0,octave:0}; for(let c=0;c<COLS;c++){ const b=colBand(c); if(b) n[b]++; } return n; }
+// ---------- Twin Blooms Plus: TENSION pairs + their pull to resolution (package, diatonic) ----------
+// Only possible once diatonic adds F & B: a minor 2nd (gap 1) or major 7th (gap 11) CLASHES; the tritone (gap 6)
+// is the restless "spooky" pair. All are dissonant and want to RESOLVE — to step out to a restful (consonant) pair.
+function pairTension(gap){ const g=(((gap%12)+12)%12); return g===6 ? "tritone" : (g===1||g===11) ? "clash" : null; }
+const isTensePair = gap => pairTension(gap)!==null;
+const craftedTense   = () => (ev.pairs||[]).some(p=>isTensePair(p.gap));
+const craftedTritone = () => (ev.pairs||[]).some(p=>pairTension(p.gap)==="tritone");
+const craftedClash   = () => (ev.pairs||[]).some(p=>pairTension(p.gap)==="clash");
+const craftedRestful = () => (ev.pairs||[]).some(p=>p.gap>0 && !isTensePair(p.gap));
+// placement versions: classify each 2-note column by its real semitone gap
+function colGap(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+  return rows.length===2 ? Math.abs(MIDI[rows[0]]-MIDI[rows[1]]) : null; }
+function colTension(c){ const g=colGap(c); return g==null?null:pairTension(g); }
+const countTensePairs   = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension(c)) n++; return n; };
+const countTritonePairs = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension(c)==="tritone") n++; return n; };
+const countClashPairs   = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension(c)==="clash") n++; return n; };
+// the payoff: a tense pair immediately followed by a restful (consonant) pair = tension that RESOLVES (release)
+function tensionThenRest(){ for(let c=0;c<COLS-1;c++){ if(colTension(c)){ const g2=colGap(c+1); if(g2!=null && g2>0 && !isTensePair(g2)) return true; } } return false; }
 // Standing Towers: a column "stands" if its 3 notes form a stable stack (each adjacent pair a 3rd or wider)
 function colStands(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
   return rows.length===3 && stableMidis(rows.map(r=>MIDI[r]).sort((a,b)=>a-b)); }
@@ -1552,6 +1571,64 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"The canyon is singing 🌸. This shrine of blooms is yours now — craft any pairs you like and hear how they feel, no goals, just explore. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
+"twin-blooms-plus":{ id:"twin-blooms-plus", name:"🌶️ Twin Blooms Plus", topic:"harmony-tension", region:"stone-chorus-canyon",
+  palette:"diatonic", desc:"Some pairs CLASH and feel restless — and the magic is how they pull, and finally release, into rest.",
+  requires:["twin-blooms","two-new-colors"], version:1, author:"official", levels:[
+ {name:"The Restless Pair", unlock:["fuse"], power:{em:"🌶️",name:"Tension",line:"You can bind two notes that clash and feel restless."},
+  hint:()=>hintSeeds([[7,4],[6,4]]),
+  intro:"The world has new colours now — and some pairs CLASH 🌶️. Stack the two NEIGHBOURS B and C in one column (right next to each other), 🔨 Fuse and ✓ Save, then click it to HEAR how restless and crunchy it sounds.",
+  goals:[{id:"tense",label:"Fuse a restless, clashing pair",chk:()=>craftedTense()},
+         {id:"hear",label:"Click it to hear the tension",chk:(s,e)=>e.previewed}]},
+ {name:"Two Kinds of Restless", power:{em:"👻",name:"Two Tensions",line:"You know the clash and the spooky tritone."}, steps:[
+   {hint:()=>hintSeeds([[7,4],[6,4]]),
+    intro:"One kind of restless is the CLASH 🌶️ — two neighbours grinding right against each other (like B and C, or E and F). Fuse a clashing pair and ✓ Save.",
+    goals:[{id:"clash",label:"Craft a CLASH (two neighbours)",chk:()=>craftedClash()}]},
+   {hint:()=>hintSeeds([[10,4],[7,4]]),
+    intro:"The other is the TRITONE 👻 — the spookiest pair of all, made of F and B sitting a wide, uneasy distance apart. Fuse F with B and ✓ Save, then hear how unsettled it feels.",
+    goals:[{id:"tri",label:"Craft a TRITONE (F with B)",chk:()=>craftedTritone()}]},
+ ]},
+ {name:"Tension Wants Home", power:{em:"➡️",name:"Resolver",line:"You can let tension pull, then release into rest."},
+  hint:()=>hintSeeds([[10,0],[7,0],[11,1],[6,1]]),
+  intro:"Here's the magic ✨ — tension WANTS to relax. Plant a restless TRITONE (F+B) in the first column, then a RESTFUL pair right after it (E+C, a smooth, settled gap). Press ▶ and feel the spooky pair RELEASE into calm.",
+  goals:[{id:"res",label:"A tense pair that resolves into a restful one",chk:()=>tensionThenRest()},
+         {id:"pl",label:"Press ▶ to feel the release",play:true}]},
+ {name:"Find the Restless One", power:{em:"👂",name:"Tension Ear",line:"You can hear which pair holds the tension."},
+  setup:()=>showPairChoices([[6,4],[10,7],[6,2]],1,
+    "Three pairs are humming 👂. Two feel calm and settled; one is RESTLESS — it clashes and won't sit still. Tap each to hear it — listen to all three — then pick the tense one.","🌶️ Pair "),
+  intro:"Which pair holds the tension? 👂 Two are calm; one is restless and clashing. Hear all three, then pick the tense one.",
+  goals:[{id:"pick",label:"Hear all three, then pick the restless pair",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Match the Mood", power:{em:"🎭",name:"Mood Binder",line:"You can pick tension or calm to fit a scene."}, steps:[
+   {hint:()=>hintSeeds([[10,4],[7,4]]),
+    intro:"A creeping ghost wants a SPOOKY, restless song 👻. Craft a TENSE pair (a clash or a tritone) to give it the shivers, then ✓ Save.",
+    goals:[{id:"sp",label:"Give the ghost a tense pair",chk:()=>craftedTense()}]},
+   {hint:()=>hintSeeds([[6,4],[2,4]]),
+    intro:"A sleepy turtle wants a CALM, settled song 😌. Craft a RESTFUL pair (a smooth, consonant gap — no clash) to soothe it, then ✓ Save.",
+    goals:[{id:"cl",label:"Give the turtle a restful pair",chk:()=>craftedRestful()}]},
+ ]},
+ {name:"Resolve the Clash", power:{em:"🛠️",name:"Releaser",line:"You can give a hanging tension somewhere to land."},
+  setup:()=>hintSeeds([[6,0],[4,1],[2,2],[10,3],[7,3]]),
+  hint:()=>{ setCell(11,4,true); setCell(6,4,true); checkLevel(); },
+  intro:"This little tune ends on a spooky TRITONE that just hangs in the air, unresolved 😖. Give it somewhere to RELAX — add a RESTFUL pair (E+C) in the very next column so the tension releases. Then press ▶.",
+  goals:[{id:"fix",label:"Resolve the hanging tension into a restful pair",chk:()=>tensionThenRest()},
+         {id:"pl",label:"Press ▶ to hear it finally settle",play:true}]},
+ {name:"Suspense & Release", loop:true, intent:"Can you make a listener hold their breath, then sigh?",
+  power:{em:"🎢",name:"Suspense",line:"You can build suspense, then let it go."},
+  hint:()=>hintSeeds([[6,0],[7,1],[10,2],[7,2],[11,3],[6,3]]),
+  intro:"Now use it like a storyteller 🎢. Build a little phrase that creates TENSION (at least one restless pair) and then RELEASES it into a restful pair right after. Loop it and feel the breath in and out. Then press ▶.",
+  goals:[{id:"t",label:"Include a tense pair",chk:()=>countTensePairs()>=1},
+         {id:"res",label:"Resolve the tension into rest",chk:()=>tensionThenRest()},
+         {id:"pl",label:"Press ▶ to feel the suspense and release",play:true}]},
+ {name:"The Restless Song", loop:true, intent:"Tell a story that twists with tension, then comes home.",
+  power:{em:"🌶️",name:"Restless Song",line:"You can weave tension all through a piece — and resolve it."},
+  hint:()=>hintSeeds([[6,0],[7,1],[6,1],[4,2],[10,3],[7,3],[5,4],[11,5],[6,5]]),
+  intro:"One last twisting tale 🌶️ — write a song that uses tension TWICE (two restless pairs along the way) and finally RESOLVES into rest at the end. Then press ▶ for the whole journey.",
+  goals:[{id:"two",label:"Use a tense pair at least twice",chk:()=>countTensePairs()>=2},
+         {id:"res",label:"Resolve the tension into rest",chk:()=>tensionThenRest()},
+         {id:"pl",label:"Press ▶ for the restless song",play:true}]},
+ {name:"Free Tension 🌶️", loop:true, power:{em:"💎",name:"Free Tension",line:"This restless shrine is yours to explore."},
+  intro:"You've mastered the pull of tension 🌶️. This shrine is yours now — clash, spook, soothe, and resolve however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
 "standing-towers":{ id:"standing-towers", name:"🏛️ Standing Towers", topic:"harmony-triads", region:"stone-chorus-canyon",
   desc:"Stack three notes into a tower that stands tall — and learn to build, mend, and ring them.", requires:["intro","twin-blooms"], version:1, author:"official", levels:[
  {name:"Raise the First Tower", unlock:["fuse"], power:{em:"🏛️",name:"Tower",line:"You can stack notes into a shape that stands."},
@@ -1941,6 +2018,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
   const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
   setPalette(PACKAGES[currentPkg].palette || L.palette || "pentatonic");   // swap pitch set + rebuild grid (per-package palette)
+  if(currentPkg!==toolboxPkg) loadPkgToolbox();   // fresh toolbox per package — don't inherit another lesson's (or palette's) tools
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
   jamBtn.style.display=U.has("jam")?"":"none"; grooveEl.style.display=U.has("jam")?"":"none";
   craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
@@ -2304,9 +2382,16 @@ function saveProgress(){ if(currentPkg==="studio") return;   // the Studio is a 
   pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
   if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
   if(currentPkg==="two-new-colors"){ progress.colors=["F","B"]; }   // persistent: the world has discovered F & B (future sandbox reads this)
-  progress.toolbox=toolbox; progress.settings={voice:instrEl.value, tempo:+tempoEl.value, mix:mix};
+  pp.toolbox=toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()}));   // toolbox is now per-package (was global → leaked tools across lessons/palettes)
+  progress.settings={voice:instrEl.value, tempo:+tempoEl.value, mix:mix};
   progress.updatedAt=Date.now();
   Store.set("progress", progress); scheduleCloud(); }
+// Load this package's OWN saved tools (or start empty). The toolbox no longer carries across packages — a fresh
+// lesson shouldn't open with another lesson's bag (and old pentatonic tools have the wrong notes in a diatonic package).
+function loadPkgToolbox(){ toolbox.length=0;
+  const saved = (currentPkg!=="studio" && progress.packages[currentPkg] && progress.packages[currentPkg].toolbox) || [];
+  if(Array.isArray(saved)) saved.forEach(t=>{ if(t&&t.offs&&t.midis) toolbox.push({offs:t.offs.slice(),midis:t.midis.slice()}); });
+  toolboxPkg=currentPkg; renderBag(); }
 
 // ---------- Save & Share (client-side, P2P links — no backend) ----------
 const saveBtn=document.getElementById("save"), shareBtn=document.getElementById("share"), melodiesBtn=document.getElementById("melodies");
@@ -2539,7 +2624,7 @@ async function cloudSongDelete(id){ const t=await freshToken(); if(!t) return fa
 function applyProgress(){   // re-apply the progress object to the running game
   if(progress.settings){ if(progress.settings.voice) instrEl.value=progress.settings.voice; if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix(); }
-  toolbox.length=0; if(Array.isArray(progress.toolbox)) toolbox.push(...progress.toolbox);
+  toolbox.length=0; toolboxPkg=null;   // force a per-package toolbox reload on the renderLevel below
   currentPkg=(progress.current&&PACKAGES[progress.current])?progress.current:"intro"; LEVELS=PACKAGES[currentPkg].levels;
   levelIdx=Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
   renderBag(); renderLevel(); updateTitle(); }   // renderLevel now syncs the region companion
@@ -2602,7 +2687,7 @@ if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={
 if(progress.settings && progress.settings.voice) instrEl.value=progress.settings.voice;
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
-if(Array.isArray(progress.toolbox) && progress.toolbox.length) toolbox.push(...progress.toolbox);
+toolboxPkg=null;   // toolbox is per-package now; the renderLevel below loads the resumed package's own tools
 currentPkg = (progress.current && PACKAGES[progress.current]) ? progress.current : "intro";
 LEVELS = PACKAGES[currentPkg].levels;
 levelIdx = Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
