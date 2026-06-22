@@ -1159,6 +1159,54 @@ const countBrightChords  = () => { let n=0; for(let c=0;c<COLS;c++) if(colMood(c
 const countWistfulChords = () => { let n=0; for(let c=0;c<COLS;c++) if(colMood(c)==="wistful") n++; return n; };
 const restsAtHome = () => endPC()===TONIC_PC;   // the tune comes to rest on this garden's HOME note (sun→C, moon→A)
 
+// ---------- Weather of Wanting II: chord PROGRESSIONS (River Turns / Pull of the Moon / False Doors, diatonic) ----------
+// Read each column as a diatonic triad and name its scale degree in C major (I ii iii IV V vi vii). The harmony
+// vocabulary the whole sub-region shares: V (G major) is the "dominant" — the chord of longing that pulls home to I;
+// the plagal IV→I is a gentler pull; vi (A minor) is the "false door" (deceptive landing). Reasons in real semitones.
+const DEGREE_OF = {0:"I",2:"ii",4:"iii",5:"IV",7:"V",9:"vi",11:"vii"};
+const CHORDS = { I:[13,11,9], ii:[12,10,8], iii:[11,9,7], IV:[10,8,6], V:[9,7,5], vi:[8,6,4], vii:[7,5,3] };   // row-sets (root position, low octave)
+function placeProg(specs){ wipe(); specs.forEach(([rows,col])=>rows.forEach(r=>{ if(grid[r]&&col<COLS) setCell(r,col,true); })); }   // specs: [[rows,col],…]
+function colChordRoot(c){ const ms=colMidisSorted(c); if(ms.length<3) return null;
+  const pcs=[...new Set(ms.map(m=>((m%12)+12)%12))].sort((a,b)=>a-b); if(pcs.length!==3) return null;
+  for(const root of pcs){ const k=pcs.map(p=>((p-root)%12+12)%12).sort((a,b)=>a-b).join(",");
+    if(k==="0,4,7"||k==="0,3,7"||k==="0,3,6") return root; }   // a major / minor / diminished triad → its root pitch-class
+  return null; }
+const colDegree = c => { const r=colChordRoot(c); return r==null?null:(DEGREE_OF[r]||null); };
+function chordSyms(){ const s=[]; for(let c=0;c<COLS;c++){ const d=colDegree(c); if(d) s.push(d); } return s; }   // placed chords in column order
+const distinctChordCount = () => new Set(chordSyms()).size;
+function hasChordRun(target){ const s=chordSyms();   // does the chord sequence contain this run of degrees, consecutively among placed chords?
+  for(let i=0;i+target.length<=s.length;i++){ let ok=true;
+    for(let j=0;j<target.length;j++) if(s[i+j]!==target[j]){ ok=false; break; } if(ok) return true; }
+  return false; }
+const endsOnDegree   = d => { const s=chordSyms(); return s.length>0 && s[s.length-1]===d; };
+const startsOnDegree = d => { const s=chordSyms(); return s.length>0 && s[0]===d; };
+// tendency tones read on the TOP line (soprano): the leading tone B→C, and the 4th F→E — harmony's "secret pulls".
+// Looks across consecutive OCCUPIED columns (gaps between chords are fine) and requires a real semitone STEP — so it's
+// an audible climb/fall (B4→C5), not just any B-then-C where the B could sit an octave away and actually drop.
+function topMidiAt(c){ for(let r=0;r<ROWS;r++) if(grid[r][c]) return MIDI[r]; return null; }
+function topStep(fromPC,delta){ let prev=null;
+  for(let c=0;c<COLS;c++){ const m=topMidiAt(c); if(m==null) continue;
+    if(prev!=null && (((prev%12)+12)%12)===fromPC && m===prev+delta) return true; prev=m; }
+  return false; }
+const leadingToneResolves = () => topStep(11,+1);   // B → C, a semitone UP on top (the audible leading-tone climb)
+const fourToThree         = () => topStep(5,-1);    // F → E, a semitone DOWN on top
+// compare-picker for PROGRESSIONS: each option is a list of chord row-sets, auditioned as a sequence of block chords
+function showProgChoices(opts,answer,prompt,label){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+  const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
+  opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
+    b.textContent=(label||"🎵 Path ")+String.fromCharCode(65+i); b.onclick=()=>pickProgChoice(i); row.appendChild(b); });
+  setStatus(prompt||"Tap each path to hear it — listen to <b>all</b> of them, then pick the right one."); }
+function pickProgChoice(i){ if(!choiceOpts) return; wipe();
+  const prog=choiceOpts[i]; prog.forEach((chord,ci)=>chord.forEach(r=>{ if(grid[r]) setCell(r,ci*2,true); }));   // show it: a chord every 2 columns
+  initAudio(); actx.resume(); const t0=actx.currentTime+0.06, sd=Math.max(stepDur()/1000,0.26);
+  prog.forEach((chord,ci)=>{ const t=t0+ci*sd*2; chord.forEach(r=>{ if(MIDI[r]!=null) voice(instrEl.value,midiToFreq(MIDI[r]),t); }); });
+  choiceViewed[i]=true;
+  const row=document.getElementById("choiceRow"); if(row) [...row.children].forEach((b,bi)=>b.classList.toggle("on",bi===i));
+  if(!choiceViewed.every(Boolean)){ ev.choicePick=-1; const left=choiceViewed.filter(x=>!x).length;
+    setStatus(`Keep listening — hear all of them first (${left} to go).`); checkLevel(); return; }
+  ev.choicePick=i; checkLevel();
+  setStatus(i===choiceAnswer ? "✨ That's the one!" : "Listen again — feel which path fits."); }
+
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
 // Each level carries: arc (awakening arc), power {em,name,line} (the "power card" reward),
@@ -1922,6 +1970,162 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
  {name:"Free Endings 🏮", loop:true, hint:()=>setMelody([[9,0],[8,1],[7,2],[13,3]]),
   power:{em:"☀️",name:"Free Endings",line:"This sky of endings is yours to explore."},
   intro:"The weather has cleared ☀️. This sky is yours now — end your tunes any way you like, settled or hanging, soft or strong, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"river-turns":{ id:"river-turns", name:"🌊 River Turns", topic:"harmony-progression", region:"weather-of-wanting",
+  palette:"diatonic", desc:"Chords can travel — move from one to another like a river flowing between villages.",
+  requires:["two-new-colors","ways-home"], version:1, author:"official", levels:[
+ {name:"Leave Home", power:{em:"🚣",name:"Setting Out",line:"You can move from one chord to another."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,6]]),
+  intro:"Chords can TRAVEL 🚣. Place your HOME chord (I — stack C, E, G in one column), then a DIFFERENT chord further along (IV — F, A, C). Two chords side by side — the river starts to move. Press ▶ and hear it flow.",
+  goals:[{id:"two",label:"Place two different chords",chk:()=>distinctChordCount()>=2},
+         {id:"pl",label:"Press ▶ to hear the river move",play:true}]},
+ {name:"Two Roads Out", power:{em:"🍃",name:"Two Currents",line:"You can flow toward the bright side or the tense side."}, steps:[
+   {hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,4]]),
+    intro:"From home, one road flows to the BRIGHT side 🍃 — that's I → IV (home to F major, open and sunny). Build it, then press ▶.",
+    goals:[{id:"iv",label:"Flow I → IV",chk:()=>hasChordRun(["I","IV"])},
+           {id:"pl",label:"Press ▶",play:true}]},
+   {hint:()=>placeProg([[CHORDS.I,0],[CHORDS.V,4]]),
+    intro:"The other road flows to the TENSE, restless side ⚡ — that's I → V (home to G major, the chord that wants to pull back). Build it, then press ▶.",
+    goals:[{id:"v",label:"Flow I → V",chk:()=>hasChordRun(["I","V"])},
+           {id:"pl",label:"Press ▶",play:true}]},
+ ]},
+ {name:"The Way Back", power:{em:"🏠",name:"Homeward",line:"You can flow a chord back home."},
+  hint:()=>placeProg([[CHORDS.V,0],[CHORDS.I,4]]),
+  intro:"Every river finds its way back 🏠. The tense chord V flows home to I — V → I. Build it and press ▶. Feel how the restless chord RELAXES the moment it lands home.",
+  goals:[{id:"vi",label:"Flow V → I (come home)",chk:()=>hasChordRun(["V","I"])},
+         {id:"pl",label:"Press ▶ to feel it settle",play:true}]},
+ {name:"The River's Journey", loop:true, power:{em:"🌊",name:"Journey",line:"You can take a chord on a full journey out and back."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,4],[CHORDS.V,8],[CHORDS.I,12]]),
+  intro:"Now a whole journey 🌊 — the most famous river of all: I → IV → V → I. Home, out to the bright side, to the tense side, and all the way back. Build it, loop it, and hear a real chord progression sing.",
+  goals:[{id:"prog",label:"Build I → IV → V → I",chk:()=>hasChordRun(["I","IV","V","I"])},
+         {id:"pl",label:"Press ▶ to hear the journey",play:true}]},
+ {name:"Which Way Flows Home?", power:{em:"👂",name:"River Ear",line:"You can hear which path leads home."},
+  setup:()=>showProgChoices([[CHORDS.V,CHORDS.I],[CHORDS.V,CHORDS.vi],[CHORDS.V,CHORDS.IV]],0,
+    "The river is at the tense chord V, and three paths lead onward 👂. Tap each to hear it — listen to all three — then pick the one that flows truly HOME.","🌊 Path "),
+  intro:"The river waits at V, wanting home. Three paths lead on — hear all three, then pick the one that flows truly HOME.",
+  goals:[{id:"pick",label:"Hear all three, then pick the path home",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Reconnect the Villages", power:{em:"🛶",name:"River Mender",line:"You can repair a broken progression."},
+  setup:()=>placeProg([[CHORDS.I,0],[CHORDS.V,8],[CHORDS.I,12]]),
+  hint:()=>{ CHORDS.IV.forEach(r=>setCell(r,4,true)); checkLevel(); },
+  intro:"The river is broken between two villages 🛶 — it jumps straight from home to the tense chord with a gap in between. Fill the gap at the empty column with IV (F, A, C) so it flows smoothly I → IV → V → I again. Then press ▶.",
+  goals:[{id:"fix",label:"Add the missing chord so it flows I → IV → V → I",chk:()=>hasChordRun(["I","IV","V","I"])},
+         {id:"pl",label:"Press ▶ to hear it reconnect",play:true}]},
+ {name:"A River of Your Own", loop:true, intent:"Where will your river wander before it comes home?",
+  power:{em:"🗺️",name:"River Maker",line:"You can chart a whole progression of your own."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.vi,4],[CHORDS.IV,8],[CHORDS.V,12]]),
+  intro:"Chart your own river 🗺️ — a progression that STARTS at home (I), wanders through at least three different chords, and ENDS back home (I). Loop it and hear where it takes you. Then press ▶.",
+  goals:[{id:"start",label:"Start at home (I)",chk:()=>startsOnDegree("I")},
+         {id:"three",label:"Wander through 3+ different chords",chk:()=>distinctChordCount()>=3},
+         {id:"end",label:"End back home (I)",chk:()=>endsOnDegree("I")},
+         {id:"pl",label:"Press ▶ to hear your river",play:true}]},
+ {name:"The Famous River", loop:true, intent:"You've heard this one in a thousand songs.",
+  power:{em:"🎶",name:"Songwriter",line:"You can build the progression behind countless songs."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.V,4],[CHORDS.vi,8],[CHORDS.IV,12]]),
+  intro:"One last river 🎶 — the most famous progression in pop music: I → V → vi → IV. You've heard it in a thousand songs without knowing its name. Build it, loop it, and recognise the magic. Then press ▶.",
+  goals:[{id:"pop",label:"Build I → V → vi → IV",chk:()=>hasChordRun(["I","V","vi","IV"])},
+         {id:"pl",label:"Press ▶ for the famous river",play:true}]},
+ {name:"Free Rivers 🌊", loop:true, power:{em:"☀️",name:"Free Rivers",line:"Every river is yours to chart."},
+  intro:"You can move chords like water now 🌊. This delta is yours — flow any progression you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"pull-of-the-moon":{ id:"pull-of-the-moon", name:"🌙 Pull of the Moon", topic:"harmony-dominant", region:"weather-of-wanting",
+  palette:"diatonic", desc:"The dominant chord aches to come home — learn to build longing, strong or gentle, then release it.",
+  requires:["two-new-colors","river-turns"], version:1, author:"official", levels:[
+ {name:"The Chord of Longing", power:{em:"🌙",name:"Longing",line:"You can build the restless chord that aches for home."},
+  hint:()=>placeProg([[CHORDS.V,4]]),
+  intro:"Meet the DOMINANT 🌙 — the chord V (G, B, D). It's the most restless chord of all: it doesn't feel finished, it ACHES to come home. Build it in one column and press ▶. Feel how it leaves you wanting more.",
+  goals:[{id:"v",label:"Build the dominant chord (V)",chk:()=>chordSyms().includes("V")},
+         {id:"pl",label:"Press ▶ to feel the longing",play:true}]},
+ {name:"The Strong Pull", power:{em:"🌕",name:"Strong Pull",line:"You can pull a tune home with full force."},
+  hint:()=>placeProg([[CHORDS.V,0],[CHORDS.I,4]]),
+  intro:"Now let it pull 🌕 — V → I. The dominant falls home to I with full force. This is the STRONGEST way home, the one that feels truly finished. Build it and press ▶.",
+  goals:[{id:"auth",label:"Build the strong pull V → I",chk:()=>hasChordRun(["V","I"])},
+         {id:"pl",label:"Press ▶ to feel the strong arrival",play:true}]},
+ {name:"The Gentle Pull", power:{em:"🌗",name:"Gentle Pull",line:"You can come home softly, too."},
+  hint:()=>placeProg([[CHORDS.IV,0],[CHORDS.I,4]]),
+  intro:"There's a softer way home 🌗 — IV → I (the gentle 'amen' you hear at the end of hymns). It settles home without the strong tug. Build it and press ▶. Same home, gentler landing.",
+  goals:[{id:"plagal",label:"Build the gentle pull IV → I",chk:()=>hasChordRun(["IV","I"])},
+         {id:"pl",label:"Press ▶ to feel the soft arrival",play:true}]},
+ {name:"Strong or Gentle?", power:{em:"👂",name:"Pull Ear",line:"You can hear how strongly a chord pulls home."},
+  setup:()=>showProgChoices([[CHORDS.V,CHORDS.I],[CHORDS.IV,CHORDS.I]],0,
+    "Two ways home 👂 — both land on I, but one pulls harder. Tap each to hear it — listen to both — then pick the one with the STRONGER pull.","🌙 Pull "),
+  intro:"Two ways home, both landing on I — but one pulls much harder than the other. Hear both, then pick the STRONGER pull.",
+  goals:[{id:"pick",label:"Hear both, then pick the stronger pull",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"The Climbing Note", power:{em:"🪜",name:"Leading Tone",line:"You can hear the leading tone climb home."},
+  setup:()=>placeProg([[[12,9,7],0],[[11,9,6],4]]),
+  hint:()=>{ placeProg([[[12,9,7],0],[[11,9,6],4]]); checkLevel(); },
+  intro:"Here's the dominant's SECRET 🪜. Hidden inside the V chord is the note B — and B sits just one tiny step below C, aching to climb up to it. This V → I is already built so its TOP voice steps up, B → C. Press ▶ and hear how that little climb makes coming home feel SO right. (Curious? Nudge the top notes around and press ▶ again — only B → C truly clicks. Tap 💡 Hint to restore it.)",
+  goals:[{id:"lead",label:"A V → I whose top voice climbs B → C",chk:()=>hasChordRun(["V","I"])&&leadingToneResolves()},
+         {id:"pl",label:"Press ▶ to hear the leading tone climb home",play:true}]},
+ {name:"Match the Longing", power:{em:"🎭",name:"Longing Binder",line:"You can pick the pull a moment needs."}, steps:[
+   {hint:()=>placeProg([[CHORDS.V,0],[CHORDS.I,4]]),
+    intro:"A hero throws open the gates in triumph ⚔️ — give the moment a STRONG arrival (V → I). Build it, then press ▶.",
+    goals:[{id:"s",label:"A strong arrival (V → I)",chk:()=>hasChordRun(["V","I"])},
+           {id:"pl",label:"Press ▶",play:true}]},
+   {hint:()=>placeProg([[CHORDS.IV,0],[CHORDS.I,4]]),
+    intro:"A child drifts gently to sleep 😴 — give this one a GENTLE arrival (IV → I). Build it, then press ▶.",
+    goals:[{id:"g",label:"A gentle arrival (IV → I)",chk:()=>hasChordRun(["IV","I"])},
+           {id:"pl",label:"Press ▶",play:true}]},
+ ]},
+ {name:"Raise the Moon", loop:true, intent:"Build the longing high, then let it fall home.",
+  power:{em:"🌝",name:"Moonrise",line:"You can build longing across a whole progression and release it home."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.vi,4],[CHORDS.V,8],[CHORDS.I,12]]),
+  intro:"Raise the moon 🌝 — build a progression of at least four chords that grows the longing and then RELEASES it home with a strong V → I at the very end. Loop it and feel the gates open. Then press ▶.",
+  goals:[{id:"four",label:"A 4+ chord progression",chk:()=>chordSyms().length>=4},
+         {id:"pull",label:"Release home with a strong V → I at the end",chk:()=>hasChordRun(["V","I"])&&endsOnDegree("I")},
+         {id:"pl",label:"Press ▶ to raise the moon",play:true}]},
+ {name:"Free Moon 🌙", loop:true, power:{em:"☀️",name:"Free Moon",line:"The pull of the moon is yours to command."},
+  intro:"You command the pull now 🌙 — strong or gentle, build longing and release it however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"false-doors":{ id:"false-doors", name:"🚪 False Doors", topic:"harmony-deception", region:"weather-of-wanting",
+  palette:"diatonic", desc:"Set up the pull home — then surprise everyone with a door that isn't quite home, but still sounds lovely.",
+  requires:["river-turns","pull-of-the-moon"], version:1, author:"official", levels:[
+ {name:"The Door Everyone Expects", power:{em:"🚪",name:"The Expected",line:"You know the door everyone expects."},
+  hint:()=>placeProg([[CHORDS.V,0],[CHORDS.I,4]]),
+  intro:"After the dominant's big pull, everyone expects ONE door 🚪 — home to I. That's V → I, the ending you've already mastered. Build it and press ▶ so we both know exactly what to expect... before we break it.",
+  goals:[{id:"exp",label:"Build the expected V → I",chk:()=>hasChordRun(["V","I"])},
+         {id:"pl",label:"Press ▶ to hear what's expected",play:true}]},
+ {name:"The False Door", power:{em:"🌫️",name:"Deception",line:"You can land on a surprise that still sounds right."},
+  hint:()=>placeProg([[CHORDS.V,0],[CHORDS.vi,4]]),
+  intro:"Now the trick 🌫️ — instead of I, land the pull on vi (A minor). It's a FALSE DOOR: it looks like home but it's wistful, not settled. Build V → vi and press ▶. Surprising... yet it still sounds lovely.",
+  goals:[{id:"dec",label:"Build the false door V → vi",chk:()=>hasChordRun(["V","vi"])},
+         {id:"pl",label:"Press ▶ to hear the surprise",play:true}]},
+ {name:"Expected or False?", power:{em:"👂",name:"Trickster Ear",line:"You can hear the false door coming."},
+  setup:()=>showProgChoices([[CHORDS.V,CHORDS.I],[CHORDS.V,CHORDS.vi],[CHORDS.V,CHORDS.IV]],1,
+    "Three endings after the same big pull 👂 — one comes truly home, one is the FALSE DOOR (a lovely surprise), one wanders off. Tap each to hear it — listen to all three — then pick the false door.","🚪 Door "),
+  intro:"After the pull, which door is the FALSE one — the surprise that's almost-but-not-quite home? Hear all three, then pick it.",
+  goals:[{id:"pick",label:"Hear all three, then pick the false door",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Redirect the Landing", power:{em:"🔀",name:"Redirector",line:"You can turn an expected ending into a surprise."},
+  setup:()=>placeProg([[CHORDS.V,0],[CHORDS.I,4]]),
+  hint:()=>{ CHORDS.I.forEach(r=>setCell(r,4,false)); CHORDS.vi.forEach(r=>setCell(r,4,true)); checkLevel(); },
+  intro:"This lands exactly where everyone expects — home on I, no surprise 🔀. Redirect it through the false door: swap that last chord for vi so the ending catches the listener off guard. Then press ▶.",
+  goals:[{id:"red",label:"Redirect the ending to the false door (V → vi)",chk:()=>hasChordRun(["V","vi"])},
+         {id:"pl",label:"Press ▶ to hear the redirect",play:true}]},
+ {name:"The Long Way Home", loop:true, power:{em:"🛤️",name:"Detour",line:"You can fake the ending, then truly arrive."},
+  hint:()=>placeProg([[CHORDS.V,0],[CHORDS.vi,2],[CHORDS.IV,4],[CHORDS.V,6],[CHORDS.I,8]]),
+  intro:"The best trick of all 🛤️ — fake the ending with a false door (V → vi), wander on a little, then bring it TRULY home with a real V → I at the very end. Build a progression that does both. Then press ▶.",
+  goals:[{id:"fake",label:"Use the false door V → vi",chk:()=>hasChordRun(["V","vi"])},
+         {id:"true",label:"Then truly arrive: end with V → I",chk:()=>hasChordRun(["V","I"])&&endsOnDegree("I")},
+         {id:"pl",label:"Press ▶ for the long way home",play:true}]},
+ {name:"A Door Left Open", loop:true, intent:"Some stories don't end at home — and that's beautiful.",
+  power:{em:"🌒",name:"Bittersweet",line:"You can end a song on a lingering, unresolved surprise."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,4],[CHORDS.V,8],[CHORDS.vi,12]]),
+  intro:"Not every story comes all the way home 🌒. Some songs END on the false door — finishing on vi (the wistful, moonlit minor chord) instead of resolving to I, so they hang in the air, bittersweet and lingering. Build a progression that ENDS on a false door (… V → vi) and leave it there, unresolved. Loop it and feel it linger. Then press ▶.",
+  goals:[{id:"three",label:"A progression of 3+ chords",chk:()=>chordSyms().length>=3},
+         {id:"end",label:"End on the false door (… V → vi, not home)",chk:()=>hasChordRun(["V","vi"])&&endsOnDegree("vi")},
+         {id:"pl",label:"Press ▶ to feel it linger",play:true}]},
+ {name:"Mirror Maze", loop:true, intent:"Trick them, twist them — then bring them home.",
+  power:{em:"🪞",name:"Maze Master",line:"You can surprise a listener and still satisfy them."},
+  hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,3],[CHORDS.V,6],[CHORDS.vi,9],[CHORDS.V,12],[CHORDS.I,15]]),
+  intro:"The final maze 🪞 — a real journey that STARTS home (I), springs a false door (V → vi) somewhere in the middle to surprise the traveller, then finds its TRUE way home with a strong V → I at the end. Build it, loop it, and feel a surprise that still satisfies. Then press ▶.",
+  goals:[{id:"start",label:"Start at home (I)",chk:()=>startsOnDegree("I")},
+         {id:"twist",label:"Spring a false door (V → vi)",chk:()=>hasChordRun(["V","vi"])},
+         {id:"home",label:"Find the true way home (end with V → I)",chk:()=>hasChordRun(["V","I"])&&endsOnDegree("I")},
+         {id:"pl",label:"Press ▶ for the mirror maze",play:true}]},
+ {name:"Free Doors 🚪", loop:true, power:{em:"☀️",name:"Free Doors",line:"Every door, true or false, is yours to open."},
+  intro:"You can surprise without ever sounding wrong 🚪. This hall of doors is yours — true endings, false ones, detours home, however you like. No goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
 "sun-and-moon-garden":{ id:"sun-and-moon-garden", name:"🌗 Sun & Moon Garden", topic:"color-mood", region:"twin-gardens",
