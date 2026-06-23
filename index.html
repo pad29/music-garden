@@ -2318,7 +2318,7 @@ function speakStory(text){ if(!("speechSynthesis" in window)) return;
 // Pre-baked narration: play voice/<key>.mp3 (a warm Amazon Polly clip keyed by the spoken text); fall back to the
 // browser voice if the clip isn't baked yet. voiceHash MUST stay in sync with tools/gen-voice.mjs so keys line up.
 const voiceHash = s => { let h=5381; for(let i=0;i<s.length;i++) h=((h*33)^s.charCodeAt(i))>>>0; return h.toString(16); };
-let curClip=null;
+let curClip=null, narrateReady=false;   // narrateReady: stay silent until the player actually enters a level (no narration on the landing / companion-picker screen)
 function narrate(text){ const t=toSpeech(text); stopSpeech(); if(!t) return;
   const a=new Audio("voice/"+voiceHash(t)+".mp3"); curClip=a; let fb=false;
   const fallback=()=>{ if(fb) return; fb=true; if(curClip===a) curClip=null; speakStory(text); };
@@ -2326,10 +2326,12 @@ function narrate(text){ const t=toSpeech(text); stopSpeech(); if(!t) return;
   const p=a.play(); if(p&&p.catch) p.catch(fallback); }
 function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(curClip){ try{ curClip.pause(); }catch(e){} curClip=null; } }
+// The player has reached a level (picked a buddy / signed in / opened a package) — let narration begin and speak the current story.
+function enterPlay(){ narrateReady=true; if(speakOn) narrate(curStage().intro||""); }
 function renderSpeak(){ if(!speakBtn) return; speakBtn.classList.toggle("on",speakOn);
   speakBtn.textContent=speakOn?"🔊":"🔇"; speakBtn.title=speakOn?"Read aloud: ON":"Read aloud: OFF"; }
 if(speakBtn) speakBtn.onclick=()=>{ speakOn=!speakOn; renderSpeak();
-  if(speakOn) narrate(curStage().intro||""); else stopSpeech();
+  if(speakOn){ narrateReady=true; narrate(curStage().intro||""); } else stopSpeech();
   progress.settings=progress.settings||{}; progress.settings.speak=speakOn; saveProgress(); };
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
@@ -2378,7 +2380,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
   levelTeach.style.display = teachTxt ? "" : "none";
-  if(speakOn) narrate(st.intro||""); else stopSpeech();                  // narrate the story (baked clip → browser-voice fallback)
+  if(speakOn && narrateReady) narrate(st.intro||""); else stopSpeech();  // narrate the story (baked clip → browser-voice fallback) — but not on the landing screen, before the player has entered a level
   const goals=st.goals||[]; goalList.innerHTML="";
   goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
@@ -2598,7 +2600,8 @@ function showCompPicker(){ const wrap=document.getElementById("compchoices"); wr
   compoverlay.style.display="flex"; }
 function pickCompanion(type){ progress.companion={type}; saveProgress();
   companionStageShown=friendStage(); compoverlay.style.display="none"; syncCompanion();
-  toast(COMPANIONS[type].name+" joined your garden! "+COMPANIONS[type].stages[0]); }
+  toast(COMPANIONS[type].name+" joined your garden! "+COMPANIONS[type].stages[0]);
+  enterPlay(); }   // now that a buddy is chosen, the level is visible — start the narration here
 nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
   if(!levelDone && L.steps && stepIdx<L.steps.length-1){
     carriedDrums = L.steps[stepIdx+1].carryDrums ? snapshotDrums() : null;
@@ -2862,10 +2865,12 @@ function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
 function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
+  narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
   homeoverlay.style.display="none"; renderLevel(); }
 // Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
 function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
   currentPkg="studio"; LEVELS=PACKAGES.studio.levels; levelIdx=0;
+  narrateReady=true;   // deliberate entry into the studio
   homeoverlay.style.display="none";
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
@@ -2964,7 +2969,7 @@ function applyProgress(){   // re-apply the progress object to the running game
 async function onSignedIn(uploadLocal){ const t=await freshToken(); if(!t){ cloudOn=false; renderAuth(); return; } cloudOn=true;
   let status;
   const cloud = uploadLocal ? null : await cloudPull();
-  if(cloud && typeof cloud==="object" && cloud.packages){ progress=cloud; Store.set("progress",progress); applyProgress(); status="loaded from cloud"; }
+  if(cloud && typeof cloud==="object" && cloud.packages){ progress=cloud; Store.set("progress",progress); applyProgress(); enterPlay(); status="loaded from cloud"; }
   else { status = (await cloudPush()) ? "saved to cloud" : "⚠️ cloud sync failed"; }
   renderAuth(status); }
 const authbox=document.getElementById("authbox");
@@ -3075,8 +3080,9 @@ document.getElementById("landingPass").addEventListener("keydown",e=>{ if(e.key=
 
 // First-load gate: shared link → straight to the studio; signed-in session → resume; else fresh visitor → landing.
 (function(){ if(/[#&](?:s|song)=/.test(location.hash)) return;
-  if(cognitoReady() && userPool && userPool.getCurrentUser()){ onSignedIn(false); return; }   // resume an existing session
-  if(!progress.companion) showLanding();                                                       // brand-new / signed-out visitor
+  if(cognitoReady() && userPool && userPool.getCurrentUser()){ onSignedIn(false); return; }   // resume an existing session (narration starts after the cloud load)
+  if(!progress.companion){ showLanding(); return; }                                            // brand-new / signed-out visitor → wait on the landing screen (no narration yet)
+  enterPlay();                                                                                 // returning local player lands straight on a level → narrate it now
 })();
 </script>
 </body>
