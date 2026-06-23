@@ -2314,11 +2314,21 @@ function speakStory(text){ if(!("speechSynthesis" in window)) return;
   try{ speechSynthesis.cancel(); const t=toSpeech(text); if(!t) return;
     const u=new SpeechSynthesisUtterance(t); u.rate=0.95; u.pitch=1.05;
     const v=pickVoice(); if(v) u.voice=v; speechSynthesis.speak(u); }catch(e){} }
-function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.cancel(); }catch(e){} } }
+// Pre-baked narration: play voice/<key>.mp3 (a warm Amazon Polly clip keyed by the spoken text); fall back to the
+// browser voice if the clip isn't baked yet. voiceHash MUST stay in sync with tools/gen-voice.mjs so keys line up.
+const voiceHash = s => { let h=5381; for(let i=0;i<s.length;i++) h=((h*33)^s.charCodeAt(i))>>>0; return h.toString(16); };
+let curClip=null;
+function narrate(text){ const t=toSpeech(text); stopSpeech(); if(!t) return;
+  const a=new Audio("voice/"+voiceHash(t)+".mp3"); curClip=a; let fb=false;
+  const fallback=()=>{ if(fb) return; fb=true; if(curClip===a) curClip=null; speakStory(text); };
+  a.addEventListener("error",fallback);
+  const p=a.play(); if(p&&p.catch) p.catch(fallback); }
+function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.cancel(); }catch(e){} }
+  if(curClip){ try{ curClip.pause(); }catch(e){} curClip=null; } }
 function renderSpeak(){ if(!speakBtn) return; speakBtn.classList.toggle("on",speakOn);
   speakBtn.textContent=speakOn?"🔊":"🔇"; speakBtn.title=speakOn?"Read aloud: ON":"Read aloud: OFF"; }
 if(speakBtn) speakBtn.onclick=()=>{ speakOn=!speakOn; renderSpeak();
-  if(speakOn) speakStory(curStage().intro||""); else stopSpeech();
+  if(speakOn) narrate(curStage().intro||""); else stopSpeech();
   progress.settings=progress.settings||{}; progress.settings.speak=speakOn; saveProgress(); };
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
@@ -2367,7 +2377,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
   levelTeach.style.display = teachTxt ? "" : "none";
-  if(speakOn) speakStory(st.intro||""); else stopSpeech();               // read the story aloud (pre-readers)
+  if(speakOn) narrate(st.intro||""); else stopSpeech();                  // narrate the story (baked clip → browser-voice fallback)
   const goals=st.goals||[]; goalList.innerHTML="";
   goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
