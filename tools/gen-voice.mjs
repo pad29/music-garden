@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 
 // ---- config ----
 const REGION   = "us-east-1";
-const ENGINE   = process.env.POLLY_ENGINE || "neural";        // neural | generative (generative = more expressive/lively)
+const ENGINE   = process.env.POLLY_ENGINE || "generative";    // generative = warm + expressive (chosen voice). neural = cheaper/flatter.
 const VOICE_ID = process.env.POLLY_VOICE  || "Joanna";        // warm, natural. Swap + re-run --force to change.
 const OUT_DIR  = "voice";
 const HTML     = "index.html";
