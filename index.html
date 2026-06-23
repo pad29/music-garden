@@ -2955,7 +2955,7 @@ async function cloudSongDelete(id){ const t=await freshToken(); if(!t) return fa
 function applyProgress(){   // re-apply the progress object to the running game
   if(progress.settings){ if(progress.settings.voice) instrEl.value=progress.settings.voice; if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
-    speakOn=!!progress.settings.speak; renderSpeak(); }
+    speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
   toolbox.length=0; toolboxPkg=null;   // force a per-package toolbox reload on the renderLevel below
   currentPkg=(progress.current&&PACKAGES[progress.current])?progress.current:"intro"; LEVELS=PACKAGES[currentPkg].levels;
   levelIdx=Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
@@ -3019,7 +3019,7 @@ if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={
 if(progress.settings && progress.settings.voice) instrEl.value=progress.settings.voice;
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
-if(progress.settings && progress.settings.speak){ speakOn=true; renderSpeak(); }
+speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
 toolboxPkg=null;   // toolbox is per-package now; the renderLevel below loads the resumed package's own tools
 currentPkg = (progress.current && PACKAGES[progress.current]) ? progress.current : "intro";
 LEVELS = PACKAGES[currentPkg].levels;
