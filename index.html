@@ -2299,6 +2299,7 @@ const speakBtn=document.getElementById("speak");
 const SPEAK_CHORD={I:"the one chord",II:"the two chord",III:"the three chord",IV:"the four chord",V:"the five chord",VI:"the six chord",VII:"the seven chord"};
 const toSpeech = s => (s||"")
   .replace(/\s*(?:->|→|➜|➡|⟶)\s*/g," to ")
+  .replace(/▶️?/g," Play ")
   .replace(/[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]/gu," ")
   .replace(/\b(VII|IV|VI|V|III|II|I)\b/g, m=>SPEAK_CHORD[m])
   .replace(/\b(vii|iv|vi|v|iii|ii)\b/g, m=>SPEAK_CHORD[m.toUpperCase()])
