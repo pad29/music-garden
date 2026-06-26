@@ -67,13 +67,15 @@ if (SAMPLES) {
 }
 
 // ---- collect the unique narration strings ----
+// We bake two kinds of spoken line: each level's `intro` (the story) and each "Hear a famous one" `credit` (the explanation).
 const html = fs.readFileSync(HTML, "utf8");
-const intros = [...html.matchAll(/\bintro:"([^"]*)"/g)].map(m => m[1]);
+const intros  = [...html.matchAll(/\bintro:"([^"]*)"/g)].map(m => m[1]);
+const credits = [...html.matchAll(/\bcredit:"([^"]*)"/g)].map(m => m[1]);
 const byKey = new Map();
-for (const raw of intros) { const spoken = toSpeech(raw); if (!spoken) continue;
+for (const raw of [...intros, ...credits]) { const spoken = toSpeech(raw); if (!spoken) continue;
   const key = voiceHash(spoken); if (!byKey.has(key)) byKey.set(key, spoken); }
 
-console.log(`Found ${intros.length} stories → ${byKey.size} unique clips. Voice: ${VOICE_ID}/${ENGINE}.`);
+console.log(`Found ${intros.length} stories + ${credits.length} credits → ${byKey.size} unique clips. Voice: ${VOICE_ID}/${ENGINE}.`);
 let made = 0, skipped = 0, failed = 0;
 for (const [key, spoken] of byKey) {
   const out = path.join(OUT_DIR, key + ".mp3");

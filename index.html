@@ -881,6 +881,46 @@ const echoMatch=()=>gridMatches(echoTarget());
 function echoHint(){ wipe(); echoTarget().forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
 function playPhrase(notes){ initAudio(); actx.resume(); const t0=actx.currentTime+0.12, sd=stepDur()/1000;
   notes.forEach(([r,c])=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd)); }
+
+// ---------- "Hear a famous one": show the very construct you're learning, alive in a real song ----------
+// A famous example places the CHORDS you just built (block triads) PLUS a melody riding on top, both drawn on the grid
+// and played in the garden's own voice — so you can SEE where the progression lives and hear it as a real song. It STAYS
+// on the field afterward (press ▶ to replay). Public-domain / non-copyrightable only — no audio assets, just notes.
+const FAMOUS = {
+  // "The Famous River" teaches I → V → vi → IV; show exactly those four chords, made into a little song.
+  fourchord: { title:"The Four-Chord Song",
+    chords:[["I",0],["V",4],["vi",8],["IV",12]],                              // the progression they built — block triads
+    mel:[[76,0],[79,2],[79,4],[81,6],[79,8],[76,10],[81,12],[77,14]],         // a gentle tune riding on top (upper octave)
+    credit:"🎧 That's I → V → vi → IV — the four chords behind “Let It Be”, “No Woman No Cry”, “Don't Stop Believin'” and a thousand more songs. You just built the famous one! 🎶" },
+};
+function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
+function placeFamous(f){ wipe();
+  (f.chords||[]).forEach(([deg,col])=> (CHORDS[deg]||[]).forEach(r=>{ if(grid[r]&&col<COLS) setCell(r,col,true); }));   // chords (block triads)
+  (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }); }                 // melody on top
+let famousTimers=[];
+function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[]; }
+function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
+  if(playing) stop(); clearFamousTimers();
+  placeFamous(f);                                       // draw the chords + melody on the field (it STAYS — ▶ replays it)
+  setStatus(f.credit);
+  initAudio(); actx.resume();
+  const sd=stepDur()/1000, t0=actx.currentTime+0.12; let lastC=0;   // same tempo as ▶ Play (which now replays this arrangement)
+  for(let c=0;c<COLS;c++){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
+    if(!rows.length) continue; lastC=c;
+    rows.forEach(r=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));            // sound the column (audio clock)
+    famousTimers.push(setTimeout(()=>{ rows.forEach(r=>flash(cells[r][c],r));      // light it (wall clock, aligned)
+      bloom(cells[rows[0]][c], rows.length>=2?"💐":noteFlower(rows[0])); compReact(); }, 120+c*sd*1000)); }
+  return 120 + (lastC+1)*sd*1000;                       // ms until the last column has sounded (so we can speak right after)
+}
+// Surface it as a REWARD: after a famous-bearing level is completed (and its power card claimed), plant + auto-play it.
+// No dedicated button — the arrangement STAYS on the grid, so ▶ Play replays it like any tune.
+let pendingFamous=null;
+function revealFamous(id){ const f=id&&FAMOUS[id]; if(!f) return;
+  if((curStage().famous||LEVELS[levelIdx].famous)!==id) return;                   // navigated away before the reveal fired — skip
+  const durMs=playFamous(id);                                                     // plant the chords+melody and play it once
+  goalHint.innerHTML='🎧 <b>You built the famous one!</b> It\'s planted in your garden now — press <b>▶</b> to hear it again.';
+  if(speakOn) famousTimers.push(setTimeout(()=>narrate(f.credit), durMs+900));    // voice the explanation ONCE, just after the song's first play settles
+}
 // ARCS: the campaign groups into four player-facing "awakening arcs" — powers, not lessons.
 const ARCS=[{em:"🎤",name:"Voice"},{em:"💓",name:"Pulse"},{em:"🔗",name:"Shape"},{em:"🪄",name:"Weaving"}];
 const ROMAN=["I","II","III","IV"];
@@ -2082,7 +2122,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
          {id:"three",label:"Wander through 3+ different chords",chk:()=>distinctChordCount()>=3},
          {id:"end",label:"End back home (I)",chk:()=>endsOnDegree("I")},
          {id:"pl",label:"Press ▶ to hear your river",play:true}]},
- {name:"The Famous River", loop:true, intent:"You've heard this one in a thousand songs.",
+ {name:"The Famous River", loop:true, intent:"You've heard this one in a thousand songs.", famous:"fourchord",
   power:{em:"🎶",name:"Songwriter",line:"You can build the progression behind countless songs."},
   hint:()=>placeProg([[CHORDS.I,0],[CHORDS.V,4],[CHORDS.vi,8],[CHORDS.IV,12]]),
   intro:"One last river 🎶 — you've heard this exact one in a thousand songs without knowing its name. Build it, loop it, and recognise the magic.",
@@ -2338,6 +2378,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null);   // drop any contour/pulse/phrase/density/color-reveal/mood UI
+  clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitFuse();
@@ -2439,6 +2480,8 @@ function stageComplete(){ confetti(); const L=LEVELS[levelIdx];
       +(L.intent?`<br><span class="intent">✨ ${L.intent}</span>`:""); }
   else toast("🌟 You did it — the whole garden is awake!");
   pendingReveal=L.reveal||null;                       // surprise reveal fires after the card is claimed
+  const fam=(curStage().famous)||L.famous;            // a famous example? reveal it as the reward, after the power card
+  if(fam){ pendingFamous=fam; if(!L.power) setTimeout(()=>{ const id=pendingFamous; pendingFamous=null; revealFamous(id); }, 700); }
   if(L.power) showPower(L.power); else toast("🎉 Level complete!");
   checkEvolve();                                      // arc complete? companion evolves (deferred behind the card)
 }
@@ -2453,7 +2496,8 @@ function showPower(p){ document.getElementById("powem").textContent=p.em;
   powoverlay.style.display="flex"; }
 function closePow(){ powoverlay.style.display="none";
   if(pendingEvolve){ pendingEvolve=false; playEvolve(); }                  // companion grows after the card is claimed
-  if(pendingReveal){ const r=pendingReveal; pendingReveal=null; setTimeout(r,350); } }
+  if(pendingReveal){ const r=pendingReveal; pendingReveal=null; setTimeout(r,350); }
+  if(pendingFamous){ const id=pendingFamous; pendingFamous=null; setTimeout(()=>revealFamous(id),450); } }   // famous example plays as the reward, after the card
 document.getElementById("powclose").onclick=closePow;
 powoverlay.onclick=e=>{ if(e.target===powoverlay) closePow(); };
 // package-complete congrats (shown on the goal-less free-play finale): names newly unlocked packages
@@ -2615,7 +2659,7 @@ const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById(
 const playhead=document.getElementById("playhead");
 let playing=false, step=0, timer=null, looping=false, shownPage=-1;
 const stepDur=()=>60000/tempoEl.value/2;
-function start(){ initAudio(); actx.resume(); stopSpeech(); playing=true; step=0;   // hush any narration so it doesn't talk over the music
+function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true; step=0;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; tick(); timer=setInterval(tick,stepDur());
   ev.played=true; checkLevel(); }
 function stop(){ playing=false; clearInterval(timer); timer=null;
