@@ -886,17 +886,45 @@ function playPhrase(notes){ initAudio(); actx.resume(); const t0=actx.currentTim
 // A famous example places the CHORDS you just built (block triads) PLUS a melody riding on top, both drawn on the grid
 // and played in the garden's own voice — so you can SEE where the progression lives and hear it as a real song. It STAYS
 // on the field afterward (press ▶ to replay). Public-domain / non-copyrightable only — no audio assets, just notes.
+// Each entry is `mel` (single notes [midi,col]) and/or `chords` (block triads [[midi,midi,midi],col]) — both as absolute
+// MIDI so they work in ANY palette (pentatonic OR diatonic). Public-domain / non-copyrightable tunes only.
 const FAMOUS = {
-  // "The Famous River" teaches I → V → vi → IV; show exactly those four chords, made into a little song.
+  // River Turns "The Famous River" — I → V → vi → IV: show exactly those four chords, made into a little song.
   fourchord: { title:"The Four-Chord Song",
-    chords:[["I",0],["V",4],["vi",8],["IV",12]],                              // the progression they built — block triads
-    mel:[[76,0],[79,2],[79,4],[81,6],[79,8],[76,10],[81,12],[77,14]],         // a gentle tune riding on top (upper octave)
+    chords:[[[60,64,67],0],[[67,71,74],4],[[69,72,76],8],[[65,69,72],12]],    // I  V  vi  IV
+    mel:[[76,0],[79,2],[79,4],[81,6],[79,8],[76,10],[81,12],[77,14]],         // a gentle tune riding on top
     credit:"🎧 That's I → V → vi → IV — the four chords behind “Let It Be”, “No Woman No Cry”, “Don't Stop Believin'” and a thousand more songs. You just built the famous one! 🎶" },
+  // Stepping Stones — stepwise motion. Mary tiptoes in tiny steps (one leap at the end).
+  mary: { title:"Mary Had a Little Lamb",
+    mel:[[76,0],[74,1],[72,2],[74,3],[76,4],[76,5],[76,6],[74,7],[74,8],[74,9],[76,10],[79,11],[79,12]],
+    credit:"🎵 That's “Mary Had a Little Lamb.” Hear how it tiptoes along in tiny steps, one note at a time? That's the smooth, stepwise motion you just learned." },
+  // Standing Towers — triads. Taps is a C-major triad (C-E-G) sung one note at a time, then rung as a chord.
+  taps: { title:"Taps",
+    mel:[[67,0],[67,1],[72,2],[67,3],[72,4],[76,5],[67,6],[72,7],[76,8]],
+    chords:[[[60,64,67],11]],
+    credit:"🎺 That's “Taps,” the bugle call — and it's secretly a tower! Those are the very stones you stacked, C, E and G, sung one at a time, then rung together as a chord." },
+  // Two New Colors — the full scale. Joy to the World slides down all seven notes (F and B included).
+  joy: { title:"Joy to the World",
+    mel:[[72,0],[71,2],[69,4],[67,6],[65,8],[64,10],[62,12],[60,14]],
+    credit:"🎵 That's the opening of “Joy to the World.” It slides all the way down the full seven-note scale you just unlocked — every colour, the new F and B included." },
+  // Ways Home — coming home. Ode to Joy wanders up and away, then settles back home on C.
+  odetojoy: { title:"Ode to Joy",
+    mel:[[76,0],[76,1],[77,2],[79,3],[79,4],[77,5],[76,6],[74,7],[72,8],[72,9],[74,10],[76,11],[74,12],[72,13]],
+    credit:"🎵 That's Beethoven's “Ode to Joy.” It wanders up and away, then comes all the way home to rest — the homecoming you just practised." },
+  // Pull of the Moon — the V → I authentic cadence. "Two bits" is V → I, the top voice climbing B → C.
+  shave: { title:"Shave and a Haircut",
+    mel:[[72,0],[67,1],[67,2],[69,3],[67,4],[71,8],[72,12]],
+    chords:[[[67,71,74],8],[[60,64,67],12]],                                   // V  then  I
+    credit:"🎵 “Shave and a hair-cut… two bits!” That “two bits” is V → I, the dominant's pull home — hear the very top note climb B → C, the strongest landing of all." },
+  // Sun & Moon Garden — the wistful minor mood. The Moldau, set in A minor (all natural notes).
+  moldau: { title:"The Moldau",
+    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[76,5],[77,6],[76,7],[74,8],[72,9],[74,10],[76,11],[72,12],[69,13]],
+    credit:"🎧 That's “The Moldau” by Smetana — a famous river in the wistful minor mood you just met. The same seven notes as the sunny garden, but it rests on the moon's home, so it feels misty and far away." },
 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ wipe();
-  (f.chords||[]).forEach(([deg,col])=> (CHORDS[deg]||[]).forEach(r=>{ if(grid[r]&&col<COLS) setCell(r,col,true); }));   // chords (block triads)
-  (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }); }                 // melody on top
+  (f.chords||[]).forEach(([midis,col])=> midis.forEach(m=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }));  // chords (block triads, MIDI)
+  (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }); }                          // melody on top
 let famousTimers=[];
 function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[]; }
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
@@ -1613,7 +1641,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"Three paths cross the river 🪨. Tap each to hear it — listen to ALL three — then pick the SMOOTH one that's easy to walk (small steps, no big jumps).",
   teach:"Mostly-stepwise melodies are the easiest to sing.",
   goals:[{id:"pick",label:"Hear all three, then pick the smooth crossing",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
- {name:"River Crossing Song", loop:true, power:{em:"🎵",name:"Wayfarer",line:"You can weave steps and a leap into one journey."},
+ {name:"River Crossing Song", loop:true, famous:"mary", power:{em:"🎵",name:"Wayfarer",line:"You can weave steps and a leap into one journey."},
   intent:"What does your crossing sound like?",
   hint:()=>setMelody([[6,0],[5,1],[4,2],[0,3],[1,4],[2,5]]),
   intro:"The big crossing 🎵 — make a melody that walks mostly in small steps but takes ONE bold leap along the way.",
@@ -1795,7 +1823,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"Now REUSE a tower 🏛️ — craft one, then click it in your 🎒 Toolbox and STAMP it onto the field (you can stamp it again and again!). Build once, place anywhere.",
   goals:[{id:"craft",label:"Craft a tower into your Toolbox",chk:(s,e)=>e.craftedTower},
          {id:"stamp",label:"Stamp it onto the field",chk:(s,e)=>e.stampedTool}]},
- {name:"Canyon Resonance", loop:true, intent:"How will your canyon ring?",
+ {name:"Canyon Resonance", loop:true, famous:"taps", intent:"How will your canyon ring?",
   power:{em:"🎶",name:"Resonance",line:"You can ring a whole canyon of towers."},
   hint:()=>hintSeeds([[9,0],[7,0],[6,0],[9,2],[7,2],[6,2],[9,4],[7,4],[6,4]]),
   intro:"Awaken the canyon 🏛️ — line up THREE or more towers across the field (stamp from your 🎒 Toolbox or build fresh), then loop and hear them ring out together.",
@@ -1988,7 +2016,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   teach:"F and B let you build chords like F major and G major for the first time.",
   goals:[{id:"t",label:"Build a standing tower that uses F or B",chk:()=>craftedNewTriad()},
          {id:"h",label:"Click your new tower to hear it",chk:(s,e)=>e.previewedTower}]},
- {name:"The Whole Scale", colors:["F","B"], loop:true, intent:"How does the fuller garden feel?",
+ {name:"The Whole Scale", colors:["F","B"], loop:true, famous:"joy", intent:"How does the fuller garden feel?",
   power:{em:"🌈",name:"Full Color",line:"You can sing with every color the garden knows."},
   hint:()=>setMelody([[6,0],[5,1],[4,2],[3,3],[2,4],[1,5],[0,6],[6,7]]),
   intro:"Your whole garden is awake now 🌈 — all seven colors, C through B. Make a melody that climbs through the new notes and comes HOME, using at least one F and one B.",
@@ -2055,7 +2083,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
     goals:[{id:"strong",label:"A strong landing home (B → C)",chk:s=>s.placed>=4&&fullArrival()},
            {id:"pl",label:"Press ▶ to hear the strong road",play:true}]},
  ]},
- {name:"Lantern Shore", loop:true, intent:"How will your journey come to rest?",
+ {name:"Lantern Shore", loop:true, famous:"odetojoy", intent:"How will your journey come to rest?",
   power:{em:"🏮",name:"Homecoming",line:"You can guide a whole tune home."},
   hint:()=>setMelody([[13,0],[12,1],[11,2],[9,3],[7,4],[6,5]]),
   intro:"Guide the lanterns home 🏮 — make a real little journey that wanders, then comes all the way HOME with a strong B → C arrival at the very end.",
@@ -2177,7 +2205,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
     goals:[{id:"g",label:"A gentle arrival (IV → I)",chk:()=>hasChordRun(["IV","I"])},
            {id:"pl",label:"Press ▶",play:true}]},
  ]},
- {name:"Raise the Moon", loop:true, intent:"Build the longing high, then let it fall home.",
+ {name:"Raise the Moon", loop:true, famous:"shave", intent:"Build the longing high, then let it fall home.",
   power:{em:"🌝",name:"Moonrise",line:"You can build longing across a whole progression and release it home."},
   hint:()=>placeProg([[CHORDS.I,0],[CHORDS.vi,4],[CHORDS.V,8],[CHORDS.I,12]]),
   intro:"Raise the moon 🌝 — grow the longing across a few chords, then RELEASE it home with a strong V → I, and feel the gates swing open.",
@@ -2254,7 +2282,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   teach:"A major chord (root + a big 3rd) sounds bright. Home here is C.",
   goals:[{id:"bright",label:"Stack a bright (major) chord — 3 notes in one column",chk:()=>countBrightChords()>=1},
          {id:"pl",label:"Press ▶ to feel the sunshine",play:true}]},
- {name:"Moon Garden", mood:"moon", power:{em:"🌙",name:"Wistful Light",line:"You can build a wistful, moonlit chord."},
+ {name:"Moon Garden", mood:"moon", famous:"moldau", power:{em:"🌙",name:"Wistful Light",line:"You can build a wistful, moonlit chord."},
   hint:()=>setMelody([[8,0],[6,0],[4,0]]),
   intro:"Now the MOON garden 🌙 — almost the same notes, but wistful and dreamy. Stack its WISTFUL chord (A, C and E in one column) and feel the moonlight.",
   teach:"A minor chord (root + a small 3rd) sounds wistful. Home here is A.",
