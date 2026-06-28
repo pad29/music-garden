@@ -849,7 +849,18 @@ const countTensePairs   = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension
 const countTritonePairs = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension(c)==="tritone") n++; return n; };
 const countClashPairs   = () => { let n=0; for(let c=0;c<COLS;c++) if(colTension(c)==="clash") n++; return n; };
 // the payoff: a tense pair immediately followed by a restful (consonant) pair = tension that RESOLVES (release)
-function tensionThenRest(){ for(let c=0;c<COLS-1;c++){ if(colTension(c)){ const g2=colGap(c+1); if(g2!=null && g2>0 && !isTensePair(g2)) return true; } } return false; }
+function tensionThenRest(){
+  for(let c=0;c<COLS;c++){
+    if(!colTension(c)) continue;                              // a tense pair here…
+    for(let d=c+1;d<COLS;d++){                                // …look ahead to the NEXT column that has any seeds (skip empty gaps)
+      let occ=0; for(let r=0;r<ROWS;r++) if(grid[r][d]) occ++;
+      if(!occ) continue;
+      const g2=colGap(d);
+      if(g2!=null && g2>0 && !isTensePair(g2)) return true;   // the next sound is a restful pair → tension resolves
+      break;                                                  // next sound wasn't restful — try a later tense pair
+    }
+  }
+  return false; }
 // Standing Towers: a column "stands" if its 3 notes form a stable stack (each adjacent pair a 3rd or wider)
 function colStands(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
   return rows.length===3 && stableMidis(rows.map(r=>MIDI[r]).sort((a,b)=>a-b)); }
