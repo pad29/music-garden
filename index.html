@@ -931,6 +931,12 @@ const FAMOUS = {
   moldau: { title:"The Moldau",
     mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[76,5],[77,6],[76,7],[74,8],[72,9],[74,10],[76,11],[72,12],[69,13]],
     credit:"🎧 That's “The Moldau” by Smetana — a famous river in the wistful minor mood you just met. The same seven notes as the sunny garden, but it rests on the moon's home, so it feels misty and far away." },
+  // Twin Blooms Plus — tension & release. Grieg's creeping Mountain King, in A minor: the figure climbs twice (building),
+  // then exhales into a calm home pair. (Opening E F# G A B G B → A minor = A B C D E C E, all naturals.)
+  mountainking: { title:"In the Hall of the Mountain King",
+    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[72,5],[76,6],[72,7],[74,8],[76,9],[77,10],[79,11],[76,12],[79,13],[76,14]],
+    chords:[[[69,76],15]],                                                     // the release: a calm A+E (perfect 5th) home pair
+    credit:"🎢 That's “In the Hall of the Mountain King” by Grieg — feel the tension creep and climb, higher and faster... and then finally release into calm. The most famous musical suspense there is!" },
 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ wipe();
@@ -1776,7 +1782,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"t",label:"Include a tense pair",chk:()=>countTensePairs()>=1},
          {id:"res",label:"Resolve the tension into rest",chk:()=>tensionThenRest()},
          {id:"pl",label:"Press ▶ to feel the suspense and release",play:true}]},
- {name:"The Restless Song", loop:true, intent:"Tell a story that twists with tension, then comes home.",
+ {name:"The Restless Song", loop:true, famous:"mountainking", intent:"Tell a story that twists with tension, then comes home.",
   power:{em:"🌶️",name:"Restless Song",line:"You can weave tension all through a piece — and resolve it."},
   hint:()=>hintSeeds([[6,0],[7,1],[6,1],[4,2],[10,3],[7,3],[5,4],[11,5],[6,5]]),
   intro:"One last twisting tale 🌶️ — write a song that uses tension TWICE (two restless pairs along the way) and finally RESOLVES into rest at the end.",
