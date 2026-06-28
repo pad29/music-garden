@@ -937,6 +937,10 @@ const FAMOUS = {
     mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[72,5],[76,6],[72,7],[74,8],[76,9],[77,10],[79,11],[76,12],[79,13],[76,14]],
     chords:[[[69,76],15]],                                                     // the release: a calm A+E (perfect 5th) home pair
     credit:"🎢 That's “In the Hall of the Mountain King” by Grieg — feel the tension creep and climb, higher and faster... and then finally release into calm. The most famous musical suspense there is!" },
+  // False Doors — the deceptive V→vi. Pachelbel's Canon (famous composer, real piece): the false-door move woven through it.
+  pachelbel: { title:"Pachelbel's Canon",
+    chords:[[[60,64,67],0],[[67,71,74],2],[[69,72,76],4],[[64,67,71],6],[[65,69,72],8],[[60,64,67],10],[[65,69,72],12],[[67,71,74],14]],  // I V vi iii IV I IV V
+    credit:"🎼 That's “Pachelbel's Canon” — the most famous chord journey ever written, heard at a thousand weddings. Listen for the moment it slips from V to vi instead of going home — the false door you just learned — and feel why it aches so sweetly." },
 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ wipe();
@@ -2277,7 +2281,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"three",label:"A progression of 3+ chords",chk:()=>chordSyms().length>=3},
          {id:"end",label:"End on the false door (… V → vi, not home)",chk:()=>hasChordRun(["V","vi"])&&endsOnDegree("vi")},
          {id:"pl",label:"Press ▶ to feel it linger",play:true}]},
- {name:"Mirror Maze", loop:true, intent:"Trick them, twist them — then bring them home.",
+ {name:"Mirror Maze", loop:true, famous:"pachelbel", intent:"Trick them, twist them — then bring them home.",
   power:{em:"🪞",name:"Maze Master",line:"You can surprise a listener and still satisfy them."},
   hint:()=>placeProg([[CHORDS.I,0],[CHORDS.IV,3],[CHORDS.V,6],[CHORDS.vi,9],[CHORDS.V,12],[CHORDS.I,15]]),
   intro:"The final maze 🪞 — start home, spring a false door in the middle to surprise the traveller, then find your TRUE way home at the end. A surprise that still satisfies.",
