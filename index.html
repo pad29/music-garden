@@ -34,7 +34,7 @@
   .settings{ margin-top:-2px; opacity:.95; }
   label.ctl{ display:flex; align-items:center; gap:6px; font-size:.85rem; opacity:.85;}
   input[type=range]{ accent-color:var(--accent); }
-  .status{ min-height:22px; font-size:.85rem; opacity:.85; margin:4px 0 12px; text-align:center; }
+  .status{ min-height:22px; font-size:.85rem; opacity:.85; margin:4px 0 12px; text-align:center; padding:0 64px; }  /* keep long messages (e.g. famous-song credits) clear of the fixed side buttons at top-right */
   .status b{ color:var(--accent2); }
 
   .mainscroll{ width:100%; overflow-x:auto;}                                  /* desktop: scroll the app row if the window is too narrow */
@@ -906,26 +906,26 @@ const FAMOUS = {
     mel:[[76,0],[79,2],[79,4],[81,6],[79,8],[76,10],[81,12],[77,14]],         // a gentle tune riding on top
     credit:"🎧 That's I → V → vi → IV — the four chords behind “Let It Be”, “No Woman No Cry”, “Don't Stop Believin'” and a thousand more songs. You just built the famous one! 🎶" },
   // Stepping Stones — stepwise motion. Mary tiptoes in tiny steps (one leap at the end).
-  mary: { title:"Mary Had a Little Lamb",
-    mel:[[76,0],[74,1],[72,2],[74,3],[76,4],[76,5],[76,6],[74,7],[74,8],[74,9],[76,10],[79,11],[79,12]],
+  mary: { title:"Mary Had a Little Lamb",                                      // even steps, but each phrase-ending "lamb" is a HELD half-note (rings through the gap)
+    mel:[[76,0],[74,1],[72,2],[74,3],[76,4],[76,5],[76,6],   [74,8],[74,9],[74,10],   [76,12],[79,13],[79,14]],  // Ma-ry had a lit-tle LAMB / lit-tle LAMB / lit-tle LAMB
     credit:"🎵 That's “Mary Had a Little Lamb.” Hear how it tiptoes along in tiny steps, one note at a time? That's the smooth, stepwise motion you just learned." },
   // Standing Towers — triads. Taps is a C-major triad (C-E-G) sung one note at a time, then rung as a chord.
-  taps: { title:"Taps",
-    mel:[[67,0],[67,1],[72,2],[67,3],[72,4],[76,5],[67,6],[72,7],[76,8]],
-    chords:[[[60,64,67],11]],
+  taps: { title:"Taps",                                                        // bugle rhythm: "day-is-DONE / gone-the-SUN / from-the-LAKES" — quick pickups, long held arrivals
+    mel:[[67,0],[67,1],[72,2],   [67,4],[72,5],[76,6],   [67,9],[72,10],[76,11]],  // G G C(held) / G C E(held) / G C E(held)
+    chords:[[[60,64,67],13]],                                                  // then the C-major triad rings as a chord
     credit:"🎺 That's “Taps,” the bugle call — and it's secretly a tower! Those are the very stones you stacked, C, E and G, sung one at a time, then rung together as a chord." },
   // Two New Colors — the full scale. Joy to the World slides down all seven notes (F and B included).
-  joy: { title:"Joy to the World",
-    mel:[[72,0],[71,2],[69,4],[67,6],[65,8],[64,10],[62,12],[60,14]],
+  joy: { title:"Joy to the World",                                             // "JOOOY" is held long, THEN the scale tumbles down
+    mel:[[72,0],[71,3],[69,5],[67,7],[65,9],[64,11],[62,13],[60,15]],          // C(held) then B A G F E D C cascading home
     credit:"🎵 That's the opening of “Joy to the World.” It slides all the way down the full seven-note scale you just unlocked — every colour, the new F and B included." },
   // Ways Home — coming home. Ode to Joy wanders up and away, then settles back home on C.
   odetojoy: { title:"Ode to Joy",
     mel:[[76,0],[76,1],[77,2],[79,3],[79,4],[77,5],[76,6],[74,7],[72,8],[72,9],[74,10],[76,11],[74,12],[72,13]],
     credit:"🎵 That's Beethoven's “Ode to Joy.” It wanders up and away, then comes all the way home to rest — the homecoming you just practised." },
   // Pull of the Moon — the V → I authentic cadence. "Two bits" is V → I, the top voice climbing B → C.
-  shave: { title:"Shave and a Haircut",
-    mel:[[72,0],[67,1],[67,2],[69,3],[67,4],[71,8],[72,12]],
-    chords:[[[67,71,74],8],[[60,64,67],12]],                                   // V  then  I
+  shave: { title:"Shave and a Haircut",                                        // "shave-and-a-hair-cut" (the "and-a" quick), a pause, then "two-bits"
+    mel:[[72,0],[67,2],[67,3],[69,4],[67,6],   [71,9],[72,11]],                // C G-G A G  (pause)  B C
+    chords:[[[67,71,74],9],[[60,64,67],11]],                                   // V  then  I  (under "two"  &  "bits")
     credit:"🎵 “Shave and a hair-cut… two bits!” That “two bits” is V → I, the dominant's pull home — hear the very top note climb B → C, the strongest landing of all." },
   // Sun & Moon Garden — the wistful minor mood. The Moldau, set in A minor (all natural notes).
   moldau: { title:"The Moldau",
@@ -933,19 +933,45 @@ const FAMOUS = {
     credit:"🎧 That's “The Moldau” by Smetana — a famous river in the wistful minor mood you just met. The same seven notes as the sunny garden, but it rests on the moon's home, so it feels misty and far away." },
   // Twin Blooms Plus — tension & release. Grieg's creeping Mountain King, in A minor: the figure climbs twice (building),
   // then exhales into a calm home pair. (Opening E F# G A B G B → A minor = A B C D E C E, all naturals.)
-  mountainking: { title:"In the Hall of the Mountain King",
-    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[72,5],[76,6],[72,7],[74,8],[76,9],[77,10],[79,11],[76,12],[79,13],[76,14]],
-    chords:[[[69,76],15]],                                                     // the release: a calm A+E (perfect 5th) home pair
+  mountainking: { title:"In the Hall of the Mountain King", cols:20,          // the creeping figure stated TWICE (a breath between), then the release rings alone
+    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[72,5],[76,6],                     // creep #1: A B C D E C E  (= Grieg's "E F# G A B G B"), the last E rings into the breath
+         [69,9],[71,10],[72,11],[74,12],[76,13],[72,14],[76,15]],              // (breath) creep #2: the same figure again, building the tension
+    chords:[[[69,76],18]],                                                     // (breath) the release: a calm A+E (perfect 5th) home pair, ringing alone
     credit:"🎢 That's “In the Hall of the Mountain King” by Grieg — feel the tension creep and climb, higher and faster... and then finally release into calm. The most famous musical suspense there is!" },
   // False Doors — the deceptive V→vi. Pachelbel's Canon (famous composer, real piece): the false-door move woven through it.
   pachelbel: { title:"Pachelbel's Canon",
     chords:[[[60,64,67],0],[[67,71,74],2],[[69,72,76],4],[[64,67,71],6],[[65,69,72],8],[[60,64,67],10],[[65,69,72],12],[[67,71,74],14]],  // I V vi iii IV I IV V
     credit:"🎼 That's “Pachelbel's Canon” — the most famous chord journey ever written, heard at a thousand weddings. Listen for the moment it slips from V to vi instead of going home — the false door you just learned — and feel why it aches so sweetly." },
+  // Question & Answer — open call + closed answer. Amazing Grace: line 1 climbs up and hangs (open); line 2 settles home (closed).
+  amazinggrace: { title:"Amazing Grace", cols:36,                  // real waltz rhythm: the LONG held notes fall on ma / graaace / sweeeet / soooound (ring through the gaps), with a breath between call and answer
+    //   A   ma- zing grace how sweet the sound          held: ma(2-5) grace(6-9) sweet(11-14) sound(15+)
+    mel:[[67,0],[72,2],[76,5],[72,6],[76,9],[74,11],[72,14],[69,15],   // CALL "A-ma-zing grace, how sweet the sound" — sol do mi do mi re do la, ENDS OPEN on la (A)
+    //   that saved a  wretch like me-e                  held: saved(22-25) wretch(26-29) me(32+)
+         [67,20],[72,22],[76,25],[72,26],[76,29],[74,31],[72,32]],     // (breath) ANSWER "that saved a wretch like me" — same opening, but settles HOME on do (C)
+    credit:"🎵 That's “Amazing Grace.” Hear how the first line climbs up and hangs in the air, still asking — that's the open call. Then the second line answers it and settles all the way home. One question, one reply — the very shape you just built." },
+  // Twin Blooms — harmonic pairs. Three blooms, one of each feeling, with the famous sounds each lives in.
+  blooms: { title:"Three Famous Blooms",
+    chords:[ [[62,64],2], [[72,76],7], [[60,67],12] ],              // CLOSE 2nd (D+E) · BRIGHT 3rd (C+E) · OPEN 5th (C+G)
+    credit:"🌸 Three famous blooms! A CLOSE pair hums right next to itself — cozy and buzzy. A BRIGHT pair is a sunny 3rd, the leap that opens “When the Saints Go Marching In.” And an OPEN pair rings wide as a 5th — the sound of bagpipes droning and grand fanfares. Same two-note magic, three different feelings." },
+  // Footsteps — steady pulse + backbeat, rendered on the DRUM pads (lane 0 kick, 1 snare, 2 hi-hat).
+  bodiddley: { title:"The Bo Diddley Beat",
+    drums:[ [0,0],[0,3],[0,6],[0,10],[0,12],                        // kick: the famous 3-2 clave (the signature bounce)
+            [1,4],[1,12],                                           // snare: the backbeat you just learned
+            [2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14] ],   // hi-hats: steady 8th shimmer
+    credit:"🥁 That's the Bo Diddley beat — a groove so catchy that whole songs ride on this one rhythm! The kick taps out its famous bouncing pattern — boom ba-boom ba-boom… boom-boom — while the snare keeps the backbeat you just learned. A rhythm with a name of its own." },
+  // Wind & Gaps — space + syncopation, on the DRUM pads. The Charleston barely touches the beats and dances in the gaps.
+  charleston: { title:"The Charleston",
+    drums:[ [0,0],[0,8],                                            // kick: just the downbeats 1 & 3 (the anchor)
+            [1,6],[1,14] ],                                         // snare: the off-beat Charleston stabs, floating in the GAPS
+    credit:"🎩 That's the Charleston — the most famous bounce in music, from the roaring 1920s dance everyone knew. Listen how it barely touches the main beats and leaps into the GAPS between them instead. That off-beat hop is exactly the groove-from-space you just discovered." },
 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
-function placeFamous(f){ wipe();
+function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
+  wipe();
   (f.chords||[]).forEach(([midis,col])=> midis.forEach(m=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }));  // chords (block triads, MIDI)
-  (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }); }                          // melody on top
+  (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); });                            // melody on top
+  if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } drumArea.style.display="";            // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
+    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); } }
 let famousTimers=[];
 function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[]; }
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
@@ -954,11 +980,16 @@ function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   setStatus(f.credit);
   initAudio(); actx.resume();
   const sd=stepDur()/1000, t0=actx.currentTime+0.12; let lastC=0;   // same tempo as ▶ Play (which now replays this arrangement)
+  const hasDrums=!!(f.drums&&f.drums.length);
   for(let c=0;c<COLS;c++){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
-    if(!rows.length) continue; lastC=c;
-    rows.forEach(r=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));            // sound the column (audio clock)
+    const lanes=[]; if(hasDrums) for(let d=0;d<DRUMS.length;d++) if(drumG[d][c]) lanes.push(d);
+    if(!rows.length && !lanes.length) continue; lastC=c;
+    rows.forEach(r=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));            // sound the pitched column (audio clock)
+    lanes.forEach(d=>DRUMS[d].play(t0+c*sd));                                       // sound the drum hits
     famousTimers.push(setTimeout(()=>{ rows.forEach(r=>flash(cells[r][c],r));      // light it (wall clock, aligned)
-      bloom(cells[rows[0]][c], rows.length>=2?"💐":noteFlower(rows[0])); compReact(); }, 120+c*sd*1000)); }
+      if(rows.length) bloom(cells[rows[0]][c], rows.length>=2?"💐":noteFlower(rows[0]));
+      lanes.forEach(d=>{ const el=dcells[d]&&dcells[d][c]; if(el){ el.classList.add("col-playing"); setTimeout(()=>el.classList.remove("col-playing"),150); } });
+      compReact(); }, 120+c*sd*1000)); }
   return 120 + (lastC+1)*sd*1000;                       // ms until the last column has sounded (so we can speak right after)
 }
 // Surface it as a REWARD: after a famous-bearing level is completed (and its power card claimed), plant + auto-play it.
@@ -1596,7 +1627,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"full",label:"Kick on 4 beats + Snare on 2&4 + steady 8th hi-hats",
           chk:()=>kickOn4()&&snareBackbeat()&&hat8ths()},
          {id:"pl",label:"Press ▶ to light the path",play:true}]},
- {name:"The Long Walk", rhythm:true, beatGuide:true, drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+ {name:"The Long Walk", rhythm:true, beatGuide:true, famous:"bodiddley", drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
   hint:()=>placeDrums([[2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14]]),
   power:{em:"🌄",name:"Wanderer",line:"You can walk a melody over a full groove."},
   intent:"Where does your path lead?",
@@ -1722,7 +1753,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"close",label:"Plant 3 CLOSE pairs (the cozy bed)",chk:()=>countColBands().close>=3},
          {id:"open",label:"Plant 3 OPEN pairs (the sunny bed)",chk:()=>countColBands().open>=3},
          {id:"pl",label:"Press ▶ to loop and hear the difference",play:true}]},
- {name:"The Twin Bloom Song", loop:true, intent:"What story do your blooms tell?",
+ {name:"The Twin Bloom Song", loop:true, famous:"blooms", intent:"What story do your blooms tell?",
   power:{em:"🎶",name:"Bloom Song",line:"You can sing with every feeling at once."},
   hint:()=>hintSeeds([[9,0],[8,0],[9,2],[7,2],[9,4],[5,4]]),
   intro:"Now a little song 🎶 — line up pairs that use ALL THREE feelings side by side: at least one CLOSE, one BRIGHT, and one OPEN pair. Stamp blooms from your 🎒 Toolbox or plant fresh, then hear your bloom song.",
@@ -1909,7 +1940,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"This answer hangs open 🛠️ — it climbs away and never comes home, so the conversation feels unfinished. Move its LAST seed onto a glowing HOME row so it lands.",
   goals:[{id:"fix",label:"Repair the ending so the answer lands home",chk:()=>answerEndsHome()&&answerCount()>=3},
          {id:"pl",label:"Press ▶ to hear it resolve",play:true}]},
- {name:"The Talking Tree", phrase:true, loop:true, intent:"What does your garden ask, and how does it answer?",
+ {name:"The Talking Tree", phrase:true, loop:true, famous:"amazinggrace", intent:"What does your garden ask, and how does it answer?",
   power:{em:"🌳",name:"Conversation",line:"You can write a whole question and its answer."},
   hint:()=>{ placeCall([[7,0],[8,1],[9,2],[6,3]]); placeAnswer([[6,8],[7,9],[8,10],[9,11]]); checkLevel(); },
   intro:"Now BOTH halves are yours 🌳. In the left half, write a CALL that hangs open (don't end on home); in the right half, an ANSWER that lands HOME. Together they wake the talking tree.",
@@ -1979,7 +2010,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
     goals:[{id:"better",label:"Remove hits until it breathes (6 or fewer)",chk:()=>isBreathing()},
            {id:"pl",label:"Press ▶ to hear the improvement",play:true}]},
  ]},
- {name:"Breathing Grove", rhythm:true, density:true, beatGuide:true, loop:true, intent:"Where does your grove leave room to breathe?",
+ {name:"Breathing Grove", rhythm:true, density:true, beatGuide:true, loop:true, famous:"charleston", intent:"Where does your grove leave room to breathe?",
   power:{em:"🌳",name:"Open Air",line:"You can make a full piece that still breathes."},
   hint:()=>{ placeDrums([[0,0],[2,2],[0,8],[2,10],[1,12]]); setMelody([[7,0],[5,8],[4,12]]); },
   intro:"The whole grove 🌳 — make a beat that feels alive but still OPEN (keep it sparse, with space to breathe), and plant a few melody seeds over it. Airy, not crowded.",
