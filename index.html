@@ -277,33 +277,39 @@
   #landingauth .authform input{ width:100%; box-sizing:border-box; background:var(--cream); color:var(--soil); border:1px solid var(--line);
     border-radius:8px; padding:9px 11px; font:inherit; margin:5px 0;}
   /* ---- World map (Home) ---- */
-  .mappanel{ width:440px; max-width:94vw;}
+  .mappanel{ width:500px; max-width:94vw;}
   .maphead{ font-size:.78rem; opacity:.82; text-align:center; margin:2px 0 14px;}
-  .region{ position:relative; border-radius:14px; padding:12px 13px; margin-bottom:14px;
-    background:linear-gradient(160deg, #FFFFFF, var(--panel)); border-left:4px solid var(--teal); box-shadow:0 3px 10px rgba(62,58,57,.08);}
-  .region.locked, .region.soon{ opacity:.62;}
-  .region-head{ display:flex; align-items:center; gap:11px; margin-bottom:10px;}
-  .region-emoji{ font-size:1.9rem; line-height:1; flex:0 0 auto;}
-  .region-info{ flex:1; min-width:0;}
-  .region-name{ font-weight:700; font-size:1.02rem;}
-  .region-blurb{ font-size:.72rem; opacity:.8; line-height:1.3;}
-  .region-friend{ display:flex; flex-direction:column; align-items:center; gap:4px; flex:0 0 auto; cursor:default;}
-  .region-friend .rf-emoji{ font-size:1.6rem; line-height:1;}
-  .region-friend .rf-dots{ display:flex; gap:3px;}
-  .region-friend .rf-dots span{ width:6px; height:6px; border-radius:50%; background:rgba(62,58,57,.16);}
-  .region-friend .rf-dots span.on{ background:var(--leaf); box-shadow:0 0 5px rgba(68,163,95,.7);}
-  .region-soon{ font-size:.78rem; opacity:.85; text-align:center; padding:4px 0 2px; font-style:italic;}
-  .region-pkgs{ display:flex; flex-direction:column; gap:8px;}
-  .pnode{ background:#FFFDF7; border-radius:11px; padding:9px 11px; border:1px solid var(--line); box-shadow:0 1px 4px rgba(62,58,57,.10);}
-  .pnode.locked{ opacity:.6;}
-  .pnode-top{ display:flex; justify-content:space-between; align-items:center; gap:6px;}
-  .pnode-name{ font-size:.9rem; font-weight:700;}
-  .pnode-done{ color:var(--leaf-deep); font-size:.72rem; white-space:nowrap;}
-  .pnode-bar{ height:7px; border-radius:5px; background:rgba(62,58,57,.12); overflow:hidden; margin:6px 0 4px;}
-  .pnode-bar>div{ height:100%; background:var(--leaf);}
-  .pnode-meta{ font-size:.68rem; opacity:.82;}
-  .pnode-actions{ display:flex; gap:6px; margin-top:8px;}
-  .pnode-actions button{ padding:5px 11px; font-size:.82rem;}
+  /* the continent: an SVG map — each region is a hand-drawn land, auto-split into one territory per package */
+  #worldmap{ width:100%; display:block; margin:2px 0 10px; border-radius:14px;}
+  #worldmap .mcell{ cursor:pointer; stroke-width:1.3; transition:filter .15s;}
+  #worldmap .mcell:hover{ filter:brightness(1.10) saturate(1.2);}
+  #worldmap .mcell.mlocked{ cursor:help; stroke-dasharray:3 3;}
+  #worldmap .mcell.mcur{ stroke:var(--gold-deep); stroke-width:2.6;}
+  #worldmap .memoji{ font-size:13px; text-anchor:middle; pointer-events:none;}
+  #worldmap .mdone{ font-size:14px; text-anchor:middle; pointer-events:none; fill:#1E6B38; font-weight:800;
+    paint-order:stroke; stroke:rgba(255,255,255,.9); stroke-width:3;}
+  #worldmap .mplay{ font-size:11px; text-anchor:middle; pointer-events:none; fill:var(--soil); opacity:.85;
+    paint-order:stroke; stroke:rgba(255,255,255,.9); stroke-width:3;}
+  #worldmap .mlabel{ font-family:var(--font-display); font-size:10.5px; letter-spacing:1.1px; font-weight:600;
+    fill:var(--soil); text-anchor:middle; paint-order:stroke; stroke:#F6F1E4; stroke-width:3.5; pointer-events:none;}
+  #worldmap .mfriend{ font-size:24px; text-anchor:middle; pointer-events:none;}
+  .maptip{ position:fixed; z-index:80; transform:translate(-50%,-115%); background:var(--soil); color:var(--cream);
+    font-size:.78rem; padding:6px 11px; border-radius:8px; pointer-events:none; white-space:nowrap;
+    box-shadow:0 4px 14px rgba(62,58,57,.35); display:none; text-align:center; line-height:1.4;}
+  .maptip b{ color:var(--gold);}
+  #worldmap .mborder{ fill:none; stroke-width:2.2; pointer-events:none;}      /* crisp region outlines over the territories */
+  #worldmap .mcell.msel{ stroke:var(--soil); stroke-width:2.4;}
+  /* the little box a clicked territory opens: description + Continue / Restart — floats OVER the map,
+     on the opposite half from the click, and dismisses on any click outside it */
+  .mapwrap{ position:relative; margin-bottom:10px;}
+  .mapbox{ position:absolute; left:50%; transform:translateX(-50%); width:84%; z-index:6;
+    background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px;
+    box-shadow:0 10px 28px rgba(62,58,57,.32); display:none;}
+  .mapbox .mb-name{ font-weight:700; font-size:.92rem;}
+  .mapbox .mb-desc{ font-size:.75rem; opacity:.88; line-height:1.42; margin:4px 0 6px;}
+  .mapbox .mb-meta{ font-size:.72rem; opacity:.82; margin-bottom:8px;}
+  .mapbox .mb-actions{ display:flex; gap:6px;}
+  .mapbox .mb-actions button{ padding:6px 12px; font-size:.85rem;}
   /* surprise reveals: whole-garden sync pulse + a big structure rising */
   .grid.gpulse, .drumrows.gpulse{ animation:gpulse .3s ease-out;}
   @keyframes gpulse{ 0%{ transform:scale(1.018);} 100%{ transform:scale(1);} }
@@ -317,7 +323,7 @@
 <body>
   <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select></div>
   <div id="sidetools">
-    <button id="home" title="Home / packages">🏡</button>
+    <button id="home" title="World map">🗺️</button>
     <button id="mixer" title="Mix / volume">🎚️</button>
     <button id="save" title="Save melody">💾</button>
     <button id="share" title="Share link">🔗</button>
@@ -3109,54 +3115,167 @@ function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
 function openStudioWith(song){ openStudio(); if(song) applySong(song); }   // carry a finale's creation into the Studio
-// one package as a node on the map (progress bar, lock state, Play/Resume/Restart)
-function pkgNode(id){ const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
-  const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
-  const node=document.createElement("div"); node.className="pnode"+(unlocked?"":" locked");
-  let html=`<div class="pnode-top"><span class="pnode-name">${pk.name}</span>`
-    +(pp.completed?`<span class="pnode-done">✓ done</span>`:unlocked?"":`<span>🔒</span>`)+`</div>`;
-  if(unlocked){ const pct=Math.round(100*reached/total);
-    html+=`<div class="pnode-bar"><div style="width:${pct}%"></div></div><div class="pnode-meta">${reached}/${total} levels</div>`;
-  } else { const reqs=(pk.requires||[]).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
-    html+=`<div class="pnode-meta">🔒 Finish first: ${reqs}</div>`; }
-  node.innerHTML=html;
-  if(unlocked){ const row=document.createElement("div"); row.className="pnode-actions";
-    row.append(mkBtn(pp.level&&!pp.completed?"▶ Resume":"▶ Play",()=>openPkg(id, pp.completed?0:(pp.level||0))),
-               mkBtn("↺ Restart",()=>openPkg(id,0)));
-    node.appendChild(row); }
-  return node;
+// ---------- The continent: a fictional world map (the Home menu) ----------
+// Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
+//   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.
+//   ADD A REGION   → draw one blob + (optionally) a label anchor; grow the viewBox if the continent needs room.
+// The lands tile ONE connected continent: every internal border is a shared point sequence between its two
+// neighbours (junctions M,N,O,P,Q,R + one wavy midpoint per border), so the coastline is the only water edge.
+const CONTINENT={
+  viewBox:"0 0 460 478",
+  lands:{
+    "color-spring":        [[38,166],[46,118],[52,84],[78,54],[128,34],[186,30],[206,86],[210,140],[184,152],[172,182],[104,182]],
+    "twin-gardens":        [[186,30],[252,26],[318,38],[352,66],[335,112],[300,158],[256,141],[210,140],[206,86]],
+    "stone-chorus-canyon": [[352,66],[390,84],[418,118],[438,166],[444,214],[432,262],[404,306],[350,286],[306,250],[313,204],[300,158],[335,112]],
+    "paths-of-song":       [[38,166],[104,182],[172,182],[173,228],[192,272],[114,276],[40,296],[28,258],[34,222]],
+    "first-garden":        [[210,140],[256,141],[300,158],[313,204],[306,250],[276,276],[242,278],[218,288],[192,272],[173,228],[172,182],[184,152]],
+    "weather-of-wanting":  [[40,296],[114,276],[192,272],[218,288],[242,278],[229,358],[230,438],[176,438],[118,428],[68,392],[44,336]],
+    "pulse-woods":         [[242,278],[276,276],[306,250],[350,286],[404,306],[398,364],[372,418],[312,442],[246,446],[230,438],[229,358]],
+  },
+  labels:{ "color-spring":[118,88], "twin-gardens":[264,80], "stone-chorus-canyon":[374,148,1],   // [x, y, wrap?] — wrap splits a long name onto two lines; every label (+ its friend) sits INSIDE its land
+           "paths-of-song":[100,206], "first-garden":[242,176], "weather-of-wanting":[130,326], "pulse-woods":[320,330] },
+  studio:{ poly:[[398,420],[430,412],[452,430],[446,456],[416,464],[396,446]], label:[424,406] },
+};
+// tiny polygon toolkit for the map
+const polyArea=p=>{ let a=0; for(let i=0;i<p.length;i++){ const[x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length]; a+=x1*y2-x2*y1; } return a/2; };
+const polyCentroid=p=>{ let a=0,cx=0,cy=0; for(let i=0;i<p.length;i++){ const[x1,y1]=p[i],[x2,y2]=p[(i+1)%p.length];
+  const c=x1*y2-x2*y1; a+=c; cx+=(x1+x2)*c; cy+=(y1+y2)*c; } a*=3; return [cx/a,cy/a]; };
+function clipHalf(poly,[px,py],[dx,dy]){    // keep the part LEFT of the directed line through (px,py) along (dx,dy)
+  const out=[], side=([x,y])=>dx*(y-py)-dy*(x-px);
+  for(let i=0;i<poly.length;i++){ const A=poly[i], B=poly[(i+1)%poly.length], sa=side(A), sb=side(B);
+    if(sa>=0) out.push(A);
+    if((sa>0&&sb<0)||(sa<0&&sb>0)){ const t=sa/(sa-sb); out.push([A[0]+t*(B[0]-A[0]), A[1]+t*(B[1]-A[1])]); } }
+  return out;
 }
-// the world map: regions (biomes) with their friend + packages, plus teasers for worlds still growing
+function splitPolyN(poly,n,seed){           // recursive area bisection with gently tilted cuts → territory-like pieces
+  if(n<=1) return [poly];
+  const k=Math.floor(n/2), frac=k/n;
+  const xs=poly.map(p=>p[0]), ys=poly.map(p=>p[1]);
+  const wide=(Math.max(...xs)-Math.min(...xs)) >= (Math.max(...ys)-Math.min(...ys));
+  const skew=((seed%2)?1:-1)*0.22;                       // ~12° tilt so borders don't look ruler-drawn
+  const d=wide?[skew,1]:[1,skew];
+  const total=Math.abs(polyArea(poly));
+  let lo=wide?Math.min(...xs):Math.min(...ys), hi=wide?Math.max(...xs):Math.max(...ys), piece=poly, rest=[];
+  for(let it=0;it<22;it++){ const m=(lo+hi)/2, pt=wide?[m,0]:[0,m];
+    piece=clipHalf(poly,pt,d); rest=clipHalf(poly,pt,[-d[0],-d[1]]);
+    const fa=Math.abs(polyArea(piece))/total;
+    if((fa>frac)===wide) hi=m; else lo=m; }
+  return [...splitPolyN(piece,k,seed*2+1), ...splitPolyN(rest,n-k,seed*2+2)];
+}
+const hex2rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mixhex=(h1,h2,t)=>{ const a=hex2rgb(h1), b=hex2rgb(h2);
+  return "#"+a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,"0")).join(""); };
+const pathD=poly=>"M"+poly.map(p=>p[0].toFixed(1)+" "+p[1].toFixed(1)).join("L")+"Z";
+// hover tooltip (name · progress · prerequisites)
+let maptip=null;
+function mapTipHTML(id){
+  if(id==="__studio") return "<b>🎵 Studio</b><br>free play — build, save & share anything";
+  const pk=PACKAGES[id], pp=pkgProg(id), total=pk.levels.length;
+  if(!isPkgUnlocked(id)){ const reqs=(pk.requires||[]).filter(r=>!reqMet(r)).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
+    return `<b>${pk.name}</b><br>🔒 finish first: ${reqs}`; }   // only the prerequisites still MISSING
+  if(pp.completed) return `<b>${pk.name}</b><br>✓ complete — click to replay`;
+  const reached=Math.min((pp.maxLevel||0)+1,total);
+  return `<b>${pk.name}</b><br>${reached}/${total} levels — click to ${pp.level?"resume":"play"}`;
+}
 function renderPkgs(){ pkglist.innerHTML="";
   let powers=0; Object.keys(PACKAGES).forEach(id=>{ if(PACKAGES[id].hidden) return; powers+=Math.min(pkgProg(id).done||0, PACKAGES[id].levels.length); });
   const head=document.createElement("div"); head.className="maphead";
   head.textContent = powers ? `🌟 ${powers} power${powers>1?"s":""} earned on your journey` : "Your journey begins here 🌱";
   pkglist.appendChild(head);
-  // Studio: a free-play sandbox, always available from Home
-  const sc=document.createElement("div"); sc.className="region studiocard"; sc.style.borderLeftColor="#F4C95D";
-  sc.innerHTML=`<div class="region-head"><span class="region-emoji">🎵</span>`
-    +`<div class="region-info"><div class="region-name">Studio</div>`
-    +`<div class="region-blurb">Free play — build, save, and share anything you like.</div></div></div>`;
-  const sbtn=mkBtn("▶ Open Studio", openStudio); sbtn.className=""; sc.appendChild(sbtn);
-  pkglist.appendChild(sc);
-  REGION_MAP.forEach(reg=>{
+  let cells="", borders="", marks="", labels="";
+  REGION_MAP.forEach((reg,ri)=>{
+    const land=CONTINENT.lands[reg.id]; if(!land) return;
     const pkgs=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg.id && !PACKAGES[id].hidden);
-    const soon = reg.soon || pkgs.length===0;
-    const open = reg.id==="first-garden" || pkgs.some(id=>isPkgUnlocked(id));
-    const panel=document.createElement("div"); panel.className="region"+(soon?" soon":(open?"":" locked"));
-    if(reg.color) panel.style.borderLeftColor=reg.color;
+    const open=reg.id==="first-garden" || pkgs.some(id=>isPkgUnlocked(id));
+    const parts=splitPolyN(land, Math.max(pkgs.length,1), ri+3);
+    pkgs.forEach((id,i)=>{
+      const pk=PACKAGES[id], poly=parts[i], unlocked=isPkgUnlocked(id), pp=pkgProg(id);
+      const done=pp.completed;
+      const fill=unlocked ? mixhex(reg.color,"#FFFFFF", done?.10:.28+(i%3)*.13)
+                          : mixhex(mixhex(reg.color,"#8C8880",.58),"#FFFFFF",.34);
+      let [cx,cy]=polyCentroid(poly);
+      const la=CONTINENT.labels[reg.id];                  // keep the territory glyph clear of the label + friend block
+      if(la){ const dx=cx-la[0], dy=cy-(la[1]+(la[2]?26:16)), d=Math.hypot(dx,dy);
+        if(d<44){ const push=(44-d)/(d||1); cx+=dx*push; cy+=dy*push; } }
+      cells+=`<path d="${pathD(poly)}" class="mcell${unlocked?"":" mlocked"}${id===currentPkg?" mcur":""}" data-pkg="${id}" fill="${fill}" stroke="${mixhex(reg.color,"#3E3A39",.35)}"/>`;
+      // ONE status glyph per territory — lock WINS over a stale completed flag (dev-jump saves can hold both):
+      // 🔒 locked · ✓ complete · ▶ open to play
+      if(!unlocked) marks+=`<text x="${cx.toFixed(1)}" y="${(cy+5).toFixed(1)}" class="memoji">🔒</text>`;
+      else if(done) marks+=`<text x="${cx.toFixed(1)}" y="${(cy+5).toFixed(1)}" class="mdone">✓</text>`;
+      else marks+=`<text x="${cx.toFixed(1)}" y="${(cy+4).toFixed(1)}" class="mplay">▶</text>`;
+    });
+    borders+=`<path d="${pathD(land)}" class="mborder" stroke="${mixhex(reg.color,"#3E3A39",.45)}"/>`;
     const f=regionFriend(reg.id), st=regionStage(reg.id);
-    let h=`<div class="region-head"><span class="region-emoji">${reg.emoji}</span>`
-      +`<div class="region-info"><div class="region-name">${reg.name}</div><div class="region-blurb">${reg.blurb}</div></div>`;
-    if(f && open && !soon){ let dots=""; for(let i=0;i<f.stages.length;i++) dots+=`<span class="${i<=st?'on':''}"></span>`;
-      h+=`<div class="region-friend" title="${f.name} — your friend here, grows as you finish this world">`
-        +`<span class="rf-emoji">${f.stages[st]}</span><span class="rf-dots">${dots}</span></div>`; }
-    h+=`</div>`; panel.innerHTML=h;
-    if(soon){ const s=document.createElement("div"); s.className="region-soon"; s.textContent="✨ A new world, still growing — coming soon"; panel.appendChild(s); }
-    else { const list=document.createElement("div"); list.className="region-pkgs";
-      pkgs.forEach(id=>list.appendChild(pkgNode(id))); panel.appendChild(list); }
-    pkglist.appendChild(panel);
+    const [lx,ly,wrap]=CONTINENT.labels[reg.id]||polyCentroid(land);
+    const op=open?"":' opacity=".55"';
+    if(wrap){ const w=(reg.emoji+" "+reg.name.toUpperCase()).split(" "), cut=Math.ceil(w.length*2/3);
+      labels+=`<text x="${lx}" y="${ly}" class="mlabel"${op}><tspan x="${lx}">${w.slice(0,cut).join(" ")}</tspan><tspan x="${lx}" dy="12">${w.slice(cut).join(" ")}</tspan></text>`;
+    } else labels+=`<text x="${lx}" y="${ly}" class="mlabel"${op}>${reg.emoji} ${reg.name.toUpperCase()}</text>`;
+    if(f&&open) labels+=`<text x="${lx}" y="${ly+(wrap?46:34)}" class="mfriend">${f.stages[st]}</text>`;   // the region's friend, centered under the label with clear air below the text
   });
+  // the Studio: a little free-play island off the coast
+  cells+=`<path d="${pathD(CONTINENT.studio.poly)}" class="mcell" data-pkg="__studio" fill="${mixhex("#F4C95D","#FFFFFF",.25)}" stroke="${mixhex("#F4C95D","#3E3A39",.35)}"/>`;
+  marks+=`<text x="${polyCentroid(CONTINENT.studio.poly)[0].toFixed(1)}" y="${(polyCentroid(CONTINENT.studio.poly)[1]+5).toFixed(1)}" class="memoji">🎵</text>`;
+  labels+=`<text x="${CONTINENT.studio.label[0]}" y="${CONTINENT.studio.label[1]}" class="mlabel">STUDIO</text>`;
+  const map=document.createElement("div");
+  map.innerHTML=`<svg id="worldmap" viewBox="${CONTINENT.viewBox}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="460" height="478" rx="14" fill="#D9E8F0"/>
+    <path d="M28 448 q10 -7 20 0 t20 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M368 62 q10 -7 20 0 t20 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M210 330 q9 -6 18 0 t18 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
+    ${cells}${borders}${marks}${labels}</svg>`;
+  const svg=map.firstElementChild;
+  const wrap=document.createElement("div"); wrap.className="mapwrap";
+  wrap.appendChild(svg); pkglist.appendChild(wrap);
+  // the territory box: click a land to read about it and Continue / Restart
+  const mapbox=document.createElement("div"); mapbox.className="mapbox"; wrap.appendChild(mapbox);
+  function showMapBox(id,clientY){
+    // float the box over the half of the map the click did NOT happen in, so the clicked land stays visible
+    const r=svg.getBoundingClientRect();
+    if(clientY!=null && clientY < r.top+r.height/2){ mapbox.style.top="auto"; mapbox.style.bottom="16px"; }
+    else { mapbox.style.top="16px"; mapbox.style.bottom="auto"; }
+    svg.querySelectorAll(".msel").forEach(c=>c.classList.remove("msel"));
+    const cell=svg.querySelector(`[data-pkg="${id}"]`); if(cell) cell.classList.add("msel");
+    mapbox.innerHTML="";
+    const nameEl=document.createElement("div"); nameEl.className="mb-name";
+    const descEl=document.createElement("div"); descEl.className="mb-desc";
+    const metaEl=document.createElement("div"); metaEl.className="mb-meta";
+    const row=document.createElement("div"); row.className="mb-actions";
+    if(id==="__studio"){
+      nameEl.textContent="🎵 Studio";
+      descEl.textContent="Free play — build, save, and share anything you like.";
+      row.appendChild(mkBtn("▶ Open Studio",openStudio));
+      mapbox.append(nameEl,descEl,row);
+    } else {
+      const pk=PACKAGES[id], pp=pkgProg(id), unlocked=isPkgUnlocked(id), total=pk.levels.length;
+      nameEl.textContent=pk.name;
+      descEl.textContent=pk.desc||"";
+      if(!unlocked){
+        const reqs=(pk.requires||[]).filter(r=>!reqMet(r)).flat().map(r=>(PACKAGES[r]&&PACKAGES[r].name)||r).join(", ");
+        metaEl.textContent=`🔒 Finish first: ${reqs}`;
+        mapbox.append(nameEl,descEl,metaEl);
+      } else {
+        const reached=pp.completed?total:Math.min((pp.maxLevel||0)+1,total);
+        metaEl.textContent=pp.completed?`✓ complete — ${total} levels`:`${reached}/${total} levels`;
+        row.appendChild(mkBtn(pp.completed?"▶ Replay":(pp.level?"▶ Continue":"▶ Play"),()=>openPkg(id, pp.completed?0:(pp.level||0))));
+        if(!pp.completed && (pp.level||pp.maxLevel)) row.appendChild(mkBtn("↺ Restart",()=>openPkg(id,0)));
+        mapbox.append(nameEl,descEl,metaEl,row);
+      }
+    }
+    mapbox.style.display="block";
+  }
+  if(!maptip){ maptip=document.createElement("div"); maptip.className="maptip"; document.body.appendChild(maptip); }
+  svg.addEventListener("pointermove",e=>{ const t=e.target.closest("[data-pkg]");
+    if(!t){ maptip.style.display="none"; return; }
+    maptip.innerHTML=mapTipHTML(t.dataset.pkg);
+    maptip.style.left=e.clientX+"px"; maptip.style.top=(e.clientY-8)+"px"; maptip.style.display="block"; });
+  svg.addEventListener("pointerleave",()=>{ maptip.style.display="none"; });
+  svg.addEventListener("click",e=>{ const t=e.target.closest("[data-pkg]"); maptip.style.display="none";
+    if(!t) return;                                        // (dismissal of the box is handled overlay-wide below)
+    showMapBox(t.dataset.pkg, e.clientY); });             // locked lands open the box too — it explains the prerequisites
+  // clicking anywhere OUTSIDE the box (and not on a land) dismisses it — single assignment, so re-renders don't stack
+  homeoverlay.onpointerdown=e=>{ if(e.target.closest(".mapbox")||e.target.closest("[data-pkg]")) return;
+    mapbox.style.display="none"; svg.querySelectorAll(".msel").forEach(c=>c.classList.remove("msel")); };
 }
 
 // ---------- Cloud accounts & sync (AWS Cognito + progress API) ----------
