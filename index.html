@@ -18,16 +18,19 @@
     --gold-deep:#C99A2E;
     --coral:#F28C8C;  /* accent — warmth, bloom moments */
     --soil:#3E3A39;   /* dark neutral — text, grounding */
-    --cream:#F9F6EF;  /* light background — pages, soft surfaces */
+    --cream:#F1ECDF;  /* light background — pages, soft surfaces (muted a step from the kit's #F9F6EF: full cream glared) */
     --purple:#8A6FE8; /* support — mystery, tension, night-garden */
     --teal:#7FC8B2;   /* support — calm, airy, supportive UI */
     /* derived surfaces */
     --card:#FFFFFF; --panel:#F4EFE2; --line:#E5DCC8;
-    --bed:#C4DBB0;            /* the garden bed behind the seed plots — clearly deeper than the cream page */
-    --cell:#FBF8EE;           /* an empty plot */
+    --bed:#A9C68F;            /* the garden bed behind the seed plots — a full step deeper than the muted page & plots */
+    --bedDeep:#8BAD72;        /* the bed gradient's darker end */
+    --bedRing:#6F9455;        /* the bed's 1px inset edge */
+    --pageEdge:#E6DFCC;       /* the page radial's outer tint */
+    --cell:#D8DCE2;           /* an empty plot — RIVER PEBBLE (cool stone-gray): complementary to the amber seeds = max note pop, gender-neutral. (Tried: clay-pink #EBD0C5 great contrast but girlish; soil tan #E8D4AC blended with seeds; neutral #EAE4D3 boring.) */
     --cellOn:#F0A32F;         /* a planted seed — deeper amber than --gold, so it pops against BOTH the cream plots and the green bed */
     --cellOnEdge:rgba(185,124,16,.5);  /* the seed's SOFT 1px ring — same hairline language as the rest of the UI; keeps seeds readable on any future region bed color */
-    --tonic:#D4E9D2;          /* HOME rows — a leaf-green tint */
+    --tonic:#C6E2BF;          /* HOME rows — a leaf-green tint, deep enough to read against the muted plots */
     /* legacy aliases (a few effects reference these) */
     --accent:var(--gold); --accent2:var(--leaf);
     --font-display:'Fredoka','Nunito','Segoe UI',system-ui,sans-serif;
@@ -37,11 +40,11 @@
   html,body{height:100%;margin:0;}
   body{
     font-family:var(--font-body); color:var(--soil);
-    background:radial-gradient(circle at 50% 0%,#FFFDF6,var(--cream) 60%,#F1EBDD);
+    background:radial-gradient(circle at 50% 0%,#F7F2E6,var(--cream) 60%,var(--pageEdge));
     display:flex; flex-direction:column; align-items:center;
     min-height:100%; padding:18px; transition:background .25s; overflow-x:hidden;
   }
-  body.settle{ background:radial-gradient(circle at 50% 40%,#EDF6EC,var(--cream) 70%,#F1EBDD); }
+  body.settle{ background:radial-gradient(circle at 50% 40%,#E7EFDF,var(--cream) 70%,var(--pageEdge)); }
   h1{ margin:.1em 0 .05em; font-size:1.6rem; letter-spacing:.5px; font-family:var(--font-display); font-weight:600;}
   .sub{ opacity:.82; font-size:.85rem; margin-bottom:12px; text-align:center; max-width:620px;}
   .controls{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center; margin-bottom:8px;}
@@ -78,8 +81,16 @@
     box-shadow:0 3px 0 #D6CBB2, 0 4px 8px rgba(62,58,57,.10), inset 0 0 0 1px var(--line);}
   #sidetools button#speak.on{ background:var(--leaf);}
   .grid{ display:grid; gap:4px; padding:10px; border-radius:16px;
-    background:linear-gradient(170deg,var(--bed),#A6C48F);
-    box-shadow:inset 0 0 0 1px #86A56C, 0 2px 4px rgba(62,58,57,.14), 0 12px 30px rgba(62,58,57,.22);}
+    background:linear-gradient(170deg,var(--bed),var(--bedDeep));
+    box-shadow:inset 0 0 0 1px var(--bedRing), 0 2px 4px rgba(62,58,57,.14), 0 12px 30px rgba(62,58,57,.22);}
+  /* ---- Per-region lands: the region's map color becomes the field's predominant tint (seeds/plots/home rows stay
+     constant — the learning language doesn't change, only the land under it). first-garden = the :root defaults. */
+  body[data-region="paths-of-song"]      { --bed:#9CC0E2; --bedDeep:#7EA8D2; --bedRing:#638CB6; --pageEdge:#DCE5EE; }
+  body[data-region="pulse-woods"]        { --bed:#E2AC9E; --bedDeep:#D08F7F; --bedRing:#B27263; --pageEdge:#ECDDD3; }
+  body[data-region="stone-chorus-canyon"]{ --bed:#93A9C2; --bedDeep:#7A93B0; --bedRing:#617B97; --pageEdge:#DBDFE7; }   /* deeper slate: the pebble plots share its hue family, so this bed sits a full step lower than the others */
+  body[data-region="color-spring"]       { --bed:#DFABC9; --bedDeep:#CE8FB4; --bedRing:#B07295; --pageEdge:#EADCE4; }
+  body[data-region="weather-of-wanting"] { --bed:#90C4C4; --bedDeep:#74B0B0; --bedRing:#5B9494; --pageEdge:#DBE8E8; }
+  body[data-region="twin-gardens"]       { --bed:#BBACE6; --bedDeep:#A491DB; --bedRing:#8674BE; --pageEdge:#E2DEEF; }
   .scroller{ max-width:100%; overflow-x:auto; overflow-y:hidden; border-radius:16px;}
   #drumArea{ max-width:100%; overflow-x:auto; }
   .track{ position:relative; display:inline-block;}
@@ -90,9 +101,9 @@
   .drumlabel{ width:72px; font-size:.78rem; text-align:right; opacity:.92; padding-right:8px;}
   .dcellgrid{ display:grid; grid-template-columns:repeat(16,34px); gap:4px;}
   /* round "pads" in a different palette so beats look distinct from square seed tiles */
-  .dcell{ width:34px; height:30px; border-radius:50%; background:#F2F8F3; cursor:pointer;
+  .dcell{ width:34px; height:30px; border-radius:50%; background:#E7EEE6; cursor:pointer;
     box-shadow:inset 0 -2px 0 rgba(62,58,57,.10); transition:transform .05s, box-shadow .2s, background .2s;}
-  .dcell.beat{ background:#D9EDE4;}
+  .dcell.beat{ background:#CFE3D7;}
   .dcell:hover{ filter:brightness(.95);}
   .dcell.on{ background:var(--coral); box-shadow:0 0 12px rgba(242,140,140,.85);}
   .dcell.col-playing{ filter:brightness(1.06) saturate(1.3);}
@@ -184,7 +195,6 @@
   .confetti{ position:fixed; top:-14px; width:10px; height:14px; z-index:55; border-radius:2px; opacity:.95;
     animation:fall linear forwards;}
   @keyframes fall{ to{ transform:translateY(108vh) rotate(560deg); opacity:.85;} }
-  .arctag{ display:block; font-size:.62rem; letter-spacing:1.5px; text-transform:uppercase; opacity:.7; margin-bottom:3px;}
   .intent{ color:var(--leaf-deep);}
   #world{ display:flex; gap:7px; margin:0 0 12px; font-size:1.1rem; min-height:1.3em;}
   #world span{ filter:grayscale(1) opacity(.28); transition:filter .5s;}
@@ -1084,10 +1094,8 @@ function revealFamous(id){ const f=id&&FAMOUS[id]; if(!f) return;
   goalHint.innerHTML='🎧 <b>You built the famous one!</b> It\'s planted in your garden now — press <b>▶</b> to hear it again.';
   if(speakOn) famousTimers.push(setTimeout(()=>narrate(f.credit), durMs+900));    // voice the explanation ONCE, just after the song's first play settles
 }
-// ARCS: the campaign groups into four player-facing "awakening arcs" — powers, not lessons.
-const ARCS=[{em:"🎤",name:"Voice"},{em:"💓",name:"Pulse"},{em:"🔗",name:"Shape"},{em:"🪄",name:"Weaving"}];
-const ROMAN=["I","II","III","IV"];
-const arcOf=i=>{ const L=LEVELS[i]; const a=L&&ARCS[L.arc]; return a?{em:a.em,name:a.name,n:ROMAN[L.arc]}:null; };
+// ARCS: the campaign groups into four "awakening arcs". The arc: field on intro levels still drives companion
+// evolution (arcEndsFor) — but the arc label is NOT shown in the level title (removed 2026-07-03: noise for players).
 
 // ---------- Follow the Fireflies: melodic contour (package PS-1) ----------
 // contour = a melody's shape over time; read the TOP note per occupied column as a height (0=low … ROWS-1=high)
@@ -2550,6 +2558,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
 }
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
   const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
+  document.body.dataset.region = PACKAGES[currentPkg].region || "first-garden";   // per-region land tint (bed + page edge via CSS vars)
   setPalette(PACKAGES[currentPkg].palette || L.palette || "pentatonic");   // swap pitch set + rebuild grid (per-package palette)
   if(currentPkg!==toolboxPkg) loadPkgToolbox();   // fresh toolbox per package — don't inherit another lesson's (or palette's) tools
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
@@ -2577,9 +2586,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   resetTransient();
   levelDone=false; stepDone=false; nextBtn.style.display="none";
   const tag=L.steps?` &nbsp;(${stepIdx+1}/${L.steps.length})`:"";
-  const arc=arcOf(levelIdx);
-  levelTitle.innerHTML=(arc?`<span class="arctag">Arc ${arc.n} · ${arc.em} ${arc.name}</span>`:"")
-    +`Level ${levelIdx+1}/${LEVELS.length}: ${L.name}${tag}`;
+  levelTitle.innerHTML=`Level ${levelIdx+1}/${LEVELS.length}: ${L.name}${tag}`;
   levelIntro.textContent=st.intro||"";
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
@@ -2751,9 +2758,9 @@ const REGION_MAP=[
   {id:"first-garden",        emoji:"🌱", name:"The First Garden",    blurb:"Where every gardener begins.",            color:"#44A35F"},
   {id:"paths-of-song",       emoji:"🎶", name:"Paths of Song",       blurb:"Shape melodies that feel alive.",          color:"#5AA9E6"},
   {id:"pulse-woods",         emoji:"🥁", name:"Pulse Woods",         blurb:"Make the forest walk, march, and dance.",  color:"#F28C8C"},
-  {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#8FA6C0"},
-  {id:"color-spring",        emoji:"🌈", name:"The Color Spring",      blurb:"Discover two new colors — the world widens.", color:"#F4C95D"},
-  {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#7FC8B2"},
+  {id:"stone-chorus-canyon", emoji:"🏛️", name:"Stone Chorus Canyon", blurb:"Build harmonies that stand tall.",         color:"#7A93B0"},
+  {id:"color-spring",        emoji:"🌈", name:"The Color Spring",      blurb:"Discover two new colors — the world widens.", color:"#D678A8"},
+  {id:"weather-of-wanting",  emoji:"🌦️", name:"Weather of Wanting",  blurb:"Make music long for home.",                color:"#63B0B0"},
   {id:"twin-gardens",        emoji:"🌗", name:"The Twin Gardens",     blurb:"The same notes, bright or wistful — day and night.", color:"#8A6FE8"},
 ];
 // arc-end thresholds for a level set (count of levels) — the starter's stage = number of intro arcs fully completed
