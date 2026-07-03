@@ -277,7 +277,7 @@
     <button id="mixer" title="Mix / volume">🎚️</button>
     <button id="save" title="Save melody">💾</button>
     <button id="share" title="Share link">🔗</button>
-    <button id="melodies" title="My Melodies">📂</button>
+    <button id="melodies" title="Jukebox">🎵</button>
     <button id="speak" title="Read aloud: OFF">🔇</button>
   </div>
   <h1 id="title">🌱 Tune Garden</h1>
@@ -302,7 +302,7 @@
         <option value="pad">Warm pad</option>
       </select>
     </label>
-    <label class="ctl">Tempo <input type="range" id="tempo" min="70" max="170" value="108" /></label>
+    <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
   </div>
   <div class="status" id="status">Plant seeds 🌱 — click squares, then press <b>▶ Play</b>.</div>
   <div id="world" title="The garden wakes as you play — one emblem per restored level"></div>
@@ -444,7 +444,7 @@
 
   <div id="moverlay" class="overlay" style="display:none">
     <div class="card mpanel">
-      <h3>📂 My Melodies</h3>
+      <h3>🎵 Jukebox</h3>
       <div id="mlist"></div>
       <button class="secondary" id="mclose">Close</button>
     </div>
@@ -702,13 +702,14 @@ gridEl.addEventListener("mouseover",e=>{ const cell=e.target.closest(".cell"); i
     document.body.appendChild(noteTipEl); }, 450); });
 gridEl.addEventListener("mouseleave",hideNoteTip);                            // left the field entirely
 scroller.addEventListener("scroll",hideNoteTip);                              // don't leave a stale tip when the field scrolls
+function rebuildField(){ buildGrid(); buildDrums(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart
 function addColumns(n){ for(let r=0;r<ROWS;r++) for(let k=0;k<n;k++) grid[r].push(false);
   for(let d=0;d<DRUMS.length;d++) for(let k=0;k<n;k++) drumG[d].push(false);
-  COLS+=n; buildGrid(); buildDrums(); }
+  COLS+=n; rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
   for(let r=0;r<ROWS;r++) grid[r].length=c2;
   for(let d=0;d<DRUMS.length;d++) drumG[d].length=c2;
-  COLS=c2; buildGrid(); buildDrums(); updateGarden(); }
+  COLS=c2; rebuildField(); updateGarden(); }
 function setCell(r,c,on){ grid[r][c]=on; cells[r][c].classList.toggle("on",on); }
 function flash(el,r){ el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse");
   if(isTonic(r)) settle(); }
@@ -906,49 +907,94 @@ const FAMOUS = {
     mel:[[76,0],[79,2],[79,4],[81,6],[79,8],[76,10],[81,12],[77,14]],         // a gentle tune riding on top
     credit:"🎧 That's I → V → vi → IV — the four chords behind “Let It Be”, “No Woman No Cry”, “Don't Stop Believin'” and a thousand more songs. You just built the famous one! 🎶" },
   // Stepping Stones — stepwise motion. Mary tiptoes in tiny steps (one leap at the end).
-  mary: { title:"Mary Had a Little Lamb",                                      // even steps, but each phrase-ending "lamb" is a HELD half-note (rings through the gap)
-    mel:[[76,0],[74,1],[72,2],[74,3],[76,4],[76,5],[76,6],   [74,8],[74,9],[74,10],   [76,12],[79,13],[79,14]],  // Ma-ry had a lit-tle LAMB / lit-tle LAMB / lit-tle LAMB
+  mary: { title:"Mary Had a Little Lamb", cols:64,                             // full verse 1, transcribed from the score (Lowell Mason, 4/4, ♩=150): faithful note lengths, CONTINUOUS (no mid-song gap), lands home on C
+    //   each quarter = 2 cols, the phrase-ending half-note "lamb"s = 4 cols, the final "snow" a dotted half
+    mel:[[76,0],[74,2],[72,4],[74,6],   [76,8],[76,10],[76,12],   [74,16],[74,18],[74,20],   [76,24],[79,26],[79,28],     // "Mary had a little LAMB, / Little LAMB, / little LAMB,"
+         [76,32],[74,34],[72,36],[74,38],   [76,40],[76,42],[76,44],[76,46],   [74,48],[74,50],[76,52],[74,54],   [72,56]], // "Mary had a little lamb, Whose / fleece was white as / SNOW."
     credit:"🎵 That's “Mary Had a Little Lamb.” Hear how it tiptoes along in tiny steps, one note at a time? That's the smooth, stepwise motion you just learned." },
   // Standing Towers — triads. Taps is a C-major triad (C-E-G) sung one note at a time, then rung as a chord.
-  taps: { title:"Taps",                                                        // bugle rhythm: "day-is-DONE / gone-the-SUN / from-the-LAKES" — quick pickups, long held arrivals
-    mel:[[67,0],[67,1],[72,2],   [67,4],[72,5],[76,6],   [67,9],[72,10],[76,11]],  // G G C(held) / G C E(held) / G C E(held)
-    chords:[[[60,64,67],13]],                                                  // then the C-major triad rings as a chord
+  taps: { title:"Taps", cols:46,                                               // from the score (tapsbugler.com, ♩=40, "Slowly"): pure C-E-G triad + high G, with LONG held fermata notes at the phrase ends
+    //   Day-is-DONE    gone-the-SUN   from-the-lakes  from-the-HILLS  from-the-sky   all-is-well    safely-rest    God-is-NIGH
+    mel:[[67,0],[67,1],[72,2],   [67,6],[72,7],[76,8],   [67,12],[72,13],[76,14],   [72,17],[76,18],[79,19],
+         [76,23],[79,24],[79,25],   [79,28],[76,29],[72,30],   [67,33],[72,34],[76,35],   [72,38],[67,39],[72,40]],
+    chords:[[[60,64,67],42]],                                                  // a final C-major triad rings as a chord (our "tower" flourish — NOT in the score itself)
     credit:"🎺 That's “Taps,” the bugle call — and it's secretly a tower! Those are the very stones you stacked, C, E and G, sung one at a time, then rung together as a chord." },
   // Two New Colors — the full scale. Joy to the World slides down all seven notes (F and B included).
-  joy: { title:"Joy to the World",                                             // "JOOOY" is held long, THEN the scale tumbles down
-    mel:[[72,0],[71,3],[69,5],[67,7],[65,9],[64,11],[62,13],[60,15]],          // C(held) then B A G F E D C cascading home
-    credit:"🎵 That's the opening of “Joy to the World.” It slides all the way down the full seven-note scale you just unlocked — every colour, the new F and B included." },
+  joy: { title:"Joy to the World", cols:64,                                    // Pavel's tuned version (from save-link, 2026-07-01) matching his score (Handel, 2/4, ♩=100): the full first line — octave descent + the climb back up. All naturals ✓ (major key).
+    mel:[[72,0],[71,4],[69,7],[67,8],                                          // "Joy to the world" — C5 held, then the dotted to-the pickup into a LONG held G4 ("world")
+         [65,13],[64,15],[62,19],[60,23],                                      // "the Lord is come" — F E D, landing on a long held low C (home, the breath)
+         [67,29],[69,31],                                                      // "Let earth" — the climb back up begins: G, then A held long
+         [69,37],[71,39],                                                      // "re-ceive" — A pickup into B held long
+         [71,45],[72,47]],                                                     // "her King" — B pickup into C5, all the way back up to high do
+    credit:"🎵 That's the opening of “Joy to the World” by Handel. Hear the melody tumble ALL the way down the full seven-note scale — every colour, the new F and B included — and then climb joyfully right back up to greet its King." },
   // Ways Home — coming home. Ode to Joy wanders up and away, then settles back home on C.
-  odetojoy: { title:"Ode to Joy",
-    mel:[[76,0],[76,1],[77,2],[79,3],[79,4],[77,5],[76,6],[74,7],[72,8],[72,9],[74,10],[76,11],[74,12],[72,13]],
+  odetojoy: { title:"Ode to Joy", cols:32,                    // CAPSTONE (ways-home reward) = the theme's SECOND half, which resolves all the way HOME to C. Faithful 4/4 at ♩=100 from Pavel's leadsheet (quarter=2 cols, dotted-quarter=3, eighth=1, half=4). C4=60 D=62 E=64 F=65 G=67.
+    mel:[[64,0],[64,2],[65,4],[67,6],[67,8],[65,10],[64,12],[62,14],    // E E F G  G F E D
+         [60,16],[60,18],[62,20],[64,22],                              // C C D E
+         [62,24],[60,27],[60,28]],                                     // D. C C — settles HOME on do
+    jukebox:{ cols:64,                                                 // JUKEBOX = the FULL theme (both halves). Identical except the last bar: M4 "E. D D" hangs away on re, M8 "D. C C" lands home on do — the away/home pair.
+      mel:[[64,0],[64,2],[65,4],[67,6],[67,8],[65,10],[64,12],[62,14],  // E E F G  G F E D
+           [60,16],[60,18],[62,20],[64,22],[64,24],[62,27],[62,28],     // C C D E  E. D D (hangs away on re)
+           [64,32],[64,34],[65,36],[67,38],[67,40],[65,42],[64,44],[62,46], // E E F G  G F E D
+           [60,48],[60,50],[62,52],[64,54],[62,56],[60,59],[60,60]] },  // C C D E  D. C C (home on do)
     credit:"🎵 That's Beethoven's “Ode to Joy.” It wanders up and away, then comes all the way home to rest — the homecoming you just practised." },
   // Pull of the Moon — the V → I authentic cadence. "Two bits" is V → I, the top voice climbing B → C.
-  shave: { title:"Shave and a Haircut",                                        // "shave-and-a-hair-cut" (the "and-a" quick), a pause, then "two-bits"
+  shave: { title:"Shave and a Haircut",                                        // CAPSTONE = the bare jingle: "shave-and-a-hair-cut" (the "and-a" quick), a pause, then "two-bits" = the taught V→I
     mel:[[72,0],[67,2],[67,3],[69,4],[67,6],   [71,9],[72,11]],                // C G-G A G  (pause)  B C
     chords:[[[67,71,74],9],[[60,64,67],11]],                                   // V  then  I  (under "two"  &  "bits")
+    jukebox:{ cols:64,                                                         // JUKEBOX = the full first phrase of the Faber lesson piece (through the 1st ending): a one-bar figure — bass half note · two staccato dyads · quick A-G eighths — cycling I I I(walk) V V V(tied) V(walk) I. 8 bars × 8 cols, OPENING with the score's A-G pickup (cols 0-1) into the C downbeat; the loop wraps seamlessly like the score's repeat (bar 8's own eighths ARE cols 0-1). LH lifted an octave (score's G3/B3/A3 sit below our C4 grid floor).
+      mel:[[69,0],[67,1],                                                      // PICKUP: the "and-a" A-G eighths, leading into...
+           [72,2],[69,8],[67,9],                                               // bar 1 (I): C bass rings · ...dyads... · A-G eighths  (whole bass line lifted ONE octave: the score's C4→B3→A3→G3 walk sits below our C4 floor, and the walk's DESCENT is the point — home strolling down to the dominant)
+           [72,10],[69,16],[67,17],                                            // bar 2 (I): again
+           [72,18],[71,22],[69,24],                                            // bar 3 (I→V): C bass, then the bass WALKS DOWN B A toward G — home leaving for the dominant
+           [67,26],[69,32],[67,33],                                            // bar 4 (V): G bass · dyads · A-G
+           [67,34],[69,40],[67,41],                                            // bar 5 (V): again
+           [67,42],[69,48],[67,49],                                            // bar 6 (V): G bass again (the score ties it, but a tied pluck has already decayed — restrike per Pavel's ear) · dyads · A-G
+           [67,50],[69,54],[71,56],                                            // bar 7 (V→I): G bass, then walks back UP A B toward home — the dominant's pull
+           [72,58]],                                                           // bar 8 (I, the 1st ending): C bass home · dyads — its closing eighths are cols 0-1, wrapping the loop
+      chords:[[[72,76],4],[[72,76],6],[[72,76],12],[[72,76],14],[[72,76],20],  // I-bar dyads: staccato C5+E5 pairs on beats 2 & 3
+              [[71,74],28],[[71,74],30],[[71,74],36],[[71,74],38],[[71,74],44],[[71,74],46],[[71,74],52],  // V-bar dyads: B4+D5
+              [[72,76],60],[[72,76],62]] },                                    // 1st-ending dyads: home C5+E5
     credit:"🎵 “Shave and a hair-cut… two bits!” That “two bits” is V → I, the dominant's pull home — hear the very top note climb B → C, the strongest landing of all." },
   // Sun & Moon Garden — the wistful minor mood. The Moldau, set in A minor (all natural notes).
-  moldau: { title:"The Moldau",
-    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[76,5],[77,6],[76,7],[74,8],[72,9],[74,10],[76,11],[72,12],[69,13]],
+  moldau: { title:"The Moldau", cols:52,                                       // Pavel's tuned version (from save-link, 2026-07-01) matching his score (flute part, E minor 6/8 "Allegro commodo non agitato") → A minor, all naturals ✓. 6/8 lilt: 1 col = 8th, bar = 6 cols.
+    mel:[[64,0],                                                               // pickup: the LOW mi (E4, staccato 8th) — the river rising from the deep fifth below
+         [69,1],[71,3],[72,4],[74,6],                                          // bar 1: la-ti do-re — the rising lilt (♩♪ ♩♪)
+         [76,7],[76,9],[76,10],                                                // bar 2: mi mi-mi (♩♪ + held) — the river broadening
+         [77,13],[77,16],                                                      // bar 3: fa · fa — the accented sf peak (dotted-quarters)
+         [76,19],[76,22],[76,24],                                              // bar 4: mi (♩. ♩♪) — the descent sequence begins, each degree gets the figure
+         [74,25],[74,28],[74,30],                                              // bar 5: re
+         [72,31],[74,33],[72,34],[72,36],                                      // bar 6: do-re do-do — the little turn on the way down
+         [71,37],[71,40],[71,42],                                              // bar 7: ti
+         [69,43]],                                                             // bar 8: la — home on the moon's rest, ringing out
     credit:"🎧 That's “The Moldau” by Smetana — a famous river in the wistful minor mood you just met. The same seven notes as the sunny garden, but it rests on the moon's home, so it feels misty and far away." },
-  // Twin Blooms Plus — tension & release. Grieg's creeping Mountain King, in A minor: the figure climbs twice (building),
-  // then exhales into a calm home pair. (Opening E F# G A B G B → A minor = A B C D E C E, all naturals.)
-  mountainking: { title:"In the Hall of the Mountain King", cols:20,          // the creeping figure stated TWICE (a breath between), then the release rings alone
-    mel:[[69,0],[71,1],[72,2],[74,3],[76,4],[72,5],[76,6],                     // creep #1: A B C D E C E  (= Grieg's "E F# G A B G B"), the last E rings into the breath
-         [69,9],[71,10],[72,11],[74,12],[76,13],[72,14],[76,15]],              // (breath) creep #2: the same figure again, building the tension
-    chords:[[[69,76],18]],                                                     // (breath) the release: a calm A+E (perfect 5th) home pair, ringing alone
-    credit:"🎢 That's “In the Hall of the Mountain King” by Grieg — feel the tension creep and climb, higher and faster... and then finally release into calm. The most famous musical suspense there is!" },
+  // Twin Blooms Plus — tension & release. The Westminster / Big Ben chimes: MAJOR key, all naturals (melody uses only C D E G),
+  // so no minor-scale leading-tone problem. The chime's very identity IS tension→release: the "ding-dong" phrases hang on the
+  // dominant, then the hour strikes HOME. We voice the cadence as G7 (G-B-D-F — holds the exact F-B tritone the lessons drill) → C.
+  // Nothing invented: the V7→I is how the chime is harmonised. 4/4, ♩=84 (quarter=2 cols, phrase-end half=4 cols).
+  bigben: { title:"Big Ben Chimes", cols:52,                                   // Pavel's tuned version (from save-link). MAJOR, all naturals (melody uses only C D E G). The chime's identity IS tension→release.
+    mel:[[76,0],[74,2],[72,4],[67,6],                                          // phrase 1: mi re do sol — hangs on sol (dominant)
+         [72,10],[74,12],[76,14],[72,16],                                     // phrase 2: do re mi do
+         [76,20],[72,22],[74,24],[67,26],                                     // phrase 3: mi do re sol — hangs on sol again
+         [67,30],[74,32],[76,34],[72,36]],                                    // phrase 4: sol re mi do — lands on home (do)
+    chords:[[[67,71,74,77],40],                                               // TENSION: G7 (G-B-D-F) — the dominant-7th hanging, holds the F-B tritone
+            [[72,76,79],44]],                                                 // RELEASE: the hour strikes HOME — C major (F→E, B→C) resolves
+    credit:"🔔 That's the “Westminster Chimes” — Big Ben's famous bells! Hear the tune hang in the air on a restless, unfinished chord, leaning hard toward home... and then the clock strikes and it all settles into rest. That pull from tension to home is the very shiver-then-sigh you just learned to weave." },
   // False Doors — the deceptive V→vi. Pachelbel's Canon (famous composer, real piece): the false-door move woven through it.
-  pachelbel: { title:"Pachelbel's Canon",
-    chords:[[[60,64,67],0],[[67,71,74],2],[[69,72,76],4],[[64,67,71],6],[[65,69,72],8],[[60,64,67],10],[[65,69,72],12],[[67,71,74],14]],  // I V vi iii IV I IV V
+  pachelbel: { title:"Pachelbel's Canon", cols:32,                             // from the score (Canon in D, ♩=70) → transposed to C; the 8 chords as HALF notes, voiced up in the treble with the famous descant as the top voice
+    //   descant (top): E5 D5  C5  B4  A4  G4  A4  B4   — the iconic descending Pachelbel melody
+    chords:[[[67,72,76],0],[[67,71,74],4],[[64,69,72],8],[[64,67,71],12],[[60,65,69],16],[[60,64,67],20],[[60,65,69],24],[[62,67,71],28]],  // I V vi iii IV I IV V
     credit:"🎼 That's “Pachelbel's Canon” — the most famous chord journey ever written, heard at a thousand weddings. Listen for the moment it slips from V to vi instead of going home — the false door you just learned — and feel why it aches so sweetly." },
   // Question & Answer — open call + closed answer. Amazing Grace: line 1 climbs up and hangs (open); line 2 settles home (closed).
-  amazinggrace: { title:"Amazing Grace", cols:36,                  // real waltz rhythm: the LONG held notes fall on ma / graaace / sweeeet / soooound (ring through the gaps), with a breath between call and answer
-    //   A   ma- zing grace how sweet the sound          held: ma(2-5) grace(6-9) sweet(11-14) sound(15+)
-    mel:[[67,0],[72,2],[76,5],[72,6],[76,9],[74,11],[72,14],[69,15],   // CALL "A-ma-zing grace, how sweet the sound" — sol do mi do mi re do la, ENDS OPEN on la (A)
-    //   that saved a  wretch like me-e                  held: saved(22-25) wretch(26-29) me(32+)
-         [67,20],[72,22],[76,25],[72,26],[76,29],[74,31],[72,32]],     // (breath) ANSWER "that saved a wretch like me" — same opening, but settles HOME on do (C)
-    credit:"🎵 That's “Amazing Grace.” Hear how the first line climbs up and hangs in the air, still asking — that's the open call. Then the second line answers it and settles all the way home. One question, one reply — the very shape you just built." },
+  amazinggrace: { title:"Amazing Grace", cols:48,                  // CAPSTONE (Q&A reward) — LINE 1 + LINE 4 of Pavel's transcription, ♩=80. Lines 2 & 4 are the SAME phrase bar the last note (L2 hangs open on high sol / L4 resolves home on do), so L1+L4 = a clean, contiguous call→home-answer (Pavel's pick 2026-06-30: "not 100% accurate but very close, illustrates the concept well"). sol=67 do=72 mi=76 re=74 la=69.
+    mel:[[67,0],[72,2],[76,6],[72,7],[76,8],[74,12],[72,14],[69,18],[67,20],[67,24],   // L1 (CALL) "A-maz-ing grace, how sweet the sound" — climbs (with the mi·do·mi turn), then dips and hangs OPEN on the low sol
+         [72,26],[76,30],[72,31],[76,32],[74,36],[72,38]],                             // L4 (ANSWER) "…was blind, but now I see" — same shape as L2 but settles all the way HOME on do
+    jukebox:{ cols:98,                                                                 // JUKEBOX = the FULL verse, exactly as Pavel typed it in. Capstone & jukebox MAY differ: jukebox is the whole song, capstone just the teaching arc above.
+      mel:[[67,0],[72,2],[76,6],[72,7],[76,8],[74,12],[72,14],[69,18],[67,20],[67,24], // "Amazing grace, how sweet the sound"
+           [72,26],[76,30],[72,31],[76,32],[74,36],[79,38],                            // "that saved a wretch like me!"
+           [76,48],[79,50],[76,53],[79,54],[76,55],[72,56],[67,60],[69,62],            // "I once was lost, but now am found"
+           [72,65],[72,66],[69,67],[67,68],[67,72],[72,74],[76,78],[72,79],[76,80],[74,84],[72,86]] },  // "was blind, but now I see" — resolves HOME on do
+    credit:"🎵 That's “Amazing Grace.” Hear how the first line rises and then hangs in the air, still asking — that's the open call. The second line echoes it but settles all the way home. One question, one reply — the very shape you just built." },
   // Twin Blooms — harmonic pairs. Three blooms, one of each feeling, with the famous sounds each lives in.
   blooms: { title:"Three Famous Blooms",
     chords:[ [[62,64],2], [[72,76],7], [[60,67],12] ],              // CLOSE 2nd (D+E) · BRIGHT 3rd (C+E) · OPEN 5th (C+G)
@@ -965,6 +1011,8 @@ const FAMOUS = {
             [1,6],[1,14] ],                                         // snare: the off-beat Charleston stabs, floating in the GAPS
     credit:"🎩 That's the Charleston — the most famous bounce in music, from the roaring 1920s dance everyone knew. Listen how it barely touches the main beats and leaps into the GAPS between them instead. That off-beat hop is exactly the groove-from-space you just discovered." },
 };
+// Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
+const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
@@ -977,6 +1025,7 @@ function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   if(playing) stop(); clearFamousTimers();
   placeFamous(f);                                       // draw the chords + melody on the field (it STAYS — ▶ replays it)
+  if(FAMOUS_TEMPO[id]) tempoEl.value=FAMOUS_TEMPO[id];   // play at the song's OWN tempo (Taps slow, grooves brisk); ▶ replay inherits it
   setStatus(f.credit);
   initAudio(); actx.resume();
   const sd=stepDur()/1000, t0=actx.currentTime+0.12; let lastC=0;   // same tempo as ▶ Play (which now replays this arrangement)
@@ -1817,7 +1866,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"t",label:"Include a tense pair",chk:()=>countTensePairs()>=1},
          {id:"res",label:"Resolve the tension into rest",chk:()=>tensionThenRest()},
          {id:"pl",label:"Press ▶ to feel the suspense and release",play:true}]},
- {name:"The Restless Song", loop:true, famous:"mountainking", intent:"Tell a story that twists with tension, then comes home.",
+ {name:"The Restless Song", loop:true, famous:"bigben", intent:"Tell a story that twists with tension, then comes home.",
   power:{em:"🌶️",name:"Restless Song",line:"You can weave tension all through a piece — and resolve it."},
   hint:()=>hintSeeds([[6,0],[7,1],[6,1],[4,2],[10,3],[7,3],[5,4],[11,5],[6,5]]),
   intro:"One last twisting tale 🌶️ — write a song that uses tension TWICE (two restless pairs along the way) and finally RESOLVES into rest at the end.",
@@ -2878,8 +2927,8 @@ function applySong(s){
   COLS=Math.max(16,(s.time&&s.time.cols)||16); grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
   const rowOf={}; for(let r=0;r<ROWS;r++) rowOf[MIDI[r]]=r;
   (mel.notes||[]).forEach(n=>{ const r=rowForPitch(rowOf,n.p), c=n.c; if(r!=null&&c>=0&&c<COLS) grid[r][c]=true; });
-  buildGrid();
-  wipeDrums(); (dr.hits||[]).forEach(h=>{ const d=h.lane,c=h.c; if(d>=0&&d<DRUMS.length&&c>=0&&c<COLS){ drumG[d][c]=true; if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("on"); } });
+  wipeDrums(); (dr.hits||[]).forEach(h=>{ const d=h.lane,c=h.c; if(d>=0&&d<DRUMS.length&&c>=0&&c<COLS) drumG[d][c]=true; });
+  rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
   const t=s.time||{};
   if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
   if(t.tempo) tempoEl.value=t.tempo;
@@ -2931,10 +2980,30 @@ saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim
 const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
 function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
 function loadSong(s){ overlay.style.display="none"; openStudioWith(s); setStatus("Loaded into the Studio — press <b>▶ Play</b>!"); }
+function playSong(s){ loadSong(s); start();                                    // jukebox: land in the Studio AND start looping it right away
+  if(s.meta&&s.meta.title) setStatus("🎵 Now playing: <b>"+s.meta.title+"</b> — tinker freely, or press ■ to stop."); }
 function mhint(text,top){ const e=document.createElement("div"); e.className="hint"; if(top) e.style.marginTop="10px"; e.textContent=text; return e; }
+// --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
+// excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
+// versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
+const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","pachelbel","bodiddley","charleston"];
+function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
+function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
+  const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));
+  (v.chords||[]).forEach(([ms,c])=>ms.forEach(p=>notes.push({p,c,len:1})));            // chords = stacked notes in one column
+  const hits=(v.drums||[]).map(([lane,c])=>({lane,c})); const now=Date.now();
+  return { v:3, meta:{title:f.title,created:now,updated:now,author:"Tune Garden",famous:id},
+    palette:famousPalette(id), time:{cols:Math.max(16,v.cols||16),tempo:FAMOUS_TEMPO[id]||108,groove:0},
+    tracks:[{kind:"melody",voice:"musicbox",notes},{kind:"drums",hits}] }; }
 async function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
+  // --- Famous Songs (built-in) ---
+  mlist.appendChild(mhint("🌟 Famous Songs"));
+  JUKEBOX_FAMOUS.forEach(id=>{ const f=FAMOUS[id]; if(!f) return;
+    const row=document.createElement("div"); row.className="mrow";
+    const nm=document.createElement("span"); nm.className="mname"; nm.textContent=f.title; row.appendChild(nm);
+    row.appendChild(mkBtn("▶ Play",()=>playSong(famousToSong(id)))); mlist.appendChild(row); });
   // --- On this device (localStorage) ---
-  mlist.appendChild(mhint("On this device"));
+  mlist.appendChild(mhint("🎵 My Melodies — on this device", true));
   if(!a.length) mlist.appendChild(mhint("No saved melodies yet — make something, then press 💾 Save!"));
   a.forEach((it,i)=>{ const row=document.createElement("div"); row.className="mrow";
     const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.meta&&it.meta.title)||"Untitled"; row.appendChild(nm);
