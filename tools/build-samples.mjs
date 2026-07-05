@@ -10,6 +10,11 @@ const INSTRUMENTS = {
   // Salamander Grand Piano by Alexander Holm (CC-BY), via tonejs.github.io/audio/salamander/
   piano: { dir: "samples/piano",
     notes: { 60:"C4", 63:"Ds4", 66:"Fs4", 69:"A4", 72:"C5", 75:"Ds5", 78:"Fs5", 81:"A5", 84:"C6" } },
+  // VCSL marimba (Versilian Community Sample Library, CC0) — "Outrigger" med layer,
+  // converted from 24-bit WAV to mono 96kbps mp3 (peak-normalized; VCSL ships very quiet).
+  // Sparser than piano (VCSL only samples every ~5 semitones) — marimba's simple timbre shifts fine.
+  marimba: { dir: "samples/marimba",
+    notes: { 60:"C4", 67:"G4", 71:"B4", 77:"F5", 84:"C6" } },
 };
 
 for (const [instr, spec] of Object.entries(INSTRUMENTS)) {

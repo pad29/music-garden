@@ -68,7 +68,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Audio** (Web Audio)
 - `initAudio()` builds three mixer buses under `master`: `voiceBus` (melody), `jamBus` (backing band), `drumBus` (drum sequencer). `applyMix()` applies the player's 🎚️ Mixer settings.
-- `voice(instr,freq,t)` plays one melody note. Three synth voices (music box — the default & brand sound, marimba, pluck) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY) ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to the music box synth while loading. The "warm pad" voice was retired (old saves fall back via `setVoice`).
+- `voice(instr,freq,t)` plays one melody note. Synth voices (music box — the default & brand sound, pluck) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba = VCSL, CC0 — the synth marimba remains only as its loading fallback) ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading. The "warm pad" voice was retired (old saves fall back via `setVoice`).
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
@@ -101,7 +101,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **Companions:** one friend per region; you pick a starter for the intro; each later region has its own creature that grows one stage per completed package. Players don't swap their main friend.
 - **Famous melodies are score-validated.** Every `FAMOUS` entry was checked against a real score (several typed in note-for-note by the owner). 1 column = one 8th note; tied notes must be **re-struck** (plucked voices decay — a literal tie renders as silence). Shorten a piece if needed, but **never rewrite it** — if a passage can't render on the grid (accidentals, sub-8th rhythms), pick a different piece.
 - **After changing narration text**, run `node tools/gen-voice.mjs` (changed text = new hash = missing clip = browser-TTS fallback that sounds wrong).
-- **New sampled instrument:** put mp3s in `samples/<instr>/`, add it to `tools/build-samples.mjs`, run it, add a `SAMPLED` entry + `<option>`. Load via script tag only. Keep CC0/CC-BY sources and credit CC-BY in the map footer (`.mapcred`).
+- **New sampled instrument:** put mp3s in `samples/<instr>/`, add it to `tools/build-samples.mjs`, run it, add a `SAMPLED` entry + `<option>`. Load via script tag only. Keep CC0/CC-BY sources and credit CC-BY in the map footer (`.mapcred`; CC0 like VCSL needs no credit). WAV sources (e.g. VCSL) convert with `tools/wav2mp3.mjs` (needs `npm install @breezystack/lamejs`).
 
 ---
 
@@ -119,10 +119,10 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 | 🌦️ Weather of Wanting | `ways-home` (cadence strength) · `river-turns` (progressions, I-IV-V-vi) · `pull-of-the-moon` (dominant pull) · `false-doors` (deceptive cadence) |
 | 🌗 The Twin Gardens | `sun-and-moon-garden` (major/minor mood) |
 
-**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (11 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **sampled piano voice** (Salamander, lazy-loaded, synth fallback; warm pad retired); 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
+**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (11 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **sampled piano + marimba voices** (Salamander CC-BY / VCSL CC0, lazy-loaded, synth fallback; warm pad retired); 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
-1. More instruments as per-region unlocks (harp/marimba from CC0 sources — the sampler recipe is in place; gradual-unlock logic not yet built)
+1. More instruments as per-region unlocks (planned lineup: kalimba/harp/vibraphone/glockenspiel from VCSL CC0 — piano + marimba shipped; gradual-unlock logic not yet built)
 2. Remaining Wave A/C packages: `tiny-motifs`, `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
 3. Bigger systems: bars & plots duration editor (R3), multi-voice (Region 6), sections (Region 7), Styles/Eras
 
