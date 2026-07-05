@@ -350,6 +350,7 @@
         <option value="musicbox">Music box</option>
         <option value="piano">Piano</option>
         <option value="marimba">Marimba</option>
+        <option value="kalimba">Kalimba</option>
         <option value="pluck">Plucked string</option>
       </select>
     </label>
@@ -628,10 +629,15 @@ function env(p,now,a,peak,sustain,dur){
 // C4–B5 world, so any note is at most 1 semitone of playbackRate shift — below the "chipmunk" threshold.
 // Marimba = VCSL (Versilian Community Sample Library, CC0) — sampled every ~5 semitones (all VCSL offers),
 // up to ±3 semitones of shift; marimba's near-sinusoidal timbre takes that gracefully.
+// Kalimba = FreePats kalimba (CC0) — a clean modern kalimba, 7 tines tuning-corrected at build
+// time (real tines run up to 40 cents off; the game's pitch grid can't absorb that). Its top tine
+// is C#5, so the highest rows stretch further than any other voice — the FreePats SFZ does the same.
+// No synth branch of its own: the music box covers the first note while the pack loads.
 // Samples ship as base64 inside samples/<instr>.js (built by tools/build-samples.mjs) and load via a
 // <script> tag, NOT fetch — the game must keep working when index.html is opened via file://.
 const SAMPLED={ piano:{ src:"samples/piano.js", gain:0.6 },
-                marimba:{ src:"samples/marimba.js", gain:0.95 } };
+                marimba:{ src:"samples/marimba.js", gain:0.95 },
+                kalimba:{ src:"samples/kalimba.js", gain:1.15 } };
 const sampleBank={};                                        // instr → { ready, buffers:{midi:AudioBuffer} }
 // condition a decoded recording once: trim to 3s (memory), even out note-to-note loudness
 // (recordings vary), cap peaks below clipping, and bake in a tail fade

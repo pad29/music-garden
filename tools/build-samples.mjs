@@ -15,6 +15,12 @@ const INSTRUMENTS = {
   // Sparser than piano (VCSL only samples every ~5 semitones) — marimba's simple timbre shifts fine.
   marimba: { dir: "samples/marimba",
     notes: { 60:"C4", 67:"G4", 71:"B4", 77:"F5", 84:"C6" } },
+  // FreePats kalimba (freepats.zenvoid.org/Ethnic/kalimba.html, CC0) — a clean modern kalimba
+  // (the VCSL "kalimbas" are traditional mbiras with baked-in buzz — rejected by ear).
+  // 7 real tines; its top tine is C#5, so B5 stretches +10 semitones (the FreePats SFZ maps it
+  // the same way). Each tine tuning-corrected via wav2mp3's cents arg (SFZ `tune` values).
+  kalimba: { dir: "samples/kalimba",
+    notes: { 60:"C4", 63:"Ds4", 64:"E4", 67:"G4", 68:"Gs4", 72:"C5", 73:"Cs5" } },
 };
 
 for (const [instr, spec] of Object.entries(INSTRUMENTS)) {

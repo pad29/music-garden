@@ -3,13 +3,17 @@
 // for samples/<instr>/ — VCSL ships quiet 24-bit stereo WAVs, so this downmixes and
 // peak-normalizes to 0.9 (the game re-normalizes loudness at decode; this just preserves
 // bits through the 16-bit encoding step).
+// An optional third arg corrects tuning: real instruments (FreePats kalimba tines) can be
+// tens of cents off equal temperament — the game's sampler assumes exact pitches, so bake
+// the correction in here (+cents = raise pitch, matching SFZ `tune`).
 // Requires the lamejs fork (the original 1.2.1 npm package is broken):
 //   npm install @breezystack/lamejs        (in any folder; run this script from there)
-// Usage: node wav2mp3.mjs <in.wav> <out.mp3>
+// Usage: node wav2mp3.mjs <in.wav> <out.mp3> [cents]
 import fs from "node:fs";
 import lamejs from "@breezystack/lamejs";
 
-const [inFile, outFile] = process.argv.slice(2);
+const [inFile, outFile, centsArg] = process.argv.slice(2);
+const cents = Number(centsArg || 0);
 const buf = fs.readFileSync(inFile);
 
 // --- parse WAV chunks ---
@@ -28,7 +32,8 @@ const format = buf.readUInt16LE(fmt.pos);
 const channels = buf.readUInt16LE(fmt.pos + 2);
 const rate = buf.readUInt32LE(fmt.pos + 4);
 const bits = buf.readUInt16LE(fmt.pos + 14);
-if (format !== 1 || (bits !== 16 && bits !== 24)) throw new Error(`unsupported: fmt ${format}, ${bits}-bit`);
+// 1 = PCM; 65534 = WAVE_FORMAT_EXTENSIBLE (FreePats) — PCM data with an extended header
+if ((format !== 1 && format !== 65534) || (bits !== 16 && bits !== 24)) throw new Error(`unsupported: fmt ${format}, ${bits}-bit`);
 
 // --- decode to mono float ---
 const bytesPer = bits / 8, frameBytes = bytesPer * channels;
@@ -46,13 +51,24 @@ for (let i = 0; i < frames; i++) {
   mono[i] = sum / channels;
 }
 
+// --- tuning correction: resample by 2^(cents/1200) (reads faster = pitch up) ---
+let tuned = mono;
+if (cents) {
+  const k = Math.pow(2, cents / 1200), n = Math.floor(frames / k);
+  tuned = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = i * k, j = Math.floor(x), t = x - j;
+    tuned[i] = mono[j] * (1 - t) + (mono[Math.min(j + 1, frames - 1)] || 0) * t;
+  }
+}
+
 // --- peak-normalize to 0.9 ---
 let peak = 0;
-for (let i = 0; i < frames; i++) peak = Math.max(peak, Math.abs(mono[i]));
+for (let i = 0; i < tuned.length; i++) peak = Math.max(peak, Math.abs(tuned[i]));
 const scale = peak > 0 ? 0.9 / peak : 1;
-const pcm = new Int16Array(frames);
-for (let i = 0; i < frames; i++)
-  pcm[i] = Math.max(-32768, Math.min(32767, Math.round(mono[i] * scale * 32767)));
+const pcm = new Int16Array(tuned.length);
+for (let i = 0; i < tuned.length; i++)
+  pcm[i] = Math.max(-32768, Math.min(32767, Math.round(tuned[i] * scale * 32767)));
 
 // --- encode ---
 const enc = new lamejs.Mp3Encoder(1, rate, 96);
@@ -64,4 +80,4 @@ for (let i = 0; i < pcm.length; i += 1152) {
 const tail = enc.flush();
 if (tail.length) chunks.push(Buffer.from(tail));
 fs.writeFileSync(outFile, Buffer.concat(chunks));
-console.log(`${outFile}: ${frames} frames @${rate}Hz ${bits}-bit ch${channels} -> ${(fs.statSync(outFile).size / 1024).toFixed(0)} KB (src peak ${peak.toFixed(3)})`);
+console.log(`${outFile}: ${frames} frames @${rate}Hz ${bits}-bit ch${channels}${cents ? ` tuned ${cents > 0 ? "+" : ""}${cents}c` : ""} -> ${(fs.statSync(outFile).size / 1024).toFixed(0)} KB (src peak ${peak.toFixed(3)})`);
