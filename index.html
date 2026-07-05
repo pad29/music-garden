@@ -297,6 +297,7 @@
     font-size:.78rem; padding:6px 11px; border-radius:8px; pointer-events:none; white-space:nowrap;
     box-shadow:0 4px 14px rgba(62,58,57,.35); display:none; text-align:center; line-height:1.4;}
   .maptip b{ color:var(--gold);}
+  .mapcred{ font-size:.62rem; opacity:.55; text-align:center; margin:-4px 0 6px;}   /* sample-library attribution (CC-BY) */
   #worldmap .mborder{ fill:none; stroke-width:2.8; stroke-linejoin:round; pointer-events:none;}   /* solid, pronounced region outlines over the dashed territories */
   #worldmap .mcell.msel{ stroke:var(--soil); stroke-width:2.4;}
   /* the little box a clicked territory opens: description + Continue / Restart — floats OVER the map,
@@ -347,9 +348,9 @@
     <label class="ctl">Voice
       <select id="instr">
         <option value="musicbox">Music box</option>
+        <option value="piano">Piano</option>
         <option value="marimba">Marimba</option>
         <option value="pluck">Plucked string</option>
-        <option value="pad">Warm pad</option>
       </select>
     </label>
     <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
@@ -622,15 +623,62 @@ function env(p,now,a,peak,sustain,dur){
   p.exponentialRampToValueAtTime(Math.max(sustain,0.001)*0.5+0.0005,now+dur*0.8);
   p.linearRampToValueAtTime(0.0001,now+dur);
 }
+// ---- Sampled voices: real recordings, pitch-shifted at playback (the music box stays synth — it's the brand sound) ----
+// Piano = Salamander Grand Piano by Alexander Holm (CC-BY), sampled every 3rd semitone over the game's
+// C4–B5 world, so any note is at most 1 semitone of playbackRate shift — below the "chipmunk" threshold.
+// Samples ship as base64 inside samples/<instr>.js (built by tools/build-samples.mjs) and load via a
+// <script> tag, NOT fetch — the game must keep working when index.html is opened via file://.
+const SAMPLED={ piano:{ src:"samples/piano.js", gain:0.6 } };
+const sampleBank={};                                        // instr → { ready, buffers:{midi:AudioBuffer} }
+// condition a decoded recording once: trim to 3s (memory), even out note-to-note loudness
+// (recordings vary), cap peaks below clipping, and bake in a tail fade
+function conditionSample(ctx,buf){
+  const rate=buf.sampleRate, len=Math.min(buf.length,(rate*3)|0), w=(rate*0.05)|0;
+  let peak=0, win=0, s=0;
+  const d0=buf.getChannelData(0);
+  for(let i=0;i<len;i++){ const a=Math.abs(d0[i]); if(a>peak) peak=a;
+    s+=d0[i]*d0[i]; if(i>=w) s-=d0[i-w]*d0[i-w]; if(i>=w-1) win=Math.max(win,s/w); }
+  const scale=Math.min(0.32/(Math.sqrt(win)||1), 0.95/(peak||1));
+  const fade=(rate*0.12)|0, out=ctx.createBuffer(buf.numberOfChannels,len,rate);
+  for(let ch=0;ch<buf.numberOfChannels;ch++){ const src=buf.getChannelData(ch), dst=out.getChannelData(ch);
+    for(let i=0;i<len;i++) dst[i]=src[i]*scale*(i>len-fade?(len-i)/fade:1); }
+  return out;
+}
+function loadSamples(instr){
+  const spec=SAMPLED[instr]; if(!spec||sampleBank[instr]) return;
+  const bank=sampleBank[instr]={ready:false, buffers:{}};
+  const fail=()=>{ delete sampleBank[instr]; };             // missing/broken pack → the synth fallback keeps sounding
+  const tag=document.createElement("script"); tag.src=spec.src; tag.onerror=fail;
+  tag.onload=()=>{ tag.remove();
+    const data=(window.SAMPLE_DATA||{})[instr]; if(!data) return fail();
+    const dctx=new OfflineAudioContext(1,1,44100);          // decode-only context — legal before any user gesture
+    Promise.all(Object.entries(data).map(([m,b64])=>{
+      const bin=atob(b64), bytes=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      return dctx.decodeAudioData(bytes.buffer).then(buf=>{ bank.buffers[m]=conditionSample(dctx,buf); });
+    })).then(()=>{ bank.ready=true; delete SAMPLE_DATA[instr]; })   // drop the base64 copy once decoded
+      .catch(fail);
+  };
+  document.head.appendChild(tag);
+}
+function sampleVoice(instr,freq,now,out){
+  const bank=sampleBank[instr]; if(!bank||!bank.ready) return false;
+  const midi=Math.round(69+12*Math.log2(freq/440));
+  let best=null; for(const m in bank.buffers) if(best===null||Math.abs(m-midi)<Math.abs(best-midi)) best=+m;
+  const src=actx.createBufferSource(); src.buffer=bank.buffers[best];
+  src.playbackRate.value=freq/midiToFreq(best);
+  src.connect(out); src.start(now); src.stop(now+1.9);
+  out.gain.setValueAtTime(SAMPLED[instr].gain,now);         // let the strike speak, then damp it like an un-pedaled
+  out.gain.setTargetAtTime(0.0001,now+0.08,0.38);           // note — the raw recording rings pedal-down for many bars
+  return true;
+}
 function voice(instr,freq,now){
   const out=actx.createGain(); out.connect(voiceBus); out.connect(reverb);
-  if(instr==="pad"){
-    [-0.08,0.08,0].forEach(det=>{ const o=actx.createOscillator(); o.type="sawtooth";
-      o.frequency.value=freq*Math.pow(2,det/12);
-      const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=1800;
-      o.connect(lp); lp.connect(out); o.start(now); o.stop(now+1.4); });
-    env(out.gain,now,0.18,0.3,0.25,1.4);   // pad: 3 saws stack up — keep it gentle
-  } else if(instr==="pluck"){
+  if(SAMPLED[instr]){
+    if(sampleVoice(instr,freq,now,out)) return;
+    loadSamples(instr);                                     // not decoded yet — fetch, and sound the music box just this once
+  }
+  if(instr==="pluck"){
     const o=actx.createOscillator(); o.type="sawtooth"; o.frequency.value=freq;
     const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(4500,now);
     lp.frequency.exponentialRampToValueAtTime(700,now+0.4); o.connect(lp); lp.connect(out);
@@ -646,7 +694,7 @@ function voice(instr,freq,now){
     const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*2.01;
     const g2=actx.createGain(); g2.gain.value=0.25; o2.connect(g2); g2.connect(out);
     o.connect(out); o.start(now); o.stop(now+1.2); o2.start(now); o2.stop(now+0.6);
-    env(out.gain,now,0.005,1.0,0.0,1.1);
+    env(out.gain,now,0.005,1.2,0.0,1.1);
   }
 }
 function playRow(r,t){ initAudio(); voice(instrEl.value, midiToFreq(MIDI[r]), t); }
@@ -2830,6 +2878,9 @@ nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
 
 // ---------- Playback ----------
 const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
+// set the melody voice by id — retired ids (warm pad) fall back to the music box, sampled ids start fetching
+function setVoice(v){ instrEl.value=v||"musicbox"; if(!instrEl.value) instrEl.value="musicbox";
+  if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); }
 const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");
 const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");
 const playhead=document.getElementById("playhead");
@@ -2894,7 +2945,8 @@ craftBtn.onclick=()=>{
   else { exitFuse(); setStatus("Fuse cancelled — plant seeds, or 🔨 Fuse again."); }
 };
 tempoEl.oninput=()=>{ if(playing){ clearInterval(timer); timer=setInterval(tick,stepDur()); } };
-tempoEl.addEventListener("change",saveProgress); instrEl.addEventListener("change",saveProgress);
+tempoEl.addEventListener("change",saveProgress);
+instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveProgress(); });
 document.getElementById("clear").onclick=()=>{ wipe(); if(drumsOn) wipeDrums(); checkLevel(); };
 const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(16);   // extend the timeline by one bar
 const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(16);
@@ -2979,7 +3031,7 @@ function applySong(s){
   const t=s.time||{};
   if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
   if(t.tempo) tempoEl.value=t.tempo;
-  if(mel.voice) instrEl.value=mel.voice;
+  if(mel.voice) setVoice(mel.voice);
   updateGarden();
 }
 // --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
@@ -3288,6 +3340,9 @@ function renderPkgs(){ pkglist.innerHTML="";
   const wrap=document.createElement("div"); wrap.className="mapwrap";
   wrap.appendChild(svg); pkglist.appendChild(wrap);
   requestAnimationFrame(()=>fitLabels(svg));              // measure once the overlay is actually visible
+  const cred=document.createElement("div"); cred.className="mapcred";
+  cred.textContent="🎹 Piano voice: Salamander Grand Piano by Alexander Holm (CC-BY)";
+  pkglist.appendChild(cred);
   // the territory box: click a land to read about it and Continue / Restart
   const mapbox=document.createElement("div"); mapbox.className="mapbox"; wrap.appendChild(mapbox);
   function showMapBox(id,clientY){
@@ -3372,7 +3427,7 @@ async function cloudSongList(){ const t=await freshToken(); if(!t) return [];
 async function cloudSongDelete(id){ const t=await freshToken(); if(!t) return false;
   try{ const r=await fetch(AUTH.apiUrl+"/songs/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+t}}); return r.ok; }catch(e){ return false; } }
 function applyProgress(){   // re-apply the progress object to the running game
-  if(progress.settings){ if(progress.settings.voice) instrEl.value=progress.settings.voice; if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
+  if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
   toolbox.length=0; toolboxPkg=null;   // force a per-package toolbox reload on the renderLevel below
@@ -3435,7 +3490,7 @@ function updateGarden(){ gardenbed.innerHTML="";
 
 // restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
 if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }; }
-if(progress.settings && progress.settings.voice) instrEl.value=progress.settings.voice;
+if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
