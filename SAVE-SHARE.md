@@ -1,7 +1,7 @@
 # Tune Garden — Save / Share Redesign
 
 *Durable, pitch-based song format + dedicated Studio + cloud song storage.*
-Status: **SPEC** (locked 2026-06-19). Supersedes the prototype save/share described in DESIGN §10/§12.
+Status: **IMPLEMENTED — P1+P2+P3 all shipped (2026-06-19/20)**; P4 (public gallery + `private`) deferred pending moderation. Spec locked 2026-06-19; supersedes the prototype save/share described in DESIGN §10/§12. This doc remains the format's source of truth — read §3 before touching `currentSong`/`applySong`.
 Owner decisions baked in: **full forward-compatible container** (sparse fill), **cloud storage in scope**, spec lives here with a pointer from DESIGN §11.
 
 ---
@@ -149,8 +149,8 @@ The game was never widely distributed (a few testers only), so **v3 simply repla
 
 In-scope this effort: **P1 + P2 + P3**. P4 deferred.
 
-- **P1 — durable client format (the core).** v3 pitch-based `currentSong`/`applySong`; packed URL form + size ceiling; v3-only localStorage library (no v2 migration). **Ships diatonic sharing.** No backend.
-- **P2 — Studio.** Dedicated sandbox entry from Home; widest-unlocked palette; finale "Keep building in the Studio" deep-links.
+- **P1 — durable client format (the core). ✅ SHIPPED 2026-06-19.** v3 pitch-based `currentSong`/`applySong`; packed URL form + size ceiling; v3-only localStorage library (no v2 migration). **Ships diatonic sharing.** No backend.
+- **P2 — Studio. ✅ SHIPPED 2026-06-19.** Dedicated sandbox entry from Home (a hidden `PACKAGES.studio` node — never on the map/DAG); widest-unlocked palette (`widestPalette()` reads `progress.colors`); finale "Keep building in the Studio" deep-links. On the world map the Studio is the little gold island.
 - **P3 — cloud songs. ✅ SHIPPED 2026-06-20.** `music-garden-songs` table + `POST/GET/PUT/DELETE /songs` + `GET /songs` (list mine); `#song=<id>` links; cross-device "☁️ In the cloud" section in My Melodies; unauth `GET /songs/{id}` for link resolution; per-user cap (200) + payload cap (100 KB) + title sanitize. Share flow: small songs → inline `#s=`; big songs → cloud `#song=<id>` (sign-in required). **Unlisted-only** (see §6 finding).
 - **P4 — public gallery + private (DEFERRED, gated on moderation).** Add an identity-aware read path (enables owner-only `private` reads), `visibility:"public"` + a listing endpoint, title moderation, report/takedown flow.
 

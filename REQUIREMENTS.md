@@ -64,7 +64,7 @@ Decisions made during brainstorming that refine the requirements above:
 - **Client-heavy:** push as much computation to the browser as possible (audio synthesis/playback, game logic). Minimize backend load.
 - **Backend:** AWS. Responsibilities: user accounts/auth, saving & loading progress, and (later) social/sharing/collaboration data.
 - **Accounts & persistence:** users can register so progress is saved and resumed across sessions.
-- **Audio:** real-sounding instruments. Plan: a small curated set of good **sampled** instruments, cached client-side. (Prototype currently uses lightweight synthesis.)
+- **Audio:** real-sounding instruments. Plan: a small curated set of good **sampled** instruments, cached client-side. (In progress: the piano is sampled — Salamander Grand, lazy-loaded with a synth fallback; the music box default stays synthesized by design; more instruments planned as per-region unlocks. See DESIGN §10.)
 - **Data modeling:** model musical data so social/collaboration can slot in later, even if v1 is solo.
 
 ---

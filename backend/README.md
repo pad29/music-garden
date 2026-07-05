@@ -1,14 +1,16 @@
-# Tune Garden — backend (Phase B)
+# Tune Garden — backend
 
-Cognito (username + password, email optional) + an HTTP API (`GET`/`PUT /progress`) backed by one DynamoDB row per user. Deployed with **AWS SAM**. All serverless, pay-per-use — at hobby traffic this is effectively free / pennies.
+**Status: DEPLOYED** (stack `music-garden`, us-east-1). Cognito (username + password, email optional) + an HTTP API backed by DynamoDB. Two APIs: **progress** (`GET`/`PUT /progress`, one row per user) and **songs** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage per `SAVE-SHARE.md` §6; `GET /songs/{id}` is deliberately unauthenticated so share links open without an account). Deployed with **AWS SAM**; Lambdas run on nodejs24.x. All serverless, pay-per-use — at hobby traffic this is effectively free / pennies.
 
 ```
 backend/
-  template.yaml        # all the AWS resources (Cognito, DynamoDB, API, Lambdas)
+  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas)
   src/
     presignup.mjs      # auto-confirms new accounts (no email step)
     progress.mjs       # GET/PUT the caller's own progress
+    songs.mjs          # cloud songs CRUD (SAVE-SHARE.md §6: caps, unlisted-only)
     package.json
+  samconfig.toml       # saved deploy args (so future deploys are just `sam deploy`)
   README.md            # you are here
 ```
 
@@ -75,7 +77,7 @@ UserPoolClientId  xxxxxxxxxxxxxxxxxxxxxxxxxx
 ApiUrl            https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com
 ```
 
-➡️ **Send me those four values.** They're *public* identifiers (the kind that ship inside any web app), so they're safe to share/commit — unlike your IAM secret key, which stays on your machine. I'll plug them into the client and wire up sign-in + cloud sync.
+Those four values are *public* identifiers (the kind that ship inside any web app), safe to commit — unlike your IAM secret key, which stays on your machine. They're already wired into the client (the `AUTH` object in `index.html`); if you ever recreate the stack, update `AUTH` with the new outputs.
 
 ---
 
@@ -93,6 +95,6 @@ sam delete --stack-name music-garden
 
 ## Notes
 - **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
-- **CORS** is scoped to the Netlify origin (`https://music-garden.netlify.app`) in `template.yaml`. Update `AllowOrigins` there if the deploy URL changes.
+- **CORS** is scoped to `https://tunegarden.game` (+ `www` + the Netlify fallback origin) in `template.yaml`. Update `AllowOrigins` there if the deploy URL changes.
 - **Recovery:** accounts are username+password with no email by default (no password reset). A user can optionally add an email at sign-up to enable forgot-password; a custom "recovery code" flow can be added later.
 - **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. Consider setting an AWS **Budget alert** ($1–5) for peace of mind.

@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-06-13
+Last updated: 2026-07-05 — **15 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -130,18 +130,21 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 4. Region map (player-facing)
 
-| # | Region | Cluster focus | Palette |
-|---|---|---|---|
-| 0 | **The First Garden** (intro — *built*) | Voice · Home · Pulse · Shape | pentatonic |
-| 1 | **Paths of Song** | Voice | pentatonic |
-| 2 | **Pulse Woods** | Pulse | pentatonic (pitch-independent) |
-| 3 | **Stone Chorus Canyon** | Shape | pentatonic→diatonic |
-| — | **`two-new-colors` milestone** (engine widens to diatonic) | — | — |
-| 4 | **Weather of Wanting** | Flow / Home | diatonic |
-| 5 | **Color Caverns** | Color | diatonic→chromatic |
-| 6 | **Weavers' Grove** | Weaving | diatonic (+ multi-voice system) |
-| 7 | **Story Mountain** | Story | diatonic (+ section system) |
-| 8 | **Atlas of Styles** | Travel | varies (reuses groove system) |
+| # | Region | Cluster focus | Palette | Status (2026-07-05) |
+|---|---|---|---|---|
+| 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
+| 1 | 🎶 **Paths of Song** | Voice | pentatonic | **3 built** (fireflies, stepping-stones, Q&A); `tiny-motifs` remains |
+| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **2 built** (footsteps, wind-and-gaps); `off-the-path`, `two-kinds-of-walking` remain |
+| 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **3 built** (twin-blooms, standing-towers, twin-blooms-plus) |
+| 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
+| 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
+| 6 | 🌗 **The Twin Gardens** | Color / mood | diatonic | **1 built** (sun-and-moon-garden — *moved here from the planned "Color Caverns"; each map region needs a land, and major/minor mood earned its own twin-biome region*) |
+| 7 | **Color Caverns** (future) | Color | diatonic→chromatic | not started (`secret-doors`, `mist-paths`) |
+| 8 | **Weavers' Grove** (future) | Weaving | diatonic (+ multi-voice system) | not started |
+| 9 | **Story Mountain** (future) | Story | diatonic (+ section system) | not started |
+| 10 | **Atlas of Styles** (future) | Travel | varies (reuses groove system) | not started |
+
+> The player-facing map is now a **hand-drawn continent** (one land per region, one territory per package — DESIGN §10); adding a package re-splits its region's land, adding a region adds a land. Region ids/names in code: `REGION_MAP` in `index.html`.
 
 ---
 
@@ -149,13 +152,13 @@ Tag every rhythm-touching package with the tier it needs.
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
-- **Wave A — Voice & Pulse** *(pentatonic; current engine + contour-detector + rest/duration system):* follow-the-fireflies, footsteps, stepping-stones, wind-and-gaps, question-and-answer, off-the-path, tiny-motifs, two-kinds-of-walking
-- **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms, standing-towers
-- **★ Milestone:** **two-new-colors** *(diatonic widening + tool-transposition decision)*
-- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus, shifting-shadows, soft-wobble-strong-wobble, ways-home, river-turns, pull-of-the-moon, false-doors
-- **Wave D — Color** *(diatonic→chromatic):* sun-and-moon-garden, secret-doors, mist-paths
+- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅ · remaining: off-the-path, tiny-motifs, two-kinds-of-walking
+- **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
+- **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
+- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅ · remaining: shifting-shadows, soft-wobble-strong-wobble
+- **Wave D — Color** *(diatonic→chromatic):* sun-and-moon-garden ✅ (shipped early — it needed only the mood system, and gives the diatonic arc an emotional payoff) · remaining: secret-doors, mist-paths
 - **Wave E — Weaving & Story** *(needs multi-voice + section systems):* deep-roots-high-birds, lantern-chorus, rain-and-sun, rooms-and-paths, return-of-the-meadow
-- **Bridge style worlds** *(optional, Region 8):* campfire-trails, city-lights
+- **Bridge style worlds** *(optional):* campfire-trails, city-lights
 
 ---
 
@@ -176,7 +179,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Why:** first "melody as expression" package; biggest emotional step after the intro. **The validation build** for the template + level engine.
 - **Validation focus (test while building):** (1) *replayability* — do levels invite redo / multiple valid solutions? (2) *expression leakage* — are "wrong" approaches still meaningful and allowed? (3) *transfer* — afterward, does the player spontaneously shape melodies in Free Play? If not, the package didn't teach a capability.
 
-#### `stepping-stones` — Stepping Stones  [PS-2]
+#### `stepping-stones` — Stepping Stones  [PS-2]  — **BUILT ✅ (2026-06-14)** *(as-built spec in PACKAGES-DETAILED §3)*
 - **Capability:** move gently by steps or boldly by leaps, on purpose.
 - **Theory:** stepwise motion vs. leaps (relative interval size). **Palette:** pentatonic *(steps are uneven — embodied feel reads fine; true diatonic steps arrive later)*. **Prereqs:** garden-basics, follow-the-fireflies.
 - **Patterns:** navigate, build_constraint, transform, compare, repair. **Success:** broad/targeted.
@@ -205,7 +208,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ### REGION 2 — Pulse Woods  *(cluster: pulse · pentatonic / pitch-independent)*
 
-#### `footsteps` — Footsteps  [PW-1]
+#### `footsteps` — Footsteps  [PW-1]  — **BUILT ✅ (2026-06-13, redesigned 2026-06-14)** *(as-built spec in PACKAGES-DETAILED §2)*
 - **Capability:** create and feel a stable pulse; lock melody to it.
 - **Theory:** beat stability, simple subdivision, melody/beat alignment. **Palette:** pentatonic. **Rhythm tier:** R1. **Prereqs:** garden-basics.
 - **Patterns:** repair, build_constraint, match_feel, compare, restore. **Success:** broad/targeted.
@@ -243,7 +246,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ### REGION 3 — Stone Chorus Canyon  *(cluster: shape · pentatonic→diatonic)*
 
-#### `twin-blooms` — Twin Blooms  [SC-1]  *(two-stage package)*
+#### `twin-blooms` — Twin Blooms  [SC-1]  *(two-stage package)* — **BUILT ✅ (2026-06-14)** *(as-built spec in PACKAGES-DETAILED §4)*
 - **Capability:** hear and choose between *kinds* of note-pairs by personality.
 - **Theory:** interval families, consonance contrast. **Palette:** pentatonic *(early stage)*. **Prereqs:** garden-basics.
 - **Patterns:** discover, match_feel, compare, classify, build_constraint. **Success:** broad.
@@ -252,14 +255,14 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (S):** pair-personality descriptors over existing fuse/interval recognizer.
 - **Why:** deepens harmonic ears without names — the **early stage** teaches *pleasant vs. open* pairs only (all pentatonic can offer). The richer end (close tension, strong pull, real contrast) re-enters post-diatonic as `twin-blooms-plus`, so the player feels *"this system got richer,"* not *"this system changed."*
 
-#### `twin-blooms-plus` — Twin Blooms (expanded)  [SC-1+]  *(post-diatonic re-entry, not a new numbered package)*
+#### `twin-blooms-plus` — Twin Blooms (expanded)  [SC-1+]  *(post-diatonic re-entry, not a new numbered package)* — **BUILT ✅ (2026-06-20)** *(as-built spec in PACKAGES-DETAILED §9; shipped with the per-package toolbox fix)*
 - **Capability:** the full pair-personality range — close tension, strong pull, real bright/dark contrast.
 - **Theory:** semitone tension, leading-tone pull, full interval color. **Palette:** **diatonic**. **Prereqs:** twin-blooms, two-new-colors.
 - **Patterns:** discover, compare, match_feel, classify. **Success:** broad/targeted.
 - **Reward:** unlocks the tense/pull pairs in the same toolbox shelf (visibly "grows").
 - **Why:** delivers the harmonic-ear depth the early stage couldn't, without a jarring system swap.
 
-#### `standing-towers` — Standing Towers  [SC-2]
+#### `standing-towers` — Standing Towers  [SC-2]  — **BUILT ✅ (2026-06-14)** *(as-built spec in PACKAGES-DETAILED §5)*
 - **Capability:** build stable 3-note shapes intentionally.
 - **Theory:** triad construction, stability, chord completion. **Palette:** pentatonic *(only C-maj & A-min stand cleanly — enough to teach, thin for variety; blooms after widening to F/G-maj, D/E-min)*. **Prereqs:** garden-basics, twin-blooms.
 - **Patterns:** finish, build_constraint, repair, compare, restore. **Success:** targeted/broad.
@@ -282,7 +285,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ### REGION 4 — Weather of Wanting  *(cluster: flow/home · diatonic)*
 
-#### `ways-home` — Ways Home  [WW-1]
+#### `ways-home` — Ways Home  [WW-1]  — **BUILT ✅ (2026-06-18)** *(as-built spec in PACKAGES-DETAILED §8)*
 - **Capability:** choose how complete / restful / open an ending feels.
 - **Theory:** cadence strength, closure types. **Palette:** **diatonic** *(needs the leading tone — impossible in pentatonic)*. **Prereqs:** two-new-colors, question-and-answer, standing-towers.
 - **Patterns:** finish, compare, match_feel, repair. **Success:** targeted/broad.
@@ -291,9 +294,9 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M):** phrase-end evaluation across multiple closure strengths; "partial vs. full home" world feedback. Builds on intro "Find Home."
 - **Why:** turns intuitive "home" into nuanced expressive control — the start of real functional power.
 
-#### `river-turns` — River Turns  [WW-2]
+#### `river-turns` — River Turns  [WW-2]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §10)*
 - **Capability:** move from one harmony to another like travel.
-- **Theory:** common progression motion. **Palette:** diatonic. **Prereqs:** two-new-colors, standing-towers, ways-home.
+- **Theory:** common progression motion. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home.
 - **Patterns:** repair, finish, transform, navigate, compare. **Success:** broad/targeted.
 - **Quest:** *Riverways* — navigate by harmonic flow; reconnect villages.
 - **Sandbox:** progression-path tool; "next chord" route suggestions; journey prompts.
@@ -318,18 +321,18 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M):** tension-magnitude model (extends intro stand/wobble from binary to a scale).
 - **Why:** the bridge from "shape" to "function."
 
-#### `pull-of-the-moon` — Pull of the Moon  [WW-3]
+#### `pull-of-the-moon` — Pull of the Moon  [WW-3]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §11)*
 - **Capability:** create stronger longing/pull before returning home.
-- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** two-new-colors, soft-wobble-strong-wobble, ways-home.
+- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built yet); the tension groundwork comes from `twin-blooms-plus` instead.
 - **Patterns:** transform, compare, finish, match_feel. **Success:** targeted/broad.
 - **Quest:** *Raise the moon / celestial gates* open on strong pull + release.
 - **Sandbox:** gravity visualization; "longing" intensity; strong-return templates.
 - **System needs (M):** tendency-tone model (leading tone, 4→3) + tension visualizer.
 - **Why:** where players start feeling harmony as *emotion*.
 
-#### `false-doors` — False Doors  [WW-4]
+#### `false-doors` — False Doors  [WW-4]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §12)*
 - **Capability:** delay/redirect/surprise the expected landing — coherently.
-- **Theory:** deceptive resolution. **Palette:** diatonic. **Prereqs:** two-new-colors, river-turns, pull-of-the-moon.
+- **Theory:** deceptive resolution. **Palette:** diatonic. **Prereqs:** *(as built)* river-turns, pull-of-the-moon.
 - **Patterns:** transform, compare, build_constraint, restore. **Success:** targeted/broad.
 - **Quest:** *Trickster forest / mirror maze* powered by misleading-but-coherent music.
 - **Sandbox:** surprise-turn tool; suspense cards; alternate-ending generators.
@@ -338,9 +341,9 @@ Tag every rhythm-touching package with the tier it needs.
 
 ### REGION 5 — Color Caverns  *(cluster: color · diatonic→chromatic)*
 
-#### `sun-and-moon-garden` — Sun Garden / Moon Garden  [CC-1]
+#### `sun-and-moon-garden` — Sun Garden / Moon Garden  [CC-1]  — **BUILT ✅ (2026-06-20), in region 🌗 The Twin Gardens** *(as-built spec in PACKAGES-DETAILED §13; moved out of the planned Color Caverns into its own twin-biome region)*
 - **Capability:** shift the same idea bright vs. wistful.
-- **Theory:** major/minor & modal contrast. **Palette:** *relative-major/minor mood ships pentatonic via tonic-shift; full parallel/modal version needs diatonic.* **Prereqs:** two-new-colors, tiny-motifs, ways-home *(relative-mood teaser can appear earlier in Wave A as a `pentatonic` mini)*.
+- **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built yet).
 - **Patterns:** transform, match_feel, compare, repair. **Success:** broad/targeted.
 - **Quest:** *Twin biomes* — day garden & night garden; a character's day-song vs. night-song.
 - **Sandbox:** mood palette switch; bright/dusk/moonlit presets.
