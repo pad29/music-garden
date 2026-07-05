@@ -281,9 +281,9 @@
   .maphead{ font-size:.78rem; opacity:.82; text-align:center; margin:2px 0 14px;}
   /* the continent: an SVG map — each region is a hand-drawn land, auto-split into one territory per package */
   #worldmap{ width:100%; display:block; margin:2px 0 10px; border-radius:14px;}
-  #worldmap .mcell{ cursor:pointer; stroke-width:1.3; transition:filter .15s;}
+  #worldmap .mcell{ cursor:pointer; stroke-width:1.3; stroke-dasharray:3 3; transition:filter .15s;}   /* package borders stay dashed in EVERY state — solid lines are regions */
   #worldmap .mcell:hover{ filter:brightness(1.10) saturate(1.2);}
-  #worldmap .mcell.mlocked{ cursor:help; stroke-dasharray:3 3;}
+  #worldmap .mcell.mlocked{ cursor:help;}
   #worldmap .mcell.mcur{ stroke:var(--gold-deep); stroke-width:2.6;}
   #worldmap .memoji{ font-size:13px; text-anchor:middle; pointer-events:none;}
   #worldmap .mdone{ font-size:14px; text-anchor:middle; pointer-events:none; fill:#1E6B38; font-weight:800;
@@ -297,7 +297,7 @@
     font-size:.78rem; padding:6px 11px; border-radius:8px; pointer-events:none; white-space:nowrap;
     box-shadow:0 4px 14px rgba(62,58,57,.35); display:none; text-align:center; line-height:1.4;}
   .maptip b{ color:var(--gold);}
-  #worldmap .mborder{ fill:none; stroke-width:2.2; pointer-events:none;}      /* crisp region outlines over the territories */
+  #worldmap .mborder{ fill:none; stroke-width:2.8; stroke-linejoin:round; pointer-events:none;}   /* solid, pronounced region outlines over the dashed territories */
   #worldmap .mcell.msel{ stroke:var(--soil); stroke-width:2.4;}
   /* the little box a clicked territory opens: description + Continue / Restart — floats OVER the map,
      on the opposite half from the click, and dismisses on any click outside it */
@@ -3123,17 +3123,25 @@ function openStudioWith(song){ openStudio(); if(song) applySong(song); }   // ca
 // neighbours (junctions M,N,O,P,Q,R + one wavy midpoint per border), so the coastline is the only water edge.
 const CONTINENT={
   viewBox:"0 0 460 478",
+  // The journey radiates from the middle: First Garden at the heart; the three regions the intro
+  // unlocks ring it (Paths of Song W · Stone Chorus Canyon E · Pulse Woods S); the later regions
+  // arc across the north — Color Spring (NE, grown out of Stone Chorus), Weather of Wanting (NW),
+  // and the Twin Gardens crowning the top between the two lands that unlock them.
+  // Internal borders are SHARED point sequences (byte-identical in every land that lists them);
+  // triple junctions: [228,192] [281,283] [199,290] (First Garden corners) · [201,118] paths/stone/twin ·
+  // [310,98] stone/twin/color-spring · [168,132] paths/twin/weather.
   lands:{
-    "color-spring":        [[38,166],[46,118],[52,84],[78,54],[128,34],[186,30],[206,86],[210,140],[184,152],[172,182],[104,182]],
-    "twin-gardens":        [[186,30],[252,26],[318,38],[352,66],[335,112],[300,158],[256,141],[210,140],[206,86]],
-    "stone-chorus-canyon": [[352,66],[390,84],[418,118],[438,166],[444,214],[432,262],[404,306],[350,286],[306,250],[313,204],[300,158],[335,112]],
-    "paths-of-song":       [[38,166],[104,182],[172,182],[173,228],[192,272],[114,276],[40,296],[28,258],[34,222]],
-    "first-garden":        [[210,140],[256,141],[300,158],[313,204],[306,250],[276,276],[242,278],[218,288],[192,272],[173,228],[172,182],[184,152]],
-    "weather-of-wanting":  [[40,296],[114,276],[192,272],[218,288],[242,278],[229,358],[230,438],[176,438],[118,428],[68,392],[44,336]],
-    "pulse-woods":         [[242,278],[276,276],[306,250],[350,286],[404,306],[398,364],[372,418],[312,442],[246,446],[230,438],[229,358]],
+    "first-garden":        [[228,192],[272,204],[290,242],[281,283],[240,300],[199,290],[178,250],[189,211]],
+    "paths-of-song":       [[201,118],[209,155],[228,192],[189,211],[178,250],[199,290],[150,310],[105,330],[82,300],[64,262],[98,220],[110,170],[168,132],[186,124]],
+    "stone-chorus-canyon": [[201,118],[262,102],[310,98],[368,168],[434,206],[436,252],[414,298],[378,332],[330,305],[281,283],[290,242],[272,204],[228,192],[209,155]],
+    "pulse-woods":         [[199,290],[240,300],[281,283],[330,305],[378,332],[388,372],[368,412],[318,440],[252,452],[186,446],[128,420],[92,378],[105,330],[150,310]],
+    "color-spring":        [[334,40],[392,58],[428,90],[446,136],[434,206],[368,168],[310,98],[324,70]],
+    "weather-of-wanting":  [[44,58],[96,34],[150,30],[158,80],[168,132],[110,170],[98,220],[64,262],[40,220],[34,160],[36,104]],
+    "twin-gardens":        [[150,30],[210,20],[268,20],[318,26],[334,40],[324,70],[310,98],[262,102],[201,118],[186,124],[168,132],[158,80]],
   },
-  labels:{ "color-spring":[118,88], "twin-gardens":[264,80], "stone-chorus-canyon":[374,148,1],   // [x, y, wrap?] — wrap splits a long name onto two lines; every label (+ its friend) sits INSIDE its land
-           "paths-of-song":[100,206], "first-garden":[242,176], "weather-of-wanting":[130,326], "pulse-woods":[320,330] },
+  labels:{ "first-garden":[234,228,1], "paths-of-song":[144,214,1], "stone-chorus-canyon":[344,200,1],   // [x, y, wrap?] — wrap splits a long name onto two lines; fitLabels() nudges every label (+ friend) fully INSIDE its land
+           "pulse-woods":[240,384], "color-spring":[390,112,1], "weather-of-wanting":[96,68,1],
+           "twin-gardens":[245,60] },
   studio:{ poly:[[398,420],[430,412],[452,430],[446,456],[416,464],[396,446]], label:[424,406] },
 };
 // tiny polygon toolkit for the map
@@ -3166,6 +3174,59 @@ const hex2rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h
 const mixhex=(h1,h2,t)=>{ const a=hex2rgb(h1), b=hex2rgb(h2);
   return "#"+a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,"0")).join(""); };
 const pathD=poly=>"M"+poly.map(p=>p[0].toFixed(1)+" "+p[1].toFixed(1)).join("L")+"Z";
+const pointInPoly=(x,y,poly)=>{ let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const[xi,yi]=poly[i],[xj,yj]=poly[j];
+    if((yi>y)!==(yj>y) && x<(xj-xi)*(y-yi)/(yj-yi)+xi) inside=!inside; }
+  return inside; };
+const boxInPoly=(x,y,hw,hh,poly)=>pointInPoly(x-hw,y-hh,poly)&&pointInPoly(x+hw,y-hh,poly)
+  &&pointInPoly(x-hw,y+hh,poly)&&pointInPoly(x+hw,y+hh,poly)&&pointInPoly(x,y,poly);
+const rectsOverlap=(a,b)=>a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3];
+const splitLabel=txt=>{ const w=txt.split(" "), cut=Math.ceil(w.length*2/3);
+  return [w.slice(0,cut).join(" "), w.slice(cut).join(" ")]; };
+// estimated keep-out boxes for a region's label + friend (glyph placement runs before text is measurable)
+function labelBlocks(reg){
+  const la=CONTINENT.labels[reg.id]; if(!la) return [];
+  const txt=reg.emoji+" "+reg.name.toUpperCase();
+  const lines=la[2]? splitLabel(txt) : [txt];
+  const hw=Math.max(...lines.map(s=>[...s].length))*4.3+5;
+  const fy=la[1]+(la[2]?46:34);
+  return [[la[0]-hw, la[1]-10, la[0]+hw, la[1]+(la[2]?20:4)],
+          [la[0]-16, fy-21, la[0]+16, fy+6]];
+}
+// where a territory's status glyph can sit: fully inside its own land, clear of the label + friend —
+// spiral out from the centroid until both hold (relaxing the label rule before ever leaving the land)
+function glyphSpot(poly,blocks){
+  const [gx,gy]=polyCentroid(poly);
+  const ok=(x,y)=>boxInPoly(x,y,9,9,poly)&&!blocks.some(b=>rectsOverlap([x-9,y-9,x+9,y+9],b));
+  if(ok(gx,gy)) return [gx,gy];
+  for(let r=6;r<=66;r+=6) for(let k=0;k<16;k++){ const a=k/16*2*Math.PI+r*.37;
+    const x=gx+r*Math.cos(a), y=gy+r*Math.sin(a); if(ok(x,y)) return [x,y]; }
+  for(let r=0;r<=66;r+=6) for(let k=0;k<16;k++){ const a=k/16*2*Math.PI+r*.37;
+    const x=gx+r*Math.cos(a), y=gy+r*Math.sin(a); if(boxInPoly(x,y,7,7,poly)) return [x,y]; }
+  return [gx,gy];
+}
+// after the SVG is live, measure each region's label + friend for real and nudge the pair until the
+// whole block sits inside its land — actual emoji/text metrics vary by platform, so estimates aren't enough
+function fitLabels(svg){
+  REGION_MAP.forEach(reg=>{
+    const land=CONTINENT.lands[reg.id]; if(!land) return;
+    const els=[...svg.querySelectorAll(`[data-land="${reg.id}"]`)];
+    if(!els.length||els[0].getBBox().width===0) return;      // overlay still hidden — remeasured on next open
+    const [ccx,ccy]=polyCentroid(land);
+    let dx=0,dy=0;
+    for(let it=0;it<30;it++){
+      let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;
+      els.forEach(el=>{ const b=el.getBBox(); x1=Math.min(x1,b.x); y1=Math.min(y1,b.y);
+        x2=Math.max(x2,b.x+b.width); y2=Math.max(y2,b.y+b.height); });
+      x1+=dx-2; x2+=dx+2; y1+=dy-1; y2+=dy+1;
+      const pts=[[x1,y1],[x2,y1],[x1,y2],[x2,y2],[(x1+x2)/2,y1],[(x1+x2)/2,y2],[x1,(y1+y2)/2],[x2,(y1+y2)/2]];
+      if(pts.every(([x,y])=>pointInPoly(x,y,land))) break;
+      const bx=(x1+x2)/2, by=(y1+y2)/2, d=Math.hypot(ccx-bx,ccy-by)||1;
+      dx+=(ccx-bx)/d*3; dy+=(ccy-by)/d*3;
+    }
+    if(dx||dy) els.forEach(el=>el.setAttribute("transform",`translate(${dx.toFixed(1)} ${dy.toFixed(1)})`));
+  });
+}
 // hover tooltip (name · progress · prerequisites)
 let maptip=null;
 function mapTipHTML(id){
@@ -3188,15 +3249,13 @@ function renderPkgs(){ pkglist.innerHTML="";
     const pkgs=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg.id && !PACKAGES[id].hidden);
     const open=reg.id==="first-garden" || pkgs.some(id=>isPkgUnlocked(id));
     const parts=splitPolyN(land, Math.max(pkgs.length,1), ri+3);
+    const lblocks=labelBlocks(reg);
     pkgs.forEach((id,i)=>{
       const pk=PACKAGES[id], poly=parts[i], unlocked=isPkgUnlocked(id), pp=pkgProg(id);
       const done=pp.completed;
       const fill=unlocked ? mixhex(reg.color,"#FFFFFF", done?.10:.28+(i%3)*.13)
                           : mixhex(mixhex(reg.color,"#8C8880",.58),"#FFFFFF",.34);
-      let [cx,cy]=polyCentroid(poly);
-      const la=CONTINENT.labels[reg.id];                  // keep the territory glyph clear of the label + friend block
-      if(la){ const dx=cx-la[0], dy=cy-(la[1]+(la[2]?26:16)), d=Math.hypot(dx,dy);
-        if(d<44){ const push=(44-d)/(d||1); cx+=dx*push; cy+=dy*push; } }
+      const [cx,cy]=glyphSpot(poly,lblocks);              // fully inside its territory, clear of the label + friend
       cells+=`<path d="${pathD(poly)}" class="mcell${unlocked?"":" mlocked"}${id===currentPkg?" mcur":""}" data-pkg="${id}" fill="${fill}" stroke="${mixhex(reg.color,"#3E3A39",.35)}"/>`;
       // ONE status glyph per territory — lock WINS over a stale completed flag (dev-jump saves can hold both):
       // 🔒 locked · ✓ complete · ▶ open to play
@@ -3204,29 +3263,31 @@ function renderPkgs(){ pkglist.innerHTML="";
       else if(done) marks+=`<text x="${cx.toFixed(1)}" y="${(cy+5).toFixed(1)}" class="mdone">✓</text>`;
       else marks+=`<text x="${cx.toFixed(1)}" y="${(cy+4).toFixed(1)}" class="mplay">▶</text>`;
     });
-    borders+=`<path d="${pathD(land)}" class="mborder" stroke="${mixhex(reg.color,"#3E3A39",.45)}"/>`;
+    borders+=`<path d="${pathD(land)}" class="mborder" stroke="${mixhex(reg.color,"#3E3A39",.62)}"/>`;
     const f=regionFriend(reg.id), st=regionStage(reg.id);
     const [lx,ly,wrap]=CONTINENT.labels[reg.id]||polyCentroid(land);
     const op=open?"":' opacity=".55"';
-    if(wrap){ const w=(reg.emoji+" "+reg.name.toUpperCase()).split(" "), cut=Math.ceil(w.length*2/3);
-      labels+=`<text x="${lx}" y="${ly}" class="mlabel"${op}><tspan x="${lx}">${w.slice(0,cut).join(" ")}</tspan><tspan x="${lx}" dy="12">${w.slice(cut).join(" ")}</tspan></text>`;
-    } else labels+=`<text x="${lx}" y="${ly}" class="mlabel"${op}>${reg.emoji} ${reg.name.toUpperCase()}</text>`;
-    if(f&&open) labels+=`<text x="${lx}" y="${ly+(wrap?46:34)}" class="mfriend">${f.stages[st]}</text>`;   // the region's friend, centered under the label with clear air below the text
+    if(wrap){ const [l1,l2]=splitLabel(reg.emoji+" "+reg.name.toUpperCase());
+      labels+=`<text x="${lx}" y="${ly}" class="mlabel" data-land="${reg.id}"${op}><tspan x="${lx}">${l1}</tspan><tspan x="${lx}" dy="12">${l2}</tspan></text>`;
+    } else labels+=`<text x="${lx}" y="${ly}" class="mlabel" data-land="${reg.id}"${op}>${reg.emoji} ${reg.name.toUpperCase()}</text>`;
+    if(f&&open) labels+=`<text x="${lx}" y="${ly+(wrap?46:34)}" class="mfriend" data-land="${reg.id}">${f.stages[st]}</text>`;   // the region's friend, centered under the label with clear air below the text
   });
   // the Studio: a little free-play island off the coast
   cells+=`<path d="${pathD(CONTINENT.studio.poly)}" class="mcell" data-pkg="__studio" fill="${mixhex("#F4C95D","#FFFFFF",.25)}" stroke="${mixhex("#F4C95D","#3E3A39",.35)}"/>`;
+  borders+=`<path d="${pathD(CONTINENT.studio.poly)}" class="mborder" stroke="${mixhex("#F4C95D","#3E3A39",.62)}"/>`;   // the island reads as a region, not a dashed package
   marks+=`<text x="${polyCentroid(CONTINENT.studio.poly)[0].toFixed(1)}" y="${(polyCentroid(CONTINENT.studio.poly)[1]+5).toFixed(1)}" class="memoji">🎵</text>`;
   labels+=`<text x="${CONTINENT.studio.label[0]}" y="${CONTINENT.studio.label[1]}" class="mlabel">STUDIO</text>`;
   const map=document.createElement("div");
   map.innerHTML=`<svg id="worldmap" viewBox="${CONTINENT.viewBox}" xmlns="http://www.w3.org/2000/svg">
     <rect x="0" y="0" width="460" height="478" rx="14" fill="#D9E8F0"/>
     <path d="M28 448 q10 -7 20 0 t20 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
-    <path d="M368 62 q10 -7 20 0 t20 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
-    <path d="M210 330 q9 -6 18 0 t18 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M386 22 q10 -7 20 0 t20 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M408 370 q9 -6 18 0 t18 0" fill="none" stroke="#B9D2E0" stroke-width="2.4" stroke-linecap="round"/>
     ${cells}${borders}${marks}${labels}</svg>`;
   const svg=map.firstElementChild;
   const wrap=document.createElement("div"); wrap.className="mapwrap";
   wrap.appendChild(svg); pkglist.appendChild(wrap);
+  requestAnimationFrame(()=>fitLabels(svg));              // measure once the overlay is actually visible
   // the territory box: click a land to read about it and Continue / Restart
   const mapbox=document.createElement("div"); mapbox.className="mapbox"; wrap.appendChild(mapbox);
   function showMapBox(id,clientY){
