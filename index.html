@@ -352,6 +352,9 @@
         <option value="marimba">Marimba</option>
         <option value="kalimba">Kalimba</option>
         <option value="guitar">Guitar</option>
+        <option value="harp">Harp</option>
+        <option value="vibraphone">Vibraphone</option>
+        <option value="glockenspiel">Glockenspiel</option>
       </select>
     </label>
     <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
@@ -636,12 +639,25 @@ function env(p,now,a,peak,sustain,dur){
 // Guitar = FreePats Spanish Classical Guitar (CC0) — near-chromatic source, so it matches the
 // piano's every-3rd-semitone layout (≤1 semitone of shift). Replaces the synth "pluck" voice,
 // which lives on only as the guitar's loading fallback (setVoice maps old "pluck" saves here).
+// Harp = Etherealwinds Harp II CE (CC-BY — credit in .mapcred, like the piano): Jordi Francis's
+// 34-string Iona Celtic Harp, chromatic, so piano layout again. NB the library labels notes one
+// octave above MIDI (its "C3" file is our MIDI 60); mp3s are trimmed to 3.2s at conversion
+// (the conditioner only keeps 3s). Music box covers the first note while the pack loads.
+// Vibraphone = VCSL soft mallets (CC0) — 8 bars, ≤2 semitones of shift; VCSL labels vibes an
+// octave BELOW sounding pitch (measured, not assumed). Long rings trimmed like the harp's.
+// Glockenspiel = VCSL medium mallets (CC0) — a real glock sounds 2 octaves above written pitch
+// and its bars start at G5, so this voice carries `up:24`: the grid note is transposed up two
+// octaves (authentic orchestration; octaves keep the harmony intact) landing the whole game
+// range inside the instrument's true G5–C8 bars. Buffers are keyed by SOUNDING midi (79–108).
 // Samples ship as base64 inside samples/<instr>.js (built by tools/build-samples.mjs) and load via a
 // <script> tag, NOT fetch — the game must keep working when index.html is opened via file://.
 const SAMPLED={ piano:{ src:"samples/piano.js", gain:0.6 },
                 marimba:{ src:"samples/marimba.js", gain:0.95 },
                 kalimba:{ src:"samples/kalimba.js", gain:1.15 },
-                guitar:{ src:"samples/guitar.js", gain:0.95 } };
+                guitar:{ src:"samples/guitar.js", gain:0.95 },
+                harp:{ src:"samples/harp.js", gain:0.95 },
+                vibraphone:{ src:"samples/vibraphone.js", gain:0.95 },
+                glockenspiel:{ src:"samples/glockenspiel.js", gain:0.95, up:24 } };
 const sampleBank={};                                        // instr → { ready, buffers:{midi:AudioBuffer} }
 // condition a decoded recording once: trim to 3s (memory), even out note-to-note loudness
 // (recordings vary), cap peaks below clipping, and bake in a tail fade
@@ -676,6 +692,8 @@ function loadSamples(instr){
 }
 function sampleVoice(instr,freq,now,out){
   const bank=sampleBank[instr]; if(!bank||!bank.ready) return false;
+  const up=SAMPLED[instr].up||0;                            // transposing voices (glockenspiel sounds 2 octaves
+  freq*=Math.pow(2,up/12);                                  // up, like real orchestration — its bars don't go lower)
   const midi=Math.round(69+12*Math.log2(freq/440));
   let best=null; for(const m in bank.buffers) if(best===null||Math.abs(m-midi)<Math.abs(best-midi)) best=+m;
   const src=actx.createBufferSource(); src.buffer=bank.buffers[best];
@@ -3356,7 +3374,7 @@ function renderPkgs(){ pkglist.innerHTML="";
   wrap.appendChild(svg); pkglist.appendChild(wrap);
   requestAnimationFrame(()=>fitLabels(svg));              // measure once the overlay is actually visible
   const cred=document.createElement("div"); cred.className="mapcred";
-  cred.textContent="🎹 Piano voice: Salamander Grand Piano by Alexander Holm (CC-BY)";
+  cred.textContent="🎹 Piano: Salamander Grand Piano by Alexander Holm (CC-BY) · 🪄 Harp: Etherealwinds Harp II CE by Jordi Francis & Versilian Studios (CC-BY)";
   pkglist.appendChild(cred);
   // the territory box: click a land to read about it and Continue / Restart
   const mapbox=document.createElement("div"); mapbox.className="mapbox"; wrap.appendChild(mapbox);

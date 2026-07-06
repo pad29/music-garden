@@ -8,12 +8,14 @@
 // the correction in here (+cents = raise pitch, matching SFZ `tune`).
 // Requires the lamejs fork (the original 1.2.1 npm package is broken):
 //   npm install @breezystack/lamejs        (in any folder; run this script from there)
-// Usage: node wav2mp3.mjs <in.wav> <out.mp3> [cents]
+// An optional fourth arg trims the output to N seconds — the game's conditioner only keeps
+// the first 3s of any sample, so long-ringing sources (harp) just waste pack bytes past ~3.2s.
+// Usage: node wav2mp3.mjs <in.wav> <out.mp3> [cents] [maxSeconds]
 import fs from "node:fs";
 import lamejs from "@breezystack/lamejs";
 
-const [inFile, outFile, centsArg] = process.argv.slice(2);
-const cents = Number(centsArg || 0);
+const [inFile, outFile, centsArg, maxSecArg] = process.argv.slice(2);
+const cents = Number(centsArg || 0), maxSec = Number(maxSecArg || 0);
 const buf = fs.readFileSync(inFile);
 
 // --- parse WAV chunks ---
@@ -37,7 +39,8 @@ if ((format !== 1 && format !== 65534) || (bits !== 16 && bits !== 24)) throw ne
 
 // --- decode to mono float ---
 const bytesPer = bits / 8, frameBytes = bytesPer * channels;
-const frames = Math.floor(data.size / frameBytes);
+let frames = Math.floor(data.size / frameBytes);
+if (maxSec > 0) frames = Math.min(frames, Math.floor(rate * maxSec));
 const mono = new Float64Array(frames);
 for (let i = 0; i < frames; i++) {
   let sum = 0;

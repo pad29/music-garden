@@ -25,6 +25,22 @@ const INSTRUMENTS = {
   // wav2mp3), so we take the piano layout: every 3rd semitone, ≤1 semitone of shift.
   guitar: { dir: "samples/guitar",
     notes: { 60:"C4", 63:"Ds4", 66:"Fs4", 69:"A4", 72:"C5", 75:"Ds5", 78:"Fs5", 81:"A5", 84:"C6" } },
+  // Etherealwinds Harp II CE (CC-BY — credited in the map footer) — Jordi Francis's Celtic harp,
+  // chromatic → piano layout. Source labels notes one octave above MIDI (its C3 = our C4/60);
+  // converted from the v3 (loud) layer, RR1, trimmed to 3.2s (wav2mp3's maxSeconds arg).
+  harp: { dir: "samples/harp",
+    notes: { 60:"C4", 63:"Ds4", 66:"Fs4", 69:"A4", 72:"C5", 75:"Ds5", 78:"Fs5", 81:"A5", 84:"C6" } },
+  // VCSL vibraphone, soft mallets, v2 layer (CC0) — 8 bars, ≤2 semitones of shift. VCSL labels
+  // vibes one octave BELOW sounding pitch (its C3 file sounds C4/60 — verified by measuring f0,
+  // consistent with a real F3–F6 vibraphone); 12–18s rings trimmed to 3.2s at conversion.
+  vibraphone: { dir: "samples/vibraphone",
+    notes: { 60:"C4", 64:"E4", 67:"G4", 71:"B4", 74:"D5", 77:"F5", 81:"A5", 84:"C6" } },
+  // VCSL glockenspiel, medium mallets (CC0) — keys here are SOUNDING midi (79–108): the voice
+  // carries up:24 in SAMPLED, transposing grid notes two octaves up like real orchestration.
+  // Sources measured one octave above their file labels AND 9–24 cents sharp (bright orchestral
+  // tuning) — corrected via wav2mp3's cents arg at conversion.
+  glockenspiel: { dir: "samples/glockenspiel",
+    notes: { 79:"G5", 84:"C6", 91:"G6", 96:"C7", 103:"G7", 108:"C8" } },
 };
 
 for (const [instr, spec] of Object.entries(INSTRUMENTS)) {
