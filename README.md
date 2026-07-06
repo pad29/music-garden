@@ -4,7 +4,7 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 **Live:** https://tunegarden.game/ (Netlify, auto-deploys from this repo on every push to `main`)
 
-> Status: working single-file game, in active development. **15 packages built** across 7 regions (the 13-level intro + 14 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and a sampled piano voice. Backend deployed. See **[Current status](#current-status--whats-next)**.
+> Status: working single-file game, in active development. **16 packages built** across 7 regions (the 13-level intro + 15 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
 ---
 
@@ -68,7 +68,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Audio** (Web Audio)
 - `initAudio()` builds three mixer buses under `master`: `voiceBus` (melody), `jamBus` (backing band), `drumBus` (drum sequencer). `applyMix()` applies the player's 🎚️ Mixer settings.
-- `voice(instr,freq,t)` plays one melody note. One synth voice remains player-facing (music box — the default & brand sound) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba + vibraphone + glockenspiel = VCSL, CC0; kalimba + guitar = FreePats, CC0; harp = Etherealwinds Harp II CE, CC-BY). The glockenspiel is a transposing voice (`up:24` — sounds 2 octaves above the grid, like real orchestration) ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading (synth marimba backs marimba; synth pluck backs guitar). The "warm pad" and "pluck" voices were retired (old saves fall back via `setVoice`: pad → music box, pluck → guitar).
+- `voice(instr,freq,t)` plays one melody note. One synth voice remains player-facing (music box — the default & brand sound) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba + vibraphone + glockenspiel = VCSL, CC0; kalimba + guitar = FreePats, CC0; harp = Etherealwinds Harp II CE, CC-BY); the glockenspiel is a transposing voice (`up:24` — sounds 2 octaves above the grid, like real orchestration). Samples ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading (synth marimba backs marimba; synth pluck backs guitar). The "warm pad" and "pluck" voices were retired (old saves fall back via `setVoice`: pad → music box, pluck → guitar).
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
@@ -107,12 +107,12 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 ## Current status & what's next
 
-**Built & shipped (15 packages / 7 regions):**
+**Built & shipped (16 packages / 7 regions):**
 
 | Region | Packages |
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
-| 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) |
+| 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
 | 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
@@ -123,7 +123,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
 1. Per-region gradual instrument unlocks (all seven planned voices are now shipped and listed for everyone; the reveal logic — one new instrument per region — is not yet built)
-2. Remaining Wave A/C packages: `tiny-motifs`, `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
+2. Remaining Wave A/C packages: `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
 3. Bigger systems: bars & plots duration editor (R3), multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).

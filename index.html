@@ -246,6 +246,9 @@
   .cell.answercol.tonicRow:not(.on){ background:#F0E2B2; }
   .cell.answercol.answeredge{ box-shadow:inset 4px 0 0 rgba(244,201,93,.9), inset 0 -2px 0 rgba(62,58,57,.06); }
   .cell.answercol.answeredge.on{ box-shadow:inset 0 0 0 1px var(--cellOnEdge), 0 0 12px rgba(240,163,47,.8), inset 4px 0 0 rgba(244,201,93,.9); }
+  /* Tiny Motifs: alternating 4-column "windows" so the motif groupings are visible */
+  .cell.motifwin:not(.on){ background:#EAE4F7; }
+  .cell.motifwin.tonicRow:not(.on){ background:#D8CEF0; }
   /* Sun & Moon Garden: a warm (day) or twilight (night) wash over the field; HOME row glows gold by day, purple by night */
   #pitchArea{ transition:background .35s, box-shadow .35s; border-radius:12px; }
   #pitchArea.sunmood{ background:rgba(244,201,93,.12); box-shadow:inset 0 0 38px rgba(244,201,93,.22); }
@@ -1217,6 +1220,40 @@ function isBold(){ const s=contourSeq(); if(s.length<4) return false; return abs
 function isStaircase(){ const m=motionsOf(); let best=0,run=0,prev=0; for(const d of m){ if(d===1||d===-1){ if(d===prev) run++; else { run=1; prev=d; } } else { run=0; prev=0; } if(run>best) best=run; } return best>=4; }  // 4+ steps in a row, same way
 function isLandSoftly(){ const m=motionsOf(); for(let i=0;i<m.length-1;i++) if(Math.abs(m[i])>=3 && Math.abs(m[i+1])===1 && Math.sign(m[i+1])===-Math.sign(m[i])) return true; return false; }  // a big leap, then a step back the other way
 function isRiverCrossing(){ const s=contourSeq(); if(s.length<5) return false; const a=absMo(); return a.filter(d=>d>=3).length>=1 && a.filter(d=>d<=1).length>=Math.ceil(a.length/2); }  // mostly steps + one bold leap
+
+// ---------- Tiny Motifs: a short idea, repeated & varied (package PS-4) ----------
+// A "motif" is a small run of notes read as a WINDOW of columns. We compare windows by their
+// interval signature (row-to-row moves) so "the same idea" is recognized wherever it sits or however it's tinted.
+const MOTIF_W = 4;                                    // motif window = 4 columns
+// heights (0..ROWS-1) of the top note per column in [lo,hi); null for an empty column (position-aware, unlike halfSeq)
+function windowHeights(lo,hi){ const out=[]; for(let c=lo;c<hi;c++){ let h=null; for(let r=0;r<ROWS;r++){ if(grid[r][c]){ h=(ROWS-1)-r; break; } } out.push(h); } return out; }
+const windowNotes = w => windowHeights(w*MOTIF_W,(w+1)*MOTIF_W).filter(h=>h!==null);   // just the notes, gaps dropped
+const windowCount = w => windowNotes(w).length;
+const intervalsOf = hs => { const m=[]; for(let i=1;i<hs.length;i++) m.push(hs[i]-hs[i-1]); return m; };  // signed row-moves
+const sameArr = (a,b) => a.length===b.length && a.every((x,i)=>x===b[i]);
+const signArr = a => a.map(Math.sign);
+// two windows share a motif at three strictness levels (each needs the SAME note-count, ≥3 notes)
+function motifExactRepeat(a,b){ const A=windowNotes(a),B=windowNotes(b); return A.length>=3 && sameArr(A,B); }               // identical notes
+function motifEcho(a,b){ const A=windowNotes(a),B=windowNotes(b);                                                            // same intervals, shifted in pitch (transposed echo)
+  return A.length>=3 && A.length===B.length && sameArr(intervalsOf(A),intervalsOf(B)) && A[0]!==B[0]; }
+function motifVariation(a,b){ const A=windowNotes(a),B=windowNotes(b);                                                       // same up/down contour, but genuinely reshaped (not an exact repeat, not a pure transposition/echo)
+  if(A.length<3 || A.length!==B.length) return false;
+  const ia=intervalsOf(A), ib=intervalsOf(B);
+  return sameArr(signArr(ia),signArr(ib)) && !sameArr(ia,ib); }                                                              // same directions, different step sizes
+function motifInversion(a,b){ const A=windowNotes(a),B=windowNotes(b);                                                       // flipped contour: every move reversed (up↔down)
+  const ia=intervalsOf(A), ib=intervalsOf(B); return A.length>=3 && ia.length===ib.length && ia.length>0 && ia.every((x,i)=>x===-ib[i]); }
+// a target motif can be pre-planted (setup) in window 0; these read it back for comparisons
+const motifRef = () => windowNotes(0);
+// count how many later windows (1..3) echo/repeat/vary the motif in window 0
+function motifFamilyCount(kind){ let n=0; for(let w=1;w<Math.floor(COLS/MOTIF_W);w++){
+  const ok = kind==="repeat"?motifExactRepeat(0,w) : kind==="echo"?motifEcho(0,w) : kind==="vary"?motifVariation(0,w)
+    : (motifExactRepeat(0,w)||motifEcho(0,w)||motifVariation(0,w)); if(ok) n++; } return n; }
+// a worked-example motif + a transposed echo of it (for 💡 Hint / setup), placed from a heights array at window w
+function placeMotif(heights, w){ const base=w*MOTIF_W; heights.forEach((h,i)=>{ if(h==null) return; const r=(ROWS-1)-h; if(grid[r]&&base+i<COLS) setCell(r,base+i,true); }); }
+// tint alternating 4-column "windows" so the player can see the motif groupings (Tiny Motifs)
+function setMotifGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const el=cells[r]&&cells[r][c]; if(!el) continue;
+  el.classList.toggle("motifwin", !!on && Math.floor(c/MOTIF_W)%2===1); } }
+
 // a worked example melody matching a contour (for 💡 Hint)
 function placeContour(type){ wipe(); const top=ROWS-1, N=(type==="twohills"||type==="journey")?8:6;
   for(let i=0;i<N;i++){ const t=i/(N-1); let f;
@@ -2129,6 +2166,69 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"The whole canyon is talking now 💬. This place is yours — write any calls and answers you like, open or closed, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
+"tiny-motifs":{ id:"tiny-motifs", name:"🌱 Tiny Motifs", topic:"melody-motif", region:"paths-of-song",
+  desc:"Plant one little idea — then repeat it, echo it higher, and give it a twist until it's a tune you'd hum.",
+  requires:["stepping-stones","question-and-answer"], version:1, author:"official", levels:[
+ {name:"Plant a Little Idea", motif:true, power:{em:"🌱",name:"Motif",line:"You can plant a small idea worth remembering."},
+  hint:()=>placeMotif([5,6,7,5],0),
+  intro:"Every great tune starts with a tiny idea 🌱. Plant a SHORT one — 3 or 4 seeds in the first few squares (the first 'window'). Keep it small and singable. Then press ▶.",
+  teach:"A short, memorable musical idea is called a motif.",
+  goals:[{id:"m",label:"Plant a little motif (3–4 notes in the first window)",chk:()=>windowCount(0)>=3&&windowCount(0)<=4},
+         {id:"pl",label:"Press ▶ to hear your idea",play:true}]},
+ {name:"Say It Again", motif:true, power:{em:"🔁",name:"Repeat",line:"You can make an idea stick by repeating it."},
+  setup:()=>placeMotif([5,6,7,5],0),
+  hint:()=>placeMotif([5,6,7,5],1),
+  intro:"Ideas stick when we hear them TWICE 🔁. Your motif is planted in the first window — now repeat it EXACTLY in the next window (the same shape, same spots). Then press ▶.",
+  teach:"Repeating a motif is the simplest way to make music feel intentional.",
+  goals:[{id:"r",label:"Repeat the motif exactly in the second window",chk:()=>motifExactRepeat(0,1)},
+         {id:"pl",label:"Press ▶ to hear it twice",play:true}]},
+ {name:"Echo It Higher", motif:true, power:{em:"🪜",name:"Echo",line:"You can lift an idea to a new height and keep it recognizable."},
+  setup:()=>placeMotif([4,5,6,4],0),
+  hint:()=>placeMotif([6,7,8,6],1),
+  intro:"Now ECHO the idea at a NEW height 🪜 — same shape (same ups and downs), but starting higher or lower. It still sounds like 'the same idea, moved.' Then press ▶.",
+  teach:"Repeating a motif at a different pitch is called sequence — the shape stays, the height shifts.",
+  goals:[{id:"e",label:"Echo the motif at a different height (same shape)",chk:()=>motifEcho(0,1)},
+         {id:"pl",label:"Press ▶ to hear the echo",play:true}]},
+ {name:"Give It a Twist", motif:true, power:{em:"🎨",name:"Variation",line:"You can vary an idea and still keep its spirit."},
+  setup:()=>placeMotif([5,6,7,5],0),
+  hint:()=>placeMotif([5,7,9,4],1),
+  intro:"Keep it fresh with a TWIST 🎨 — move the SAME way (up where it went up, down where it went down) but by different amounts. Same spirit, new detail. Then press ▶.",
+  teach:"Keeping a motif's up/down shape while changing the step sizes is a variation.",
+  goals:[{id:"v",label:"Vary the motif (same up/down shape, new sizes)",chk:()=>motifVariation(0,1)},
+         {id:"pl",label:"Press ▶ to hear the variation",play:true}]},
+ {name:"Fix the Stranger", motif:true, power:{em:"🧩",name:"Family Ear",line:"You can tell when a phrase doesn't belong — and fix it."},
+  setup:()=>{ placeMotif([5,6,7,5],0); placeMotif([6,7,8,6],1); placeMotif([9,3,9,3],2); },
+  hint:()=>{ for(let c=8;c<12;c++) for(let r=0;r<ROWS;r++) setCell(r,c,false); placeMotif([7,8,9,7],2); checkLevel(); },
+  intro:"Three windows should be one family 🧩, but the THIRD is a stranger — it doesn't share the idea. Reshape the third window so it echoes the motif (same up-up-down shape). Then press ▶.",
+  teach:"A phrase 'belongs' to a motif when it keeps the motif's shape.",
+  goals:[{id:"fix",label:"Make the third window belong (repeat/echo/vary the motif)",chk:()=>motifExactRepeat(0,2)||motifEcho(0,2)||motifVariation(0,2)},
+         {id:"pl",label:"Press ▶ to hear them all belong",play:true}]},
+ {name:"Spot the Family", power:{em:"👂",name:"Motif Ear",line:"You can hear which tune is built from one idea."},
+  setup:()=>showChoices([[4,3,2,4, 2,1,0,2],[4,3,2,4, 8,1,6,3],[4,2,3,1, 2,5,3,8]],0,
+    "One of these tunes is built from a single little idea, repeated 🌱. Tap each to hear it — listen to ALL three — then pick the one where the second half echoes the first."),
+  intro:"One of these tunes is built from ONE idea echoed 🌱; the others wander. Hear all three, then pick the one made of a repeated motif.",
+  teach:"Music built from one repeated motif feels unified and memorable.",
+  goals:[{id:"pick",label:"Hear all three, then pick the motif-built tune",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Flip It Over", motif:true, power:{em:"🙃",name:"Inversion",line:"You can turn an idea upside down and keep its bones."},
+  setup:()=>placeMotif([5,6,7,5],0),
+  hint:()=>placeMotif([5,4,3,5],1),
+  intro:"Here's a composer's trick 🙃 — FLIP the idea upside down. Wherever the motif went UP, go DOWN by the same amount, and vice versa. It's a mirror of the original. Then press ▶.",
+  teach:"Flipping every move of a motif (up↔down) is called inversion.",
+  goals:[{id:"inv",label:"Invert the motif (flip its ups and downs)",chk:()=>motifInversion(0,1)},
+         {id:"pl",label:"Press ▶ to hear it mirrored",play:true}]},
+ {name:"Your Signature Tune", motif:true, loop:true, intent:"What little idea will you make your own?",
+  power:{em:"🎼",name:"Composer",line:"You can grow one small idea into a whole tune."},
+  hint:()=>{ placeMotif([4,5,6,4],0); placeMotif([6,7,8,6],1); placeMotif([4,5,6,4],2); placeMotif([4,6,8,3],3); },
+  intro:"Now make a tune that's truly YOURS 🎼. Plant a little motif in the first window, then fill the rest of the field with it — repeat it, echo it higher, give it a twist — at least TWO more windows that belong to the family. Then press ▶.",
+  teach:"A whole memorable tune can grow from one tiny idea, repeated and varied.",
+  goals:[{id:"m",label:"Plant a motif in the first window (3–4 notes)",chk:()=>windowCount(0)>=3},
+         {id:"fam",label:"Add 2+ windows that belong to it (repeat / echo / vary)",chk:()=>motifFamilyCount("any")>=2},
+         {id:"pl",label:"Press ▶ to hear your signature tune",play:true}]},
+ {name:"Free Motifs 🌱", loop:true, hint:()=>{ placeMotif([5,6,7,5],0); placeMotif([7,8,9,7],1); },
+  power:{em:"💫",name:"Free Motifs",line:"This meadow of little ideas is yours to grow."},
+  intro:"You can grow a whole song from one seed now 🌱. This meadow is yours — plant ideas and echo, twist, and flip them however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
 "wind-and-gaps":{ id:"wind-and-gaps", name:"🍃 Wind and Gaps", topic:"rhythm-density", region:"pulse-woods",
   desc:"Use silence so the garden can breathe — make rhythm from the spaces between hits.", requires:["intro","footsteps"], version:1, author:"official", levels:[
  {name:"Let the Wind Through", rhythm:true, density:true, unlock:["drums"],
@@ -2633,7 +2733,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null);   // drop any contour/pulse/phrase/density/color-reveal/mood UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
@@ -2694,6 +2794,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setDensityMeter(!!(L.density || st.density));                          // airy↔crowded readout (Wind & Gaps package)
   setColorReveal(st.colors || L.colors || null);                         // staged F/B reveal — lock undiscovered notes (Two New Colors)
   setMood(st.mood || L.mood || null);                                    // sun (C major / bright) or moon (A minor / wistful) field wash (Sun & Moon Garden)
+  setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
