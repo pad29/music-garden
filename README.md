@@ -107,12 +107,12 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 ## Current status & what's next
 
-**Built & shipped (15 packages / 7 regions):**
+**Built & shipped (16 packages / 7 regions):**
 
 | Region | Packages |
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
-| 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) |
+| 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
 | 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
@@ -123,7 +123,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
 1. More instruments as per-region unlocks (planned lineup: kalimba/harp/vibraphone/glockenspiel from VCSL CC0 — piano + marimba shipped; gradual-unlock logic not yet built)
-2. Remaining Wave A/C packages: `tiny-motifs`, `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
+2. Remaining Wave A/C packages: `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
 3. Bigger systems: bars & plots duration editor (R3), multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).

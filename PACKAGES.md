@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-07-05 — **15 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-07-05 — **16 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs, which completes Paths of Song); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -133,7 +133,7 @@ Tag every rhythm-touching package with the tier it needs.
 | # | Region | Cluster focus | Palette | Status (2026-07-05) |
 |---|---|---|---|---|
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
-| 1 | 🎶 **Paths of Song** | Voice | pentatonic | **3 built** (fireflies, stepping-stones, Q&A); `tiny-motifs` remains |
+| 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
 | 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **2 built** (footsteps, wind-and-gaps); `off-the-path`, `two-kinds-of-walking` remain |
 | 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **3 built** (twin-blooms, standing-towers, twin-blooms-plus) |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
@@ -152,7 +152,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
-- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅ · remaining: off-the-path, tiny-motifs, two-kinds-of-walking
+- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅ · remaining: off-the-path, two-kinds-of-walking
 - **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
 - **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
 - **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅ · remaining: shifting-shadows, soft-wobble-strong-wobble
@@ -197,14 +197,14 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M) — built:** **phrase A/B boundary** on the timeline (the field splits into a call half, cols 0–7, and an answer half, cols 8–15) + phrase-pair evaluation (open = ends away from HOME, closed = lands on HOME — reuses the existing tonic detection, no new pitch system). The phrase-split seam is reused by `ways-home`.
 - **Why:** teaches deep formal logic intuitively; the first real bridge from melody toward form.
 
-#### `tiny-motifs` — Tiny Motifs  [PS-4]
+#### `tiny-motifs` — Tiny Motifs  [PS-4]  — **BUILT ✅ (2026-07-05)** *(as-built spec in PACKAGES-DETAILED §14)*
 - **Capability:** turn a small idea into something memorable via repetition + variation.
-- **Theory:** motif, repetition, variation. **Palette:** pentatonic. **Prereqs:** garden-basics, stepping-stones, question-and-answer.
-- **Patterns:** transform, finish, classify, repair, improvise_prompt. **Success:** broad/targeted.
-- **Quest:** *Memory Stones* — a signature tune for a companion; stones that react to recognizable patterns.
-- **Sandbox:** motif stamp; variation controls (shift / echo / invert contour / rhythm tweak); **save a personal signature phrase** (ties to companion identity thread).
-- **System needs (M):** motif representation + variation transforms; "still belongs to the motif?" similarity check.
-- **Why:** major retention package — creates musical *identity* and recognizability.
+- **Theory:** motif, repetition (repeat/sequence), variation, inversion. **Palette:** pentatonic. **Prereqs:** *(as built)* stepping-stones, question-and-answer.
+- **Patterns:** build_constraint, transform, repair, compare, capstone. **Success:** broad/targeted.
+- **Quest:** *Memory Stones* — a signature tune; the capstone grows one idea into a whole tune.
+- **Sandbox:** motif windows; echo/vary/flip prompts.
+- **System needs (M) — built:** a **motif window model** (4-column windows) + interval-signature similarity check — `windowNotes`/`intervalsOf` with `motifExactRepeat` / `motifEcho` (transposition) / `motifVariation` (same contour, reshaped) / `motifInversion` (flipped), plus `motifFamilyCount` for the capstone; a `motif:true` window-tint guide (`setMotifGuide`). Reuses `showChoices` for the recognition level. No `famous:` reward yet (needs a score-validated *pentatonic*, motif-driven public-domain tune — `odetojoy` etc. are diatonic).
+- **Why:** major retention package — creates musical *identity* and recognizability. Completes Paths of Song.
 
 ### REGION 2 — Pulse Woods  *(cluster: pulse · pentatonic / pitch-independent)*
 
