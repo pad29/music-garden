@@ -372,7 +372,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 14. Build order & dependencies — ALL 14 EXPANSION PACKAGES BUILT ✅ (as of 2026-06-22)
+## 14. Build order & dependencies — 15 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-05)
 
 Build history (alternating melody/rhythm/harmony to avoid fatigue):
 
@@ -390,9 +390,34 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 12. **river-turns** ✅ 2026-06-22 (chord progressions — the `CHORDS`/`placeProg`/`hasChordRun` machinery)
 13. **pull-of-the-moon** ✅ 2026-06-22 (dominant pull, leading tone in chords)
 14. **false-doors** ✅ 2026-06-22 (deceptive cadence)
+15. **tiny-motifs** ✅ 2026-07-05 (motif repetition/variation/inversion — the window model; completes Paths of Song) — *spec in §15 below*
 
 **DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**.
 
 Reusable systems unlocked along the way: **compare pickers** (fireflies → melodies; twin-blooms → pairs/chords; footsteps → drums; wind-and-gaps → full patterns; river-turns → progressions) — the recognition pattern now spans every domain; **phrase A/B split** (Q&A) → reused by ways-home; **chord-progression machinery** (river-turns) → reused by pull-of-the-moon + false-doors and ready for Region 6+; **mood wash** (sun-and-moon) → ready for modal "atmosphere world" packages; **🎧 famous-example rewards** on capstones (see DESIGN §10) → every future package should ship with one.
 
-**Not yet built** (next candidates, per PACKAGES.md §5): `tiny-motifs`, `off-the-path`, `two-kinds-of-walking` (Wave A leftovers); `shifting-shadows`, `soft-wobble-strong-wobble` (Wave C leftovers); then the system-gated waves (duration editor / multi-voice / sections / styles).
+**Not yet built** (next candidates, per PACKAGES.md §5): `off-the-path`, `two-kinds-of-walking` (Wave A leftovers); `shifting-shadows`, `soft-wobble-strong-wobble` (Wave C leftovers); then the system-gated waves (duration editor / multi-voice / sections / styles).
+
+---
+
+## 15. `tiny-motifs` — Tiny Motifs  [PS-4]  ✅ BUILT (2026-07-05) — pentatonic · motif window model
+
+- **Region / cluster:** Paths of Song / voice · **Palette:** pentatonic · **Prereqs:** *(as built)* stepping-stones, question-and-answer · **Build:** now (completes Paths of Song — the region's 4th and final package).
+- **Fantasy:** "Plant one little idea, then grow a whole tune from it." A motif is a seed; repeat / echo / twist / flip it into a garden.
+- **Capability:** turn a short idea into something memorable via repetition and variation. **Hidden theory:** motif, repetition, sequence (transposed repeat), variation (contour-preserving), inversion.
+- **New systems:** a **motif window model** — the field reads as consecutive 4-column *windows* (`MOTIF_W=4`); `windowNotes(w)` / `windowHeights` extract a window's notes (position-aware, gaps dropped), `intervalsOf` gives its signed row-move signature. Similarity is compared at three strictness levels, made mutually exclusive: `motifExactRepeat` (identical notes), `motifEcho` (same intervals, shifted pitch = transposition), `motifVariation` (same up/down *signs*, different step sizes — not a pure transposition), plus `motifInversion` (every move negated). `motifFamilyCount("any"|"repeat"|"echo"|"vary")` tallies how many later windows belong to window 0. A `motif:true` flag tints alternating windows (`setMotifGuide` + `.motifwin` CSS) so the groupings are visible. `placeMotif(heights,w)` places a worked example at a window (hints/setups).
+
+| # | Level *(pattern · success · stage)* | Goal |
+|---|---|---|
+| 1 | Plant a Little Idea *(build_constraint · targeted · teach)* | plant a 3–4 note motif in window 0 — `windowCount(0)` in [3,4] |
+| 2 | Say It Again *(build_constraint · targeted · teach)* | repeat the motif exactly in window 1 — `motifExactRepeat(0,1)` |
+| 3 | Echo It Higher *(transform · targeted · combine)* | transpose the motif to a new height — `motifEcho(0,1)` |
+| 4 | Give It a Twist *(transform · targeted · apply)* | vary it (same contour, new sizes) — `motifVariation(0,1)` |
+| 5 | Fix the Stranger *(repair · targeted · apply)* | reshape window 2 to belong to the motif family — `motifExactRepeat/Echo/Variation(0,2)` |
+| 6 | Spot the Family *(compare · targeted · recognize)* | hear 3 tunes, pick the one built from one repeated motif (reuses `showChoices`) |
+| 7 | Flip It Over *(transform · targeted · compound)* | invert the motif (flip every up/down) — `motifInversion(0,1)` |
+| 8 | Your Signature Tune *(capstone · broad · capstone)* | a motif + 2+ windows that belong (repeat/echo/vary) — `motifFamilyCount("any")>=2` |
+| 9 | Free Motifs 🌱 *(— · none · finale)* | free-play sandbox → completion congrats |
+
+- **Notes:** the window model is the key insight — a motif is recognized by its **interval signature**, so "the same idea" is caught wherever it sits and at any pitch. Echo vs. variation are deliberately made disjoint (a pure transposition is an echo, not a variation) so the two teaching goals stay distinct. **No `famous:` capstone reward** — Ode to Joy and the other motif-driven famous tunes are *diatonic* (need F/B), which a pentatonic package's grid can't render; a score-validated *pentatonic* motif tune should be added later.
+- **Follow-up:** run `node tools/gen-voice.mjs` to bake the 8 new `intro:` narration clips (until then read-aloud falls back to browser TTS for these levels).
