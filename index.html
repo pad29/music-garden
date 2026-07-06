@@ -351,7 +351,7 @@
         <option value="piano">Piano</option>
         <option value="marimba">Marimba</option>
         <option value="kalimba">Kalimba</option>
-        <option value="pluck">Plucked string</option>
+        <option value="guitar">Guitar</option>
       </select>
     </label>
     <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
@@ -633,11 +633,15 @@ function env(p,now,a,peak,sustain,dur){
 // time (real tines run up to 40 cents off; the game's pitch grid can't absorb that). Its top tine
 // is C#5, so the highest rows stretch further than any other voice — the FreePats SFZ does the same.
 // No synth branch of its own: the music box covers the first note while the pack loads.
+// Guitar = FreePats Spanish Classical Guitar (CC0) — near-chromatic source, so it matches the
+// piano's every-3rd-semitone layout (≤1 semitone of shift). Replaces the synth "pluck" voice,
+// which lives on only as the guitar's loading fallback (setVoice maps old "pluck" saves here).
 // Samples ship as base64 inside samples/<instr>.js (built by tools/build-samples.mjs) and load via a
 // <script> tag, NOT fetch — the game must keep working when index.html is opened via file://.
 const SAMPLED={ piano:{ src:"samples/piano.js", gain:0.6 },
                 marimba:{ src:"samples/marimba.js", gain:0.95 },
-                kalimba:{ src:"samples/kalimba.js", gain:1.15 } };
+                kalimba:{ src:"samples/kalimba.js", gain:1.15 },
+                guitar:{ src:"samples/guitar.js", gain:0.95 } };
 const sampleBank={};                                        // instr → { ready, buffers:{midi:AudioBuffer} }
 // condition a decoded recording once: trim to 3s (memory), even out note-to-note loudness
 // (recordings vary), cap peaks below clipping, and bake in a tail fade
@@ -687,7 +691,7 @@ function voice(instr,freq,now){
     if(sampleVoice(instr,freq,now,out)) return;
     loadSamples(instr);                                     // not decoded yet — fetch, and sound the music box just this once
   }
-  if(instr==="pluck"){
+  if(instr==="pluck"||instr==="guitar"){                    // synth pluck: now only the guitar's loading fallback
     const o=actx.createOscillator(); o.type="sawtooth"; o.frequency.value=freq;
     const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(4500,now);
     lp.frequency.exponentialRampToValueAtTime(700,now+0.4); o.connect(lp); lp.connect(out);
@@ -2887,8 +2891,10 @@ nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
 
 // ---------- Playback ----------
 const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
-// set the melody voice by id — retired ids (warm pad) fall back to the music box, sampled ids start fetching
-function setVoice(v){ instrEl.value=v||"musicbox"; if(!instrEl.value) instrEl.value="musicbox";
+// set the melody voice by id — retired ids fall back (synth pluck → its sampled successor the
+// guitar; warm pad → the music box via the missing-option check), sampled ids start fetching
+function setVoice(v){ if(v==="pluck") v="guitar";
+  instrEl.value=v||"musicbox"; if(!instrEl.value) instrEl.value="musicbox";
   if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); }
 const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");
 const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");

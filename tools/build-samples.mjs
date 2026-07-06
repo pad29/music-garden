@@ -21,6 +21,10 @@ const INSTRUMENTS = {
   // the same way). Each tine tuning-corrected via wav2mp3's cents arg (SFZ `tune` values).
   kalimba: { dir: "samples/kalimba",
     notes: { 60:"C4", 63:"Ds4", 64:"E4", 67:"G4", 68:"Gs4", 72:"C5", 73:"Cs5" } },
+  // FreePats Spanish Classical Guitar (CC0) — near-chromatic source (48 notes, FLAC → wav →
+  // wav2mp3), so we take the piano layout: every 3rd semitone, ≤1 semitone of shift.
+  guitar: { dir: "samples/guitar",
+    notes: { 60:"C4", 63:"Ds4", 66:"Fs4", 69:"A4", 72:"C5", 75:"Ds5", 78:"Fs5", 81:"A5", 84:"C6" } },
 };
 
 for (const [instr, spec] of Object.entries(INSTRUMENTS)) {
