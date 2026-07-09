@@ -325,7 +325,7 @@
 </style>
 </head>
 <body>
-  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select></div>
+  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select> <button id="devrelock" title="Relock all instruments (keeps progress) so region discovery cards replay">🔒 Relock instruments</button></div>
   <div id="sidetools">
     <button id="home" title="World map">🗺️</button>
     <button id="mixer" title="Mix / volume">🎚️</button>
@@ -483,6 +483,16 @@
       <div class="powname" id="powname"></div>
       <div class="powline" id="powline"></div>
       <button id="powclose">✨ Claim</button>
+    </div>
+  </div>
+
+  <div id="instroverlay" class="overlay" style="display:none">
+    <div class="card powcard">
+      <div class="powtag">NEW INSTRUMENT</div>
+      <div class="powem" id="instrEm"></div>
+      <div class="powname" id="instrName"></div>
+      <div class="powline" id="instrLine"></div>
+      <button id="instrClose">🎶 Let's hear it!</button>
     </div>
   </div>
 
@@ -1137,6 +1147,21 @@ const FAMOUS = {
             [1,4],[1,12],                                           // snare: the backbeat you just learned
             [2,0],[2,2],[2,4],[2,6],[2,8],[2,10],[2,12],[2,14] ],   // hi-hats: steady 8th shimmer
     credit:"🥁 That's the Bo Diddley beat — a groove so catchy that whole songs ride on this one rhythm! The kick taps out its famous bouncing pattern — boom ba-boom ba-boom… boom-boom — while the snare keeps the backbeat you just learned. A rhythm with a name of its own." },
+  // Tiny Motifs — one idea, repeated & resolved. The Largo cor-anglais theme from Dvořák's "New World"
+  // Symphony (1893), so loved it became the song "Goin' Home" — and famously PENTATONIC, so it fits this
+  // package's palette. Pavel's score-checked version (from save-link, 2026-07-06): 8 bars, A B A B' —
+  // the B phrase hangs OPEN on re, then B' returns and settles HOME on do: repetition plus a resolving
+  // twist, exactly the lesson. 4/4 Largo ♩=60: 1 col = 8th; held phrase-end notes ring through their gaps.
+  goinhome: { title:"Goin' Home (New World Symphony)", cols:64,
+    mel:[[64,0],[69,3],[69,4],                                      // bar 1: mi—— la la——     ("go-in' home")
+         [64,8],[62,11],[60,12],                                    // bar 2: mi—— re do——     ("go-in' home")
+         [62,16],[64,19],[69,20],[64,23],                           // bar 3: re— mi la—— mi   ("I'm a-go-in' home")
+         [62,24],                                                   // bar 4: re———— (hangs OPEN, still away from home)
+         [64,32],[69,35],[69,36],                                   // bar 5: the little motif returns
+         [64,40],[62,43],[60,44],                                   // bar 6: mi—— re do——
+         [62,48],[64,51],[62,52],[60,55],                           // bar 7: re— mi re—— do
+         [60,56]],                                                  // bar 8: do———— (the twist: this time it settles HOME)
+    credit:"🌍 That's the Largo from Dvořák's “New World” Symphony — a tune so loved it became the song “Goin' Home.” Listen: one tiny motif, sung twice — and the second time, it finds its way home. A world-famous melody grown from one little seed, just like yours." },
   // Wind & Gaps — space + syncopation, on the DRUM pads. The Charleston barely touches the beats and dances in the gaps.
   charleston: { title:"The Charleston",
     drums:[ [0,0],[0,8],                                            // kick: just the downbeats 1 & 3 (the anchor)
@@ -1144,7 +1169,7 @@ const FAMOUS = {
     credit:"🎩 That's the Charleston — the most famous bounce in music, from the roaring 1920s dance everyone knew. Listen how it barely touches the main beats and leaps into the GAPS between them instead. That off-beat hop is exactly the groove-from-space you just discovered." },
 };
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
-const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130 };
+const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
@@ -2216,7 +2241,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   teach:"Flipping every move of a motif (up↔down) is called inversion.",
   goals:[{id:"inv",label:"Invert the motif (flip its ups and downs)",chk:()=>motifInversion(0,1)},
          {id:"pl",label:"Press ▶ to hear it mirrored",play:true}]},
- {name:"Your Signature Tune", motif:true, loop:true, intent:"What little idea will you make your own?",
+ {name:"Your Signature Tune", motif:true, loop:true, famous:"goinhome", intent:"What little idea will you make your own?",
   power:{em:"🎼",name:"Composer",line:"You can grow one small idea into a whole tune."},
   hint:()=>{ placeMotif([4,5,6,4],0); placeMotif([6,7,8,6],1); placeMotif([4,5,6,4],2); placeMotif([4,6,8,3],3); },
   intro:"Now make a tune that's truly YOURS 🎼. Plant a little motif in the first window, then fill the rest of the field with it — repeat it, echo it higher, give it a twist — at least TWO more windows that belong to the family. Then press ▶.",
@@ -2224,7 +2249,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"m",label:"Plant a motif in the first window (3–4 notes)",chk:()=>windowCount(0)>=3},
          {id:"fam",label:"Add 2+ windows that belong to it (repeat / echo / vary)",chk:()=>motifFamilyCount("any")>=2},
          {id:"pl",label:"Press ▶ to hear your signature tune",play:true}]},
- {name:"Free Motifs 🌱", loop:true, hint:()=>{ placeMotif([5,6,7,5],0); placeMotif([7,8,9,7],1); },
+ {name:"Free Motifs 🌱", motif:true, loop:true, hint:()=>{ placeMotif([5,6,7,5],0); placeMotif([7,8,9,7],1); },
   power:{em:"💫",name:"Free Motifs",line:"This meadow of little ideas is yours to grow."},
   intro:"You can grow a whole song from one seed now 🌱. This meadow is yours — plant ideas and echo, twist, and flip them however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
@@ -2776,7 +2801,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
   levelTeach.style.display = teachTxt ? "" : "none";
-  if(speakOn && narrateReady) narrate(st.intro||""); else stopSpeech();  // narrate the story (baked clip → browser-voice fallback) — but not on the landing screen, before the player has entered a level
+  if(speakOn && narrateReady && !instrCardUp()) narrate(st.intro||""); else if(!instrCardUp()) stopSpeech();  // narrate the story (baked clip → browser-voice fallback) — but not on the landing screen, and not over an instrument-discovery card
   const goals=st.goals||[]; goalList.innerHTML="";
   goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
@@ -3015,6 +3040,79 @@ const instrEl=document.getElementById("instr"), tempoEl=document.getElementById(
 function setVoice(v){ if(v==="pluck") v="guitar";
   instrEl.value=v||"musicbox"; if(!instrEl.value) instrEl.value="musicbox";
   if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); }
+// ---- Gradual instrument reveal: each region gifts its instrument on first entry ----
+// The region's instrument is also the DEFAULT voice for every package in that region (openPkg
+// sets it); the player can still switch among unlocked voices mid-session. The Studio gifts the
+// guitar — the creator's instrument for the creative sandbox.
+const REGION_INSTR={ "first-garden":"musicbox", "paths-of-song":"kalimba", "stone-chorus-canyon":"piano",
+  "pulse-woods":"marimba", "color-spring":"harp", "weather-of-wanting":"vibraphone",
+  "twin-gardens":"glockenspiel", "studio":"guitar" };
+// each instrument's intro field is narrated on the reveal card — tools/gen-voice.mjs bakes a
+// Polly clip for it (same scan as level stories), so re-run it after editing any of these lines.
+const INSTR_INFO={
+  musicbox:    { em:"🎵", name:"The Music Box",
+    intro:"A tiny comb of steel teeth, plucked by pins on a turning drum. Wind it up and it plays all by itself — the sound this garden first grew from." },
+  kalimba:     { em:"🪕", name:"The Kalimba",
+    intro:"The kalimba is an African thumb piano — springy metal tines on a little wooden board, plucked with two thumbs. Listen closely: your music box was secretly a kalimba played by a machine!" },
+  piano:       { em:"🎹", name:"The Piano",
+    intro:"The piano hides a harp inside a big wooden case: press a key and a soft felt hammer taps a steel string. It can whisper or thunder — one note or ten at once." },
+  marimba:     { em:"🪵", name:"The Marimba",
+    intro:"The marimba is a giant wooden cousin of the xylophone, born in Africa and beloved in Central America. Under every wooden bar hangs a tube that makes the note ring warm and round." },
+  guitar:      { em:"🎸", name:"The Guitar",   // em is the fallback; the card shows the svg — there is no CLASSICAL guitar emoji (🎸 is electric, wrong for our nylon-string samples)
+    svg:'<svg viewBox="0 0 64 64" width="56" height="56" style="vertical-align:middle"><rect x="28" y="2" width="8" height="9" rx="2" fill="#6B4226"/><circle cx="29.5" cy="5" r="1.1" fill="#F4C95D"/><circle cx="34.5" cy="5" r="1.1" fill="#F4C95D"/><circle cx="29.5" cy="8.5" r="1.1" fill="#F4C95D"/><circle cx="34.5" cy="8.5" r="1.1" fill="#F4C95D"/><rect x="29.5" y="10" width="5" height="21" fill="#8B5E3C"/><rect x="28.8" y="12.5" width="6.4" height="1.2" fill="#5C3A1E"/><rect x="28.8" y="17" width="6.4" height="1.2" fill="#5C3A1E"/><rect x="28.8" y="21.5" width="6.4" height="1.2" fill="#5C3A1E"/><ellipse cx="32" cy="36" rx="10.5" ry="8" fill="#C98A4B"/><ellipse cx="32" cy="48.5" rx="13.5" ry="11" fill="#C98A4B"/><circle cx="32" cy="41" r="4.6" fill="#4A2E14"/><circle cx="32" cy="41" r="4.6" fill="none" stroke="#F4C95D" stroke-width="0.9"/><rect x="25.5" y="52" width="13" height="3" rx="1.2" fill="#6B4226"/><line x1="30.4" y1="10" x2="30.4" y2="52.8" stroke="#F7EFD8" stroke-width="0.7"/><line x1="32" y1="10" x2="32" y2="52.8" stroke="#F7EFD8" stroke-width="0.7"/><line x1="33.6" y1="10" x2="33.6" y2="52.8" stroke="#F7EFD8" stroke-width="0.7"/></svg>',
+    intro:"Six nylon strings stretched over a wooden echo box — the Spanish classical guitar. It is the instrument people carry everywhere: the whole world's campfire friend." },
+  harp:        { em:"🪄", name:"The Harp",
+    intro:"The harp is one of the oldest instruments on Earth — a sail of strings you lean against your shoulder and pluck like ripples of water. This one is a Celtic harp with thirty-four strings." },
+  vibraphone:  { em:"✨", name:"The Vibraphone",
+    intro:"The vibraphone is the marimba's shiny metal cousin, played with soft round mallets. Its silvery bars hum long and dreamy — jazz musicians love its shimmer." },
+  glockenspiel:{ em:"🔔", name:"The Glockenspiel",
+    intro:"Glockenspiel means bell-play in German — a case of tiny steel bars that ring like stars. It sings two whole octaves above the notes you plant, higher than any other voice in the garden." },
+};
+// unlocked-instrument state lives in progress.instruments; older saves get it derived once from
+// which regions they've already visited (a package entry in progress.packages = a visit).
+function ensureInstruments(){
+  if(!Array.isArray(progress.instruments)){
+    const un=new Set(["musicbox"]);
+    for(const id in progress.packages){ const inst=REGION_INSTR[regionOf(id)]; if(PACKAGES[id]&&inst) un.add(inst); }
+    if(progress.packages.intro && (progress.packages.intro.completed || progress.packages.intro.done)) un.add("guitar");   // pre-reveal players always had the guitar
+    const sv=progress.settings&&progress.settings.voice;
+    if(sv==="pluck") un.add("guitar"); else if(sv&&INSTR_INFO[sv]) un.add(sv);   // grandfather whatever they were playing
+    progress.instruments=[...un];
+  }
+  if(!progress.instruments.includes("musicbox")) progress.instruments.push("musicbox");
+  refreshVoices();
+}
+const instrUnlocked = id => Array.isArray(progress.instruments) && progress.instruments.includes(id);
+// locked voices are hidden from the picker but stay settable by code — a shared song or old save
+// still PLAYS with its author's voice; discovery only gates what the player can browse.
+function refreshVoices(){ [...instrEl.options].forEach(o=>{ o.hidden=!instrUnlocked(o.value); }); }
+// entering a region: its instrument becomes the voice; first time ever → the discovery card
+const instroverlay=document.getElementById("instroverlay");
+const instrCardUp = () => instroverlay.style.display==="flex";
+function applyRegionInstrument(reg){
+  const inst=REGION_INSTR[reg]; if(!inst||!INSTR_INFO[inst]) return;
+  if(!instrUnlocked(inst)){
+    progress.instruments.push(inst);
+    Store.set("progress",progress); scheduleCloud();          // persist even if no level gets saved this session
+    refreshVoices(); showInstrCard(inst);
+  }
+  setVoice(inst);
+}
+function showInstrCard(id){ const info=INSTR_INFO[id];
+  const em=document.getElementById("instrEm");
+  if(info.svg) em.innerHTML=info.svg; else em.textContent=info.em;   // guitar: custom classical-guitar art (no matching emoji)
+  document.getElementById("instrName").textContent=info.name;
+  document.getElementById("instrLine").textContent=info.intro;
+  instroverlay.style.display="flex";
+  if(speakOn){ narrateReady=true; narrate(info.intro); }      // renderStage skips the level story while the card is up
+}
+function closeInstrCard(){ instroverlay.style.display="none"; stopSpeech();
+  initAudio();                                                // the claim click is our user gesture — let the new voice introduce itself
+  const t=actx.currentTime+0.05;
+  [0,4,7,12].forEach((st,i)=>voice(instrEl.value, midiToFreq(60+st), t+i*0.22));
+  setTimeout(()=>{ if(speakOn) narrate(curStage().intro||""); }, 1400);   // then the level story gets its turn
+}
+document.getElementById("instrClose").onclick=closeInstrCard;
 const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");
 const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");
 const playhead=document.getElementById("playhead");
@@ -3219,7 +3317,7 @@ function mhint(text,top){ const e=document.createElement("div"); e.className="hi
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
 // versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
-const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","pachelbel","bodiddley","charleston"];
+const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","pachelbel","bodiddley","charleston"];
 function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
 function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
   const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));
@@ -3292,12 +3390,15 @@ function updateTitle(){ const n=(progress.name||"").trim();
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
 function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
-  homeoverlay.style.display="none"; renderLevel(); }
+  homeoverlay.style.display="none";
+  applyRegionInstrument(regionOf(id));   // region default voice + first-visit discovery card (before renderLevel so the card's narration wins)
+  renderLevel(); }
 // Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
 function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
   currentPkg="studio"; LEVELS=PACKAGES.studio.levels; levelIdx=0;
   narrateReady=true;   // deliberate entry into the studio
   homeoverlay.style.display="none";
+  applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
 function openStudioWith(song){ openStudio(); if(song) applySong(song); }   // carry a finale's creation into the Studio
@@ -3561,6 +3662,7 @@ async function cloudSongList(){ const t=await freshToken(); if(!t) return [];
 async function cloudSongDelete(id){ const t=await freshToken(); if(!t) return false;
   try{ const r=await fetch(AUTH.apiUrl+"/songs/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+t}}); return r.ok; }catch(e){ return false; } }
 function applyProgress(){   // re-apply the progress object to the running game
+  ensureInstruments();   // cloud progress may predate the gradual reveal — derive/refresh the unlocked set
   if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
@@ -3624,6 +3726,7 @@ function updateGarden(){ gardenbed.innerHTML="";
 
 // restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
 if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }; }
+ensureInstruments();   // derive the unlocked-instrument set for saves that predate the gradual reveal
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
@@ -3656,6 +3759,11 @@ if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   // package selector jumps to any package's first level (ignores lock state — dev only)
   document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==currentPkg) openPkg(e.target.value,0); };
   document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
+  // relock every instrument but keep all progress — entering each region replays its discovery
+  // card, so the gradual reveal is testable without wiping a real save (?reset stays the big hammer)
+  document.getElementById("devrelock").onclick=()=>{ progress.instruments=["musicbox"];
+    setVoice("musicbox"); refreshVoices(); Store.set("progress",progress); scheduleCloud();
+    toast("🔒 Instruments relocked — enter a region to rediscover its voice"); };
   populateDevJump();                                  // populate both dropdowns (refreshes on package change)
 }
 

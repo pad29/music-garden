@@ -416,8 +416,9 @@ Reusable systems unlocked along the way: **compare pickers** (fireflies → melo
 | 5 | Fix the Stranger *(repair · targeted · apply)* | reshape window 2 to belong to the motif family — `motifExactRepeat/Echo/Variation(0,2)` |
 | 6 | Spot the Family *(compare · targeted · recognize)* | hear 3 tunes, pick the one built from one repeated motif (reuses `showChoices`) |
 | 7 | Flip It Over *(transform · targeted · compound)* | invert the motif (flip every up/down) — `motifInversion(0,1)` |
-| 8 | Your Signature Tune *(capstone · broad · capstone)* | a motif + 2+ windows that belong (repeat/echo/vary) — `motifFamilyCount("any")>=2` |
-| 9 | Free Motifs 🌱 *(— · none · finale)* | free-play sandbox → completion congrats |
+| 8 | Your Signature Tune *(capstone · broad · capstone)* | a motif + 2+ windows that belong (repeat/echo/vary) — `motifFamilyCount("any")>=2` · 🎧 famous: `goinhome` |
+| 9 | Free Motifs 🌱 *(— · none · finale)* | free-play sandbox (window guide on) → completion congrats |
 
-- **Notes:** the window model is the key insight — a motif is recognized by its **interval signature**, so "the same idea" is caught wherever it sits and at any pitch. Echo vs. variation are deliberately made disjoint (a pure transposition is an echo, not a variation) so the two teaching goals stay distinct. **No `famous:` capstone reward** — Ode to Joy and the other motif-driven famous tunes are *diatonic* (need F/B), which a pentatonic package's grid can't render; a score-validated *pentatonic* motif tune should be added later.
-- **Follow-up:** run `node tools/gen-voice.mjs` to bake the 8 new `intro:` narration clips (until then read-aloud falls back to browser TTS for these levels).
+- **Notes:** the window model is the key insight — a motif is recognized by its **interval signature**, so "the same idea" is caught wherever it sits and at any pitch. Echo vs. variation are deliberately made disjoint (a pure transposition is an echo, not a variation) so the two teaching goals stay distinct.
+- **Famous reward (added 2026-07-06):** `goinhome` — the Largo cor-anglais theme from Dvořák's *New World* Symphony ("Goin' Home"), the rare world-famous tune that is **natively pentatonic** *and* literally one motif repeated. **Owner score-checked version** (Pavel's save-link, 2026-07-06): 8 bars A B A B′ — B hangs open on re, B′ returns and settles home on do. ♩=60, 64 cols, 22 notes (do/re/mi/la only).
+- **Follow-ups done (2026-07-06):** all 9 `intro:` narration clips + the famous `credit:` clip baked via `gen-voice.mjs`.
