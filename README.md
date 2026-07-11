@@ -4,7 +4,7 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 **Live:** https://tunegarden.game/ (Netlify, auto-deploys from this repo on every push to `main`)
 
-> Status: working single-file game, in active development. **16 packages built** across 7 regions (the 13-level intro + 15 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
+> Status: working single-file game, in active development. **17 packages built** across 7 regions (the 13-level intro + 15 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
 ---
 
@@ -60,7 +60,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - `PACKAGES = { <id>: { id, name, region, requires:[…], palette?, desc, levels:[…] } }` — the flat catalog keyed by **stable slug IDs**; dependencies form a DAG via `requires`. An optional `palette` widens that package's pitch set. `PACKAGES.studio` is a hidden non-DAG node (the free-play Studio).
 - A **level** is a data object: `{ name, intro, teach?, goals:[{id,label,chk,play}], hint, setup, power, … }`. Multi-step levels use `steps:[…]`. Levels can carry flags like `contour`, `beatGuide`, `phrase`, `density`, `colors:[…]` (staged F/B reveal), `rhythm`, `drums`, `mood` (sun/moon wash), `famous` (capstone reward), `unlock:[…]`, `loop`.
 - `REGIONS = { <id>: { name, friend:{name,stages} } }` — per-region companion creatures. `REGION_MAP` — the ordered player-facing region list (id, emoji, name, blurb, brand color) that drives the world map.
-- `FAMOUS = { <id>: { title, credit, mel:[[midi,col]…], chords?, drums?, cols, jukebox? } }` — the score-validated famous-melody library ("🎧 Hear a famous one" capstone rewards + the Jukebox). `FAMOUS_TEMPO` maps each to its real ♩ BPM; `JUKEBOX_FAMOUS` lists the 12 Jukebox songs. **Melodies are validated against real scores** (several transcribed note-for-note by the owner via save-links) — don't "fix" them by ear.
+- `FAMOUS = { <id>: { title, credit, mel:[[midi,col]…], chords?, drums?, cols, jukebox? } }` — the score-validated famous-melody library ("🎧 Hear a famous one" capstone rewards + the Jukebox). `FAMOUS_TEMPO` maps each to its real ♩ BPM; `JUKEBOX_FAMOUS` lists the 13 Jukebox songs. **Melodies are validated against real scores** (several transcribed note-for-note by the owner via save-links) — don't "fix" them by ear.
 
 **Engine**
 - `renderLevel()` → sets up unlocks/layout for a level, then `renderStage()` renders the current step; `checkLevel()` evaluates goals; `stageComplete()` advances. `resetTransient()` wipes playback/UI between stages.
@@ -108,22 +108,22 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 ## Current status & what's next
 
-**Built & shipped (16 packages / 7 regions):**
+**Built & shipped (17 packages / 7 regions):**
 
 | Region | Packages |
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
 | 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
-| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) |
+| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
 | 🌦️ Weather of Wanting | `ways-home` (cadence strength) · `river-turns` (progressions, I-IV-V-vi) · `pull-of-the-moon` (dominant pull) · `false-doors` (deceptive cadence) |
 | 🌗 The Twin Gardens | `sun-and-moon-garden` (major/minor mood) |
 
-**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (11 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually, one per region**, each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
+**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (13 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben, Goin' Home, I Got Rhythm); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually, one per region**, each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
-1. Remaining Wave A/C packages: `off-the-path`, `two-kinds-of-walking`, `shifting-shadows`, `soft-wobble-strong-wobble`
+1. Remaining Wave A/C packages: `two-kinds-of-walking` (needs a meter change — heaviest Wave-A item), `shifting-shadows`, `soft-wobble-strong-wobble`
 2. Bigger systems: bars & plots duration editor (R3), multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).

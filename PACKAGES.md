@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-07-05 — **16 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs, which completes Paths of Song); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-07-09 — **17 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs + off-the-path); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -134,7 +134,7 @@ Tag every rhythm-touching package with the tier it needs.
 |---|---|---|---|---|
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
-| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **2 built** (footsteps, wind-and-gaps); `off-the-path`, `two-kinds-of-walking` remain |
+| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **3 built** (footsteps, wind-and-gaps, off-the-path); `two-kinds-of-walking` remains |
 | 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **3 built** (twin-blooms, standing-towers, twin-blooms-plus) |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
 | 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
@@ -152,7 +152,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
-- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅ · remaining: off-the-path, two-kinds-of-walking
+- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅, off-the-path ✅ · remaining: two-kinds-of-walking
 - **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
 - **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
 - **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅ · remaining: shifting-shadows, soft-wobble-strong-wobble
@@ -226,13 +226,14 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M–L) — lite built:** the **rhythm-density version shipped** on the on/off drum grid ("remove hits to breathe") + a live **density meter** + a full-pattern compare picker (`showPatternChoices`); the full **melodic note-duration / rest-as-object** version still needs the parked **bars & plots** editor (DESIGN §12) and is deferred to that build.
 - **Why:** disproportionately improves the *maturity* of player creations without new theory.
 
-#### `off-the-path` — Off the Path  [PW-3]
+#### `off-the-path` — Off the Path  [PW-3]  — **BUILT ✅ (2026-07-09)** *(as-built spec in PACKAGES-DETAILED §16)*
 - **Capability:** make rhythm lively/surprising without losing the beat.
-- **Theory:** syncopation. **Palette:** pentatonic. **Rhythm tier:** R1. **Prereqs:** garden-basics, footsteps, wind-and-gaps.
-- **Patterns:** transform, match_feel, repair, compare. **Success:** broad.
-- **Quest:** *The Dance Circle / trickster machine* that only runs on playful rhythm.
-- **Sandbox:** swing/skip presets; syncopation stamps; groove-looseness slider (extends existing jam swing).
-- **System needs (S):** offbeat-emphasis detection; reuses jam swing.
+- **Theory:** syncopation, anticipation (the push), off-beat melody, swing feel. **Palette:** pentatonic. **Rhythm tier:** R1. **Prereqs:** *(as built)* garden-basics, footsteps, wind-and-gaps.
+- **Patterns:** transform, match_feel, repair, compare, build_constraint, capstone. **Success:** broad.
+- **Quest:** *The Dance Circle* in Pulse Woods — a trickster fox leads the player off the marked trail; the circle only spins for playful rhythm.
+- **Sandbox:** the **Feel switch** (🚶 Straight ↔ 🕺 Swing) stays on in the capstone + finale.
+- **System needs (S) — built:** off-beat/push detectors over the existing 16-step grid (`offAccents`/`pushHits`/`anchorKick`/`gridNotesOffBeats`) + a per-level **swing-feel toggle** (`feel:true` flag; tick() delays the "ands" a triplet's worth — the level-mode sibling of jam swing).
+- **Famous reward:** `igotrhythm` — Gershwin's *I Got Rhythm* (1930, US public domain since 2026-01-01): pure-pentatonic melody that lands a beat behind a steady kick pulse. **Owner score-checked (Pavel's save-link version, 2026-07-10, ♩=156); 13th Jukebox song.**
 - **Why:** first package whose replayability comes from *feel*, not correctness.
 
 #### `two-kinds-of-walking` — Two Kinds of Walking  [PW-4]

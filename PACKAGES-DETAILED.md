@@ -372,7 +372,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 14. Build order & dependencies — 15 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-05)
+## 14. Build order & dependencies — 16 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-09)
 
 Build history (alternating melody/rhythm/harmony to avoid fatigue):
 
@@ -391,12 +391,13 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 13. **pull-of-the-moon** ✅ 2026-06-22 (dominant pull, leading tone in chords)
 14. **false-doors** ✅ 2026-06-22 (deceptive cadence)
 15. **tiny-motifs** ✅ 2026-07-05 (motif repetition/variation/inversion — the window model; completes Paths of Song) — *spec in §15 below*
+16. **off-the-path** ✅ 2026-07-09 (syncopation, the push, off-beat melody, swing feel — 3rd Pulse Woods package) — *spec in §16 below*
 
-**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**.
+**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**; (stepping-stones + Q&A) → **tiny-motifs**.
 
 Reusable systems unlocked along the way: **compare pickers** (fireflies → melodies; twin-blooms → pairs/chords; footsteps → drums; wind-and-gaps → full patterns; river-turns → progressions) — the recognition pattern now spans every domain; **phrase A/B split** (Q&A) → reused by ways-home; **chord-progression machinery** (river-turns) → reused by pull-of-the-moon + false-doors and ready for Region 6+; **mood wash** (sun-and-moon) → ready for modal "atmosphere world" packages; **🎧 famous-example rewards** on capstones (see DESIGN §10) → every future package should ship with one.
 
-**Not yet built** (next candidates, per PACKAGES.md §5): `off-the-path`, `two-kinds-of-walking` (Wave A leftovers); `shifting-shadows`, `soft-wobble-strong-wobble` (Wave C leftovers); then the system-gated waves (duration editor / multi-voice / sections / styles).
+**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (Wave A leftover — needs a real meter change, the heaviest remaining Wave-A item); `shifting-shadows`, `soft-wobble-strong-wobble` (Wave C leftovers); then the system-gated waves (duration editor / multi-voice / sections / styles).
 
 ---
 
@@ -422,3 +423,29 @@ Reusable systems unlocked along the way: **compare pickers** (fireflies → melo
 - **Notes:** the window model is the key insight — a motif is recognized by its **interval signature**, so "the same idea" is caught wherever it sits and at any pitch. Echo vs. variation are deliberately made disjoint (a pure transposition is an echo, not a variation) so the two teaching goals stay distinct.
 - **Famous reward (added 2026-07-06):** `goinhome` — the Largo cor-anglais theme from Dvořák's *New World* Symphony ("Goin' Home"), the rare world-famous tune that is **natively pentatonic** *and* literally one motif repeated. **Owner score-checked version** (Pavel's save-link, 2026-07-06): 8 bars A B A B′ — B hangs open on re, B′ returns and settles home on do. ♩=60, 64 cols, 22 notes (do/re/mi/la only).
 - **Follow-ups done (2026-07-06):** all 9 `intro:` narration clips + the famous `credit:` clip baked via `gen-voice.mjs`.
+
+---
+
+## 16. `off-the-path` — Off the Path  [PW-3]  ✅ BUILT (2026-07-09) — pentatonic · syncopation & swing
+
+- **Region / cluster:** Pulse Woods / pulse · **Palette:** pentatonic (pitch-independent) · **Rhythm tier:** R1 · **Prereqs:** *(as built)* intro, footsteps, wind-and-gaps — 3rd Pulse Woods package (grows Hopper 🐸→🐸✨).
+- **Fantasy:** "A trickster fox leads you off the marked trail — the Dance Circle only spins for playful rhythm." Surprise the beat without ever losing it.
+- **Capability:** make rhythm lively/surprising on purpose. **Hidden theory:** syncopation (off-beat accents), anticipation (the push — a hit arriving in the crack just before its beat), melodic syncopation, swing feel, and the core truth that **syncopation only works against a steady anchor**.
+- **New systems (S):** detectors over the existing 16-step grid — `anchorKick()` (kick holds beats 1&3), `accentSteps()`/`offAccents()` (snare+hat steps off the beat columns), `PUSH_STEPS`/`pushHits()` (hits in the crack right before a beat), `gridNotesOffBeats()` (the melodic mirror of footsteps' `gridNotesOnBeats`). Plus the **Feel switch** — a per-level `feel:true` flag shows 🚶 Straight ↔ 🕺 Swing buttons **beside the drum pads** (right of the field so it stays above the fold; wraps below on narrow windows — playtest fix 2026-07-09) (`setFeelRow`/`setFeel`/`levelSwing`); `tick()` delays the "ands" (steps 2,6,10,14) by **one full step** — they land on the crack just before the next beat (a hard, danceable shuffle; grid-quantized so sound and picture can agree, and it ties into L2's push concept), melody AND drums — the level-mode sibling of jam swing — and **the picture matches the sound exactly**: `applySwingVisual()` slides every "and" pad one full column (38px, animated, z-lifted) onto that crack while swing is on (playtest fixes 2026-07-09; a triplet-swing 0.67-step first cut landed the pads ambiguously between columns). `start()` records `ev.playedStraight`/`ev.playedSwing` so L4 can require hearing both. `showPatternChoices` gained an optional `{yes,no}` verdict-message param (its old texts were Wind-&-Gaps-specific).
+
+| # | Level *(pattern · success · stage)* | Goal |
+|---|---|---|
+| 1 | The Fox's Skip *(build_constraint · targeted · teach)* | kick anchor pre-placed; add 2+ snare/hat accents OFF the beats — `kickOn4 && offAccents>=2` |
+| 2 | The Early Step **[2 steps]** *(transform · targeted · teach)* | move the beat-3 kick one pad early, then the beat-4 snare — the push/anticipation |
+| 3 | Dance Between the Beats *(build_constraint · targeted · combine)* | beat guide on; plant a melody OFF the glowing columns — `gridNotesOffBeats>=4` and off > on |
+| 4 | Straight or Swing? *(discover/match_feel · broad · combine)* | NEW mechanic: play the same groove with both feels — `ev.playedStraight && ev.playedSwing` |
+| 5 | Lost in the Woods *(repair · targeted · apply)* | all-floaters pattern, no kick anywhere — restore the anchor, keep 3+ off-beat accents (the package's thesis as a repair) |
+| 6 | Pick the Liveliest Path *(compare · targeted · recognize)* | square march / anchored syncopation / beatless scatter — pick lively-but-anchored (`showPatternChoices` + custom verdicts) |
+| 7 | The Trickster's Groove *(build_constraint · targeted · compound)* | from scratch: kick on 4 beats + 2+ off-beat accents + 1+ push |
+| 8 | The Dance Circle *(capstone · broad · capstone)* | anchored groove + off-beat accents + syncopated melody, loop, Feel switch on · 🎧 famous: `igotrhythm` |
+| 9 | Free Dance 🦊 *(— · none · finale)* | free-play sandbox (Feel switch on) → completion congrats |
+
+- **Ramp note:** L5 is the thesis level — the floating pattern *demonstrates* that off-beats mean nothing without an anchor, and the fix is the lesson. L4's swing switch is pure feel (no wrong answer): the package the catalog promised, "replayability from feel, not correctness."
+- **Differentiation from neighbours:** footsteps taught ON the beat (incl. off-beat *hats* as texture); wind-and-gaps teased syncopation once via density ("Bounce from Space"); off-the-path makes it a controlled skill — accents, pushes, melody, feel — always over an anchor.
+- **Famous reward:** `igotrhythm` — Gershwin's *I Got Rhythm* (1930; **the composition entered the US public domain 2026-01-01**), the song literally named for the lesson. A-section: three "I got…" phrases ride one four-note pentatonic cell (sol-la-do-re) landing a beat behind a steady kick pulse; "who could ask for anything more" rushes back ON the beat (adds mi). Pure pentatonic, 8 bars, 64 cols, ♩=156, kick pulse planted under it so the lean is audible. **Owner score-checked (Pavel's save-link version, 2026-07-10)** — my draft's last line was a plain stepwise descent; the real line re-picks up early (re in the crack) into a mi-re turn settling home on do. **13th Jukebox song.**
+- **Follow-ups done (2026-07-09):** all 10 `intro:` narration clips (incl. L2's two steps) + the famous `credit:` clip baked via `gen-voice.mjs`.

@@ -102,11 +102,14 @@
   .dcellgrid{ display:grid; grid-template-columns:repeat(16,34px); gap:4px;}
   /* round "pads" in a different palette so beats look distinct from square seed tiles */
   .dcell{ width:34px; height:30px; border-radius:50%; background:#E7EEE6; cursor:pointer;
-    box-shadow:inset 0 -2px 0 rgba(62,58,57,.10); transition:transform .05s, box-shadow .2s, background .2s;}
+    box-shadow:inset 0 -2px 0 rgba(62,58,57,.10); transition:transform .3s ease, box-shadow .2s, background .2s;}
   .dcell.beat{ background:#CFE3D7;}
   .dcell:hover{ filter:brightness(.95);}
   .dcell.on{ background:var(--coral); box-shadow:0 0 12px rgba(242,140,140,.85);}
   .dcell.col-playing{ filter:brightness(1.06) saturate(1.3);}
+  /* swing feel: each "and" pad slides one full column, onto the crack just before the next beat —
+     the picture lands exactly where the delayed sound does */
+  .dcell.swung{ transform:translateX(38px); position:relative; z-index:1; }
   .cell{ width:34px; height:30px; border-radius:7px; background:var(--cell);
     cursor:pointer; position:relative; transition:transform .05s, box-shadow .2s, background .2s;
     box-shadow:inset 0 -2px 0 rgba(62,58,57,.06);}
@@ -260,6 +263,10 @@
   .densitymeter .dmtrack{ height:7px; border-radius:5px; background:rgba(62,58,57,.12); overflow:hidden; margin-bottom:4px; }
   .densitymeter .dmfill{ height:100%; width:0; background:linear-gradient(90deg,var(--teal),var(--coral)); transition:width .25s; }
   .densitymeter .dmlabel{ opacity:.85; }
+  /* Off the Path: the straight ↔ swing feel switch, beside the drum pads (kept above the fold) */
+  .drumflex{ display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+  .feelrow{ margin-top:10px; gap:8px; flex-direction:column; align-items:stretch; }
+  .feelrow .feellabel{ font-size:.72rem; opacity:.85; }
   /* Two New Colors: a not-yet-discovered note row is shown as a visible "locked" row (striped), not invisible */
   .cell.lockednote{ background:repeating-linear-gradient(45deg,#EDE7D7,#EDE7D7 5px,#E0D9C4 5px,#E0D9C4 10px);
     opacity:.85; cursor:not-allowed; box-shadow:inset 0 0 0 1px rgba(62,58,57,.08); }
@@ -397,11 +404,20 @@
         <div class="hlabel">TIME →</div>
       </div>
       <div id="drumArea" style="display:none">
-        <div class="drumrows" id="drumrows"></div>
-        <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
-        <div id="densityMeter" class="densitymeter" style="display:none">
-          <div class="dmtrack"><div class="dmfill"></div></div>
-          <div class="dmlabel">density</div>
+        <div class="drumflex">
+          <div>
+            <div class="drumrows" id="drumrows"></div>
+            <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
+            <div id="densityMeter" class="densitymeter" style="display:none">
+              <div class="dmtrack"><div class="dmfill"></div></div>
+              <div class="dmlabel">density</div>
+            </div>
+          </div>
+          <div id="feelRow" class="feelrow" style="display:none">
+            <span class="feellabel">Feel:</span>
+            <button id="feelStraight" class="secondary toggle on">🚶 Straight</button>
+            <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
+          </div>
         </div>
       </div>
     </div>
@@ -803,6 +819,7 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
       el.className="dcell"+(c%4===0?" beat":"")+(drumG[d][c]?" on":"");
       el.addEventListener("mousedown",()=>drumClick(d,c)); g.appendChild(el); dcells[d][c]=el; }
     row.appendChild(g); rows.appendChild(row); });
+  applySwingVisual();   // a rebuild makes fresh cells — re-mark the swung "and" pads if swing is on
 }
 function drumClick(d,c){ initAudio(); actx.resume();
   drumG[d][c]=!drumG[d][c]; dcells[d][c].classList.toggle("on",drumG[d][c]);
@@ -1167,9 +1184,25 @@ const FAMOUS = {
     drums:[ [0,0],[0,8],                                            // kick: just the downbeats 1 & 3 (the anchor)
             [1,6],[1,14] ],                                         // snare: the off-beat Charleston stabs, floating in the GAPS
     credit:"🎩 That's the Charleston — the most famous bounce in music, from the roaring 1920s dance everyone knew. Listen how it barely touches the main beats and leaps into the GAPS between them instead. That off-beat hop is exactly the groove-from-space you just discovered." },
+  // Off the Path — syncopation. Gershwin's "I Got Rhythm" (1930; the composition entered the US public
+  // domain 2026-01-01). The A-section is the syncopation lesson made famous: three "I got…" phrases ride
+  // a four-note pentatonic cell (sol-la-do-re) landing a beat BEHIND the pulse — dotted-quarter chain,
+  // only one note per phrase touches a strong beat — then "who could ask for anything more" answers with
+  // a pickup-led mi-re turn that settles home on do. Pure pentatonic, fits this package's 10-row grid.
+  // A steady kick pulse is planted under it so the lean-off-the-beat is audible. 8 bars, C major, 1 col = 8th.
+  // Pavel's score-checked save-link version (2026-07-10): my draft's last line was WRONG (a plain
+  // stepwise descent) — the real line re-picks up early (re on the crack at col 47) into mi-mi re-mi-re do.
+  igotrhythm: { title:"I Got Rhythm", cols:64,
+    drums:[[0,0],[0,4],[0,8],[0,12],[0,16],[0,20],[0,24],[0,28],   // kick: the steady walking pulse
+           [0,32],[0,36],[0,40],[0,44],[0,48],[0,52],[0,56],[0,60]], // …the tune dances AGAINST it
+    mel:[[67,2],[69,5],[72,8],[74,11],                              // "I got rhythm"  — sol la do re, rising, a beat behind
+         [74,18],[72,21],[69,24],[67,27],                           // "I got music"   — the same cell falling
+         [67,34],[69,37],[72,40],[74,43],                           // "I got my man"  — rising again, still off the path
+         [74,47],[76,48],[76,50],[74,52],[76,53],[74,54],[72,56]],  // "who could ask for anything more" — a pickup in the crack, then the mi-re turn settling home on do
+    credit:"🕺 That's “I Got Rhythm” by George Gershwin — a song so proud of its rhythm it's named after it! Listen: every “I got…” lands just OFF the steady pulse, skipping in the cracks — exactly the trick you just learned — until the last line rushes back onto the beat. Jazz musicians still build new songs on its bones." },
 };
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
-const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60 };
+const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156 };
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
@@ -1363,7 +1396,8 @@ function updateDensityMeter(){ const m=document.getElementById("densityMeter"); 
   m.querySelector(".dmfill").style.width=pct+"%";
   m.querySelector(".dmlabel").textContent=`density: ${word} (${h} hit${h===1?"":"s"})`; }
 // drum compare picker that auditions FULL multi-lane patterns (not just kicks) — for "sparse vs busy"
-function showPatternChoices(opts,answer,prompt){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
+let patternMsgs=null;   // optional {yes,no} verdict texts per level (default = Wind & Gaps' breathing pair)
+function showPatternChoices(opts,answer,prompt,msgs){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1; patternMsgs=msgs||null;
   const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
   opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
     b.textContent="🥁 Pattern "+String.fromCharCode(65+i); b.onclick=()=>pickPatternChoice(i); row.appendChild(b); });
@@ -1378,7 +1412,36 @@ function pickPatternChoice(i){ if(!choiceOpts) return; wipeDrums();
     const left=choiceViewed.filter(x=>!x).length;
     setStatus(`Keep listening — hear all the patterns first (${left} to go).`); checkLevel(); return; }
   ev.choicePick=i; checkLevel();
-  setStatus(i===choiceAnswer ? "✨ That's the one that breathes!" : "That one's crowded — find the pattern with room to breathe."); }
+  setStatus(i===choiceAnswer ? (patternMsgs&&patternMsgs.yes||"✨ That's the one that breathes!")
+                             : (patternMsgs&&patternMsgs.no ||"That one's crowded — find the pattern with room to breathe.")); }
+
+// ---------- Off the Path: syncopation & swing (package PW-3) ----------
+// Vocabulary on the 16-step bar: beats = 0,4,8,12 · off-beats ("ands") = 2,6,10,14 · odd steps = the cracks.
+// The package's core truth: a surprise only lands AGAINST something steady — so most goals pair an
+// anchored kick with accents (snare/hat) that live off the beat columns.
+const anchorKick = () => drumG[0][0] && drumG[0][8];                          // kick holds at least beats 1 & 3 — the walk survives
+function accentSteps(){ const s=new Set(); for(let d=1;d<DRUMS.length;d++) for(let c=0;c<16;c++) if(drumG[d][c]) s.add(c); return s; }
+const offAccents = () => [...accentSteps()].filter(c=>c%4!==0).length;        // snare/hat steps that land OFF the beat columns
+const PUSH_STEPS=[3,7,11,15];                                                 // the crack right before each beat — a hit there arrives "early"
+const pushHits = () => PUSH_STEPS.filter(c=>[0,1,2].some(d=>drumG[d][c])).length;
+// melody seeds that land off the beat columns (the melodic mirror of gridNotesOnBeats)
+function gridNotesOffBeats(){ let n=0; for(let c=0;c<COLS;c++){ if(c%4===0) continue; for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; } return n; }
+// Feel switch: 🚶 straight vs 🕺 swing. Swing delays the mid-point off-beats (steps 2,6,10,14) by ~a
+// triplet — same notes, different feel. tick() applies it to melody AND drums; jam keeps its own swing.
+let levelSwing=0;
+function setFeelRow(on){ const el=document.getElementById("feelRow"); if(!el) return;
+  el.style.display=on?"flex":"none"; if(!on) levelSwing=0; syncFeelBtns(); applySwingVisual(); }
+function setFeel(sw){ levelSwing=sw?1:0; syncFeelBtns(); applySwingVisual();
+  setStatus(sw ? "🕺 Swing feel on — the in-between steps now arrive fashionably late. Press <b>▶</b> to hear it skip."
+               : "🚶 Straight feel — every step lands right on its mark. Press <b>▶</b> to hear it march."); }
+function syncFeelBtns(){ const s=document.getElementById("feelStraight"), w=document.getElementById("feelSwing");
+  if(s) s.classList.toggle("on", !levelSwing); if(w) w.classList.toggle("on", !!levelSwing); }
+// the picture matches the sound: with swing on, every "and" pad (cols 2,6,10,14) slides one full column,
+// landing on the crack just before the next beat — exactly where the delayed hit now sounds
+function applySwingVisual(){ for(let d=0;d<dcells.length;d++){ const row=dcells[d]||[];
+  for(let c=0;c<row.length;c++) if(row[c]) row[c].classList.toggle("swung", !!levelSwing && c%4===2); } }
+document.getElementById("feelStraight").onclick=()=>setFeel(false);
+document.getElementById("feelSwing").onclick=()=>setFeel(true);
 
 // ---------- Two New Colors: staged reveal of F then B on the diatonic grid (palette milestone) ----------
 // On a diatonic palette, F (pc 5) and B (pc 11) are the "new colors". A level reveals a subset; the rest stay
@@ -2323,6 +2386,88 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"The grove breathes on its own now 🍃. This place is yours — make any rhythm you like, crowded or airy, with melody on top, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
+"off-the-path":{ id:"off-the-path", name:"🦊 Off the Path", topic:"rhythm-syncopation", region:"pulse-woods",
+  desc:"Follow the fox off the marked trail — surprise the beat without ever losing it.",
+  requires:["intro","footsteps","wind-and-gaps"], version:1, author:"official", levels:[
+ {name:"The Fox's Skip", rhythm:true, unlock:["drums"],
+  power:{em:"🦊",name:"Skip",line:"You can step off the beat on purpose."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  hint:()=>placeDrums([[1,6],[2,2],[2,10]]),
+  intro:"A fox slips off the marked trail 🦊. The kick already walks the path — now add YOUR steps in BETWEEN the beats (snare or hi-hat on the unmarked pads) and feel the walk turn into a skip.",
+  teach:"Hits between the beats are 'off-beats' — putting accents there is called syncopation.",
+  goals:[{id:"anchor",label:"Keep the kick walking on all 4 beats",chk:()=>kickOn4()},
+         {id:"off",label:"Add 2+ snare or hi-hat steps OFF the beats",chk:()=>offAccents()>=2},
+         {id:"pl",label:"Press ▶ to feel the skip",play:true}]},
+ {name:"The Early Step", rhythm:true, power:{em:"🥾",name:"Push",line:"You can make a hit arrive early on purpose."},
+  teach:"A hit that lands just before its beat is an 'anticipation' — musicians call it a push.", steps:[
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+    hint:()=>{ drumG[0][8]=false; if(dcells[0][8]) dcells[0][8].classList.remove("on"); placeDrums([[0,7]]); checkLevel(); },
+    intro:"Some steps just can't wait 🥾 — take the kick on beat 3 and move it ONE pad EARLY. It lands a moment before you expect it, and the groove leans forward.",
+    goals:[{id:"push",label:"Beat-3 kick one pad early (and nothing on beat 3)",chk:()=>drumG[0][0]&&drumG[0][4]&&drumG[0][7]&&!drumG[0][8]},
+           {id:"pl",label:"Press ▶ to hear it lean",play:true}]},
+   {drumSetup:()=>placeDrums([[0,0],[0,4],[0,7],[0,12],[1,4],[1,12]]),
+    hint:()=>{ drumG[1][12]=false; if(dcells[1][12]) dcells[1][12].classList.remove("on"); placeDrums([[1,11]]); checkLevel(); },
+    intro:"Now the clap leans too 👏 — slide the beat-4 snare ONE pad early as well. Hear how the whole groove tumbles eagerly toward the next bar.",
+    goals:[{id:"push2",label:"Beat-4 snare one pad early (and nothing on beat 4)",chk:()=>drumG[1][4]&&drumG[1][11]&&!drumG[1][12]},
+           {id:"pl",label:"Press ▶ to feel the tumble",play:true}]},
+ ]},
+ {name:"Dance Between the Beats", rhythm:true, beatGuide:true,
+  power:{em:"💃",name:"Dancing Melody",line:"You can sing off the beat, not just on it."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  hint:()=>setMelody([[6,2],[5,5],[4,7],[5,10],[6,14]]),
+  intro:"The beats glow steady 💃 — but the fox dances in the dark squares. Plant your melody BETWEEN the glowing columns, so it skips against the walk instead of marching with it.",
+  teach:"Melodies can syncopate too — notes off the beat pull against the pulse and make it groove.",
+  goals:[{id:"offmel",label:"A melody that dances OFF the beat (4+ seeds between the glowing columns)",
+          chk:()=>gridNotesOffBeats()>=4&&gridNotesOffBeats()>gridNotesOnBeats()},
+         {id:"pl",label:"Press ▶ to hear it dance",play:true}]},
+ {name:"Straight or Swing?", rhythm:true, feel:true,
+  power:{em:"🎩",name:"Swing Feel",line:"You can make the same beat skip instead of march."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12],[2,2],[2,6],[2,10],[2,14]]),
+  intro:"Same steps, two moods 🎩 — press ▶ and hear this groove STRAIGHT. Then flip the new Feel switch to SWING and play it again: every in-between step arrives a little late, and the march starts to skip.",
+  teach:"Swing does not change WHICH notes play — only WHEN the in-between ones land.",
+  goals:[{id:"st",label:"Play it with the Straight feel 🚶",chk:(s,e)=>!!e.playedStraight},
+         {id:"sw",label:"Switch to Swing 🕺 and play it again",chk:(s,e)=>!!e.playedSwing}]},
+ {name:"Lost in the Woods", rhythm:true, power:{em:"🧭",name:"Anchor",line:"You can keep the beat alive under every surprise."},
+  drumSetup:()=>placeDrums([[1,2],[1,7],[1,10],[2,6],[2,14]]),
+  hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  intro:"These steps wandered too far 🌫️ — every hit is off the path and nobody can find the beat. Anchor it: put the kick back ON the beats, and keep the wild steps dancing on top.",
+  teach:"Syncopation only works AGAINST something steady — no anchor, no surprise.",
+  goals:[{id:"anchor",label:"Give it a home — kick on beats 1 and 3 (at least)",chk:()=>anchorKick()},
+         {id:"keep",label:"Keep 3+ off-beat accents dancing on top",chk:()=>offAccents()>=3},
+         {id:"pl",label:"Press ▶ to find the path again",play:true}]},
+ {name:"Pick the Liveliest Path", rhythm:true,
+  setup:()=>showPatternChoices([
+     [[0,0],[0,4],[0,8],[0,12],[1,0],[1,4],[1,8],[1,12],[2,0],[2,4],[2,8],[2,12]],
+     [[0,0],[0,4],[0,8],[0,12],[1,6],[1,14],[2,2],[2,10]],
+     [[1,1],[1,5],[1,9],[1,15],[2,3],[2,7],[2,13]]],1,null,
+     {yes:"✨ That's it — lively steps over a steady walk!",no:"Not quite — one stomps squarely, one floats away with no beat. Find the skip that keeps the path."}),
+  power:{em:"👂",name:"Groove Ear",line:"You can hear the difference between lively, square, and lost."},
+  intro:"Three paths through the woods 🦊 — tap each one and listen to ALL of them. One stomps squarely on every beat, one drifts away with no beat at all, and one skips playfully but never loses the path. Pick the lively one that keeps the beat.",
+  teach:"The liveliest grooves balance both: a steady anchor AND off-beat surprises.",
+  goals:[{id:"pick",label:"Hear all three paths, then pick the lively one that keeps the beat",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"The Trickster's Groove", rhythm:true,
+  power:{em:"🛠️",name:"Trickster",line:"You can build a groove that walks and winks at once."},
+  hint:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,6],[1,11],[2,2],[2,10]]),
+  intro:"Build the fox's own groove from scratch 🛠️ — a steady kick walking the beats, sly accents in the gaps, and at least one step that arrives EARLY, in the crack just before a beat.",
+  goals:[{id:"anchor",label:"Kick walking on all 4 beats",chk:()=>kickOn4()},
+         {id:"off",label:"2+ off-beat accents (snare or hi-hat)",chk:()=>offAccents()>=2},
+         {id:"push",label:"1+ early hit (the crack just before a beat)",chk:()=>pushHits()>=1},
+         {id:"pl",label:"Press ▶ to hear the trick",play:true}]},
+ {name:"The Dance Circle", rhythm:true, beatGuide:true, feel:true, loop:true, famous:"igotrhythm",
+  intent:"What makes your circle dance?",
+  power:{em:"🔥",name:"Dance Caller",line:"You can make the whole woods dance off the beat."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  hint:()=>{ placeDrums([[1,6],[1,14],[2,2],[2,10]]); setMelody([[6,2],[5,5],[4,7],[5,10],[6,14]]); },
+  intro:"The Dance Circle only spins for playful rhythm 🔥 — build an anchored groove with off-beat accents, and sing a melody that dances BETWEEN the beats. Then loop it, try the Swing feel, and watch the woods dance.",
+  goals:[{id:"groove",label:"A lively groove: kick on the beats + 2+ off-beat accents",chk:()=>kickOn4()&&offAccents()>=2},
+         {id:"mel",label:"A dancing melody (4+ seeds, 3+ off the beat)",chk:s=>s.placed>=4&&gridNotesOffBeats()>=3},
+         {id:"pl",label:"Press ▶ to spin the circle",play:true}]},
+ {name:"Free Dance 🦊", drums:true, loop:true, feel:true,
+  hint:()=>{ placeDrums([[0,0],[0,4],[0,8],[0,12],[1,6],[1,14],[2,2],[2,10]]); },
+  power:{em:"🌟",name:"Free Dance",line:"This dancing clearing is yours — on the path or off it."},
+  intro:"The circle keeps dancing on its own now 🦊. This clearing is yours — march it, skip it, swing it, no goals, just play. Head 🏡 Home whenever you want a new trail.",
+  goals:[]},
+]},
 "two-new-colors":{ id:"two-new-colors", name:"🌈 Two New Colors", topic:"palette-diatonic", region:"color-spring",
   palette:"diatonic", desc:"The world discovers two new colors — F, then B. Your garden widens to the full scale.",
   requires:["standing-towers"], version:1, author:"official", levels:[
@@ -2758,7 +2903,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
@@ -2820,6 +2965,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setColorReveal(st.colors || L.colors || null);                         // staged F/B reveal — lock undiscovered notes (Two New Colors)
   setMood(st.mood || L.mood || null);                                    // sun (C major / bright) or moon (A minor / wistful) field wash (Sun & Moon Garden)
   setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
+  setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
@@ -3120,7 +3266,7 @@ let playing=false, step=0, timer=null, looping=false, shownPage=-1;
 const stepDur=()=>60000/tempoEl.value/2;
 function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true; step=0;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; tick(); timer=setInterval(tick,stepDur());
-  ev.played=true; checkLevel(); }
+  ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; checkLevel(); }   // Off the Path L4 tracks hearing BOTH feels
 function stop(){ playing=false; clearInterval(timer); timer=null;
   playBtn.textContent="▶ Play"; playhead.classList.remove("on");
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
@@ -3129,7 +3275,8 @@ function stop(){ playing=false; clearInterval(timer); timer=null;
 function tick(){
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(step>=COLS){ if(looping){ step=0; } else { stop(true); return; } }
-  const sw=(jamMode && step%2===1) ? GROOVES[grooveIdx].swing*stepDur()/1000 : 0;   // shuffle = delay off-beats
+  const sw=(jamMode && step%2===1) ? GROOVES[grooveIdx].swing*stepDur()/1000        // jam shuffle = delay off-beats
+         : (levelSwing && step%4===2) ? stepDur()/1000 : 0;                         // level swing feel = the "ands" land one full step late, on the crack before the beat (Off the Path; matches the pad slide)
   const t=actx.currentTime+0.02+sw;
   if(jamMode) jamStep(step,t);
   const onRows=[];
@@ -3317,7 +3464,7 @@ function mhint(text,top){ const e=document.createElement("div"); e.className="hi
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
 // versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
-const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","pachelbel","bodiddley","charleston"];
+const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","pachelbel","bodiddley","charleston"];
 function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
 function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
   const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));
