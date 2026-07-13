@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-07-09 — **17 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs + off-the-path); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-07-11 — **18 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs + off-the-path + shifting-shadows); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -135,7 +135,7 @@ Tag every rhythm-touching package with the tier it needs.
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
 | 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **3 built** (footsteps, wind-and-gaps, off-the-path); `two-kinds-of-walking` remains |
-| 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **3 built** (twin-blooms, standing-towers, twin-blooms-plus) |
+| 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **4 built** (twin-blooms, standing-towers, twin-blooms-plus, shifting-shadows); `soft-wobble-strong-wobble` [SC-4] remains |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
 | 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
 | 6 | 🌗 **The Twin Gardens** | Color / mood | diatonic | **1 built** (sun-and-moon-garden — *moved here from the planned "Color Caverns"; each map region needs a land, and major/minor mood earned its own twin-biome region*) |
@@ -155,7 +155,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅, off-the-path ✅ · remaining: two-kinds-of-walking
 - **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
 - **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
-- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅ · remaining: shifting-shadows, soft-wobble-strong-wobble
+- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅, shifting-shadows ✅ · remaining: soft-wobble-strong-wobble
 - **Wave D — Color** *(diatonic→chromatic):* sun-and-moon-garden ✅ (shipped early — it needed only the mood system, and gives the diatonic arc an emotional payoff) · remaining: secret-doors, mist-paths
 - **Wave E — Weaving & Story** *(needs multi-voice + section systems):* deep-roots-high-birds, lantern-chorus, rain-and-sun, rooms-and-paths, return-of-the-meadow
 - **Bridge style worlds** *(optional):* campfire-trails, city-lights
@@ -304,13 +304,13 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M):** chord-to-chord motion model over the existing jam progression engine.
 - **Why:** the unlock that makes later song-building possible.
 
-#### `shifting-shadows` — Shifting Shadows  [SC-3]
+#### `shifting-shadows` — Shifting Shadows  [SC-3]  — **BUILT ✅ (2026-07-11)** *(as-built spec in PACKAGES-DETAILED §17)*
 - **Capability:** keep a shape's identity while changing its balance.
-- **Theory:** inversions / revoicing. **Palette:** diatonic *(richer once more triads exist)*. **Prereqs:** two-new-colors, standing-towers.
-- **Patterns:** transform, compare, repair, navigate. **Success:** targeted/broad.
-- **Quest:** *Rotate the stone columns* — redirect sound/light; lighten towers so flyers cross.
-- **Sandbox:** restack/rebalance tool; voicing stamps; weight indicator.
-- **System needs (M):** inversion/voicing controls + the semitone-stability check we already reason in.
+- **Theory:** inversions / revoicing, common tones, smooth bass (first voice-leading). **Palette:** diatonic *(richer once more triads exist)*. **Prereqs:** two-new-colors, standing-towers.
+- **Patterns:** transform, compare, repair, match_feel, build_constraint, capstone. **Success:** targeted/broad.
+- **Quest:** *Rotate the stone columns* — turn towers so their shadows lighten and the canyon moths can cross; 4th canyon package (Geo reaches his final form).
+- **System needs (S, as built — lighter than planned):** inversion detectors over the existing chord engine (`colInv`/`colBassMidi`/`countInverted`/`voicingsOfOneChord`) + the voice-leading payoffs (`sharedStoneCols`, `smoothBassPath`); no new UI needed — turning = replanting a stone an octave up.
+- **Famous reward:** `bachprelude` — Bach's Prelude in C (BWV 846): chords turning over a barely-moving bass. **Owner-validated (Pavel's save-link, 2026-07-12): first four bars at full length**, the G7 bar's off-grid B3 bass read as a C pedal. **14th Jukebox song.**
 - **Why:** musically deep yet beautifully tactile/visual.
 
 #### `soft-wobble-strong-wobble` — Soft Wobble, Strong Wobble  [SC-4]

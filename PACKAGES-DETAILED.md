@@ -372,7 +372,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 14. Build order & dependencies — 16 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-09)
+## 14. Build order & dependencies — 17 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-11)
 
 Build history (alternating melody/rhythm/harmony to avoid fatigue):
 
@@ -392,12 +392,13 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 14. **false-doors** ✅ 2026-06-22 (deceptive cadence)
 15. **tiny-motifs** ✅ 2026-07-05 (motif repetition/variation/inversion — the window model; completes Paths of Song) — *spec in §15 below*
 16. **off-the-path** ✅ 2026-07-09 (syncopation, the push, off-beat melody, swing feel — 3rd Pulse Woods package) — *spec in §16 below*
+17. **shifting-shadows** ✅ 2026-07-11 (inversions/revoicing, common tones, smooth bass — 4th Stone Chorus Canyon package, Geo's final form) — *spec in §17 below*
 
-**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**; (stepping-stones + Q&A) → **tiny-motifs**.
+**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**; (stepping-stones + Q&A) → **tiny-motifs**; (two-new-colors + standing-towers) → **shifting-shadows**.
 
 Reusable systems unlocked along the way: **compare pickers** (fireflies → melodies; twin-blooms → pairs/chords; footsteps → drums; wind-and-gaps → full patterns; river-turns → progressions) — the recognition pattern now spans every domain; **phrase A/B split** (Q&A) → reused by ways-home; **chord-progression machinery** (river-turns) → reused by pull-of-the-moon + false-doors and ready for Region 6+; **mood wash** (sun-and-moon) → ready for modal "atmosphere world" packages; **🎧 famous-example rewards** on capstones (see DESIGN §10) → every future package should ship with one.
 
-**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (Wave A leftover — needs a real meter change, the heaviest remaining Wave-A item); `shifting-shadows`, `soft-wobble-strong-wobble` (Wave C leftovers); then the system-gated waves (duration editor / multi-voice / sections / styles).
+**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (Wave A leftover — needs a real meter change, the heaviest remaining Wave-A item); `soft-wobble-strong-wobble` (the last Wave C leftover); then the system-gated waves (duration editor / multi-voice / sections / styles).
 
 ---
 
@@ -431,7 +432,7 @@ Reusable systems unlocked along the way: **compare pickers** (fireflies → melo
 - **Region / cluster:** Pulse Woods / pulse · **Palette:** pentatonic (pitch-independent) · **Rhythm tier:** R1 · **Prereqs:** *(as built)* intro, footsteps, wind-and-gaps — 3rd Pulse Woods package (grows Hopper 🐸→🐸✨).
 - **Fantasy:** "A trickster fox leads you off the marked trail — the Dance Circle only spins for playful rhythm." Surprise the beat without ever losing it.
 - **Capability:** make rhythm lively/surprising on purpose. **Hidden theory:** syncopation (off-beat accents), anticipation (the push — a hit arriving in the crack just before its beat), melodic syncopation, swing feel, and the core truth that **syncopation only works against a steady anchor**.
-- **New systems (S):** detectors over the existing 16-step grid — `anchorKick()` (kick holds beats 1&3), `accentSteps()`/`offAccents()` (snare+hat steps off the beat columns), `PUSH_STEPS`/`pushHits()` (hits in the crack right before a beat), `gridNotesOffBeats()` (the melodic mirror of footsteps' `gridNotesOnBeats`). Plus the **Feel switch** — a per-level `feel:true` flag shows 🚶 Straight ↔ 🕺 Swing buttons **beside the drum pads** (right of the field so it stays above the fold; wraps below on narrow windows — playtest fix 2026-07-09) (`setFeelRow`/`setFeel`/`levelSwing`); `tick()` delays the "ands" (steps 2,6,10,14) by **one full step** — they land on the crack just before the next beat (a hard, danceable shuffle; grid-quantized so sound and picture can agree, and it ties into L2's push concept), melody AND drums — the level-mode sibling of jam swing — and **the picture matches the sound exactly**: `applySwingVisual()` slides every "and" pad one full column (38px, animated, z-lifted) onto that crack while swing is on (playtest fixes 2026-07-09; a triplet-swing 0.67-step first cut landed the pads ambiguously between columns). `start()` records `ev.playedStraight`/`ev.playedSwing` so L4 can require hearing both. `showPatternChoices` gained an optional `{yes,no}` verdict-message param (its old texts were Wind-&-Gaps-specific).
+- **New systems (S):** detectors over the existing 16-step grid — `anchorKick()` (kick holds beats 1&3), `accentSteps()`/`offAccents()` (snare+hat steps off the beat columns), `PUSH_STEPS`/`pushHits()` (hits in the crack right before a beat), `gridNotesOffBeats()` (the melodic mirror of footsteps' `gridNotesOnBeats`). Plus the **Feel switch** — a per-level `feel:true` flag shows 🚶 Straight ↔ 🕺 Swing buttons in a slim row **just above the drum pads** (visible without scrolling AND width-neutral; the first fix put it beside the pads, which widened the main column and shoved the sidebar right — playtest fixes 2026-07-09/11) (`setFeelRow`/`setFeel`/`levelSwing`); `tick()` delays the "ands" (steps 2,6,10,14) by **one full step** — they land on the crack just before the next beat (a hard, danceable shuffle; grid-quantized so sound and picture can agree, and it ties into L2's push concept), melody AND drums — the level-mode sibling of jam swing — and **the picture matches the sound exactly**: `applySwingVisual()` slides every "and" pad one full column (38px, animated, z-lifted) onto that crack while swing is on (playtest fixes 2026-07-09; a triplet-swing 0.67-step first cut landed the pads ambiguously between columns). `start()` records `ev.playedStraight`/`ev.playedSwing` so L4 can require hearing both. `showPatternChoices` gained an optional `{yes,no}` verdict-message param (its old texts were Wind-&-Gaps-specific).
 
 | # | Level *(pattern · success · stage)* | Goal |
 |---|---|---|
@@ -449,3 +450,28 @@ Reusable systems unlocked along the way: **compare pickers** (fireflies → melo
 - **Differentiation from neighbours:** footsteps taught ON the beat (incl. off-beat *hats* as texture); wind-and-gaps teased syncopation once via density ("Bounce from Space"); off-the-path makes it a controlled skill — accents, pushes, melody, feel — always over an anchor.
 - **Famous reward:** `igotrhythm` — Gershwin's *I Got Rhythm* (1930; **the composition entered the US public domain 2026-01-01**), the song literally named for the lesson. A-section: three "I got…" phrases ride one four-note pentatonic cell (sol-la-do-re) landing a beat behind a steady kick pulse; "who could ask for anything more" rushes back ON the beat (adds mi). Pure pentatonic, 8 bars, 64 cols, ♩=156, kick pulse planted under it so the lean is audible. **Owner score-checked (Pavel's save-link version, 2026-07-10)** — my draft's last line was a plain stepwise descent; the real line re-picks up early (re in the crack) into a mi-re turn settling home on do. **13th Jukebox song.**
 - **Follow-ups done (2026-07-09):** all 10 `intro:` narration clips (incl. L2's two steps) + the famous `credit:` clip baked via `gen-voice.mjs`.
+
+---
+
+## 17. `shifting-shadows` — Shifting Shadows  [SC-3]  ✅ BUILT (2026-07-11) — DIATONIC · inversions & voicing
+
+- **Region / cluster:** Stone Chorus Canyon / shape · **Palette:** **diatonic** · **Prereqs:** two-new-colors, standing-towers — 4th and final canyon package (grows Geo 💎→💎✨, his final form).
+- **Fantasy:** "The canyon stones can turn — the same tower can stand square, lean light, or float." Rotate towers so their shadows shift and the canyon moths can cross.
+- **Capability:** keep a chord's identity while changing its balance. **Hidden theory:** inversions (root/1st/2nd), revoicing & register weight, common tones, and the first taste of **voice leading** (a smooth bass through turned chords).
+- **New systems (S — lighter than the planned M):** detectors over the existing inversion-proof chord engine — `colBassMidi(c)`, `colInv(c)` (0/1/2 by bass-vs-root pitch class), `countInv(k)`/`countInverted()`, `anyChordCol(pred)`, `voicingsOfOneChord()` (max distinct voicings sharing one root), `sharedStoneCols()` (neighbour chords, different roots, a common midi in the same row), `smoothBassPath(n)` (n+ chords, 2+ roots, every bass move ≤2 semitones). **No new UI** — "turning" is just replanting a stone an octave up, so the intro's tower mechanic carries the whole package. Key register insight: the classic smooth-bass moves live in the UPPER octave (C5-rooted voicings — rows [6,4,2] etc.), because B3 sits below the C4 grid floor.
+
+| # | Level *(pattern · success · stage)* | Goal |
+|---|---|---|
+| 1 | Turn the Stone **[2 steps]** *(transform · targeted · teach)* | pre-placed C root — lift the bottom stone an octave (1st inversion), then again (2nd) — `colInv` 1 then 2 |
+| 2 | Full Circle *(build_constraint · targeted · teach)* | the same chord standing 3 different ways side by side — `voicingsOfOneChord()>=3` (hint shows the staircase climbing home one floor up) |
+| 3 | Grounded or Floating? *(compare · targeted · recognize)* | hear root/1st/2nd of the same chord (`showPairChoices`, "🗿 Tower"), pick the most grounded |
+| 4 | Lighten the Tower *(repair/transform · targeted · apply)* | a heavy C4-rooted tower blocks the moths — turn it upward until the bass reaches G4+ |
+| 5 | Match the Light **[2 steps]** *(match_feel · targeted · apply)* | morning → any root-position chord; dusk → any 2nd-inversion float |
+| 6 | The Shared Stone *(discover · targeted · combine)* | two different chords holding a common stone in the same row — `sharedStoneCols()` |
+| 7 | Smooth the Canyon Path *(build_constraint · targeted · compound)* | 3+ chords whose bass barely moves — `smoothBassPath(3)` (THE payoff: why inversions exist) |
+| 8 | Shadows Over the Canyon *(capstone · broad · capstone)* | loop: 3+ towers, 2+ different, 2+ turned · 🎧 famous: `bachprelude` |
+| 9 | Free Shadows 🌌 *(— · none · finale)* | free-play sandbox → completion congrats |
+
+- **Ramp note:** L7 is the musical thesis — the bass walking C5→C5→B4→C5 under I → IV⁶⁴ → V⁶ → I is the first time the game shows *why* musicians turn chords. L6 (common tones) sets it up one concept earlier.
+- **Famous reward:** `bachprelude` — Bach's **Prelude in C** (WTC I, BWV 846, 1722), the most famous chords-turning-over-a-still-bass piece ever. 1 col = 16th (`FAMOUS_TEMPO` doubled to 126 ≈ ♩63). **Owner-validated (Pavel's save-link, 2026-07-12, same version both tiers): the first FOUR bars at full length** (each 8-note half-pattern twice, 16 cols/bar) — C · Dm7/C · the G7 bar with its off-grid B3 bass read as a **C pedal** (Pavel's adaptation, keeping the four-bar arc) · C — plus a 16-col ringing tail (`cols:80`, 64 notes). My draft (bars 1/2/4 halves + a held-chord flourish) replaced. **14th Jukebox song.**
+- **Follow-ups done (2026-07-11/12):** all 11 `intro:` narration clips (L1 & L5 have 2 steps each) + the famous `credit:` clip baked via `gen-voice.mjs`; L2's intro re-baked (Polly read the all-caps "CLIMBS" as an acronym — reworded to lowercase, emphasis moved to TURNING).

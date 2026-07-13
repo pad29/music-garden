@@ -263,9 +263,9 @@
   .densitymeter .dmtrack{ height:7px; border-radius:5px; background:rgba(62,58,57,.12); overflow:hidden; margin-bottom:4px; }
   .densitymeter .dmfill{ height:100%; width:0; background:linear-gradient(90deg,var(--teal),var(--coral)); transition:width .25s; }
   .densitymeter .dmlabel{ opacity:.85; }
-  /* Off the Path: the straight ↔ swing feel switch, beside the drum pads (kept above the fold) */
-  .drumflex{ display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; }
-  .feelrow{ margin-top:10px; gap:8px; flex-direction:column; align-items:stretch; }
+  /* Off the Path: the straight ↔ swing feel switch — a slim row ABOVE the drum pads (visible without
+     scrolling, and adds no width so the sidebar stays put) */
+  .feelrow{ margin:2px 0 8px; gap:8px; align-items:center; justify-content:center; }
   .feelrow .feellabel{ font-size:.72rem; opacity:.85; }
   /* Two New Colors: a not-yet-discovered note row is shown as a visible "locked" row (striped), not invisible */
   .cell.lockednote{ background:repeating-linear-gradient(45deg,#EDE7D7,#EDE7D7 5px,#E0D9C4 5px,#E0D9C4 10px);
@@ -404,20 +404,16 @@
         <div class="hlabel">TIME →</div>
       </div>
       <div id="drumArea" style="display:none">
-        <div class="drumflex">
-          <div>
-            <div class="drumrows" id="drumrows"></div>
-            <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
-            <div id="densityMeter" class="densitymeter" style="display:none">
-              <div class="dmtrack"><div class="dmfill"></div></div>
-              <div class="dmlabel">density</div>
-            </div>
-          </div>
-          <div id="feelRow" class="feelrow" style="display:none">
-            <span class="feellabel">Feel:</span>
-            <button id="feelStraight" class="secondary toggle on">🚶 Straight</button>
-            <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
-          </div>
+        <div id="feelRow" class="feelrow" style="display:none">
+          <span class="feellabel">Feel:</span>
+          <button id="feelStraight" class="secondary toggle on">🚶 Straight</button>
+          <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
+        </div>
+        <div class="drumrows" id="drumrows"></div>
+        <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
+        <div id="densityMeter" class="densitymeter" style="display:none">
+          <div class="dmtrack"><div class="dmfill"></div></div>
+          <div class="dmlabel">density</div>
         </div>
       </div>
     </div>
@@ -1200,9 +1196,25 @@ const FAMOUS = {
          [67,34],[69,37],[72,40],[74,43],                           // "I got my man"  — rising again, still off the path
          [74,47],[76,48],[76,50],[74,52],[76,53],[74,54],[72,56]],  // "who could ask for anything more" — a pickup in the crack, then the mi-re turn settling home on do
     credit:"🕺 That's “I Got Rhythm” by George Gershwin — a song so proud of its rhythm it's named after it! Listen: every “I got…” lands just OFF the steady pulse, skipping in the cracks — exactly the trick you just learned — until the last line rushes back onto the beat. Jazz musicians still build new songs on its bones." },
+  // Shifting Shadows — voicing/inversions. Bach's Prelude in C (WTC I, BWV 846, 1722; PD). The most famous
+  // broken-chord piece ever: chords lean into new shapes over a barely-moving bass. 1 col = a 16th
+  // (FAMOUS_TEMPO doubled to compensate). Pavel's save-link version (2026-07-12, both tiers): the first
+  // FOUR bars at full length (each 8-note half-pattern twice, 16 cols/bar) — C · Dm7/C · the G7 bar with
+  // its B3 bass (below the C4 grid floor) read as a C pedal · C home again — then a 16-col ringing tail
+  // before the loop wraps (cols:80). My draft's held-chord flourish dropped; all naturals.
+  bachprelude: { title:"Prelude in C (Bach)", cols:80,
+    mel:[[60,0],[64,1],[67,2],[72,3],[76,4],[67,5],[72,6],[76,7],              // bar 1: C major — the pattern that made history
+         [60,8],[64,9],[67,10],[72,11],[76,12],[67,13],[72,14],[76,15],
+         [60,16],[62,17],[69,18],[74,19],[77,20],[69,21],[74,22],[77,23],      // bar 2: D minor 7 TURNED over the same low C
+         [60,24],[62,25],[69,26],[74,27],[77,28],[69,29],[74,30],[77,31],
+         [60,32],[62,33],[67,34],[74,35],[77,36],[67,37],[74,38],[77,39],      // bar 3: the dominant leaning over the same stone
+         [60,40],[62,41],[67,42],[74,43],[77,44],[67,45],[74,46],[77,47],
+         [60,48],[64,49],[67,50],[72,51],[76,52],[67,53],[72,54],[76,55],      // bar 4: home again — the bass never moved
+         [60,56],[64,57],[67,58],[72,59],[76,60],[67,61],[72,62],[76,63]],
+    credit:"🌅 That's the Prelude in C by Johann Sebastian Bach, written three hundred years ago — perhaps the most famous broken-chord piece on Earth. Listen to the lowest stone: it never moves, while the towers above it turn into new shapes — the same turning trick you just learned. People love it so much that another composer floated the melody “Ave Maria” right on top of it." },
 };
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
-const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156 };
+const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
@@ -1633,6 +1645,35 @@ function pickProgChoice(i){ if(!choiceOpts) return; wipe();
     setStatus(`Keep listening — hear all of them first (${left} to go).`); checkLevel(); return; }
   ev.choicePick=i; checkLevel();
   setStatus(i===choiceAnswer ? "✨ That's the one!" : "Listen again — feel which path fits."); }
+
+// ---------- Shifting Shadows: inversions & voicing (package SC-3) ----------
+// A placed triad column already names its ROOT (colChordRoot, inversion-proof). These read which "turn"
+// it stands in — whose note is on the BOTTOM — and the voice-leading payoffs that turning unlocks.
+const colBassMidi = c => { const ms=colMidisSorted(c); return ms.length?ms[0]:null; };
+function colInv(c){ const root=colChordRoot(c); if(root==null) return null;   // 0 = root on the bottom · 1 = third · 2 = fifth
+  const off=((((colBassMidi(c)%12)+12)%12-root)%12+12)%12;
+  return off===0?0 : (off===3||off===4)?1 : 2; }
+const countInv      = k  => { let n=0; for(let c=0;c<COLS;c++) if(colInv(c)===k) n++; return n; };
+const countInverted = () => { let n=0; for(let c=0;c<COLS;c++){ const i=colInv(c); if(i===1||i===2) n++; } return n; };
+const anyChordCol   = pred => { for(let c=0;c<COLS;c++) if(colChordRoot(c)!=null && pred(c)) return true; return false; };
+// the most voicings any ONE chord (same root) appears in — "the same stone, turned" counter
+function voicingsOfOneChord(){ const byRoot={};
+  for(let c=0;c<COLS;c++){ const r=colChordRoot(c); if(r==null) continue;
+    (byRoot[r]=byRoot[r]||new Set()).add(colMidisSorted(c).join("-")); }
+  let best=0; Object.values(byRoot).forEach(s=>{ if(s.size>best) best=s.size; }); return best; }
+// two NEIGHBOURING chords (in column order), different roots, holding a shared stone in the same row
+function sharedStoneCols(){ const cols=[]; for(let c=0;c<COLS;c++) if(colChordRoot(c)!=null) cols.push(c);
+  for(let i=1;i<cols.length;i++){ const a=cols[i-1], b=cols[i];
+    if(colChordRoot(a)===colChordRoot(b)) continue;
+    const ma=new Set(colMidisSorted(a)); if(colMidisSorted(b).some(m=>ma.has(m))) return true; }
+  return false; }
+// the voice-leading payoff: 3+ chords (2+ different) whose BASS never moves more than a whole step
+function smoothBassPath(minChords){ const seq=[];
+  for(let c=0;c<COLS;c++) if(colChordRoot(c)!=null) seq.push({bass:colBassMidi(c), root:colChordRoot(c)});
+  if(seq.length<(minChords||3)) return false;
+  if(new Set(seq.map(x=>x.root)).size<2) return false;
+  for(let i=1;i<seq.length;i++) if(Math.abs(seq[i].bass-seq[i-1].bass)>2) return false;
+  return true; }
 
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
@@ -2127,6 +2168,80 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
          {id:"pl",label:"Press ▶ for the restless song",play:true}]},
  {name:"Free Tension 🌶️", loop:true, power:{em:"💎",name:"Free Tension",line:"This restless shrine is yours to explore."},
   intro:"You've mastered the pull of tension 🌶️. This shrine is yours now — clash, spook, soothe, and resolve however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"shifting-shadows":{ id:"shifting-shadows", name:"🌒 Shifting Shadows", topic:"harmony-voicing", region:"stone-chorus-canyon",
+  palette:"diatonic", desc:"Turn the canyon towers — the same chord can stand square, lean light, or float.",
+  requires:["two-new-colors","standing-towers"], version:1, author:"official", levels:[
+ // Rows (diatonic, row 0 = B5 … row 13 = C4): C root [13,11,9] · 1st turn [11,9,6] · 2nd turn [9,6,4]
+ // · C high [6,4,2] · IV 2nd inv [6,3,1] · V 1st inv [7,5,2] · vi root [8,6,4]
+ {name:"Turn the Stone", power:{em:"🔄",name:"First Turn",line:"You can turn a chord without breaking it."},
+  teach:"Restacking a chord's notes is an 'inversion' — the same chord with a new bottom note.", steps:[
+   {setup:()=>placeProg([[[13,11,9],6]]),
+    hint:()=>{ placeProg([[[11,9,6],6]]); checkLevel(); },
+    intro:"The canyon stones can TURN 🗿. Here stands a tower on its own root. Take its LOWEST stone and replant it an octave HIGHER, at the top of the stack — same three stones, new balance.",
+    goals:[{id:"t1",label:"Turn the tower once (old bottom stone on top)",chk:()=>anyChordCol(c=>colChordRoot(c)===0&&colInv(c)===1)},
+           {id:"pl",label:"Press ▶ to hear the turned tower",play:true}]},
+   {setup:()=>placeProg([[[11,9,6],6]]),
+    hint:()=>{ placeProg([[[9,6,4],6]]); checkLevel(); },
+    intro:"Turn it AGAIN — lift the new lowest stone an octave too. Now the tower balances on its other shoulder, lighter still.",
+    goals:[{id:"t2",label:"Turn the tower a second time",chk:()=>anyChordCol(c=>colChordRoot(c)===0&&colInv(c)===2)},
+           {id:"pl",label:"Press ▶ to hear the second turn",play:true}]},
+ ]},
+ {name:"Full Circle", power:{em:"🌀",name:"Full Circle",line:"You can climb a chord through all its turns."},
+  hint:()=>{ placeProg([[[13,11,9],2],[[11,9,6],6],[[9,6,4],10],[[6,4,2],14]]); checkLevel(); },
+  intro:"Keep TURNING and the tower climbs 🌀 — plant the SAME chord three different ways, side by side, each turn a little higher. Then play the staircase you built.",
+  teach:"Each inversion sits a little higher — three turns bring the same chord back, one floor up.",
+  goals:[{id:"v3",label:"The same chord standing three different ways",chk:()=>voicingsOfOneChord()>=3},
+         {id:"pl",label:"Press ▶ to climb the staircase",play:true}]},
+ {name:"Grounded or Floating?",
+  setup:()=>showPairChoices([[13,11,9],[11,9,6],[9,6,4]],0,
+    "Tap each tower to hear it — listen to <b>all three</b> — then pick the most GROUNDED one.","🗿 Tower "),
+  power:{em:"👂",name:"Balance Ear",line:"You can hear which way a chord is standing."},
+  intro:"Three towers hold the very same stones 👂 — but each stands on a different one. Tap and hear ALL of them: one plants its feet square on its own name, the others lean lighter. Pick the most GROUNDED.",
+  teach:"A chord standing on its root sounds the most grounded; on its other notes it leans or floats.",
+  goals:[{id:"pick",label:"Hear all three towers, then pick the grounded one",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Lighten the Tower", power:{em:"🦋",name:"Featherweight",line:"You can lighten a tower without changing its name."},
+  setup:()=>placeProg([[[13,11,9],4]]),
+  hint:()=>{ placeProg([[[9,6,4],4]]); checkLevel(); },
+  intro:"The canyon moths can't cross — this tower's shadow is too heavy 🦋. TURN it upward, lifting the low stones an octave at a time, until every stone sits high and the shadow shrinks.",
+  teach:"Turning a chord upward is 'revoicing' — same chord, lighter weight.",
+  goals:[{id:"lift",label:"Lift the tower until its lowest stone reaches G4 or higher",chk:()=>anyChordCol(c=>colBassMidi(c)>=67)},
+         {id:"pl",label:"Press ▶ to let the moths cross",play:true}]},
+ {name:"Match the Light", power:{em:"🎨",name:"Light Painter",line:"You can pick a voicing to match a mood."},
+  teach:"Voicing is a mood tool — the very same chord can stand firm or hover.", steps:[
+   {hint:()=>{ placeProg([[[13,11,9],6]]); checkLevel(); },
+    intro:"Morning light wants a GROUNDED tower 🌅 — build any chord that stands square on its own root note.",
+    goals:[{id:"g",label:"A tower standing on its root",chk:()=>countInv(0)>=1},
+           {id:"pl",label:"Press ▶ to greet the morning",play:true}]},
+   {hint:()=>{ placeProg([[[9,6,4],6]]); checkLevel(); },
+    intro:"Dusk wants a FLOATING one 🌆 — build a chord turned twice, balancing on its fifth, light as a firefly.",
+    goals:[{id:"f",label:"A tower floating on its fifth (turned twice)",chk:()=>countInv(2)>=1},
+           {id:"pl",label:"Press ▶ to light the dusk",play:true}]},
+ ]},
+ {name:"The Shared Stone", power:{em:"🤝",name:"Shared Stone",line:"You can make two chords hold hands."},
+  hint:()=>{ placeProg([[[6,4,2],4],[[8,6,4],8]]); checkLevel(); },
+  intro:"Two towers can hold the SAME stone 🤝 — plant two DIFFERENT chords side by side that keep one stone in the very same row. The shared stone never has to move.",
+  teach:"Neighbour chords often share a note — inversions let it stay put while the harmony changes.",
+  goals:[{id:"share",label:"Two different chords sharing a stone in the same row",chk:()=>sharedStoneCols()},
+         {id:"pl",label:"Press ▶ to hear them hold hands",play:true}]},
+ {name:"Smooth the Canyon Path", power:{em:"🛤️",name:"Smooth Steps",line:"You can walk chords without the ground jumping."},
+  hint:()=>{ placeProg([[[6,4,2],2],[[6,3,1],6],[[7,5,2],10],[[6,4,2],14]]); checkLevel(); },
+  intro:"Walk the canyon path 🛤️ — plant three or more chords whose LOWEST stones barely move from column to column, a tiny step or none at all. Turn each chord until its bottom lines up.",
+  teach:"This is why musicians invert chords — so the bass can walk smoothly instead of leaping.",
+  goals:[{id:"smooth",label:"3+ chords (2+ different) with a smooth, barely-moving bottom",chk:()=>smoothBassPath(3)},
+         {id:"pl",label:"Press ▶ to walk the path",play:true}]},
+ {name:"Shadows Over the Canyon", loop:true, famous:"bachprelude", intent:"How does the light fall across your canyon?",
+  power:{em:"🌒",name:"Shadow Shaper",line:"You can shape a whole canyon of turning light."},
+  hint:()=>{ placeProg([[[6,4,2],2],[[6,3,1],6],[[7,5,2],10],[[6,4,2],14]]); checkLevel(); },
+  intro:"Now shape the whole canyon 🌒 — a looping song of three or more towers, at least two of them TURNED, so the light plays differently across every shadow. Loop it and watch the canyon glow.",
+  goals:[{id:"ch",label:"3+ towers, at least 2 different chords",chk:()=>chordSyms().length>=3&&distinctChordCount()>=2},
+         {id:"inv",label:"At least 2 of them turned (inverted)",chk:()=>countInverted()>=2},
+         {id:"pl",label:"Press ▶ to set the shadows shifting",play:true}]},
+ {name:"Free Shadows 🌌", loop:true,
+  hint:()=>{ placeProg([[[6,4,2],2],[[6,3,1],6],[[7,5,2],10],[[6,4,2],14]]); checkLevel(); },
+  power:{em:"🌌",name:"Free Shadows",line:"The turning canyon is yours, sunrise to shadow."},
+  intro:"The shadows turn on their own now 🌌. The canyon is yours — stack, turn, float, and ground your towers however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
 "standing-towers":{ id:"standing-towers", name:"🏛️ Standing Towers", topic:"harmony-triads", region:"stone-chorus-canyon",
@@ -3464,7 +3579,7 @@ function mhint(text,top){ const e=document.createElement("div"); e.className="hi
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
 // versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
-const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","pachelbel","bodiddley","charleston"];
+const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","bachprelude","pachelbel","bodiddley","charleston"];
 function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
 function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
   const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));
