@@ -402,6 +402,10 @@
           </div>
         </div>
         <div class="hlabel">TIME →</div>
+        <div id="wobbleMeter" class="densitymeter" style="display:none">
+          <div class="dmtrack"><div class="dmfill"></div></div>
+          <div class="dmlabel">weather</div>
+        </div>
       </div>
       <div id="drumArea" style="display:none">
         <div id="feelRow" class="feelrow" style="display:none">
@@ -1212,9 +1216,35 @@ const FAMOUS = {
          [60,48],[64,49],[67,50],[72,51],[76,52],[67,53],[72,54],[76,55],      // bar 4: home again — the bass never moved
          [60,56],[64,57],[67,58],[72,59],[76,60],[67,61],[72,62],[76,63]],
     credit:"🌅 That's the Prelude in C by Johann Sebastian Bach, written three hundred years ago — perhaps the most famous broken-chord piece on Earth. Listen to the lowest stone: it never moves, while the towers above it turn into new shapes — the same turning trick you just learned. People love it so much that another composer floated the melody “Ave Maria” right on top of it." },
+  // Soft Wobble — graded tension. "Chopsticks" (The Celebrated Chop Waltz, Euphemia Allen, 1877; PD).
+  // The most famous WOBBLE in music: a soft whole-step shimmer (F+G) struck over and over, melting by
+  // grades — a bright 3rd, an open 6th, home to a calm octave. Dissonance resolving by degrees = this
+  // package's lesson, verbatim. 3/4 waltz, 1 col = 8th so a quarter strike = 2 cols.
+  // Pavel's score-checked save-link version (2026-07-14), TWO-TIER: JUKEBOX = the full first section,
+  // two passes — the first ends in the classic turnaround (octave ×4, then D+B → E+A walking back in),
+  // the second closes properly (one final octave, then a descending G–E–C walk home). CAPSTONE (top
+  // level) = the second pass alone, ending with the true cadence.
+  chopsticks: { title:"Chopsticks", cols:48,
+    mel:[[65,0],[67,0],[65,2],[67,2],[65,4],[67,4],[65,6],[67,6],[65,8],[67,8],[65,10],[67,10],          // F+G — the famous SOFT wobble, six strikes
+         [64,12],[67,12],[64,14],[67,14],[64,16],[67,16],[64,18],[67,18],[64,20],[67,20],[64,22],[67,22], // E+G — the wobble melts into a bright 3rd
+         [62,24],[71,24],[62,26],[71,26],[62,28],[71,28],[62,30],[71,30],[62,32],[71,32],[62,34],[71,34], // D+B — wider still, an open calm 6th
+         [60,36],[72,36],                                                                                 // C+C — home: a perfectly still octave…
+         [67,38],[64,40],[60,42]],                                                                        // …and the closing walk down: G, E, C
+    jukebox:{ cols:100,
+      mel:[[65,0],[67,0],[65,2],[67,2],[65,4],[67,4],[65,6],[67,6],[65,8],[67,8],[65,10],[67,10],         // pass 1: F+G shimmer ×6
+           [64,12],[67,12],[64,14],[67,14],[64,16],[67,16],[64,18],[67,18],[64,20],[67,20],[64,22],[67,22], // E+G ×6
+           [62,24],[71,24],[62,26],[71,26],[62,28],[71,28],[62,30],[71,30],[62,32],[71,32],[62,34],[71,34], // D+B ×6
+           [60,36],[72,36],[60,38],[72,38],[60,40],[72,40],[60,42],[72,42],                                 // C+C octave ×4…
+           [62,44],[71,44],[64,46],[69,46],                                                                 // …then the turnaround: D+B, E+A walk back in
+           [65,48],[67,48],[65,50],[67,50],[65,52],[67,52],[65,54],[67,54],[65,56],[67,56],[65,58],[67,58], // pass 2: F+G ×6
+           [64,60],[67,60],[64,62],[67,62],[64,64],[67,64],[64,66],[67,66],[64,68],[67,68],[64,70],[67,70], // E+G ×6
+           [62,72],[71,72],[62,74],[71,74],[62,76],[71,76],[62,78],[71,78],[62,80],[71,80],[62,82],[71,82], // D+B ×6
+           [60,84],[72,84],                                                                                 // one final octave…
+           [67,86],[64,88],[60,90]] },                                                                      // …and the walk home: G, E, C
+    credit:"🥢 That's Chopsticks — the first tune half the world ever learns to play! Listen to what it is made of: one SOFT wobble, two notes rubbing shoulders, struck again and again — and then the wobble melts, step by step, wider and wider, all the way home to a perfectly calm octave. A whole famous song built from a single softening shimmer." },
 };
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
-const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
+const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126, chopsticks:132 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
@@ -1674,6 +1704,38 @@ function smoothBassPath(minChords){ const seq=[];
   if(new Set(seq.map(x=>x.root)).size<2) return false;
   for(let i=1;i<seq.length;i++) if(Math.abs(seq[i].bass-seq[i-1].bass)>2) return false;
   return true; }
+
+// ---------- Soft Wobble, Strong Wobble: graded tension (package SC-4) ----------
+// Extends the binary stand/wobble (and Twin Blooms Plus' tense/restful) into a 4-grade WEATHER scale,
+// by interval class: 0 still (3rds/4th/5th/6ths/octave) · 1 shimmer (a whole step, 2nd/7th) ·
+// 2 restless (the tritone) · 3 storm (a half step — the sharpest clash). A column's grade = its
+// roughest pair, so chords grade too (C-D-E → shimmer; anything with B+C in it → storm).
+function wobbleOfGap(g){ const ic=((g%12)+12)%12;
+  return (ic===1||ic===11)?3 : ic===6?2 : (ic===2||ic===10)?1 : 0; }
+function colWobble(c){ const ms=colMidisSorted(c); if(ms.length<2) return null;
+  let w=0; for(let i=0;i<ms.length;i++) for(let j=i+1;j<ms.length;j++) w=Math.max(w,wobbleOfGap(ms[j]-ms[i]));
+  return w; }
+const wobbleSeq       = () => { const s=[]; for(let c=0;c<COLS;c++){ const w=colWobble(c); if(w!=null) s.push(w); } return s; };
+const countWobbleCols = k  => wobbleSeq().filter(w=>w===k).length;
+const maxWobble       = () => Math.max(-1,...wobbleSeq());
+const wobbleGrades    = () => new Set(wobbleSeq()).size;
+// a rising storm: 3+ different grades, and the sequence never drops
+const wobbleLadder = () => { const s=wobbleSeq(); if(new Set(s).size<3 || s.length<3) return false;
+  for(let i=1;i<s.length;i++) if(s[i]<s[i-1]) return false; return true; };
+// all FOUR grades climbed in order without ever dropping — the careful approach to the storm beast
+const gentleApproach = () => wobbleLadder() && new Set(wobbleSeq()).size===4;
+// the release: a restless/storm column later settles to a still one
+const stormThenCalm = () => { const s=wobbleSeq(); let hi=-1;
+  for(let i=0;i<s.length;i++) if(s[i]>=2){ hi=i; break; }
+  return hi>=0 && s.slice(hi+1).some(w=>w===0); };
+// the weather glass — a live gauge under the field (reuses the density meter's look)
+const WOBBLE_WORDS=["still 🪞","shimmer 🌊","restless 🌀","storm ⛈️"];
+function setWobbleMeter(on){ const m=document.getElementById("wobbleMeter"); if(!m) return;
+  m.style.display = on ? "" : "none"; if(on) updateWobbleMeter(); }
+function updateWobbleMeter(){ const m=document.getElementById("wobbleMeter"); if(!m||m.style.display==="none") return;
+  const w=maxWobble(), lvl=Math.max(0,w);
+  m.querySelector(".dmfill").style.width=(w<0?0:(lvl+1)/4*100)+"%";
+  m.querySelector(".dmlabel").textContent="weather: "+(w<0?"silent":WOBBLE_WORDS[lvl]); }
 
 // PACKAGES: a flat catalog keyed by STABLE string id; dependencies form a DAG via `requires`.
 // (node shape: { id, name, topic, desc, requires:[ids], version, author?, levels:[…content…] })
@@ -2242,6 +2304,83 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   hint:()=>{ placeProg([[[6,4,2],2],[[6,3,1],6],[[7,5,2],10],[[6,4,2],14]]); checkLevel(); },
   power:{em:"🌌",name:"Free Shadows",line:"The turning canyon is yours, sunrise to shadow."},
   intro:"The shadows turn on their own now 🌌. The canyon is yours — stack, turn, float, and ground your towers however you like, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
+"soft-wobble-strong-wobble":{ id:"soft-wobble-strong-wobble", name:"🌩️ Soft Wobble, Strong Wobble", topic:"harmony-tension-grades", region:"stone-chorus-canyon",
+  palette:"diatonic", desc:"The canyon's weather shrine — tension comes in grades, from shimmer to storm, and you command them all.",
+  requires:["two-new-colors","twin-blooms-plus"], version:1, author:"official", levels:[
+ // Row shorthand (diatonic, row 0 = B5 … row 13 = C4): calm C4+G4 [13,9] · shimmer F4+G4 [10,9]
+ // · restless F4+B4 [10,7] · storm B4+C5 [7,6]. The weather glass (wobble:true) grades every column live.
+ {name:"Still Water, First Ripple", wobble:true, power:{em:"🌊",name:"Shimmer",line:"You can stir the stillness — a little."},
+  teach:"Notes a whole step apart shimmer gently — the mildest grade of tension.", steps:[
+   {hint:()=>{ setMelody([[13,4],[9,4]]); checkLevel(); },
+    intro:"The shrine pool is glass-still 🪞 — plant two notes in ONE column that sit far apart in perfect calm, like C and G. The weather glass under the field stays low.",
+    goals:[{id:"calm",label:"A perfectly still pair (one column, wide apart)",chk:()=>countWobbleCols(0)>=1},
+           {id:"pl",label:"Press ▶ to hear the stillness",play:true}]},
+   {hint:()=>{ setMelody([[10,4],[9,4]]); checkLevel(); },
+    intro:"Now stir the water 🌊 — plant two notes one whole step apart, like F with G, in one column. Feel the SOFT wobble — a shimmer, not a storm.",
+    goals:[{id:"soft",label:"A soft wobble (two notes a whole step apart)",chk:()=>countWobbleCols(1)>=1},
+           {id:"pl",label:"Press ▶ to feel the shimmer",play:true}]},
+ ]},
+ {name:"Restless and Storm", wobble:true, power:{em:"⛈️",name:"Storm Grades",line:"You can tell a restless wobble from a full storm."},
+  teach:"The smaller the gap, the sharper the wobble — half steps storm the hardest.", steps:[
+   {hint:()=>{ setMelody([[10,4],[7,4]]); checkLevel(); },
+    intro:"Some wobbles are stronger 🌀 — plant F together with B, the restless tritone, and watch the weather glass rise.",
+    goals:[{id:"rest",label:"The restless wobble (F with B)",chk:()=>countWobbleCols(2)>=1},
+           {id:"pl",label:"Press ▶ to feel it churn",play:true}]},
+   {hint:()=>{ setMelody([[7,4],[6,4]]); checkLevel(); },
+    intro:"And the strongest of all ⛈️ — two notes just a half step apart, like B with C, or E with F. A full STORM in one column.",
+    goals:[{id:"storm",label:"A full storm (two notes a half step apart)",chk:()=>countWobbleCols(3)>=1},
+           {id:"pl",label:"Press ▶ to hear the storm",play:true}]},
+ ]},
+ {name:"The Rising Storm", wobble:true, power:{em:"📈",name:"Storm Riser",line:"You can build tension grade by grade."},
+  hint:()=>{ setMelody([[13,1],[9,1],[10,5],[9,5],[7,9],[6,9]]); checkLevel(); },
+  intro:"A storm never starts at full force 📈 — build a rising line of wobbles, three grades or more, each column at least as restless as the one before.",
+  teach:"Tension has grades — music climbs them to build excitement.",
+  goals:[{id:"rise",label:"A rising storm: 3+ grades, never dropping",chk:()=>wobbleLadder()},
+         {id:"pl",label:"Press ▶ to feel it build",play:true}]},
+ {name:"Pick the Soft Wobble", wobble:true,
+  setup:()=>showPairChoices([[13,9],[10,9],[11,10]],1,
+    "Tap each wobble to hear it — listen to <b>all three</b> — then pick the SOFT shimmer.","🌊 Wobble "),
+  power:{em:"👂",name:"Weather Ear",line:"You can hear how strong a wobble is."},
+  intro:"Three wobbles wait in the shrine 👂 — tap and hear ALL of them. One is perfectly still, one storms at full force — pick the SOFT shimmer in between.",
+  teach:"Grading tension by ear is how composers choose exactly how much unease to pour in.",
+  goals:[{id:"pick",label:"Hear all three, then pick the soft wobble",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Match the Weather", wobble:true, power:{em:"🎭",name:"Weather Painter",line:"You can order up any weather on demand."},
+  teach:"Choosing a GRADE of tension — not just tense or calm — is expressive control.", steps:[
+   {hint:()=>{ setMelody([[10,4],[9,4]]); checkLevel(); },
+    intro:"The shrine keeper asks for morning mist 🌫️ — weather that shimmers softly and never rises past a shimmer.",
+    goals:[{id:"mist",label:"A shimmer, and nothing stronger",chk:()=>countWobbleCols(1)>=1&&maxWobble()<=1},
+           {id:"pl",label:"Press ▶ to drift the mist",play:true}]},
+   {hint:()=>{ setMelody([[11,4],[10,4]]); checkLevel(); },
+    intro:"Now the storm drum calls ⛈️ — give it a REAL storm, the sharpest wobble you know.",
+    goals:[{id:"st",label:"A full storm column",chk:()=>countWobbleCols(3)>=1},
+           {id:"pl",label:"Press ▶ to summon it",play:true}]},
+ ]},
+ {name:"Tame the Storm", wobble:true, power:{em:"🕊️",name:"Storm Tamer",line:"You can soften a storm without silencing it."},
+  setup:()=>setMelody([[11,0],[9,2],[7,6],[6,6],[6,10]]),
+  hint:()=>{ setMelody([[11,0],[9,2],[7,6],[8,6],[6,10]]); checkLevel(); },
+  intro:"A storm is stuck over the shrine 🕊️ — one column clashes at full force. Soften it to a gentle shimmer (move a stone so the gap widens to a whole step). Tame it — don't silence it.",
+  teach:"Composers rarely delete tension — they soften it by degrees.",
+  goals:[{id:"tame",label:"No storms left (nothing stronger than a shimmer)",chk:()=>{ const m=maxWobble(); return m>=0&&m<=1; }},
+         {id:"keep",label:"Keep a shimmer alive (soften, not silence)",chk:()=>countWobbleCols(1)>=1},
+         {id:"pl",label:"Press ▶ to hear the weather clear",play:true}]},
+ {name:"Wake the Storm Beast", wobble:true, power:{em:"🐉",name:"Gentle Approach",line:"You can climb every grade of tension without a stumble."},
+  hint:()=>{ setMelody([[13,1],[9,1],[10,5],[9,5],[10,9],[7,9],[7,13],[6,13]]); checkLevel(); },
+  intro:"The storm beast sleeps 🐉 — wake it GENTLY: climb ALL four grades in order, still to shimmer to restless to storm, never dropping a step on the way up.",
+  goals:[{id:"climb",label:"All four grades, climbing in order",chk:()=>gentleApproach()},
+         {id:"pl",label:"Press ▶ to wake the beast",play:true}]},
+ {name:"The Weather Shrine", wobble:true, loop:true, famous:"chopsticks", intent:"What weather moves through your shrine?",
+  power:{em:"🌦️",name:"Weather Keeper",line:"You can send whole weather through a song."},
+  hint:()=>{ setMelody([[13,0],[9,0],[10,4],[9,4],[7,8],[6,8],[11,12],[6,12]]); checkLevel(); },
+  intro:"The Weather Shrine wants a whole sky 🌦️ — send at least three different grades of weather through it, and let the storm PASS: after the roughest column, end in stillness. Loop it and watch the weather roll.",
+  goals:[{id:"sky",label:"3+ different grades of weather",chk:()=>wobbleGrades()>=3},
+         {id:"pass",label:"The storm passes (rough weather settles to still)",chk:()=>stormThenCalm()},
+         {id:"pl",label:"Press ▶ to roll the weather",play:true}]},
+ {name:"Free Weather ⛈️", wobble:true, loop:true,
+  hint:()=>{ setMelody([[13,0],[9,0],[10,4],[9,4],[7,8],[6,8],[11,12],[6,12]]); checkLevel(); },
+  power:{em:"🌈",name:"Free Weather",line:"The shrine's sky is yours — still, shimmer, or storm."},
+  intro:"The shrine keeps its own weather now 🌈. The sky is yours — stir shimmers, raise storms, calm them again, no goals, just play. Head 🏡 Home whenever you want a new world.",
   goals:[]},
 ]},
 "standing-towers":{ id:"standing-towers", name:"🏛️ Standing Towers", topic:"harmony-triads", region:"stone-chorus-canyon",
@@ -3018,7 +3157,7 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
-  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel UI
+  clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
@@ -3081,6 +3220,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setMood(st.mood || L.mood || null);                                    // sun (C major / bright) or moon (A minor / wistful) field wash (Sun & Moon Garden)
   setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
   setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
+  setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
@@ -3100,6 +3240,7 @@ function populateDevJump(){ const bar=document.getElementById("devbar"); if(!bar
   sel.value=levelIdx;
 }
 function checkLevel(){
+  updateWobbleMeter();                                             // the weather glass tracks every edit (no-op when hidden)
   const st=curStage(), s=gridState(), goals=st.goals||[];
   // a "play:true" goal only counts once every OTHER goal is done AND Play was pressed (after the last edit)
   const othersDone=goals.filter(g=>!g.play).every(g=>g.chk(s,ev));
@@ -3579,7 +3720,7 @@ function mhint(text,top){ const e=document.createElement("div"); e.className="hi
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
 // versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
-const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","bachprelude","pachelbel","bodiddley","charleston"];
+const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","bachprelude","chopsticks","pachelbel","bodiddley","charleston"];
 function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
 function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
   const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));

@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-07-11 — **18 packages are BUILT** (through all of Weather of Wanting + Sun & Moon Garden + tiny-motifs + off-the-path + shifting-shadows); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-07-13 — **19 packages are BUILT** (every Wave A–D package except `two-kinds-of-walking`; Stone Chorus Canyon and Wave C are COMPLETE); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -135,7 +135,7 @@ Tag every rhythm-touching package with the tier it needs.
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
 | 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **3 built** (footsteps, wind-and-gaps, off-the-path); `two-kinds-of-walking` remains |
-| 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **4 built** (twin-blooms, standing-towers, twin-blooms-plus, shifting-shadows); `soft-wobble-strong-wobble` [SC-4] remains |
+| 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **5 built — COMPLETE** (twin-blooms, standing-towers, twin-blooms-plus, shifting-shadows, soft-wobble-strong-wobble) |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
 | 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
 | 6 | 🌗 **The Twin Gardens** | Color / mood | diatonic | **1 built** (sun-and-moon-garden — *moved here from the planned "Color Caverns"; each map region needs a land, and major/minor mood earned its own twin-biome region*) |
@@ -155,7 +155,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅, off-the-path ✅ · remaining: two-kinds-of-walking
 - **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
 - **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
-- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅, shifting-shadows ✅ · remaining: soft-wobble-strong-wobble
+- **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅, shifting-shadows ✅, soft-wobble-strong-wobble ✅ — **COMPLETE**
 - **Wave D — Color** *(diatonic→chromatic):* sun-and-moon-garden ✅ (shipped early — it needed only the mood system, and gives the diatonic arc an emotional payoff) · remaining: secret-doors, mist-paths
 - **Wave E — Weaving & Story** *(needs multi-voice + section systems):* deep-roots-high-birds, lantern-chorus, rain-and-sun, rooms-and-paths, return-of-the-meadow
 - **Bridge style worlds** *(optional):* campfire-trails, city-lights
@@ -313,13 +313,15 @@ Tag every rhythm-touching package with the tier it needs.
 - **Famous reward:** `bachprelude` — Bach's Prelude in C (BWV 846): chords turning over a barely-moving bass. **Owner-validated (Pavel's save-link, 2026-07-12): first four bars at full length**, the G7 bar's off-grid B3 bass read as a C pedal. **14th Jukebox song.**
 - **Why:** musically deep yet beautifully tactile/visual.
 
-#### `soft-wobble-strong-wobble` — Soft Wobble, Strong Wobble  [SC-4]
+#### `soft-wobble-strong-wobble` — Soft Wobble, Strong Wobble  [SC-4]  — **BUILT ✅ (2026-07-13)** *(as-built spec in PACKAGES-DETAILED §18)*
 - **Capability:** use *degrees* of instability on purpose.
-- **Theory:** consonance–dissonance gradation. **Palette:** diatonic→chromatic *(real gradation needs semitones)*. **Prereqs:** two-new-colors, twin-blooms, standing-towers.
-- **Patterns:** match_feel, compare, build_constraint, repair. **Success:** broad/targeted.
-- **Quest:** *Weather shrines* respond to tension level; wake storm creatures carefully.
-- **Sandbox:** tension meter; wobble visualizations; shimmer/unease/storm prompts.
-- **System needs (M):** tension-magnitude model (extends intro stand/wobble from binary to a scale).
+- **Theory:** consonance–dissonance gradation (4 grades: still · shimmer · restless · storm). **Palette:** diatonic *(the B/F semitones give the full ladder)*. **Prereqs:** *(as built)* two-new-colors, twin-blooms-plus — the tension intro (tritone/clash) comes from twin-blooms-plus, this package grades it.
+- **⚠️ TODO (chromatic era):** on the 7-row diatonic field, half steps and whole steps are both *adjacent rows* — the grades sound different but look the same. Revisit/upgrade this package on the future **12-note chromatic field**, where the ladder becomes visible, not just audible (owner note, 2026-07-13).
+- **Patterns:** discover, match_feel, compare, build_constraint, repair, capstone. **Success:** broad/targeted.
+- **Quest:** *The canyon's Weather Shrine* responds to tension grade; wake the storm beast carefully (climb all four grades without dropping). 5th canyon package — completes Stone Chorus Canyon.
+- **Sandbox:** the **weather glass** (live tension gauge under the field, `wobble:true` flag) stays on in the capstone + finale.
+- **System needs (M) — built:** the tension-magnitude model — `wobbleOfGap` (interval class → grade 0–3), `colWobble` (a column's roughest pair, so chords grade too), sequence detectors `wobbleLadder`/`gentleApproach`/`stormThenCalm`, and the gauge UI.
+- **Famous reward:** `chopsticks` — The Celebrated Chop Waltz (1877): the world's most famous soft wobble, melting by grades into a calm octave. **Owner-validated (Pavel's save-link, 2026-07-14), two-tier: full first section in the Jukebox (15th song), the second pass with the true ending on the capstone.**
 - **Why:** the bridge from "shape" to "function."
 
 #### `pull-of-the-moon` — Pull of the Moon  [WW-3]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §11)*

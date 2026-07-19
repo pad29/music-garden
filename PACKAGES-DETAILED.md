@@ -372,7 +372,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 14. Build order & dependencies — 17 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-11)
+## 14. Build order & dependencies — 18 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-13)
 
 Build history (alternating melody/rhythm/harmony to avoid fatigue):
 
@@ -393,12 +393,13 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 15. **tiny-motifs** ✅ 2026-07-05 (motif repetition/variation/inversion — the window model; completes Paths of Song) — *spec in §15 below*
 16. **off-the-path** ✅ 2026-07-09 (syncopation, the push, off-beat melody, swing feel — 3rd Pulse Woods package) — *spec in §16 below*
 17. **shifting-shadows** ✅ 2026-07-11 (inversions/revoicing, common tones, smooth bass — 4th Stone Chorus Canyon package, Geo's final form) — *spec in §17 below*
+18. **soft-wobble-strong-wobble** ✅ 2026-07-13 (graded tension: the 4-grade weather scale + the weather glass — 5th canyon package, completes Stone Chorus Canyon and Wave C) — *spec in §18 below*
 
-**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus**; (stepping-stones + Q&A) → **tiny-motifs**; (two-new-colors + standing-towers) → **shifting-shadows**.
+**DAG as built** (runtime truth = `PACKAGES[*].requires` in `index.html`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus** → (+ two-new-colors) → **soft-wobble-strong-wobble**; (stepping-stones + Q&A) → **tiny-motifs**; (two-new-colors + standing-towers) → **shifting-shadows**.
 
 Reusable systems unlocked along the way: **compare pickers** (fireflies → melodies; twin-blooms → pairs/chords; footsteps → drums; wind-and-gaps → full patterns; river-turns → progressions) — the recognition pattern now spans every domain; **phrase A/B split** (Q&A) → reused by ways-home; **chord-progression machinery** (river-turns) → reused by pull-of-the-moon + false-doors and ready for Region 6+; **mood wash** (sun-and-moon) → ready for modal "atmosphere world" packages; **🎧 famous-example rewards** on capstones (see DESIGN §10) → every future package should ship with one.
 
-**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (Wave A leftover — needs a real meter change, the heaviest remaining Wave-A item); `soft-wobble-strong-wobble` (the last Wave C leftover); then the system-gated waves (duration editor / multi-voice / sections / styles).
+**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (the last Wave A/C leftover — needs a real meter change); `secret-doors`/`mist-paths` (Wave D — need chromatic/modal palettes); then the system-gated waves (duration editor / multi-voice / sections / styles).
 
 ---
 
@@ -475,3 +476,29 @@ Reusable systems unlocked along the way: **compare pickers** (fireflies → melo
 - **Ramp note:** L7 is the musical thesis — the bass walking C5→C5→B4→C5 under I → IV⁶⁴ → V⁶ → I is the first time the game shows *why* musicians turn chords. L6 (common tones) sets it up one concept earlier.
 - **Famous reward:** `bachprelude` — Bach's **Prelude in C** (WTC I, BWV 846, 1722), the most famous chords-turning-over-a-still-bass piece ever. 1 col = 16th (`FAMOUS_TEMPO` doubled to 126 ≈ ♩63). **Owner-validated (Pavel's save-link, 2026-07-12, same version both tiers): the first FOUR bars at full length** (each 8-note half-pattern twice, 16 cols/bar) — C · Dm7/C · the G7 bar with its off-grid B3 bass read as a **C pedal** (Pavel's adaptation, keeping the four-bar arc) · C — plus a 16-col ringing tail (`cols:80`, 64 notes). My draft (bars 1/2/4 halves + a held-chord flourish) replaced. **14th Jukebox song.**
 - **Follow-ups done (2026-07-11/12):** all 11 `intro:` narration clips (L1 & L5 have 2 steps each) + the famous `credit:` clip baked via `gen-voice.mjs`; L2's intro re-baked (Polly read the all-caps "CLIMBS" as an acronym — reworded to lowercase, emphasis moved to TURNING).
+
+---
+
+## 18. `soft-wobble-strong-wobble` — Soft Wobble, Strong Wobble  [SC-4]  ✅ BUILT (2026-07-13) — DIATONIC · graded tension
+
+- **Region / cluster:** Stone Chorus Canyon / shape · **Palette:** **diatonic** · **Prereqs:** *(as built)* two-new-colors, twin-blooms-plus — 5th canyon package, **completes Stone Chorus Canyon and Wave C** (Geo stays at his final form; `regionStage` clamps).
+- **Fantasy:** "The canyon's Weather Shrine — tension comes in grades, from shimmer to storm, and you command them all." Wake the storm beast carefully.
+- **Capability:** use *degrees* of instability on purpose. **Hidden theory:** consonance–dissonance gradation, graded by interval class into a 4-step weather scale — **0 still** (3rds/4th/5th/6ths/octave) · **1 shimmer** (whole step: M2/m7) · **2 restless** (tritone) · **3 storm** (half step: m2/M7).
+- **New systems (M):** the **tension-magnitude model** — `wobbleOfGap(g)` (interval class → grade), `colWobble(c)` (a column's roughest pair, so triads grade too: C-D-E → shimmer, anything containing B+C → storm), `wobbleSeq`/`countWobbleCols`/`maxWobble`/`wobbleGrades`; sequence detectors `wobbleLadder()` (3+ grades, never dropping), `gentleApproach()` (all four grades in rising order), `stormThenCalm()` (rough weather later settles to still). Plus the **weather glass** — a live gauge under the pitch field (`wobble:true` flag; reuses the density meter's CSS; `updateWobbleMeter` hooks into `checkLevel` so it tracks every edit): "weather: still 🪞 / shimmer 🌊 / restless 🌀 / storm ⛈️".
+
+| # | Level *(pattern · success · stage)* | Goal |
+|---|---|---|
+| 1 | Still Water, First Ripple **[2 steps]** *(discover · targeted · teach)* | a perfectly still pair, then a whole-step shimmer — grades 0 and 1 |
+| 2 | Restless and Storm **[2 steps]** *(discover · targeted · teach)* | the tritone (grade 2), then a half-step storm (grade 3) |
+| 3 | The Rising Storm *(build_constraint · targeted · combine)* | 3+ grades, never dropping — `wobbleLadder()` |
+| 4 | Pick the Soft Wobble *(compare · targeted · recognize)* | still / shimmer / storm — pick the SOFT one in between (`showPairChoices` "🌊 Wobble"; discrimination, not just extremes) |
+| 5 | Match the Weather **[2 steps]** *(match_feel · targeted · apply)* | morning mist → shimmer and nothing stronger (`maxWobble()<=1`); storm drum → a full storm |
+| 6 | Tame the Storm *(repair · targeted · apply)* | a stuck storm column — widen the clash to a whole step: no storms left BUT a shimmer kept alive ("soften, don't silence") |
+| 7 | Wake the Storm Beast *(build_constraint · targeted · compound)* | climb ALL four grades in order — `gentleApproach()` |
+| 8 | The Weather Shrine *(capstone · broad · capstone)* | loop: 3+ grades + the storm passes (`stormThenCalm`) · 🎧 famous: `chopsticks` |
+| 9 | Free Weather ⛈️ *(— · none · finale)* | free-play sandbox (weather glass on) → completion congrats |
+
+- **Ramp note:** L6 is the doctrine level — "composers rarely delete tension, they soften it by degrees" — and L4 forces *grade discrimination* by ear (the middle option, not an extreme). L7 vs L3 differ by mechanic: L3 = any 3 rising grades; L7 = all four, no stumbles.
+- **⚠️ KNOWN LIMITATION / TODO (owner, 2026-07-13):** on the 7-note-per-octave diatonic field, a half step (E–F, B–C → storm) and a whole step (F–G etc. → shimmer) are both *adjacent rows* — visually identical even though they grade differently; only the ear, the note names, and the weather glass distinguish them. **Revisit this package once a 12-note chromatic field exists** (the future chromatic palette, Wave D `secret-doors` era): on a 12-row grid the storm pair is visibly tighter than the shimmer pair, and the whole grade ladder becomes readable at a glance. Kept as-is for now (owner's call — intros name the exact notes as mitigation).
+- **Famous reward:** `chopsticks` — *The Celebrated Chop Waltz* (Euphemia Allen, 1877; PD): the world's most famous WOBBLE — a whole-step shimmer (F+G) struck six times, then melting by grades (E+G bright 3rd → D+B open 6th → C+C calm octave). Dissonance resolving by degrees = the package's lesson verbatim. ♩=132, all naturals. **Owner-validated (Pavel's save-link, 2026-07-14), TWO-TIER:** JUKEBOX = the full first section, two passes (the first ends in the classic turnaround — octave ×4, then D+B → E+A walking back in; the second closes properly with a final octave and a descending G–E–C walk home; 89 notes, `cols:100`); CAPSTONE (top level) = the second pass alone with the true cadence (41 notes, `cols:48`). My single-pass draft replaced. **15th Jukebox song.**
+- **Follow-ups done (2026-07-13/14):** all 12 `intro:` narration clips (L1/L2/L5 have 2 steps each) + the famous `credit:` clip baked via `gen-voice.mjs`; famous validated + promoted to the Jukebox.
