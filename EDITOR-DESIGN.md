@@ -1,140 +1,221 @@
-# Tune Garden — Long-Term Editor Design
+# Tune Garden — Long-Term Editor Design (v2)
 
-*Companion to `DESIGN.md` (vision), `PACKAGES.md` (content DAG), and `SAVE-SHARE.md` (song format). This document is the source of truth for how the **editing surface** evolves as the remaining systems land (meter, duration, dynamics, multi-voice, sections, chromatic). Drafted 2026-07-16 from the owner + Claude design session.*
+*Companion to `DESIGN.md` (vision), `PACKAGES.md` (content DAG), and `SAVE-SHARE.md` (song format). This document is the source of truth for how the **editing surface and its underlying document model** evolve as the remaining systems land (meter, duration, dynamics, multi-voice, sections, chromatic).*
 
-**Status: DESIGN — nothing here is built yet.** Build phases at the bottom; each phase ships value on its own.
+*v1 drafted 2026-07-16 (owner + Claude). **v2 2026-07-19**: revised after expert review (`Feedback 2026-07-19.docx`) and owner decisions — see §18 for the changelog. Verdict adopted from the review: proceed with the v1 architecture, but make the **foundation more musically general than the initial UI**.*
+
+**Status: DESIGN — nothing here is built yet.** Build phases in §16; each ships value on its own.
 
 ---
 
 ## 0. Why now
 
-Every remaining package wave is gated on an editor capability (meter → `two-kinds-of-walking`; duration → R3/Region 7; dynamics → `rain-and-sun`; multi-voice → Region 6; sections → Region 7; chromatic → Wave D). Designing the editor once, now, means each of those systems lands as a planned part of one architecture instead of four bolted-on rebuilds.
+Every remaining package wave is gated on an editor capability (meter → `two-kinds-of-walking`; duration → R3/Region 7; dynamics → `rain-and-sun`; multi-voice → Region 6; sections → Region 7; chromatic → Wave D). Designing the editor once, now, means each of those lands as a planned part of one architecture instead of repeated rebuilds.
 
-## 1. Principles (non-negotiable)
+## 1. The ceiling (product destination) — DECIDED 2026-07-19
 
-1. **It stays a garden.** Seeds, plots, blooms, tools, creatures. Every new power arrives as a metaphor (vines, watering can, seed tray), never as DAW chrome. Can't-sound-bad remains the *default* experience; danger is opt-in and earned.
-2. **One editor everywhere.** Levels and the Studio share a single engine; levels *constrain* it (the per-level `unlock` system generalizes into per-level lens/tool configuration). No separate "pro editor."
-3. **Notes are objects; the grid is a lens.** The model is a list of notes `{pitch, start, len, vel, voice}` (the v3 save format already stores exactly this). The visible field is one of several *lenses* rendering that model. Every requirement below becomes a view/tool question, not a data question.
-4. **The model is chromatic; the lens does the filtering.** Twelve semitones per octave is the data truth (it already is — all physics run on MIDI). Palettes, keys, and "can't-sound-bad" are *lighting*, applied by the lens.
-5. **Touch-first.** Every interaction is designed on a phone mockup first; hover-only affordances get tap-hold twins; targets ≥ 40px.
-6. **Never break shipped content.** 19 packages of goal detectors, the FAMOUS library, saved songs, and share links keep working at every phase (see §8).
+**Tune Garden becomes a serious musical composition and arrangement environment — not a DAW, and not a notation application.** Notation is an educational/export *lens*; detailed audio production happens in external tools.
 
-## 2. Requirements catalog
+In scope long-term: multi-part compositions, real form (sections/repeats/variation), dynamics and (later) articulation, changing keys and meters eventually, **MIDI export** (early), **rendered audio export**, **MusicXML export later** (only if/when notation semantics mature), MIDI keyboard *input* eventually, remix and collaboration.
 
-Gathered 2026-07-15/16 (owner items 1–5, jointly extended). **P** column = build phase (§9).
+Explicitly out of scope: audio recording, waveform editing, plug-ins/effects racks, automation lanes, mixing/mastering beyond the simple per-voice mixer. If a feature request looks like GarageBand/Ableton/MuseScore, the answer is an *export*, not a feature.
 
-| # | Requirement | Notes | P |
-|---|---|---|---|
-| R1 | Chromatic pitch without a 24-row wall | → the lattice + lenses (§3) | 6 |
-| R2 | Meter and bars | per-song time signature, framed as dance feels | 2 |
-| R3 | Dynamics (louder/softer) | per-note velocity, watering-can tool | 3 |
-| R4 | Editing ergonomics | undo/redo, insert/delete columns, select/copy/paste | 1 |
-| R5 | Multiple voices | layers over one field, per-voice instrument | 4 |
-| R6 | Note duration | `len` exists in v3 but is ignored; vines UI | 2 |
-| R7 | Undo/redo | called out from R4 — the single biggest pain reliever | 1 |
-| R8 | Horizontal scale & navigation | bar paging, zoom, minimap; structural fix is R9 | 2/5 |
-| R9 | Sections and repeats (form) | A/B blocks + arrangement strip; gates Region 7 | 5 |
-| R10 | Selection model | one gesture (seed tray) shared by copy/move/delete/transpose | 1 |
-| R11 | Touch-first interaction | no hover-only affordances; 40px+ targets | all |
-| R12 | Playback tools | play-from-here, loop selection, per-voice mute/solo | 2/4 |
-| R13 | Level-detector compatibility | grid-projection adapter (§8) | 0 |
-| R14 | Garden identity | see Principles 1 | all |
-| R15 | Save format v4 + share compat | §7; old links keep loading | 0+ |
-| R16 | Vertical scroll of the pitch field | the range window pans; home stays findable | 6 |
-| R17 | Home + mode as direct controls | draggable HOME marker + a separate major/minor (later modal) switch — never a "key list" | 6 |
+## 2. Principles (non-negotiable)
 
-## 3. The pitch system: chromatic lattice + lighting
+1. **It stays a garden.** Seeds, plots, blooms, tools, creatures. Every new power arrives as a metaphor; can't-sound-bad remains the *default* experience; danger is opt-in and earned.
+2. **One engine and document model everywhere; workspaces adapt.** Levels, Studio, phone, and desktop share semantics, undo, playback, and persistence — but not necessarily identical controls or chrome. A level shows seeds and one new tool; an advanced Studio may show an inspector and shortcuts. There is no second engine.
+3. **Notes are objects; every visible surface is a lens.** The model is a list of musical objects (§4); the field, the future score view, and the legacy grid are projections. Lenses control presentation — they never constrain what a song can represent.
+4. **The model is chromatic and tick-based; friendly views never reduce musical precision.** Columns, vines, and lighting are views over exact musical data (12-semitone pitch, integer-tick time, continuous velocity).
+5. **Names and numbers are never required — and never forbidden.** The beginner experience runs entirely on HOME, sun/moon, colors, and feel. Optional labels (note names, "C major", measure numbers, precise values) are available for those who want them — the same tiering philosophy as the dimmed teach-field.
+6. **Touch-complete, keyboard-accessible, desktop-efficient.** Every operation is possible on touch; desktop adds keyboard navigation, shortcuts, marquee selection, and (eventually) computer-keyboard/MIDI note entry. No essential feature hides behind hover or an undiscoverable gesture.
+7. **Every action is reversible and recoverable.** Undo/redo, frequent local autosave, crash recovery, and named checkpoints are core design rules, not features.
+8. **Never break shipped content.** All packages' goal detectors, the FAMOUS library, saved songs, and share links keep working at every phase (§15).
 
-### 3a. The lattice
+## 3. Requirements catalog
 
-The field is a **12-semitone-per-octave lattice**. Rows come in two visual classes:
+Owner items 1–5; jointly extended 2026-07-15/16; expanded by the 2026-07-19 review. **P** = build phase (§16).
 
-- **Wide rows** — the 7 pitch classes lit by the current lighting pattern (the palette). Full-height plots, bright, guaranteed-good. These carry the layout, like a piano's white keys.
-- **Slim rows** — the 5 unlit pitch classes ("the cracks"). Visually narrow (~⅓ height), darker, initially **locked**; they unlock at the chromatic milestone (Wave D `secret-doors`), where planting in a crack is framed as *borrowed color / rare magic*.
+| # | Requirement | P |
+|---|---|---|
+| R1 | Chromatic pitch without a 24-row wall (lattice + lenses, §5) | 6 |
+| R2 | Meter and bars (dance feels; snap resolution independent of meter) | 2 |
+| R3 | Dynamics (continuous velocity; 4–5 kid-facing levels; crescendo paint later) | 3 |
+| R4 | Editing ergonomics (selection, move/copy/paste, column/time surgery) | 1 |
+| R5 | Multiple voices (tracks in the model from Phase 0; UI in Phase 4) | 4 |
+| R6 | Note duration (vines = musical intent; instrument realizes it) | 2 |
+| R7 | Undo/redo (transaction journal) | 1 |
+| R8 | Horizontal scale & navigation (zoom, bar paging, minimap) | 2/5 |
+| R9 | Sections and repeats (definitions + arrangement instances) | 5 |
+| R10 | Selection model (seed tray; one unambiguous gesture grammar) | 1 |
+| R11 | Touch-complete + keyboard-accessible + desktop-efficient | all |
+| R12 | Playback tools (play-from, loop range, count-in/metronome, mute/solo) | 2/4 |
+| R13 | Level-detector compatibility (projection adapter → query API, §15) | 0 |
+| R14 | Garden identity | all |
+| R15 | Save format v4 (ticks, IDs, sections) + eternal share compat | 0+ |
+| R16 | Vertical scroll of the pitch window | 6 |
+| R17 | HOME + mode as direct controls (drag marker + mode switch; never a key list) | 6 |
+| R18 | Real audio scheduler (lookahead, note-off, seek, live-edit rescheduling) | 0/2 |
+| R19 | Autosave, crash recovery, named checkpoints, cloud revisions | 0/1 |
+| R20 | Accessibility (§13) | all |
+| R21 | Performance budgets + viewport-based rendering (§12) | 0+ |
+| R22 | Exports: MIDI early → rendered audio → MusicXML later (§1) | 3+ |
 
-Two octaves ≈ 14 wide + 10 slim rows ≈ barely taller than today's diatonic field. Where B–C and E–F meet there is visibly *no crack* — semitone geography becomes readable at a glance (fixes the Soft Wobble TODO structurally).
+## 4. The document model (the heart of v2)
 
-### 3b. Lighting = tonality (no key names, ever)
+### 4a. Shape
 
-A "key" is two independent, physical controls — never a list of 24 key names:
+```
+project        { version, ppq, tempoMap, meterMap, tonalityMap, tracks[], sections[], arrangement[] }
+track          { id, role, instrument, mixer }            // role: melody | support | drums | …
+note           { id, pitch, startTick, durationTicks, velocity, spelling?, articulation? }
+section        { id, name, lengthTicks, eventsByTrack }
+arrangementItem{ id, sectionId, repeats, transpose? }
+```
 
-- **HOME** (R17): a draggable marker on the row gutter (or tap a row label). The home rows tint grass-green — exactly today's tonic-row grammar. Dragging home re-tints instantly; the melody does not move.
-- **MODE**: a separate toggle — **major / minor** at first (sun/moon iconography, reusing the Sun & Moon Garden language), later extensible to modal lighting patterns (`mist-paths`: each mode = a different 7-of-12 pattern, i.e., a different *atmosphere*).
+Optional fields (`spelling`, `articulation`, `transpose`) are **reserved seams**, not near-term work.
 
-Lighting is derived: `lit pitch-classes = pattern(mode) rotated to home`. Consequences the player can *discover*:
+### 4b. Time is ticks, not columns
 
-- Slide home by a fifth → **exactly one lit row changes** (the circle of fifths as a physical fact, not a diagram).
-- Major ↔ relative minor → **zero rows change width; only the green home rows move** (the relative-major/minor truth, visible).
-- Transposition = drag the melody (or the lighting) up/down; same shape, same sound. This also resolves DESIGN §11's tool-transposition fork: on the lattice, shape-based and fixed-quality stamping are the same operation.
+Canonical time is integer **ticks at PPQ = 96** (divisible by 2/3/4/6/8/12/16/24/32 — 16ths, triplets, and finer are representable without floats). Columns are a *grid projection at the current snap resolution*. Today's column = an 8th = 48 ticks; v3 songs convert exactly (`start = col·48`, `len = len·48`). This makes triplets, pickups/anacrusis, ties across bars, swing-as-view, snap changes, zoom, and future meter changes representable **without another migration** — none of them need UI yet.
 
-`setMood` (sun/moon) and `setColorReveal` (F/B staged reveal) are early, hard-coded special cases of this general lighting system and fold into it.
+### 4c. Stable IDs, from Phase 0
 
-### 3c. The three lenses (one model, three views)
+Notes, tracks, sections, arrangement items, and saved tools all carry IDs. Needed for reliable selection, undo, overlapping notes, section references, cloud revisions, remix provenance, and any future collaboration. Cheap at the model flip; brutal to retrofit.
+
+### 4d. Three kinds of state, kept separate
+
+- **Music document** — notes, tracks, sections, meter/tempo/tonality maps. The only thing saved in a song.
+- **Editor/session state** — selection, active tool, lens, zoom, scroll, open section, Composer-mode flag. Never serialized into songs.
+- **Derived projections** — the legacy boolean grid, visible cells, detector inputs. Recomputed, never stored.
+
+### 4e. Pitch is musical (written) pitch
+
+`note.pitch` is the musical pitch; **instrument playback transposition is a track/instrument property** (the glockenspiel's existing `up:24` is this concept — it graduates from playback hack to model field). Velocity is continuous internally (0–1); kid-facing UI exposes 4–5 named levels.
+
+### 4f. Tonality is a map, not a constant
+
+One HOME+mode per song initially, but the model reserves `tonalityMap` (per-section or per-range lighting) so modulation, key changes between sections, and borrowed-color contexts don't require a rebuild. No UI until a package needs it.
+
+## 5. The pitch system: lattice + lighting
+
+### 5a. The lattice
+
+A **12-semitone-per-octave lattice**: 7 **wide** lit rows (the palette — full-height plots, guaranteed-good, carrying the layout like piano white keys) + 5 **slim** "crack" rows (unlit, darker, locked until the chromatic milestone, where planting one = *borrowed color magic*). Two octaves ≈ today's field height. B–C and E–F visibly touch (no crack) — semitone geography readable at a glance (fixes the Soft Wobble visual TODO structurally).
+
+**⚠️ Prototype gate:** slim rows conflict with 40px touch targets. Before building the lattice engine, prototype on a phone: enlarged invisible hit areas, expand-on-approach, horizontally-inset "black-key plots", or zoom-required planting. The compressed-row *look* is approved; the compressed-row *touch interaction* must earn its way in.
+
+### 5b. Lighting = tonality; names optional
+
+- **HOME** (R17): a draggable marker on the row gutter (green rows follow). **MODE**: a separate major/minor switch (sun/moon), extending later to modal lighting patterns (`mist-paths`).
+- Lighting is derived: `lit = pattern(mode) rotated to home`. Discoverables: home slid by a fifth changes exactly one lit row (the circle of fifths made physical); major↔relative minor changes only the green rows; major→minor *on the same home* changes several lit rows — a different, equally teachable move.
+- Optional labels (per §2.5): row names, a "C major" readout, measure numbers — off by default, available in Studio/Composer mode.
+
+### 5c. Distinct operations (each a future teaching mechanic — never conflated)
+
+| Operation | What moves | What it means |
+|---|---|---|
+| Drag HOME (notes fixed) | lighting only | *reinterpretation* — same notes, new gravity |
+| Drag notes (lighting fixed) | notes only | transposition **against** the key — relationships change |
+| Drag both together | notes + lighting | conventional whole-piece transposition — same music, new height |
+| Move by rows (lit) vs by semitones | — | scale-degree motion vs exact motion — different tools |
+
+### 5d. Saved tools declare their transposition nature
+
+A stamp is one of: **exact interval shape** (chromatic — keeps quality everywhere), **scale-degree pattern** (adapts to the lighting — a triad stamped on different degrees changes quality, correctly), or **literal pitch fragment**. Both stamping modes are musically valuable; the lattice makes both cleanly implementable. (Supersedes v1's claim that the DESIGN §11 fork "resolves" — it *separates*, which is better.)
+
+### 5e. Lenses and vertical scroll
 
 | Lens | Shows | Who/when |
 |---|---|---|
-| **Garden** (default, teaching) | Only the lit rows — pixel-for-pixel today's pentatonic/diatonic fields. Cracks hidden entirely. | All current levels, beginners. Nothing about the early game changes. |
-| **Lattice** (main composing view) | All rows, wide + slim as above. | Studio + post-chromatic-unlock levels. |
-| **Piano roll** (the lab) | 12 equal-height rows, pinch-zoom, geometrically exact distances. | Optional per-level/Studio toggle; the Soft Wobble revisit; Secret Doors. |
+| **Garden** | Only lit rows — today's fields pixel-for-pixel; chromatic notes render as "visitor" seeds pinned between rows (inspectable/editable via tap → their crack breathes open) | all current levels, beginners |
+| **Lattice** | wide + slim rows | Studio; post-chromatic levels |
+| **Piano roll** | 12 equal rows, pinch-zoom, exact distances | the lab; Soft Wobble revisit; Secret Doors |
 
-A chromatic note viewed through the Garden lens renders as a "visitor" seed pinned between rows (it exists in the model; the lens just has no row for it).
+The pitch window pans vertically (R16): default ~2 octaves centered on home (range grows toward C3–C7; tune by ear), overview ribbon marks home + off-screen seeds; levels pin the window, Studio frees it.
 
-### 3d. Vertical scroll (R16)
+## 6. The time system
 
-The pitch window pans vertically over a larger range (e.g., C3–C7 eventually). Default window ≈ 2 octaves centered on home; drag/swipe the row gutter to pan; a slim overview ribbon marks home and any off-screen seeds. Levels pin the window (teaching stays framed); the Studio frees it. On phones the window narrows (≈ 1.5 octaves) rather than shrinking row heights below touch size.
+- **Meter & bars (R2):** per-song time signature as a *dance feel* (march 4s · waltz 3s · lopsided later). Bar fence-posts; the beat guide derives from meter. **Snap resolution is independent of meter** (8ths default; 16ths/triplet snap unlockable). Pickups and ties across bars are representable (ticks) before they are teachable.
+- **Duration (R6):** drag a seed rightward → it grows a **vine**. A vine means "*hold for this musical duration*" — each instrument realizes it honestly: pads sustain, piano decays undamped, kalimba rings its natural length; **no artificial loop-sustain** unless it genuinely sounds good. Score duration stays independent of acoustic decay.
+- **Playback (R12):** play-from-playhead/selection, loop range, count-in + metronome (quiet, optional).
+- **Navigation (R8):** column zoom + minimap strip for songs > 2 bars, growing into the section strip.
 
-## 4. The time system
+## 7. Dynamics (R3)
 
-- **Meter & bars (R2):** per-song time signature chosen as a *dance feel* (march 4s · waltz 3s · lopsided 2+3 later). Bar lines render as fence posts; the beat guide generalizes (`beatcol` logic derives from meter, not hard-coded %4). Snap, paging, and the playhead loop respect bars. `two-kinds-of-walking` = this system's teaching package.
-- **Duration (R6):** planting stays tap = 1 step. **Drag a planted seed rightward and it grows a vine** — length renders as a rounded pill across cells; the player hears sustain (needs a sustain-capable envelope per voice; plucked voices max out at their natural ring). `len` already exists in v3; the editor and the tick scheduler start honoring it.
-- **Zoom & navigation (R8):** pinch/buttons switch column zoom (8th-note vs bar-level); a minimap strip appears for songs > 2 bars — which grows into the section strip:
-- **Sections (R9):** a piece = a sequence of **fields** (sections). Each section is edited as today's single field; above the editor a **path strip** shows tiles (🌸 A · 🌙 B · 🌸 A) that can be reordered, repeated, and cloned-then-varied. "The path loops back through the meadow." This is the structural answer to long pieces (verse/chorus = 3 sections + arrangement, not 200 columns) and gates Region 7.
+Tools: **sunlight / shade** (louder/softer) — *not* pruning shears (pruning reads as shortening; that's the vine's word). Tap or drag across notes; louder = bigger, more saturated bloom. 4–5 kid-facing levels over a continuous internal velocity; later, paint a crescendo across a selection in one gesture. Drum-pad accents come later (R4-tier rhythm), same model.
 
-## 5. Dynamics (R3)
+## 8. Multi-voice (R5)
 
-Per-note velocity, no numbers ever: the **watering can / pruning shears** tools. Tap notes (or drag across a run) with the can → louder; shears → softer. Rendering: louder = larger, more saturated bloom; softer = smaller, paler. Audio: velocity → per-note gain (the synth/sample chain already takes a gain). `rain-and-sun` = the teaching package; crescendo prompts ("water the whole climb") come free.
+Tracks exist in the **model from Phase 0** (today's melody/drums become two tracks); the *UI* ships in Phase 4: translucent layers over one field (active voice full-color, others ~35% ghost), voice chips to switch, per-voice instrument + mute/solo + velocity. Garden framing: voices are creatures/species (roots bass, canopy birds — `deep-roots-high-birds`). Start at 2 voices, cap ~4.
 
-## 6. Multi-voice (R5)
+## 9. Sections & form (R9)
 
-- **Layers over one field**, like translucent sheets: the active voice renders full-color; other voices ghost at ~35% behind it. Tap a voice chip to switch. (Drum lanes stay their own thing — they already work.)
-- Per-voice: **instrument** (the existing sampled-voice picker), **mute/solo**, and its own velocity. v3 tracks already carry `voice`.
-- Garden framing: voices are *creatures/species* — the roots (bass), the canopy birds (melody) — matching `deep-roots-high-birds`. Layer count starts at 2, caps at ~4.
-- Playback: `tick()` iterates tracks; the mixer (already shipped) gets per-voice strips.
+- A piece = **section definitions** + an **arrangement list of instances** (never physical copies). Three distinct actions, visible in the path strip: **repeat** (same section referenced again — editing updates all occurrences), **duplicate** (explicit independent copy), **variation** (duplicate, then diverge; a shared-motif reference model can come later if divergence chores hurt).
+- The **path strip**: tiles (🌸 A · 🌙 B · 🌸 A) reordered, repeated, cloned. "The path loops back through the meadow." A′ is a duplicate with a tick — the strip labels it A′ automatically.
+- Sections may later carry their own meter/tempo/tonality (the maps in §4 make this a data question, not a rebuild).
 
-## 7. Editing tools & the toolbox (R4, R7, R10)
+## 10. Editing, tools, and the gesture grammar
 
-- **Undo/redo (R7):** every mutation goes through a command journal (place/remove/move/resize/paint-velocity/paste/section ops). Two buttons + two-finger-tap gesture. Depth ~100. Ships first; instantly heals the "one mistake = redo everything" pain.
-- **Seed tray (R10):** drag-select a rectangle → seeds lift into a floating tray → **move** (drag), **copy** (tray keeps a copy), **delete**, **transpose** (drag the tray up/down — on the lattice this is real transposition), **stamp elsewhere**.
-- **Column surgery:** insert/remove a column (bar-aware) at the playhead — the other half of the "fix a mistake mid-melody" pain.
-- **Toolbox unification:** a tray selection can be **saved to the crafting toolbox as a stamp** — chords today, melodic fragments tomorrow. The toolbox becomes the scalability engine (write a motif once, stamp it everywhere — Tiny Motifs' lesson turned into a power tool). Stamps store *pitch-relative* content and transpose on placement.
+- **Transactions:** every mutation is a semantic operation (place/remove/move/resize/paint/paste/section ops) in a command journal → undo/redo (~100 deep), and later the journal is the seam for cloud revisions (not a CRDT — see §14).
+- **Seed tray (R10):** select region → seeds lift into a tray → move / copy / delete / drag-transpose / **save to toolbox as a stamp** (declaring its §5d nature). The toolbox remains the scalability engine (Tiny Motifs' lesson as a power tool).
+- **Time surgery:** insert/remove musical time (bar-aware), replacing "redo everything after the mistake."
+- **Gesture grammar:** before Phase 1, write the **input-state table** for touch/mouse/keyboard/stylus and user-test it. Candidate touch grammar: tap empty = plant · tap note = select + handles · drag body = move · drag end handle = resize (vine) · long-press empty = start selection · two-finger or gutter drag = pan. The exact mapping matters less than having *one unambiguous system* with no essential action hidden.
+- **Desktop baseline (Phase 1):** arrow-key navigation, visible focus, shortcuts for undo/copy/paste/play, marquee select.
+- **Inspector (Composer mode only):** a compact panel for the selection — start, duration, pitch/name, velocity, track. Numbers optional, never required.
 
-## 8. Compatibility & migration (R13, R15)
+## 11. Workspaces & capability gating — DECIDED 2026-07-19
 
-- **Detector adapter:** goal-checkers keep reading `grid[r][c]`. After the model flip, `grid` becomes a **projection** of the note model through the current lens (recomputed on mutation). Every shipped detector — `colWobble`, `motifEcho`, `chordSyms`, contour, density — works unchanged. New systems (len/vel/voice/section) get new detector families as their packages need them.
-- **Levels constrain the editor:** each level declares its lens (garden/lattice/roll), pitch window, meter, available tools, and voice count — the generalization of today's `unlock`/`palette`/flag fields. All shipped levels default to exactly today's configuration.
-- **Save format v4** = v3 + honored `len`, new `vel`, `meter`, `sections:[{id, bars, tracks}]` + arrangement list, per-track instrument (already there). v3 links load forever (v3 → v4 up-conversion = one section, vel=default, meter 4/4). The wire format stays the packed positional array with new optional tail fields.
-- **FAMOUS library:** unchanged short-term; long-term wins — real held notes end the "re-strike ties" workaround, and drum-famous entries gain meter.
+- **Levels:** declare lens, pitch window, meter, tools, voice count (the generalization of `unlock`/`palette`/flags). All shipped levels = today's configuration.
+- **Studio:** capabilities unlock **by progression** (the hidden-curriculum identity — powers are earned).
+- **Composer mode:** an **off-by-default switch in settings** (per account) that unlocks *Studio tooling only* — inspector, all lenses, full range, keyboard entry, optional labels — for players who already know theory and want Tune Garden for composing. It never unlocks level content, famous reveals, or region progression: it opts out of *pacing*, not of the game.
+- **Phone portrait = light mode:** listen, tweak, small edits. **Full authoring = landscape/desktop.** The Phase-1 gesture work targets this split explicitly.
 
-## 9. Build phases (each ships alone; package unlocks in parentheses)
+## 12. Audio engine & performance (R18, R21)
 
-0. **Model flip** — notes-as-objects inside; grid becomes a projection; detector adapter; invisible to players. *The prerequisite for everything.*
-1. **Ergonomics** — undo/redo, seed tray (select/move/copy/paste/transpose), insert/delete column. No visual redesign. *Biggest immediate QoL win — worth shipping fast.*
-2. **Duration + meter** — vines, fence-post bars, dance-feel picker, generalized beat guide, play-from-here (→ `two-kinds-of-walking`, full `wind-and-gaps`, R3 tier).
-3. **Dynamics** — watering can / shears, velocity rendering + gain (→ `rain-and-sun`).
-4. **Multi-voice** — layers, voice chips, per-voice instrument + mute/solo (→ Region 6: `deep-roots-high-birds`, `lantern-chorus`).
-5. **Sections** — path strip, repeats, section-aware playback + minimap (→ Region 7: `rooms-and-paths`, `return-of-the-meadow`).
-6. **Chromatic lattice** — wide/slim rows, lighting system (draggable HOME + mode switch), crack unlock, vertical scroll, piano-roll lens (→ Wave D: `secret-doors`, `mist-paths`; Soft Wobble visual revisit; full transposition).
+- **Scheduler:** lookahead scheduling against `AudioContext.currentTime` (browser timers *wake* the scheduler; they never set sound time). Note-on **and note-off** (duration), cancellation/rescheduling on live edits, seek, deterministic loop boundaries, per-track buses feeding the existing mixer. Lands with Phase 0 as an abstraction; fully exercised by Phase 2 (duration) and 4 (voices).
+- **Budgets (set in the spike, enforced after):** representative limits for visible bars, notes per section, tracks per song; a target low-end phone; edit-latency and playback-jitter ceilings; sample-pack memory cap. Rendering stays DOM but **viewport-based**, so virtualization (or canvas) remains possible without a rewrite.
 
-Order rationale: 1 pays down today's pain; 2–5 unblock content waves in DAG order; 6 is last because Wave D is last *and* the lattice benefits from every earlier tool existing (tray-transpose is what makes lighting-slides fun).
+## 13. Accessibility (R20 — new in v2)
 
-## 10. Open questions
+Complete keyboard operation; visible focus and sane focus order; screen-reader names for notes ("C5, bar 2, beat 3, loud") and controls; reduced-motion support; non-color indicators for lit/unlit/home/velocity (shape/size/texture already do much of this); high-contrast support; tap-hold twins for every hover affordance; narration (Polly) never colliding with editor feedback.
 
-1. **Crack interaction pre-unlock:** invisible (garden lens) vs. visible-but-locked (lattice) — probably level-configurable; what does *tapping* a locked crack do (gentle shimmer + "not yet discovered"?).
-2. **Vine audio on plucked voices:** sustain is real for synth pads but a fiction for kalimba/glock — accept natural decay (a vine = "let it ring", no re-strike), or add a gentle loop-sustain per sample?
-3. **Phone portrait:** commit to landscape-first with a portrait "listen + light edits" mode, or invest in a true portrait layout (rotated field)?
-4. **Section variation:** is "clone section then edit" enough (risk: divergence chores), or do sections support a shared-motif reference (edit once, updates everywhere)? Start with clone; revisit at Region 7.
-5. **Velocity on drums:** same watering can on the pads? (Probably yes, later — accents are an R4-tier rhythm concept.)
-6. **How far does the range scroll go** before it hurts can't-sound-bad (muddy bass / shrill top)? Start C3–C7, tune by ear.
+## 14. Persistence & sharing — DECIDED 2026-07-19
+
+- **Local:** frequent autosave, crash/session recovery, named checkpoints ("versions" a child can understand and restore).
+- **Cloud:** revision numbers per song; last-writer-wins with a revision check (two devices editing = second gets a gentle "newer version exists" fork prompt).
+- **Sharing = snapshot + remix-with-ancestry.** A shared link opens an immutable snapshot; "remix" creates a copy carrying provenance (author chain). **Live co-editing is explicitly deferred** — the founding co-op vision stays on the map, and stable IDs + the transaction journal are the seams that make it feasible later, possibly as one of several modes. No CRDT now.
+
+## 15. Compatibility & migration (R13, R15)
+
+- **Detector strategy:** shipped detectors keep reading the projected `grid[r][c]` (recomputed on mutation) — but the projection is a **temporary adapter, not the permanent interface**. A small musical query API grows beside it: `notesStartingAt(t)`, `notesSoundingAt(t)`, `pitchesAt(t, track?)`, `onsetGrid({resolution, track})`, `notesInRange(r)`. New detector families (duration, dynamics, voices, sections) are built on queries from day one; old ones migrate opportunistically.
+- **Save v4** = ticks (`ppq`), IDs, tracks, sections + arrangement, velocity, meter/tempo/tonality maps. v3 loads forever (up-convert: one section, one melody + one drum track, col·48 ticks, default velocity, 4/4). The packed wire format gains optional tail fields; old `#s=` links never break.
+- **FAMOUS library:** unchanged short-term; real duration eventually ends the "re-strike ties" workaround (entries can then carry honest `len`).
+
+## 16. Build phases (revised)
+
+**Spike (before Phase 0) — decide by building throwaways:** ratify PPQ + document-model details; gesture-grammar input-state table + phone prototype; **slim-row touch prototype** (§5a gate); scheduler skeleton benchmark; performance budgets. Output: short addenda to this doc.
+
+0. **Foundation** — note objects with IDs + tick time; tracks in the model; transaction API; legacy grid projection; versioned serialization + v3 conversion; scheduler abstraction; local autosave. Invisible to players.
+1. **Recovery & ergonomics** — undo/redo; seed tray (select/move/copy/delete/transpose); insert/delete time; keyboard + focus baseline; play-from-selection. *Biggest immediate QoL win.*
+2. **Rhythm & duration** — meter/bars/dance feels; snap model; vines + duration-aware scheduling; loop range, count-in/metronome (→ `two-kinds-of-walking`, full `wind-and-gaps`).
+3. **Dynamics + first export** — sunlight/shade, velocity rendering (→ `rain-and-sun`); **MIDI export** (cheap now: ticks + velocity + tracks exist).
+4. **Multi-voice UI** — layers, chips, per-voice mixer strips (→ Region 6).
+5. **Sections** — path strip, repeat/duplicate/variation, section-aware playback, minimap (→ Region 7); rendered-audio export.
+6. **Chromatic lattice** — wide/slim rows (as prototyped), lighting system (HOME drag + mode switch), crack unlock, vertical scroll, piano-roll lens, optional labels (→ Wave D; Soft Wobble revisit). Chromatic UI last; chromatic *model* from Phase 0.
+
+Score-lens/MusicXML: seams reserved (`spelling?`), UI unscheduled.
+
+## 17. Decisions & open questions
+
+**Decided (owner, 2026-07-19):** the §1 ceiling · Studio powers by progression + off-by-default Composer mode (tooling only) · sharing = snapshot + remix-ancestry, live co-edit later · portrait = light mode, full authoring landscape/desktop.
+
+**Open (mostly spike outputs):** final PPQ + smallest supported subdivision · crack-tap behavior pre-unlock (shimmer + "not yet"?) · the tested gesture grammar · velocity level names/count (4 vs 5) · section-level meter/tempo divergence timing · scroll range limits by ear · when "can't-sound-bad" defaults start feeling restrictive (watch playtests; the Composer switch is one answer, earned dissonance is the in-game one).
+
+## 18. v2 changelog (what the 2026-07-19 review changed)
+
+**Adopted:** ticks-not-columns; stable IDs; three-state separation; grid-as-temporary-adapter + query API; sections as definitions/instances; principle rewordings (engine-not-editor; names optional-not-forbidden; touch-complete-not-touch-only); two new principles (reversibility; precision under friendliness); HOME/mode operation disambiguation; stamp transposition modes as declared tool properties; tonalityMap + written-vs-sounding-pitch seams; real scheduler; autosave/recovery; accessibility + performance-budget requirements; sun/shade replacing shears; 4–5 dynamic levels over continuous velocity; slim-row + gesture prototype gates; export sequence (MIDI early); spike-before-Phase-0; the §1 ceiling framing.
+
+**Consciously diverged / scoped:** notation intent (spelling/beaming/voices) stays a *reserved seam*, not designed, until MusicXML is ratified as a goal; the inspector exists only behind Composer mode; live collaboration deferred without picking a mechanism; canvas rendering deferred behind viewport-based DOM.
 
 ---
 
