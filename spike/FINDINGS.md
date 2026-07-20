@@ -10,7 +10,7 @@
 | `gestures.html` | §10 gesture grammar — full candidate grammar on a tick-based model |
 | `scheduler.html` | §12 scheduler skeleton + benchmark; DOM render bench for budgets |
 
-Status: ✅ = decided by this spike · 🧪 = instrumented, awaiting the owner's phone test.
+Status: **SPIKE COMPLETE 2026-07-19** — all five deliverables decided (the §5a touch gate closed by the owner's two-round phone test; see §5).
 
 ---
 
@@ -20,7 +20,7 @@ Divisibility of 96 per quarter note: 16ths = 24, 32nds = 12, 8th-triplets = 32, 
 
 **Ratified: PPQ = 96, smallest supported subdivision = 32nd note and 16th-triplet.** Quintuplets/septuplets are out of scope for the §1 ceiling (we are not a notation app); if MIDI export wants the standard 480 PPQ, multiply by 5 losslessly at export time. v3 songs convert exactly (`col · 48`). Nothing in the benchmarks pushed back on integer ticks.
 
-## 2. Gesture grammar — 🧪 table written, prototype passes on desktop
+## 2. Gesture grammar — ✅ phone-confirmed ("all looks good"), thresholds 350 ms / 8 px stand
 
 The input-state table (the §10 deliverable). SLOP = 8 px, LONG_PRESS = 350 ms.
 
@@ -86,7 +86,7 @@ Derating desktop ×10 for a low-end phone, proposed budgets (to §12):
 - **Scheduler:** lookahead 120 ms / wake 25 ms foreground; 1.5 s / 250 ms hidden; alarm if wake-lateness p99 > 80 ms.
 - **Sample memory:** cap sample packs at today's footprint ×2 until measured on the target device.
 
-## 5. Slim-row touch — 🧪 instrumented, needs the phone test (the real §5a gate)
+## 5. Slim-row touch — ✅ gate closed: Strategy A, ±5 px (two-round phone test)
 
 Four strategies, all functional, switchable live in `lattice-touch.html`; target practice alternates wide/slim targets and scores accuracy, error, and time per strategy.
 
@@ -111,8 +111,17 @@ Four strategies, all functional, switchable live in `lattice-touch.html`; target
 
 Hypothesis: ±5–7 recovers wide accuracy to ≥95% while slim stays ≥90% (it was at 100%, so there's headroom). Gate closes on the first setting that clears both bars.
 
+**Phone test round 2 (owner, 2026-07-19) — ✅ GATE CLOSED: Strategy A with ±5 px.**
+
+| Setting | Wide | Slim | Verdict |
+|---|---|---|---|
+| A ±5 | **99%** | **93%** | clears both bars |
+| A ±7 | 92% | 97% | fails the wide bar |
+
+±7 trades the wrong way: wide rows carry most planting, so 99/93 beats 92/97. **Decision: the lattice ships strategy A — compressed slim rows with an invisible ±5 px crack hit band** (slim effective touch band 22 px; a wide row between two cracks keeps 24 of its 34 px). Strategy C (black-key chips, 98/90) also passed both bars and remains the fallback if real-world play disagrees; strategy B's crack-opens gesture stays the candidate for the pre-unlock "not yet" moment.
+
 ## 6. What feeds back into EDITOR-DESIGN.md
 
-Now (this spike): PPQ 96 ratified (§4b) · input-state table adopted + one-finger-pan finding (§10) · stamp default = scale-degree on garden lens (§5d) · scheduler validated + **background-tab lookahead stretching** added (§12) · budget numbers (§12).
+All addenda are folded in: PPQ 96 ratified (§4b) · input-state table adopted + one-finger-pan + armed-modes-must-pan + minimap-scrubs findings (§10) · stamp default = scale-degree on garden lens (§5d) · scheduler validated + **background-tab lookahead stretching** added (§12) · budget numbers (§12) · **slim-row touch = strategy A with ±5 px crack reach, phone-measured** (§5a) · touch thresholds 350 ms / 8 px confirmed.
 
-After the owner's phone test: the §5a strategy decision, the ratified touch thresholds (350 ms / 8 px), and the D-vs-scroll interaction if zoom wins.
+**The Spike is done. Next per §16: Phase 0 (the invisible model flip).**

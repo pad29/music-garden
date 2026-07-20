@@ -102,7 +102,7 @@ One HOME+mode per song initially, but the model reserves `tonalityMap` (per-sect
 
 A **12-semitone-per-octave lattice**: 7 **wide** lit rows (the palette — full-height plots, guaranteed-good, carrying the layout like piano white keys) + 5 **slim** "crack" rows (unlit, darker, locked until the chromatic milestone, where planting one = *borrowed color magic*). Two octaves ≈ today's field height. B–C and E–F visibly touch (no crack) — semitone geography readable at a glance (fixes the Soft Wobble visual TODO structurally).
 
-**⚠️ Prototype gate:** slim rows conflict with 40px touch targets. Before building the lattice engine, prototype on a phone: enlarged invisible hit areas, expand-on-approach, horizontally-inset "black-key plots", or zoom-required planting. The compressed-row *look* is approved; the compressed-row *touch interaction* must earn its way in.
+**✅ Gate closed (2026-07-19, two-round phone test — `spike/FINDINGS.md` §5):** the lattice ships **strategy A — compressed slim rows with an invisible ±5 px crack hit band** beyond each crack's visual edges (slim effective touch band 22 px; a wide row between two cracks keeps 24 of its 34 px). Owner-measured target practice: **wide 99% / slim 93%**; ±7 px flipped the trade the wrong way (92/97 — wide rows carry most planting), and ±9 over-served cracks (91/100). Benched alternatives: black-key chips (98/90, passed but visually busier — the fallback if real play disagrees); tap-opens-the-crack (never ambiguous — retained as the candidate *pre-unlock* "not yet" gesture); zoom-to-plant. The compressed-row look ships clean: nothing visible changes at the cracks.
 
 ### 5b. Lighting = tonality; names optional
 
@@ -195,7 +195,7 @@ Complete keyboard operation; visible focus and sane focus order; screen-reader n
 ## 16. Build phases (revised)
 
 **Spike (before Phase 0) — decide by building throwaways:** ratify PPQ + document-model details; gesture-grammar input-state table + phone prototype; **slim-row touch prototype** (§5a gate); scheduler skeleton benchmark; performance budgets. Output: short addenda to this doc.
-**Spike status 2026-07-19 — prototypes built (`spike/`, deployed at `/spike/`), findings in `spike/FINDINGS.md`.** Decided: PPQ 96 (§4b) · gesture grammar table + one-finger pan (§10) · scheduler validated + background-tab rule (§12) · budgets (§12) · garden-lens stamp default = scale-degree (§5d). **Open, awaiting the owner's phone test:** the §5a slim-row strategy (A fat hit-zones / B tap-to-open / C black-key chips / D zoom-to-plant — target practice in `spike/lattice-touch.html` keeps score; gate = slim ≥ 90% without degrading wide) and the touch thresholds.
+**✅ SPIKE COMPLETE 2026-07-19** (prototypes in `spike/`, deployed at `/spike/`; record in `spike/FINDINGS.md`). All five deliverables decided: PPQ 96 (§4b) · gesture grammar table + pan findings, thresholds 350 ms / 8 px phone-confirmed (§10) · scheduler validated + background-tab rule (§12) · budgets (§12) · garden-lens stamp default = scale-degree (§5d) · **slim-row touch = strategy A, ±5 px crack reach, phone-measured 99% wide / 93% slim** (§5a). Next: Phase 0.
 
 0. **Foundation** — note objects with IDs + tick time; tracks in the model; transaction API; legacy grid projection; versioned serialization + v3 conversion; scheduler abstraction; local autosave. Invisible to players.
 1. **Recovery & ergonomics** — undo/redo; seed tray (select/move/copy/delete/transpose); insert/delete time; keyboard + focus baseline; play-from-selection. *Biggest immediate QoL win.*
@@ -211,9 +211,9 @@ Score-lens/MusicXML: seams reserved (`spelling?`), UI unscheduled.
 
 **Decided (owner, 2026-07-19):** the §1 ceiling · Studio powers by progression + off-by-default Composer mode (tooling only) · sharing = snapshot + remix-ancestry, live co-edit later · portrait = light mode, full authoring landscape/desktop.
 
-**Decided by the spike (2026-07-19):** PPQ 96 + smallest subdivision (32nd, 16th-triplet) · the gesture grammar and its input-state table (thresholds pending phone confirmation) · scheduler architecture + background-tab lookahead stretching · performance budgets · garden-lens stamp default (scale-degree).
+**Decided by the spike (2026-07-19, complete):** PPQ 96 + smallest subdivision (32nd, 16th-triplet) · the gesture grammar and its input-state table, thresholds 350 ms / 8 px phone-confirmed, armed-modes-must-pan rule · scheduler architecture + background-tab lookahead stretching · performance budgets · garden-lens stamp default (scale-degree) · **§5a slim-row touch = strategy A with ±5 px crack reach** (phone-measured 99% wide / 93% slim; black-key chips the benched fallback).
 
-**Open:** the §5a slim-row touch strategy (phone test — the one remaining spike gate) · crack-tap behavior pre-unlock (strategy B's "breathe open" gesture is a natural candidate for the "not yet" moment) · velocity level names/count (4 vs 5) · section-level meter/tempo divergence timing · scroll range limits by ear · when "can't-sound-bad" defaults start feeling restrictive (watch playtests; the Composer switch is one answer, earned dissonance is the in-game one).
+**Open:** crack-tap behavior pre-unlock (strategy B's "breathe open" gesture is a natural candidate for the "not yet" moment) · velocity level names/count (4 vs 5) · section-level meter/tempo divergence timing · scroll range limits by ear · when "can't-sound-bad" defaults start feeling restrictive (watch playtests; the Composer switch is one answer, earned dissonance is the in-game one).
 
 ## 18. v2 changelog (what the 2026-07-19 review changed)
 
