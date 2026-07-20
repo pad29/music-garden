@@ -39,9 +39,14 @@ The input-state table (the §10 deliverable). SLOP = 8 px, LONG_PRESS = 350 ms.
 | MARQUEE | move / up | stretch rect / **commit selection** → IDLE |
 | DRAG_NOTE / DOWN_HANDLE / MARQUEE→ops | up | one journal transaction each |
 | any | Esc | cancel to IDLE |
-| STAMP (after Copy) | tap | **place fragment** → IDLE |
+| STAMP (after Copy) | tap (< slop) | **place fragment** → IDLE |
+| STAMP | drag > slop | STAMP_PAN — pan with the ghost still armed → back to STAMP on release |
+| STAMP | second pointer down | PINCH_PAN; ghost survives, re-arms on release |
+| any | tap/drag the minimap strip | scrub scroll (the strip is a control, not a readout) |
 
 Desktop baseline in the prototype: Ctrl+Z/Y, Delete, Space = play, wheel = pan. All verified programmatically (plant/select/move/resize/marquee/group-delete/stamp/undo/redo/pan).
+
+**Phone finding (owner, round 1) — armed modes must still pan.** With a stamp armed, every touch placed the fragment, so there was no way to scroll to a destination outside the viewport — a genuine grammar hole, not a prototype artifact (the real editor would inherit it unless the grammar forbids it). Rule adopted, and worth generalizing to *any* future armed/pending mode: **a mode that captures taps must still route drags to pan**, and the ghost/pending action survives the pan and re-arms on release. Related: the minimap read as a scroll bar and was expected to scrub — it's now a control (tap/drag to jump), which is the R8 expectation for the real section strip too. Both fixed in the prototype.
 
 **Design finding — one-finger pan on empty works.** The candidate grammar in §10 said "two-finger or gutter drag = pan"; the prototype shows drag-on-empty = pan coexists cleanly with tap-to-plant (slop threshold separates them) and with marquee (long-press separates it). Two-finger pan also works. Both should ship; phone test to confirm the 350 ms / 8 px numbers feel right.
 

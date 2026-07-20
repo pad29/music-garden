@@ -48,7 +48,7 @@
   #selbar{ display:none; gap:6px; margin-top:8px;}
   #trace{ font-size:.7rem; font-family:ui-monospace,monospace; background:var(--card); border:1px solid var(--line);
           border-radius:10px; padding:6px 10px; margin-top:8px; min-height:3.2em; max-width:680px; white-space:pre-line;}
-  #minimap{ height:10px; background:var(--panel); border:1px solid var(--line); border-radius:999px; margin-top:6px; position:relative;}
+  #minimap{ height:16px; background:var(--panel); border:1px solid var(--line); border-radius:999px; margin-top:6px; position:relative; cursor:pointer;}
   #minithumb{ position:absolute; top:0; bottom:0; background:rgba(90,169,230,.45); border-radius:999px;}
 </style>
 </head>
@@ -164,7 +164,7 @@ wrap.addEventListener('pointerdown',ev=>{
   pointers.set(ev.pointerId,pt(ev));
   if(pointers.size===2){ clearTimeout(lpTimer); st='PINCHPAN'; trace('two fingers → pan'); return; }
   const p=pt(ev); downPt=p;
-  if(st==='STAMP'){ placeStamp(p); return; }
+  if(st==='STAMP') return;                        // decide tap-vs-drag on move/up, so pan stays possible
   const hEl=ev.target.closest?ev.target.closest('.handle'):null;
   if(hEl){ st='DOWN_HANDLE'; downNote=notes.find(n=>n.id==hEl.dataset.h); dragSnap=begin(); trace('down on handle'); return; }
   const n=noteAt(p.x,p.y);
@@ -200,12 +200,14 @@ wrap.addEventListener('pointermove',ev=>{
     downNote.durTicks=Math.min(TOTALCOLS*COLTICKS-downNote.startTick, endT-downNote.startTick);
     render(); return;
   }
-  if(st==='STAMP' && ghost){ ghost.anchor={pitch:ROWS[y2row(p.y)],tick:Math.max(0,tickFloor(p.x))}; render(); }
+  if(st==='STAMP' && moved){ st='STAMP_PAN'; trace('drag with stamp armed → pan'); }
+  if(st==='STAMP_PAN'){ scrollX=clampX(scrollX-(p.x-prev.x)); render(); return; }
 });
 function up(ev){
   pointers.delete(ev.pointerId); clearTimeout(lpTimer);
   if(pointers.size>0){ return; }
   const p=downPt?pt(ev):null;
+  if(st==='STAMP'){ if(p) placeStamp(p); downPt=null; return; }   // clean tap places; drags became STAMP_PAN
   if(st==='DOWN_EMPTY'){                       // clean tap → plant
     const pitch=ROWS[y2row(p.y)], tk=tickFloor(p.x);
     if(tk>=0&&tk<TOTALCOLS*COLTICKS && !noteAt(p.x,p.y)){
@@ -226,12 +228,22 @@ function up(ev){
       if(nx<r&&nx+nw>l&&ri*rowH<b&&(ri+1)*rowH>t) selection.add(n.id); }
     trace('marquee → '+selection.size+' selected'); marq=null;
   }
-  if(st!=='STAMP') st='IDLE';
+  st = ghost ? 'STAMP' : 'IDLE';                  // a live ghost survives pans (incl. two-finger) and re-arms
   downPt=null; downNote=null; render();
 }
 wrap.addEventListener('pointerup',up); wrap.addEventListener('pointercancel',up);
 wrap.addEventListener('wheel',ev=>{ scrollX=clampX(scrollX+(ev.deltaX||ev.deltaY)); render(); ev.preventDefault(); },{passive:false});
 function clampX(x){ return Math.max(0,Math.min(TOTALCOLS*colW-wrap.clientWidth,x)); }
+
+// minimap = scrub control (tap or drag anywhere on the strip)
+const mm=document.getElementById('minimap');
+function scrub(ev){ const r=mm.getBoundingClientRect();
+  scrollX=clampX((ev.clientX-r.left)/r.width*TOTALCOLS*colW - wrap.clientWidth/2); render(); }
+mm.style.touchAction='none';
+mm.addEventListener('pointerdown',ev=>{ mm.setPointerCapture(ev.pointerId); mm._scrub=true; scrub(ev); trace('minimap scrub'); });
+mm.addEventListener('pointermove',ev=>{ if(mm._scrub) scrub(ev); });
+mm.addEventListener('pointerup',()=>{ mm._scrub=false; });
+mm.addEventListener('pointercancel',()=>{ mm._scrub=false; });
 
 // ---------- selection bar ----------
 delBtn.onclick=()=>{ const snap=begin(); notes=notes.filter(n=>!selection.has(n.id)); selection.clear(); commitFrom(snap,'delete'); render(); };
