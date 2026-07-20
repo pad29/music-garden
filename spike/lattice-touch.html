@@ -65,6 +65,12 @@
   <button id="stratC" class="small off">C · Black-key chips</button>
   <button id="stratD" class="small off">D · Zoom to plant</button>
 </div>
+<div class="row" id="marginRow">
+  <span style="font-size:.78rem;opacity:.85">Crack reach:</span>
+  <button id="m5" class="small off">±5 px</button>
+  <button id="m7" class="small off">±7 px</button>
+  <button id="m9" class="small">±9 px</button>
+</div>
 <div class="row">
   <button id="modeBtn" class="small">🎯 Target practice: ON</button>
   <button id="zoomOut" class="small">↩ Zoom out</button>
@@ -85,10 +91,13 @@ const isSlim=p=>[1,3,6,8,10].includes(p%12);
 const PITCHES=[]; for(let p=84;p>=60;p--) PITCHES.push(p);   // top→bottom
 const COLS=8, WIDE=34, SLIM=12, ZOOMF=2;
 let strat='A', targetMode=true, zoomed=false;
+let marginA=9;           // strategy A crack reach (px each side) — tunable
 let seeds=[];            // {pitch,col}
 let openCrack=null;      // strategy B
 let target=null;         // {pitch,col,shownAt}
-let stats={A:[],B:[],C:[],D:[]};   // {slim,hit,errPx,ms}
+const STATKEYS=['A5','A7','A9','B','C','D'];
+let stats={}; for(const k of STATKEYS) stats[k]=[];   // {slim,hit,errPx,ms}
+const statKey=()=>strat==='A'?'A'+marginA:strat;
 
 const field=document.getElementById('field'), wrap=document.getElementById('fieldWrap');
 const toast=document.getElementById('toast');
@@ -157,9 +166,9 @@ function hitTest(x,y){
     return {pitch:best.pitch,col,plantable:true};
   }
   if(strat==='A' && !zoomed){
-    // slim rows get a virtual band of ±9px beyond their visual edges
+    // slim rows get a virtual band of ±marginA px beyond their visual edges
     for(const r of layout){ if(!r.slim) continue;
-      if(y>=r.top-9 && y<r.top+r.h+9) return {pitch:r.pitch,col,plantable:true}; }
+      if(y>=r.top-marginA && y<r.top+r.h+marginA) return {pitch:r.pitch,col,plantable:true}; }
     for(const r of layout){ if(r.slim) continue;
       if(y>=r.top && y<r.top+r.h) return {pitch:r.pitch,col,plantable:true}; }
     const last=layout[layout.length-1];
@@ -198,20 +207,21 @@ function say(t){ toast.textContent=t; toast.style.opacity=1; clearTimeout(say.t)
 function newTarget(){
   if(!targetMode){ target=null; return; }
   // alternate slim/wide so slim gets equal sampling
-  const wantSlim=(stats[strat].length%2)===1;
+  const wantSlim=(stats[statKey()].length%2)===1;
   const pool=PITCHES.filter(p=>isSlim(p)===wantSlim && p>60 && p<84);
   target={ pitch:pool[Math.floor(Math.random()*pool.length)], col:Math.floor(Math.random()*COLS), shownAt:performance.now() };
 }
+const STATLABELS={A5:'A ±5',A7:'A ±7',A9:'A ±9',B:'B',C:'C',D:'D'};
 function statsTable(){
   let html='<table><tr><th>Strategy</th><th>Wide acc</th><th>Slim acc</th><th>Slim err (med px)</th><th>Avg time</th><th>N</th></tr>';
-  for(const k of ['A','B','C','D']){
+  for(const k of STATKEYS){
     const a=stats[k], w=a.filter(x=>!x.slim), s=a.filter(x=>x.slim);
     const acc=r=>r.length?Math.round(100*r.filter(x=>x.hit).length/r.length)+'%':'—';
     const errs=s.filter(x=>x.hit).map(x=>x.errPx).sort((p,q)=>p-q);
     const med=errs.length?Math.round(errs[Math.floor(errs.length/2)])+'':'—';
     const t=a.length?Math.round(a.reduce((p,q)=>p+q.ms,0)/a.length)+'ms':'—';
     const sa=s.length?100*s.filter(x=>x.hit).length/s.length:null;
-    html+=`<tr><td><b>${k}</b></td><td>${acc(w)}</td><td class="${sa==null?'':(sa>=90?'good':'bad')}">${acc(s)}</td><td>${med}</td><td>${t}</td><td>${a.length}</td></tr>`;
+    html+=`<tr><td><b>${STATLABELS[k]}</b></td><td>${acc(w)}</td><td class="${sa==null?'':(sa>=90?'good':'bad')}">${acc(s)}</td><td>${med}</td><td>${t}</td><td>${a.length}</td></tr>`;
   }
   document.getElementById('statsBox').innerHTML=html+'</table><div class="note">Gate: slim accuracy ≥ 90% and it has to <i>feel</i> okay. Time includes finding the target.</div>';
 }
@@ -243,7 +253,7 @@ field.addEventListener('pointerdown',ev=>{
     const r=rowOf(target.pitch);
     const hit=(h.pitch===target.pitch && h.col===target.col);
     const errPx=Math.abs(y-(r.top+r.h/2));
-    stats[strat].push({slim:isSlim(target.pitch), hit, errPx, ms:performance.now()-target.shownAt});
+    stats[statKey()].push({slim:isSlim(target.pitch), hit, errPx, ms:performance.now()-target.shownAt});
     say(hit?'✅ hit':'❌ missed → '+NAMES[h.pitch%12]+Math.floor(h.pitch/12-1));
     blip(hit?target.pitch:h.pitch);
     if(hit){ seeds.push({pitch:target.pitch,col:target.col}); if(seeds.length>10) seeds.shift(); }
@@ -260,21 +270,26 @@ field.addEventListener('pointerdown',ev=>{
 
 // ---------- controls ----------
 const NOTES={
-  A:'A — rows look slim but each crack has an invisible ±9px hit band eating into its neighbours. Cost: the edge of a wide row near a crack now belongs to the crack.',
+  A:'A — rows look slim but each crack has an invisible hit band eating into its neighbours (tunable above: ±5/±7/±9 px — each setting scores separately). Cost: the edge of a wide row near a crack belongs to the crack.',
   B:'B — cracks are not directly plantable: the first tap makes the crack breathe open wide, the second plants. Cost: two taps; Bonus: nothing is ever ambiguous, and pre-unlock this same gesture can say "not yet".',
   C:'C — cracks are piano-style black-key chips: taller than the crack, horizontally inset, floating over the boundary. Tap outside the inset and you get the wide row. Cost: chips cover part of the wide rows.',
   D:'D — cracks are not plantable at normal size: tapping one zooms the garden in (rows double height), plant, then zoom out. Cost: a mode; Bonus: everything is huge while planting.'};
 function setStrat(s){ strat=s; openCrack=null; zoomed=false;
   for(const k of ['A','B','C','D']) document.getElementById('strat'+k).classList.toggle('off',k!==s);
+  document.getElementById('marginRow').style.display=(s==='A')?'flex':'none';
   document.getElementById('stratNote').textContent=NOTES[s];
   newTarget(); render(); statsTable(); }
 for(const k of ['A','B','C','D']) document.getElementById('strat'+k).onclick=()=>setStrat(k);
+function setMargin(m){ marginA=m;
+  for(const v of [5,7,9]) document.getElementById('m'+v).classList.toggle('off',v!==m);
+  newTarget(); render(); statsTable(); }
+for(const v of [5,7,9]) document.getElementById('m'+v).onclick=()=>setMargin(v);
 document.getElementById('modeBtn').onclick=function(){ targetMode=!targetMode;
   this.textContent='🎯 Target practice: '+(targetMode?'ON':'OFF'); this.classList.toggle('off',!targetMode);
   newTarget(); render(); };
 document.getElementById('zoomOut').onclick=()=>{ zoomed=false; render(); };
 document.getElementById('clearBtn').onclick=()=>{ seeds=[]; render(); };
-document.getElementById('resetStats').onclick=()=>{ stats={A:[],B:[],C:[],D:[]}; statsTable(); };
+document.getElementById('resetStats').onclick=()=>{ for(const k of STATKEYS) stats[k]=[]; statsTable(); };
 window.addEventListener('resize',render);
 
 setStrat('A');

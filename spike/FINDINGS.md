@@ -94,6 +94,18 @@ Four strategies, all functional, switchable live in `lattice-touch.html`; target
 
 **Gate criteria:** slim-row accuracy ≥ 90% in target practice on a phone, wide-row accuracy not degraded below ~95%, and it has to *feel* okay — B and D trade taps for certainty, A and C trade precision for directness. Hybrids are legal (e.g. C for look + B for pre-unlock cracks).
 
+**Phone test round 1 (owner, 2026-07-19):** A and C were the best. **A: wide 91% / slim 100%** · **C: wide 98% / slim 90%**. Owner prefers **A** — it looks a lot cleaner visually. Reading: A's ±9 px crack reach over-serves slim rows (100%) at the wide rows' expense (91%, below the ~95% bar) — there is margin to give back.
+
+**Round 2 — margin tuning:** the crack reach is now tunable in the prototype (**±5 / ±7 / ±9 px**, shown only for strategy A; each setting keeps its own scoreboard row A ±5 / A ±7 / A ±9). Geometry per setting — slim's effective touch band vs. what a wide row between two cracks keeps of its 34 px:
+
+| Reach | Slim effective band | Wide row keeps |
+|---|---|---|
+| ±9 | 30 px | 16 px |
+| ±7 | 26 px | 20 px |
+| ±5 | 22 px | 24 px |
+
+Hypothesis: ±5–7 recovers wide accuracy to ≥95% while slim stays ≥90% (it was at 100%, so there's headroom). Gate closes on the first setting that clears both bars.
+
 ## 6. What feeds back into EDITOR-DESIGN.md
 
 Now (this spike): PPQ 96 ratified (§4b) · input-state table adopted + one-finger-pan finding (§10) · stamp default = scale-degree on garden lens (§5d) · scheduler validated + **background-tab lookahead stretching** added (§12) · budget numbers (§12).
