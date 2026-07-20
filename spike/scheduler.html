@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spike · Scheduler Benchmark</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --leaf:#44A35F; --leaf-deep:#35824A; --sky:#5AA9E6; --coral:#F28C8C; --soil:#3E3A39;
+         --cream:#F1ECDF; --card:#FFFFFF; --panel:#F4EFE2; --line:#E5DCC8;
+         --font-display:'Fredoka','Nunito','Segoe UI',system-ui,sans-serif;
+         --font-body:'Nunito','Segoe UI',system-ui,sans-serif;}
+  *{box-sizing:border-box;}
+  body{ margin:0; padding:14px; font-family:var(--font-body); color:var(--soil); background:var(--cream);}
+  h1{ font-family:var(--font-display); font-weight:600; font-size:1.15rem; margin:.2em 0 .1em;}
+  h2{ font-family:var(--font-display); font-weight:500; font-size:.95rem; margin:1em 0 .3em;}
+  .sub{ font-size:.78rem; opacity:.8; margin-bottom:10px; max-width:680px;}
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px;}
+  button,select{ font:inherit; font-family:var(--font-display); font-size:.82rem; color:#fff; background:var(--leaf);
+          border:none; padding:7px 12px; border-radius:999px; cursor:pointer; box-shadow:0 2px 0 var(--leaf-deep);}
+  select{ color:var(--soil); background:var(--card); box-shadow:0 2px 0 var(--line);}
+  button.warn{ background:var(--coral); box-shadow:0 2px 0 #c9635f;}
+  button.alt{ background:var(--sky); box-shadow:0 2px 0 #3f83ba;}
+  input[type=range]{ width:180px;}
+  table{ border-collapse:collapse; font-size:.78rem; background:var(--card); border-radius:10px; overflow:hidden; margin-top:6px;}
+  th,td{ padding:5px 10px; border:1px solid var(--line); text-align:right;}
+  th{ background:var(--panel); font-family:var(--font-display); font-weight:500; text-align:left;}
+  #log{ font-size:.72rem; font-family:ui-monospace,monospace; background:var(--card); border:1px solid var(--line);
+        border-radius:10px; padding:8px 12px; margin-top:8px; max-width:720px; white-space:pre-line; max-height:180px; overflow-y:auto;}
+  .lbl{ font-size:.78rem; opacity:.85;}
+</style>
+</head>
+<body>
+<h1>⏱ Scheduler Spike <span style="opacity:.5;font-size:.8em">(EDITOR-DESIGN §12 / R18, R21)</span></h1>
+<div class="sub">A real lookahead scheduler — timers <i>wake</i> it, <code>AudioContext.currentTime</code> <i>owns</i> sound time. Note-on + note-off, seek, loop, live-edit rescheduling; instrumented for wake lateness (the number that must stay under the lookahead) and late notes (the failure that would be audible).</div>
+
+<div class="row">
+  <span class="lbl">Song:</span>
+  <select id="songSize"><option value="500">500 notes</option><option value="2000" selected>2,000 notes</option><option value="10000">10,000 notes</option></select>
+  <span class="lbl">Voices: 4 + drums · lookahead 120&nbsp;ms · wake 25&nbsp;ms</span>
+</div>
+<div class="row">
+  <button id="playBtn">▶ Play</button>
+  <button id="seekBtn" class="alt">⤳ Seek to bar 9</button>
+  <button id="loopBtn" class="alt">🔁 Loop bars 1–4: off</button>
+  <button id="editBtn" class="alt">✏️ Live-edit 50 future notes</button>
+  <button id="stressBtn" class="warn">🐌 Main-thread stalls ×10 (30 ms each)</button>
+  <span class="lbl">Tempo <input type="range" id="tempo" min="60" max="200" value="120"><span id="tempoLbl">120</span></span>
+</div>
+<div class="row"><span class="lbl" id="posLbl">stopped</span></div>
+
+<h2>Timing report <button id="resetBtn" class="warn" style="padding:3px 10px;font-size:.7rem">reset</button></h2>
+<div id="report"></div>
+
+<h2>DOM render bench (budget input)</h2>
+<div class="row">
+  <select id="gridSize"><option value="14x32">14×32 (448 cells — today)</option><option value="24x64" selected>24×64 (1,536)</option><option value="25x128">25×128 (3,200)</option></select>
+  <button id="benchBtn" class="alt">Run render bench</button>
+</div>
+<div id="benchOut" class="lbl"></div>
+<div id="benchHost" style="position:absolute;left:-9999px;top:0"></div>
+
+<div id="log">log…</div>
+
+<script>
+'use strict';
+const PPQ=96, LOOKAHEAD=0.12, WAKE_MS=25;
+const log=t=>{ const el=document.getElementById('log'); el.textContent=t+'\n'+el.textContent.split('\n').slice(0,60).join('\n'); };
+
+// ---------- test song ----------
+let notes=[];   // {id,pitch,startTick,durTicks,track}
+function genSong(n){
+  notes=[]; let id=1;
+  const scale=[60,62,64,65,67,69,71,72,74,76];
+  for(let t=0;t<4;t++){                                  // 4 pitched tracks
+    let tick=0, pi=(t*2)%scale.length;
+    for(let i=0;i<n/5;i++){
+      const dur=[24,48,48,96][Math.floor(Math.random()*4)];
+      pi=Math.max(0,Math.min(scale.length-1,pi+Math.floor(Math.random()*5)-2));
+      notes.push({id:id++,pitch:scale[pi]-(t===3?24:t===2?12:0),startTick:tick,durTicks:dur,track:t});
+      tick+=[24,48,48,96][Math.floor(Math.random()*4)];
+    }
+  }
+  for(let tick=0, i=0;i<n/5;i++,tick+=48)                // drums: steady 8ths
+    notes.push({id:id++,pitch:36+(i%4===0?0:6),startTick:tick,durTicks:12,track:4});
+  notes.sort((a,b)=>a.startTick-b.startTick);
+  log('song: '+notes.length+' notes, '+Math.round(lastTick()/PPQ/4)+' bars of 4/4');
+}
+const lastTick=()=>notes.length?notes[notes.length-1].startTick+96:0;
+
+// ---------- metrics ----------
+let M;
+function resetM(){ M={wakes:0,late:[],lateNotes:0,maxBatch:0,schedCalls:0,editResched:0};
+  window.SPIKE_RESULTS={}; report(); }
+function pct(a,q){ if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y); return s[Math.min(s.length-1,Math.floor(q*s.length))]; }
+function report(){
+  const r={ wakes:M.wakes, avgLatenessMs:+(M.late.reduce((p,q)=>p+q,0)/(M.late.length||1)).toFixed(2),
+    p99LatenessMs:+pct(M.late,0.99).toFixed(1), maxLatenessMs:+(M.late.length?Math.max(...M.late):0).toFixed(1),
+    lateNotes:M.lateNotes, maxNotesPerWake:M.maxBatch, oscScheduled:M.schedCalls, editResched:M.editResched,
+    headroomMs:+(LOOKAHEAD*1000-(M.late.length?Math.max(...M.late):0)).toFixed(1) };
+  window.SPIKE_RESULTS.scheduler=r;
+  document.getElementById('report').innerHTML=
+   `<table><tr><th>Wakes</th><td>${r.wakes}</td><th>Osc scheduled</th><td>${r.oscScheduled}</td></tr>
+    <tr><th>Wake lateness avg / p99 / max</th><td colspan="3">${r.avgLatenessMs} / ${r.p99LatenessMs} / ${r.maxLatenessMs} ms (budget: &lt; ${LOOKAHEAD*1000} ms)</td></tr>
+    <tr><th>Late notes (audible failures)</th><td style="color:${r.lateNotes?'#C0564F':'#35824A'};font-weight:700">${r.lateNotes}</td>
+        <th>Max notes in one wake</th><td>${r.maxNotesPerWake}</td></tr>
+    <tr><th>Headroom under lookahead</th><td>${r.headroomMs} ms</td><th>Rescheduled by live edits</th><td>${r.editResched}</td></tr></table>`;
+}
+
+// ---------- the scheduler ----------
+let ctx=null, playing=false, timer=null;
+let bpm=120, secPerTick=()=>60/bpm/PPQ;
+let startCtxTime=0, startTick=0;          // playback anchor: tick `startTick` sounds at ctx time `startCtxTime`
+let schedIdx=0;                            // next note index to consider
+let live=new Map();                        // id → [nodes] for cancellation
+let loopOn=false; const LOOP_START=0, LOOP_END=4*4*PPQ;
+let expectedWake=0;
+
+const tick2time=t=>startCtxTime+(t-startTick)*secPerTick();
+const time2tick=ct=>startTick+(ct-startCtxTime)/secPerTick();
+
+function voice(n,when,dur){
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.type=n.track===4?'square':'triangle';
+  o.frequency.value=440*Math.pow(2,(n.pitch-69)/12);
+  const v=n.track===4?.05:.06;
+  g.gain.setValueAtTime(v,when); g.gain.setValueAtTime(v,when+Math.max(.03,dur-.05));
+  g.gain.exponentialRampToValueAtTime(.0001,when+dur);            // honest note-off
+  o.connect(g).connect(ctx.destination); o.start(when); o.stop(when+dur+.05);
+  M.schedCalls++;
+  return [o,g];
+}
+function wake(){
+  if(!playing) return;
+  const now=performance.now();
+  if(expectedWake) M.late.push(Math.max(0,now-expectedWake));
+  expectedWake=now+WAKE_MS; M.wakes++;
+  const ct=ctx.currentTime, horizonTick=time2tick(ct+LOOKAHEAD);
+  let batch=0;
+  while(schedIdx<notes.length && notes[schedIdx].startTick<horizonTick){
+    const n=notes[schedIdx++];
+    const when=tick2time(n.startTick);
+    if(when<ct){ M.lateNotes++; }                                  // would have been audible
+    else { live.set(n.id, voice(n, when, Math.max(.05,n.durTicks*secPerTick()))); batch++; }
+  }
+  M.maxBatch=Math.max(M.maxBatch,batch);
+  if(loopOn && time2tick(ct)>=LOOP_END){ anchor(LOOP_START); log('loop → bar 1'); }
+  if(!loopOn && schedIdx>=notes.length && time2tick(ct)>lastTick()){ stop(); log('song end'); }
+  document.getElementById('posLbl').textContent='bar '+(Math.floor(time2tick(ct)/PPQ/4)+1)+' · tick '+Math.floor(time2tick(ct));
+  report();
+  timer=setTimeout(wake,WAKE_MS);
+}
+function anchor(tick){                                             // set playback position (seek/loop/tempo)
+  for(const nodes of live.values()) for(const nd of nodes){ try{nd.disconnect();}catch(e){} }
+  live.clear();
+  startCtxTime=ctx.currentTime+0.03; startTick=tick;
+  schedIdx=notes.findIndex(n=>n.startTick>=tick); if(schedIdx<0) schedIdx=notes.length;
+}
+function play(){
+  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
+  ctx.resume();
+  playing=true; expectedWake=0; anchor(0); wake();
+  playBtn.textContent='⏹ Stop'; log('play (ctx.state='+ctx.state+', baseLatency='+((ctx.baseLatency||0)*1000).toFixed(1)+'ms)');
+}
+function stop(){ playing=false; clearTimeout(timer);
+  for(const nodes of live.values()) for(const nd of nodes){ try{nd.disconnect();}catch(e){} }
+  live.clear(); playBtn.textContent='▶ Play'; document.getElementById('posLbl').textContent='stopped'; }
+
+playBtn.onclick=()=>playing?stop():play();
+seekBtn.onclick=()=>{ if(playing){ anchor(8*4*PPQ); log('seek → bar 9'); } };
+loopBtn.onclick=function(){ loopOn=!loopOn; this.textContent='🔁 Loop bars 1–4: '+(loopOn?'ON':'off'); };
+document.getElementById('tempo').oninput=function(){ // live tempo change: re-anchor at current musical position
+  const t=playing?time2tick(ctx.currentTime):0;
+  bpm=+this.value; tempoLbl.textContent=this.value;
+  if(playing) anchor(Math.floor(t));
+};
+editBtn.onclick=()=>{                        // mutate future notes during playback + reschedule
+  if(!playing) return log('edit test needs playback running');
+  const nowTick=time2tick(ctx.currentTime), horizon=time2tick(ctx.currentTime+LOOKAHEAD);
+  let n=0;
+  for(const note of notes){ if(n>=50)break;
+    if(note.startTick>nowTick+PPQ && Math.random()<.3){ note.pitch+=Math.random()<.5?2:-2; n++;
+      if(note.startTick<horizon) M.editResched++; } }
+  // notes already scheduled inside the window: cancel + let wake re-schedule (re-anchor keeps position)
+  anchor(Math.ceil(nowTick));
+  log('live-edited '+n+' future notes, window rescheduled');
+};
+stressBtn.onclick=()=>{                      // simulate heavy render work on the main thread
+  let i=0; const one=()=>{ const t0=performance.now(); while(performance.now()-t0<30){} if(++i<10) setTimeout(one, 20); else log('stall test done — check lateness above'); };
+  one(); log('stalling main thread: 10 × 30 ms busy loops');
+};
+resetBtn.onclick=resetM;
+songSize.onchange=function(){ stop(); genSong(+this.value); resetM(); };
+
+// ---------- DOM render bench ----------
+benchBtn.onclick=()=>{
+  const [r,c]=gridSize.value.split('x').map(Number);
+  const host=document.getElementById('benchHost'); host.innerHTML='';
+  const t0=performance.now();
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<r;i++){ const row=document.createElement('div'); row.style.display='flex';
+    for(let j=0;j<c;j++){ const d=document.createElement('div');
+      d.style.cssText='width:40px;height:40px;background:#D8DCE2;border:1px solid #ccc;border-radius:6px;margin:1px';
+      row.appendChild(d); } frag.appendChild(row); }
+  host.appendChild(frag);
+  host.getBoundingClientRect();                            // force layout
+  const build=performance.now()-t0;
+  const cells=host.querySelectorAll('div[style*="width"]');
+  const t1=performance.now();
+  for(let k=0;k<cells.length;k+=3) cells[k].style.background='#F0A32F';
+  host.getBoundingClientRect();
+  const toggle=performance.now()-t1;
+  const res={cells:r*c, buildMs:+build.toFixed(1), styleSweepMs:+toggle.toFixed(1)};
+  window.SPIKE_RESULTS=window.SPIKE_RESULTS||{}; window.SPIKE_RESULTS.render=res;
+  document.getElementById('benchOut').textContent=`${r*c} cells — build+layout ${res.buildMs} ms · restyle ⅓ of cells ${res.styleSweepMs} ms`;
+  host.innerHTML='';
+};
+
+genSong(2000); resetM();
+</script>
+</body>
+</html>

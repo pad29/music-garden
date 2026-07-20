@@ -6,7 +6,7 @@
 [build]
   # Copy the app + the pre-baked narration clips (voice/) + the instrument sample packs (samples/)
   # into a clean publish dir. If you add a new asset folder the game loads at runtime, add it here.
-  command = "mkdir -p site && cp index.html site/index.html && cp -r voice site/voice && cp -r samples site/samples"
+  command = "mkdir -p site && cp index.html site/index.html && cp -r voice site/voice && cp -r samples site/samples && cp -r spike site/spike"
   publish = "site"
 
 # Single-page app: serve index.html for any path (harmless here, future-proof for routes).

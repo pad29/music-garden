@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Spike · Slim-Row Touch (§5a gate)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --leaf:#44A35F; --leaf-deep:#35824A; --sky:#5AA9E6; --gold:#F4C95D; --gold-deep:#C99A2E;
+    --coral:#F28C8C; --soil:#3E3A39; --cream:#F1ECDF; --purple:#8A6FE8; --teal:#7FC8B2;
+    --card:#FFFFFF; --panel:#F4EFE2; --line:#E5DCC8; --cell:#D8DCE2; --cellOn:#F0A32F;
+    --cellOnEdge:rgba(185,124,16,.5); --tonic:#C6E2BF; --crack:#4A443F;
+    --font-display:'Fredoka','Nunito','Segoe UI',system-ui,sans-serif;
+    --font-body:'Nunito','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; padding:12px; font-family:var(--font-body); color:var(--soil); background:var(--cream);
+        touch-action:manipulation; -webkit-user-select:none; user-select:none;}
+  h1{ font-family:var(--font-display); font-weight:600; font-size:1.15rem; margin:.2em 0 .1em;}
+  .sub{ font-size:.78rem; opacity:.8; margin-bottom:8px;}
+  .row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;}
+  button{ font:inherit; font-family:var(--font-display); font-size:.82rem; color:#fff; background:var(--leaf);
+          border:none; padding:7px 12px; border-radius:999px; cursor:pointer;
+          box-shadow:0 2px 0 var(--leaf-deep);}
+  button.off{ background:#B8B2A6; box-shadow:0 2px 0 #948E82;}
+  button.small{ padding:5px 10px; font-size:.75rem;}
+  #zoomOut{ display:none; background:var(--purple); box-shadow:0 2px 0 #6b53c2;}
+  #fieldWrap{ position:relative; max-height:76vh; overflow-y:auto; border-radius:14px;
+              border:1px solid var(--line); background:var(--panel); box-shadow:0 4px 14px rgba(62,58,57,.10);}
+  #field{ position:relative; touch-action:none; }
+  .lrow{ position:absolute; left:0; right:0; transition:top .18s, height .18s; }
+  .lrow.wide{ background:var(--cell); border-top:1px solid rgba(62,58,57,.10); }
+  .lrow.wide.lit{ background:#E3E7EC; }
+  .lrow.wide.home{ background:var(--tonic); }
+  .lrow.slim{ background:var(--crack); border-top:1px solid #2E2A26; box-shadow:inset 0 2px 4px rgba(0,0,0,.35); z-index:2;}
+  .lrow.slim.openC{ background:#6B6258; box-shadow:inset 0 0 0 2px var(--gold), inset 0 2px 6px rgba(0,0,0,.3);}
+  .chip{ position:absolute; border-radius:7px; background:var(--crack); box-shadow:0 2px 4px rgba(0,0,0,.35);
+         z-index:3; border:1px solid #2E2A26; transition:top .18s, height .18s;}
+  .colline{ position:absolute; top:0; bottom:0; width:1px; background:rgba(62,58,57,.10); pointer-events:none; z-index:4;}
+  .seed{ position:absolute; border-radius:50%; background:var(--cellOn); border:1px solid var(--cellOnEdge);
+         box-shadow:0 1px 3px rgba(62,58,57,.25); z-index:5; pointer-events:none; transition:top .18s;}
+  .seed.crackseed{ background:var(--purple); border-color:#6b53c2; box-shadow:0 0 8px rgba(138,111,232,.7);}
+  .target{ position:absolute; border:3px dashed var(--sky); border-radius:8px; z-index:6; pointer-events:none;
+           animation:tpulse 1s infinite alternate;}
+  @keyframes tpulse{ from{ box-shadow:0 0 4px var(--sky);} to{ box-shadow:0 0 16px var(--sky);} }
+  .shimmer{ animation:shim .5s 2; }
+  @keyframes shim{ 50%{ background:#8A6FE8; box-shadow:inset 0 0 10px #c9bcf5;} }
+  #toast{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:var(--soil); color:#fff;
+          padding:8px 16px; border-radius:999px; font-size:.85rem; opacity:0; transition:opacity .25s; pointer-events:none; z-index:20;}
+  table{ border-collapse:collapse; font-size:.78rem; margin-top:10px; background:var(--card); border-radius:10px; overflow:hidden;}
+  th,td{ padding:5px 10px; border:1px solid var(--line); text-align:center;}
+  th{ background:var(--panel); font-family:var(--font-display); font-weight:500;}
+  td.good{ color:var(--leaf-deep); font-weight:700;} td.bad{ color:#C0564F; font-weight:700;}
+  .note{ font-size:.72rem; opacity:.75; margin-top:6px; max-width:640px;}
+</style>
+</head>
+<body>
+<h1>🌱 Slim-Row Touch Spike <span style="opacity:.5;font-size:.8em">(EDITOR-DESIGN §5a gate)</span></h1>
+<div class="sub">Can crack rows be planted accurately on a phone? Try each strategy in <b>Target practice</b> — the table keeps score. Free plant just plants.</div>
+
+<div class="row">
+  <button id="stratA" class="small">A · Fat hit zones</button>
+  <button id="stratB" class="small off">B · Crack opens</button>
+  <button id="stratC" class="small off">C · Black-key chips</button>
+  <button id="stratD" class="small off">D · Zoom to plant</button>
+</div>
+<div class="row">
+  <button id="modeBtn" class="small">🎯 Target practice: ON</button>
+  <button id="zoomOut" class="small">↩ Zoom out</button>
+  <button id="clearBtn" class="small off">Clear seeds</button>
+  <button id="resetStats" class="small off">Reset stats</button>
+</div>
+
+<div id="fieldWrap"><div id="field"></div></div>
+<div id="statsBox"></div>
+<div class="note" id="stratNote"></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+// ---------- lattice model: C4..C6 descending from top ----------
+const NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const isSlim=p=>[1,3,6,8,10].includes(p%12);
+const PITCHES=[]; for(let p=84;p>=60;p--) PITCHES.push(p);   // top→bottom
+const COLS=8, WIDE=34, SLIM=12, ZOOMF=2;
+let strat='A', targetMode=true, zoomed=false;
+let seeds=[];            // {pitch,col}
+let openCrack=null;      // strategy B
+let target=null;         // {pitch,col,shownAt}
+let stats={A:[],B:[],C:[],D:[]};   // {slim,hit,errPx,ms}
+
+const field=document.getElementById('field'), wrap=document.getElementById('fieldWrap');
+const toast=document.getElementById('toast');
+let layout=[];           // per pitch: {pitch,slim,top,h}
+let colW=0, totalH=0;
+
+function computeLayout(){
+  const zf=zoomed?ZOOMF:1;
+  let y=0; layout=[];
+  for(const p of PITCHES){
+    let h=(isSlim(p)?SLIM:WIDE)*zf;
+    if(strat==='B' && openCrack===p) h=30*zf;
+    layout.push({pitch:p, slim:isSlim(p), top:y, h});
+    y+=h;
+  }
+  totalH=y;
+  colW=Math.max(42, Math.floor((wrap.clientWidth-2)/COLS));
+}
+function rowOf(p){ return layout.find(r=>r.pitch===p); }
+
+function render(){
+  computeLayout();
+  field.style.height=totalH+'px'; field.style.width=(colW*COLS)+'px';
+  let html='';
+  for(const r of layout){
+    const cls=r.slim?('lrow slim'+(strat==='B'&&openCrack===r.pitch?' openC':''))
+                    :('lrow wide lit'+(r.pitch%12===0?' home':''));
+    // strategy C: slim rows become per-column chips instead of a full bar
+    if(r.slim && strat==='C'){
+      const ch=26*(zoomed?ZOOMF:1), inset=Math.round(colW*0.18);
+      for(let c=0;c<COLS;c++)
+        html+=`<div class="chip" data-p="${r.pitch}" data-c="${c}" style="left:${c*colW+inset}px;width:${colW-2*inset}px;top:${r.top+r.h/2-ch/2}px;height:${ch}px"></div>`;
+      html+=`<div class="lrow slim" data-p="${r.pitch}" style="top:${r.top}px;height:${r.h}px;opacity:.35"></div>`;
+    }else{
+      html+=`<div class="${cls}" data-p="${r.pitch}" style="top:${r.top}px;height:${r.h}px"></div>`;
+    }
+  }
+  for(let c=1;c<COLS;c++) html+=`<div class="colline" style="left:${c*colW}px"></div>`;
+  for(const s of seeds){
+    const r=rowOf(s.pitch); if(!r) continue;
+    const d=Math.min(r.h-2, 22*(zoomed?ZOOMF:1));
+    html+=`<div class="seed${r.slim?' crackseed':''}" style="left:${s.col*colW+colW/2-d/2}px;top:${r.top+r.h/2-d/2}px;width:${d}px;height:${d}px"></div>`;
+  }
+  if(target){
+    const r=rowOf(target.pitch);
+    html+=`<div class="target" style="left:${target.col*colW+1}px;top:${r.top}px;width:${colW-2}px;height:${r.h}px"></div>`;
+  }
+  field.innerHTML=html;
+  document.getElementById('zoomOut').style.display=zoomed?'':'none';
+}
+
+// ---------- hit testing per strategy ----------
+// returns {pitch, plantable, reason} for a field-local (x,y)
+function hitTest(x,y){
+  const col=Math.max(0,Math.min(COLS-1,Math.floor(x/colW)));
+  if(strat==='C' && !zoomed){
+    // chips capture their rect; otherwise only wide rows are hittable
+    for(const r of layout){ if(!r.slim) continue;
+      const ch=26, inset=Math.round(colW*0.18);
+      const t=r.top+r.h/2-ch/2;
+      if(y>=t&&y<t+ch && x>=col*colW+inset && x<=(col+1)*colW-inset) return {pitch:r.pitch,col,plantable:true};
+    }
+    let best=null,bd=1e9;
+    for(const r of layout){ if(r.slim) continue;
+      const cy=r.top+r.h/2, d=Math.abs(y-cy); if(d<bd){bd=d;best=r;} }
+    return {pitch:best.pitch,col,plantable:true};
+  }
+  if(strat==='A' && !zoomed){
+    // slim rows get a virtual band of ±9px beyond their visual edges
+    for(const r of layout){ if(!r.slim) continue;
+      if(y>=r.top-9 && y<r.top+r.h+9) return {pitch:r.pitch,col,plantable:true}; }
+    for(const r of layout){ if(r.slim) continue;
+      if(y>=r.top && y<r.top+r.h) return {pitch:r.pitch,col,plantable:true}; }
+    const last=layout[layout.length-1];
+    return {pitch:(y<0?layout[0]:last).pitch,col,plantable:true};
+  }
+  // B, D (and any zoomed state): plain geometric rows
+  for(const r of layout){
+    if(y>=r.top && y<r.top+r.h){
+      if(r.slim && !zoomed){
+        if(strat==='B') return {pitch:r.pitch,col,plantable:openCrack===r.pitch,reason:'crack'};
+        if(strat==='D') return {pitch:r.pitch,col,plantable:false,reason:'zoom'};
+      }
+      return {pitch:r.pitch,col,plantable:true};
+    }
+  }
+  const last=layout[layout.length-1];
+  return {pitch:(y<0?layout[0]:last).pitch,col,plantable:true};
+}
+
+// ---------- audio blip ----------
+let ctx=null;
+function blip(pitch){
+  try{
+    ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
+    if(ctx.state==='suspended') ctx.resume();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value=440*Math.pow(2,(pitch-69)/12); o.type='triangle';
+    g.gain.setValueAtTime(.18,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.35);
+    o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime+.4);
+  }catch(e){}
+}
+function say(t){ toast.textContent=t; toast.style.opacity=1; clearTimeout(say.t); say.t=setTimeout(()=>toast.style.opacity=0,1400); }
+
+// ---------- target practice ----------
+function newTarget(){
+  if(!targetMode){ target=null; return; }
+  // alternate slim/wide so slim gets equal sampling
+  const wantSlim=(stats[strat].length%2)===1;
+  const pool=PITCHES.filter(p=>isSlim(p)===wantSlim && p>60 && p<84);
+  target={ pitch:pool[Math.floor(Math.random()*pool.length)], col:Math.floor(Math.random()*COLS), shownAt:performance.now() };
+}
+function statsTable(){
+  let html='<table><tr><th>Strategy</th><th>Wide acc</th><th>Slim acc</th><th>Slim err (med px)</th><th>Avg time</th><th>N</th></tr>';
+  for(const k of ['A','B','C','D']){
+    const a=stats[k], w=a.filter(x=>!x.slim), s=a.filter(x=>x.slim);
+    const acc=r=>r.length?Math.round(100*r.filter(x=>x.hit).length/r.length)+'%':'—';
+    const errs=s.filter(x=>x.hit).map(x=>x.errPx).sort((p,q)=>p-q);
+    const med=errs.length?Math.round(errs[Math.floor(errs.length/2)])+'':'—';
+    const t=a.length?Math.round(a.reduce((p,q)=>p+q.ms,0)/a.length)+'ms':'—';
+    const sa=s.length?100*s.filter(x=>x.hit).length/s.length:null;
+    html+=`<tr><td><b>${k}</b></td><td>${acc(w)}</td><td class="${sa==null?'':(sa>=90?'good':'bad')}">${acc(s)}</td><td>${med}</td><td>${t}</td><td>${a.length}</td></tr>`;
+  }
+  document.getElementById('statsBox').innerHTML=html+'</table><div class="note">Gate: slim accuracy ≥ 90% and it has to <i>feel</i> okay. Time includes finding the target.</div>';
+}
+
+// ---------- input ----------
+field.addEventListener('pointerdown',ev=>{
+  const rect=field.getBoundingClientRect();
+  const x=ev.clientX-rect.left, y=ev.clientY-rect.top;
+  const h=hitTest(x,y);
+
+  if(!h.plantable){
+    if(h.reason==='crack'){                    // strategy B: first tap opens the crack
+      openCrack=h.pitch; render();
+      say('🌱 The crack opens — tap again to plant');
+      clearTimeout(field._crackT); field._crackT=setTimeout(()=>{openCrack=null;render();},2600);
+      return;
+    }
+    if(h.reason==='zoom'){                     // strategy D: auto-zoom toward the tap
+      zoomed=true; render();
+      const r=rowOf(h.pitch);
+      wrap.scrollTop=Math.max(0, r.top+r.h/2-wrap.clientHeight/2);
+      say('🔍 Zoomed in — plant away');
+      return;
+    }
+  }
+
+  // plant (and score, in target mode)
+  if(targetMode && target){
+    const r=rowOf(target.pitch);
+    const hit=(h.pitch===target.pitch && h.col===target.col);
+    const errPx=Math.abs(y-(r.top+r.h/2));
+    stats[strat].push({slim:isSlim(target.pitch), hit, errPx, ms:performance.now()-target.shownAt});
+    say(hit?'✅ hit':'❌ missed → '+NAMES[h.pitch%12]+Math.floor(h.pitch/12-1));
+    blip(hit?target.pitch:h.pitch);
+    if(hit){ seeds.push({pitch:target.pitch,col:target.col}); if(seeds.length>10) seeds.shift(); }
+    if(strat==='B'){ openCrack=null; }
+    newTarget(); statsTable(); render();
+    return;
+  }
+  // free plant: toggle
+  const i=seeds.findIndex(s=>s.pitch===h.pitch&&s.col===h.col);
+  if(i>=0) seeds.splice(i,1); else { seeds.push({pitch:h.pitch,col:h.col}); blip(h.pitch); }
+  if(strat==='B'){ openCrack=null; }
+  render();
+});
+
+// ---------- controls ----------
+const NOTES={
+  A:'A — rows look slim but each crack has an invisible ±9px hit band eating into its neighbours. Cost: the edge of a wide row near a crack now belongs to the crack.',
+  B:'B — cracks are not directly plantable: the first tap makes the crack breathe open wide, the second plants. Cost: two taps; Bonus: nothing is ever ambiguous, and pre-unlock this same gesture can say "not yet".',
+  C:'C — cracks are piano-style black-key chips: taller than the crack, horizontally inset, floating over the boundary. Tap outside the inset and you get the wide row. Cost: chips cover part of the wide rows.',
+  D:'D — cracks are not plantable at normal size: tapping one zooms the garden in (rows double height), plant, then zoom out. Cost: a mode; Bonus: everything is huge while planting.'};
+function setStrat(s){ strat=s; openCrack=null; zoomed=false;
+  for(const k of ['A','B','C','D']) document.getElementById('strat'+k).classList.toggle('off',k!==s);
+  document.getElementById('stratNote').textContent=NOTES[s];
+  newTarget(); render(); statsTable(); }
+for(const k of ['A','B','C','D']) document.getElementById('strat'+k).onclick=()=>setStrat(k);
+document.getElementById('modeBtn').onclick=function(){ targetMode=!targetMode;
+  this.textContent='🎯 Target practice: '+(targetMode?'ON':'OFF'); this.classList.toggle('off',!targetMode);
+  newTarget(); render(); };
+document.getElementById('zoomOut').onclick=()=>{ zoomed=false; render(); };
+document.getElementById('clearBtn').onclick=()=>{ seeds=[]; render(); };
+document.getElementById('resetStats').onclick=()=>{ stats={A:[],B:[],C:[],D:[]}; statsTable(); };
+window.addEventListener('resize',render);
+
+setStrat('A');
+</script>
+</body>
+</html>

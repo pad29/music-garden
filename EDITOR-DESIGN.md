@@ -76,7 +76,7 @@ Optional fields (`spelling`, `articulation`, `transpose`) are **reserved seams**
 
 ### 4b. Time is ticks, not columns
 
-Canonical time is integer **ticks at PPQ = 96** (divisible by 2/3/4/6/8/12/16/24/32 — 16ths, triplets, and finer are representable without floats). Columns are a *grid projection at the current snap resolution*. Today's column = an 8th = 48 ticks; v3 songs convert exactly (`start = col·48`, `len = len·48`). This makes triplets, pickups/anacrusis, ties across bars, swing-as-view, snap changes, zoom, and future meter changes representable **without another migration** — none of them need UI yet.
+Canonical time is integer **ticks at PPQ = 96** — **RATIFIED by the 2026-07-19 spike** (`spike/FINDINGS.md` §1): smallest supported subdivision = 32nd note and 16th-triplet; quintuplets/septuplets out of scope per §1; MIDI export multiplies by 5 losslessly if 480 PPQ is wanted. (96 is divisible by 2/3/4/6/8/12/16/24/32 — 16ths, triplets, and finer are representable without floats.) Columns are a *grid projection at the current snap resolution*. Today's column = an 8th = 48 ticks; v3 songs convert exactly (`start = col·48`, `len = len·48`). This makes triplets, pickups/anacrusis, ties across bars, swing-as-view, snap changes, zoom, and future meter changes representable **without another migration** — none of them need UI yet.
 
 ### 4c. Stable IDs, from Phase 0
 
@@ -121,7 +121,7 @@ A **12-semitone-per-octave lattice**: 7 **wide** lit rows (the palette — full-
 
 ### 5d. Saved tools declare their transposition nature
 
-A stamp is one of: **exact interval shape** (chromatic — keeps quality everywhere), **scale-degree pattern** (adapts to the lighting — a triad stamped on different degrees changes quality, correctly), or **literal pitch fragment**. Both stamping modes are musically valuable; the lattice makes both cleanly implementable. (Supersedes v1's claim that the DESIGN §11 fork "resolves" — it *separates*, which is better.)
+A stamp is one of: **exact interval shape** (chromatic — keeps quality everywhere), **scale-degree pattern** (adapts to the lighting — a triad stamped on different degrees changes quality, correctly), or **literal pitch fragment**. Both stamping modes are musically valuable; the lattice makes both cleanly implementable. (Supersedes v1's claim that the DESIGN §11 fork "resolves" — it *separates*, which is better.) *Spike addendum:* the gesture prototype confirmed this empirically — a literal-pitch stamp anchored off its home position on a diatonic field silently drops out-of-palette notes, so **the default stamp mode on the garden lens is scale-degree**, with exact/literal as declared alternatives.
 
 ### 5e. Lenses and vertical scroll
 
@@ -159,7 +159,7 @@ Tracks exist in the **model from Phase 0** (today's melody/drums become two trac
 - **Transactions:** every mutation is a semantic operation (place/remove/move/resize/paint/paste/section ops) in a command journal → undo/redo (~100 deep), and later the journal is the seam for cloud revisions (not a CRDT — see §14).
 - **Seed tray (R10):** select region → seeds lift into a tray → move / copy / delete / drag-transpose / **save to toolbox as a stamp** (declaring its §5d nature). The toolbox remains the scalability engine (Tiny Motifs' lesson as a power tool).
 - **Time surgery:** insert/remove musical time (bar-aware), replacing "redo everything after the mistake."
-- **Gesture grammar:** before Phase 1, write the **input-state table** for touch/mouse/keyboard/stylus and user-test it. Candidate touch grammar: tap empty = plant · tap note = select + handles · drag body = move · drag end handle = resize (vine) · long-press empty = start selection · two-finger or gutter drag = pan. The exact mapping matters less than having *one unambiguous system* with no essential action hidden.
+- **Gesture grammar:** the **input-state table** is written and prototyped (`spike/FINDINGS.md` §2, `spike/gestures.html`): tap empty = plant · tap note = select + handles (tap again = deselect) · drag body = move (whole selection if selected) · drag end handle = resize (vine) · long-press empty (350 ms, 8 px slop) = marquee selection · **drag empty or two-finger = pan** (the spike showed one-finger pan on empty coexists cleanly with tap-plant and long-press-marquee — both pan forms ship). Thresholds (350 ms / 8 px) to be confirmed in the owner's phone test.
 - **Desktop baseline (Phase 1):** arrow-key navigation, visible focus, shortcuts for undo/copy/paste/play, marquee select.
 - **Inspector (Composer mode only):** a compact panel for the selection — start, duration, pitch/name, velocity, track. Numbers optional, never required.
 
@@ -172,8 +172,9 @@ Tracks exist in the **model from Phase 0** (today's melody/drums become two trac
 
 ## 12. Audio engine & performance (R18, R21)
 
-- **Scheduler:** lookahead scheduling against `AudioContext.currentTime` (browser timers *wake* the scheduler; they never set sound time). Note-on **and note-off** (duration), cancellation/rescheduling on live edits, seek, deterministic loop boundaries, per-track buses feeding the existing mixer. Lands with Phase 0 as an abstraction; fully exercised by Phase 2 (duration) and 4 (voices).
-- **Budgets (set in the spike, enforced after):** representative limits for visible bars, notes per section, tracks per song; a target low-end phone; edit-latency and playback-jitter ceilings; sample-pack memory cap. Rendering stays DOM but **viewport-based**, so virtualization (or canvas) remains possible without a rewrite.
+- **Scheduler:** lookahead scheduling against `AudioContext.currentTime` (browser timers *wake* the scheduler; they never set sound time). Note-on **and note-off** (duration), cancellation/rescheduling on live edits, seek, deterministic loop boundaries, per-track buses feeding the existing mixer. Lands with Phase 0 as an abstraction; fully exercised by Phase 2 (duration) and 4 (voices). **Spike-validated 2026-07-19** (`spike/FINDINGS.md` §3): 10,000 notes at 200 BPM with live edits and forced 30 ms main-thread stalls → zero late notes, p99 wake lateness 3.2 ms, ~4× headroom under a 120 ms lookahead.
+- **Background-tab throttling (spike discovery):** browsers throttle timers in hidden tabs to ≥1 s unless the tab is audibly playing; the starvation case is *muted playback in a background tab*. The scheduler must stretch lookahead/wake (~1.5 s / 250 ms) on `visibilitychange` and shrink back on return.
+- **Budgets (set by the spike 2026-07-19, enforced after; details in `spike/FINDINGS.md` §4):** target device = ~4-year-old mid-range Android · visible cells ≤ ~1,800 (beyond that, window via R8/R16 paging and pitch scroll, don't grow the DOM) · full grid rebuild ≤ 100 ms on target, incremental restyle ≤ 16 ms · edit latency ≤ 50 ms, plant-to-sound ≤ 60 ms · ≤ 1,000 notes/section, ≤ 8,000 notes/song, ≤ 4 pitched tracks + drums · scheduler alarm if wake-lateness p99 > 80 ms · sample memory ≤ today ×2 until measured on target. Rendering stays DOM but **viewport-based**, so virtualization (or canvas) remains possible without a rewrite.
 
 ## 13. Accessibility (R20 — new in v2)
 
@@ -194,6 +195,7 @@ Complete keyboard operation; visible focus and sane focus order; screen-reader n
 ## 16. Build phases (revised)
 
 **Spike (before Phase 0) — decide by building throwaways:** ratify PPQ + document-model details; gesture-grammar input-state table + phone prototype; **slim-row touch prototype** (§5a gate); scheduler skeleton benchmark; performance budgets. Output: short addenda to this doc.
+**Spike status 2026-07-19 — prototypes built (`spike/`, deployed at `/spike/`), findings in `spike/FINDINGS.md`.** Decided: PPQ 96 (§4b) · gesture grammar table + one-finger pan (§10) · scheduler validated + background-tab rule (§12) · budgets (§12) · garden-lens stamp default = scale-degree (§5d). **Open, awaiting the owner's phone test:** the §5a slim-row strategy (A fat hit-zones / B tap-to-open / C black-key chips / D zoom-to-plant — target practice in `spike/lattice-touch.html` keeps score; gate = slim ≥ 90% without degrading wide) and the touch thresholds.
 
 0. **Foundation** — note objects with IDs + tick time; tracks in the model; transaction API; legacy grid projection; versioned serialization + v3 conversion; scheduler abstraction; local autosave. Invisible to players.
 1. **Recovery & ergonomics** — undo/redo; seed tray (select/move/copy/delete/transpose); insert/delete time; keyboard + focus baseline; play-from-selection. *Biggest immediate QoL win.*
@@ -209,7 +211,9 @@ Score-lens/MusicXML: seams reserved (`spelling?`), UI unscheduled.
 
 **Decided (owner, 2026-07-19):** the §1 ceiling · Studio powers by progression + off-by-default Composer mode (tooling only) · sharing = snapshot + remix-ancestry, live co-edit later · portrait = light mode, full authoring landscape/desktop.
 
-**Open (mostly spike outputs):** final PPQ + smallest supported subdivision · crack-tap behavior pre-unlock (shimmer + "not yet"?) · the tested gesture grammar · velocity level names/count (4 vs 5) · section-level meter/tempo divergence timing · scroll range limits by ear · when "can't-sound-bad" defaults start feeling restrictive (watch playtests; the Composer switch is one answer, earned dissonance is the in-game one).
+**Decided by the spike (2026-07-19):** PPQ 96 + smallest subdivision (32nd, 16th-triplet) · the gesture grammar and its input-state table (thresholds pending phone confirmation) · scheduler architecture + background-tab lookahead stretching · performance budgets · garden-lens stamp default (scale-degree).
+
+**Open:** the §5a slim-row touch strategy (phone test — the one remaining spike gate) · crack-tap behavior pre-unlock (strategy B's "breathe open" gesture is a natural candidate for the "not yet" moment) · velocity level names/count (4 vs 5) · section-level meter/tempo divergence timing · scroll range limits by ear · when "can't-sound-bad" defaults start feeling restrictive (watch playtests; the Composer switch is one answer, earned dissonance is the in-game one).
 
 ## 18. v2 changelog (what the 2026-07-19 review changed)
 

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Spike · Gesture Grammar</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --leaf:#44A35F; --leaf-deep:#35824A; --sky:#5AA9E6; --gold:#F4C95D; --coral:#F28C8C;
+    --soil:#3E3A39; --cream:#F1ECDF; --purple:#8A6FE8; --teal:#7FC8B2;
+    --card:#FFFFFF; --panel:#F4EFE2; --line:#E5DCC8; --cell:#D8DCE2; --cellOn:#F0A32F;
+    --cellOnEdge:rgba(185,124,16,.5); --tonic:#C6E2BF;
+    --font-display:'Fredoka','Nunito','Segoe UI',system-ui,sans-serif;
+    --font-body:'Nunito','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; padding:12px; font-family:var(--font-body); color:var(--soil); background:var(--cream);
+        touch-action:manipulation; -webkit-user-select:none; user-select:none;}
+  h1{ font-family:var(--font-display); font-weight:600; font-size:1.15rem; margin:.2em 0 .1em;}
+  .sub{ font-size:.78rem; opacity:.8; margin-bottom:8px; max-width:680px;}
+  .row{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:8px;}
+  button{ font:inherit; font-family:var(--font-display); font-size:.82rem; color:#fff; background:var(--leaf);
+          border:none; padding:7px 12px; border-radius:999px; cursor:pointer; box-shadow:0 2px 0 var(--leaf-deep);}
+  button:disabled{ opacity:.4;}
+  button.warn{ background:var(--coral); box-shadow:0 2px 0 #c9635f;}
+  button.alt{ background:var(--sky); box-shadow:0 2px 0 #3f83ba;}
+  #wrap{ position:relative; overflow:hidden; border-radius:14px; border:1px solid var(--line);
+         background:var(--panel); box-shadow:0 4px 14px rgba(62,58,57,.10); touch-action:none;}
+  #canvasLayer{ position:absolute; inset:0; }
+  .gridrow{ position:absolute; left:0; right:0; background:var(--cell); border-top:1px solid rgba(62,58,57,.10);}
+  .gridrow.home{ background:var(--tonic);}
+  .barline{ position:absolute; top:0; bottom:0; width:2px; background:rgba(62,58,57,.22); pointer-events:none;}
+  .beatline{ position:absolute; top:0; bottom:0; width:1px; background:rgba(62,58,57,.08); pointer-events:none;}
+  .vine{ position:absolute; border-radius:10px; background:linear-gradient(180deg,#F7B948,var(--cellOn));
+         border:1px solid var(--cellOnEdge); box-shadow:0 1px 3px rgba(62,58,57,.25); z-index:5;}
+  .vine.long::after{ content:'🌿'; position:absolute; right:2px; top:50%; transform:translateY(-58%); font-size:12px;}
+  .vine.sel{ outline:3px solid var(--sky); outline-offset:1px; z-index:6;}
+  .vine.ghost{ opacity:.45; pointer-events:none; z-index:7; outline:2px dashed var(--purple);}
+  .handle{ position:absolute; width:14px; border-radius:0 10px 10px 0; right:-1px; top:-1px; bottom:-1px;
+           background:var(--sky); opacity:.9; z-index:7;}
+  .marquee{ position:absolute; border:2px dashed var(--purple); background:rgba(138,111,232,.12);
+            border-radius:8px; z-index:8; pointer-events:none;}
+  .lpring{ position:absolute; width:44px; height:44px; border-radius:50%; border:3px solid var(--purple);
+           z-index:8; pointer-events:none; animation:grow .35s linear forwards;}
+  @keyframes grow{ from{ transform:scale(.4); opacity:.4;} to{ transform:scale(1); opacity:1;} }
+  .playhead{ position:absolute; top:0; bottom:0; width:2px; background:var(--coral); z-index:9; pointer-events:none;}
+  #selbar{ display:none; gap:6px; margin-top:8px;}
+  #trace{ font-size:.7rem; font-family:ui-monospace,monospace; background:var(--card); border:1px solid var(--line);
+          border-radius:10px; padding:6px 10px; margin-top:8px; min-height:3.2em; max-width:680px; white-space:pre-line;}
+  #minimap{ height:10px; background:var(--panel); border:1px solid var(--line); border-radius:999px; margin-top:6px; position:relative;}
+  #minithumb{ position:absolute; top:0; bottom:0; background:rgba(90,169,230,.45); border-radius:999px;}
+</style>
+</head>
+<body>
+<h1>✋ Gesture Grammar Spike <span style="opacity:.5;font-size:.8em">(EDITOR-DESIGN §10)</span></h1>
+<div class="sub"><b>tap</b> empty = plant · <b>tap</b> seed = select (handles) · <b>drag</b> seed = move · <b>drag ➜ handle</b> = grow vine ·
+<b>long-press</b> empty = marquee select · <b>drag</b> empty or <b>two fingers</b> = pan · everything is undoable.</div>
+
+<div class="row">
+  <button id="undoBtn">↶ Undo</button>
+  <button id="redoBtn">↷ Redo</button>
+  <button id="playBtn" class="alt">▶ Play</button>
+  <span id="posLbl" style="font-size:.75rem;opacity:.7"></span>
+</div>
+
+<div id="wrap"><div id="canvasLayer"></div></div>
+<div id="minimap"><div id="minithumb"></div></div>
+
+<div class="row" id="selbar">
+  <span style="font-size:.8rem" id="selCount"></span>
+  <button id="copyBtn" class="alt">⧉ Copy → stamp</button>
+  <button id="delBtn" class="warn">🗑 Delete</button>
+  <button id="deselBtn">✕ Deselect</button>
+</div>
+<div id="trace">gesture trace…</div>
+
+<script>
+'use strict';
+// ---------- document model (ticks, IDs) ----------
+const PPQ=96, COLTICKS=48;                 // one column = an 8th
+const ROWS=[72,71,69,67,65,64,62,60];      // C5..C4 diatonic, top→bottom
+const TOTALCOLS=32, BARCOLS=8;             // 4 bars of 4/4 in 8ths
+let nextId=1;
+let notes=[];                              // {id,pitch,startTick,durTicks}
+function addNote(p,st,dt){ notes.push({id:nextId++,pitch:p,startTick:st,durTicks:dt}); }
+// seed content: a little motif
+addNote(60,0,48); addNote(64,48,48); addNote(67,96,96); addNote(72,192,144);
+
+// ---------- journal (transactions as snapshots) ----------
+let undoStack=[],redoStack=[];
+function commit(label){ undoStack.push({label,state:JSON.stringify(notes)}); if(undoStack.length>100)undoStack.shift();
+  redoStack=[]; trace('commit: '+label); syncBtns(); }
+function begin(){ return JSON.stringify(notes); }
+function commitFrom(snap,label){ undoStack.push({label,state:snap}); if(undoStack.length>100)undoStack.shift(); redoStack=[]; trace('commit: '+label); syncBtns(); }
+function undo(){ const u=undoStack.pop(); if(!u)return; redoStack.push({label:u.label,state:JSON.stringify(notes)});
+  notes=JSON.parse(u.state); selection.clear(); trace('undo: '+u.label); render(); syncBtns(); }
+function redo(){ const r=redoStack.pop(); if(!r)return; undoStack.push({label:r.label,state:JSON.stringify(notes)});
+  notes=JSON.parse(r.state); selection.clear(); trace('redo: '+r.label); render(); syncBtns(); }
+function syncBtns(){ undoBtn.disabled=!undoStack.length; redoBtn.disabled=!redoStack.length; }
+
+// ---------- view / projection ----------
+const wrap=document.getElementById('wrap'), layer=document.getElementById('canvasLayer');
+let colW=44, rowH=40, scrollX=0;           // px; scrollX in px
+function fit(){ colW=Math.max(38, Math.floor(Math.min(64,(wrap.clientWidth)/12)));
+  wrap.style.height=(ROWS.length*rowH)+'px'; }
+const x2tick=x=>Math.round((x+scrollX)/colW)*COLTICKS;                 // snapped
+const tickFloor=x=>Math.floor((x+scrollX)/colW)*COLTICKS;
+const y2row=y=>Math.max(0,Math.min(ROWS.length-1,Math.floor(y/rowH)));
+const selection=new Set();
+let ghost=null;   // stamp-placement fragment: {rel:[{dp,dt,dur}], anchor:{pitch,tick}} while placing
+let marq=null;    // {x0,y0,x1,y1}
+
+function render(){
+  fit();
+  let html='';
+  ROWS.forEach((p,i)=> html+=`<div class="gridrow${p%12===0?' home':''}" style="top:${i*rowH}px;height:${rowH}px"></div>`);
+  const firstCol=Math.floor(scrollX/colW), lastCol=firstCol+Math.ceil(wrap.clientWidth/colW)+1;
+  for(let c=firstCol;c<=Math.min(TOTALCOLS,lastCol);c++){
+    const x=c*colW-scrollX; if(x<0)continue;
+    html+=`<div class="${c%BARCOLS===0?'barline':'beatline'}" style="left:${x}px"></div>`;
+  }
+  for(const n of notes){
+    const x=n.startTick/COLTICKS*colW-scrollX, w=n.durTicks/COLTICKS*colW-4;
+    if(x+w<0||x>wrap.clientWidth) continue;
+    const ri=ROWS.indexOf(n.pitch); if(ri<0) continue;
+    const sel=selection.has(n.id);
+    html+=`<div class="vine${n.durTicks>COLTICKS?' long':''}${sel?' sel':''}" data-id="${n.id}"
+      style="left:${x+2}px;top:${ri*rowH+4}px;width:${w}px;height:${rowH-8}px">${sel?'<div class="handle" data-h="'+n.id+'"></div>':''}</div>`;
+  }
+  if(ghost){ for(const g of ghost.rel){
+    const p=ghost.anchor.pitch+g.dp, t=ghost.anchor.tick+g.dt, ri=ROWS.indexOf(p);
+    if(ri<0) continue;
+    html+=`<div class="vine ghost" style="left:${t/COLTICKS*colW-scrollX+2}px;top:${ri*rowH+4}px;width:${g.dur/COLTICKS*colW-4}px;height:${rowH-8}px"></div>`; } }
+  if(marq){ const l=Math.min(marq.x0,marq.x1), t=Math.min(marq.y0,marq.y1);
+    html+=`<div class="marquee" style="left:${l}px;top:${t}px;width:${Math.abs(marq.x1-marq.x0)}px;height:${Math.abs(marq.y1-marq.y0)}px"></div>`; }
+  if(playing) html+=`<div class="playhead" style="left:${playTick/COLTICKS*colW-scrollX}px"></div>`;
+  layer.innerHTML=html;
+  // selection bar + minimap
+  selbar.style.display=selection.size?'flex':'none';
+  selCount.textContent=selection.size+' selected';
+  const totW=TOTALCOLS*colW;
+  minithumb.style.left=(scrollX/totW*100)+'%';
+  minithumb.style.width=(wrap.clientWidth/totW*100)+'%';
+  posLbl.textContent='bar '+(Math.floor(scrollX/colW/BARCOLS)+1)+'–'+(Math.floor((scrollX+wrap.clientWidth)/colW/BARCOLS)+1)+' of '+(TOTALCOLS/BARCOLS);
+}
+
+// ---------- gesture state machine ----------
+/* states: IDLE · DOWN_EMPTY · DOWN_NOTE · DOWN_HANDLE · MARQUEE · DRAG_NOTE · PAN · PINCHPAN · STAMP */
+let st='IDLE', downPt=null, downNote=null, lpTimer=null, dragSnap=null, dragBase=null;
+const pointers=new Map();
+const SLOP=8, LP_MS=350;
+function trace(t){ const el=document.getElementById('trace');
+  el.textContent=(t+'\n'+el.textContent).split('\n').slice(0,4).join('\n'); }
+function noteAt(x,y){
+  const p=ROWS[y2row(y)], t=tickFloor(x)+ (x+scrollX - tickFloor(x)/COLTICKS*colW>0?0:0);
+  const tk=(x+scrollX)/colW*COLTICKS;
+  return notes.find(n=>n.pitch===p && tk>=n.startTick && tk<n.startTick+n.durTicks);
+}
+function pt(ev){ const r=wrap.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+
+wrap.addEventListener('pointerdown',ev=>{
+  wrap.setPointerCapture(ev.pointerId);
+  pointers.set(ev.pointerId,pt(ev));
+  if(pointers.size===2){ clearTimeout(lpTimer); st='PINCHPAN'; trace('two fingers → pan'); return; }
+  const p=pt(ev); downPt=p;
+  if(st==='STAMP'){ placeStamp(p); return; }
+  const hEl=ev.target.closest?ev.target.closest('.handle'):null;
+  if(hEl){ st='DOWN_HANDLE'; downNote=notes.find(n=>n.id==hEl.dataset.h); dragSnap=begin(); trace('down on handle'); return; }
+  const n=noteAt(p.x,p.y);
+  if(n){ st='DOWN_NOTE'; downNote=n; dragSnap=begin();
+         dragBase=notes.filter(m=>selection.has(m.id)||m.id===n.id).map(m=>({id:m.id,pitch:m.pitch,startTick:m.startTick}));
+         return; }
+  st='DOWN_EMPTY';
+  lpTimer=setTimeout(()=>{ if(st!=='DOWN_EMPTY')return; st='MARQUEE'; marq={x0:p.x,y0:p.y,x1:p.x,y1:p.y};
+    const ring=document.createElement('div'); ring.className='lpring';
+    ring.style.left=(p.x-22)+'px'; ring.style.top=(p.y-22)+'px'; layer.appendChild(ring);
+    trace('long-press → marquee'); render(); },LP_MS);
+});
+wrap.addEventListener('pointermove',ev=>{
+  if(!pointers.has(ev.pointerId)) return;
+  const prev=pointers.get(ev.pointerId), p=pt(ev); pointers.set(ev.pointerId,p);
+  if(st==='PINCHPAN'){ scrollX=clampX(scrollX-(p.x-prev.x)); render(); return; }
+  if(!downPt) return;
+  const dx=p.x-downPt.x, dy=p.y-downPt.y, moved=Math.hypot(dx,dy)>SLOP;
+  if(st==='DOWN_EMPTY' && moved){ clearTimeout(lpTimer); st='PAN'; trace('drag empty → pan'); }
+  if(st==='PAN'){ scrollX=clampX(scrollX-(p.x-prev.x)); render(); return; }
+  if(st==='MARQUEE'){ marq.x1=p.x; marq.y1=p.y; render(); return; }
+  if(st==='DOWN_NOTE' && moved){ st='DRAG_NOTE'; if(!selection.has(downNote.id)){ selection.clear(); selection.add(downNote.id);} trace('drag seed → move'+(selection.size>1?' (group)':'')); }
+  if(st==='DRAG_NOTE'){
+    const dTick=Math.round(dx/colW)*COLTICKS, dRow=Math.round(dy/rowH);
+    for(const b of dragBase){ const n=notes.find(m=>m.id===b.id); if(!n)continue;
+      const ri=ROWS.indexOf(b.pitch)+dRow;
+      if(ri>=0&&ri<ROWS.length) n.pitch=ROWS[ri];
+      n.startTick=Math.max(0,Math.min(TOTALCOLS*COLTICKS-n.durTicks,b.startTick+dTick)); }
+    render(); return;
+  }
+  if(st==='DOWN_HANDLE'){
+    const endT=Math.max(downNote.startTick+COLTICKS, x2tick(p.x));
+    downNote.durTicks=Math.min(TOTALCOLS*COLTICKS-downNote.startTick, endT-downNote.startTick);
+    render(); return;
+  }
+  if(st==='STAMP' && ghost){ ghost.anchor={pitch:ROWS[y2row(p.y)],tick:Math.max(0,tickFloor(p.x))}; render(); }
+});
+function up(ev){
+  pointers.delete(ev.pointerId); clearTimeout(lpTimer);
+  if(pointers.size>0){ return; }
+  const p=downPt?pt(ev):null;
+  if(st==='DOWN_EMPTY'){                       // clean tap → plant
+    const pitch=ROWS[y2row(p.y)], tk=tickFloor(p.x);
+    if(tk>=0&&tk<TOTALCOLS*COLTICKS && !noteAt(p.x,p.y)){
+      const snap=begin(); addNote(pitch,tk,COLTICKS); commitFrom(snap,'plant'); blip(pitch); trace('tap empty → plant'); }
+    selection.clear();
+  }
+  else if(st==='DOWN_NOTE'){                   // clean tap on a seed → select toggle
+    if(selection.has(downNote.id)&&selection.size===1){ selection.clear(); trace('tap selected → deselect'); }
+    else { selection.clear(); selection.add(downNote.id); trace('tap seed → select'); blip(downNote.pitch); }
+  }
+  else if(st==='DRAG_NOTE'){ commitFrom(dragSnap,'move'); }
+  else if(st==='DOWN_HANDLE'){ commitFrom(dragSnap,'resize'); trace('vine grown → '+(downNote.durTicks/COLTICKS)+' cols'); }
+  else if(st==='MARQUEE'){
+    const l=Math.min(marq.x0,marq.x1),r=Math.max(marq.x0,marq.x1),t=Math.min(marq.y0,marq.y1),b=Math.max(marq.y0,marq.y1);
+    selection.clear();
+    for(const n of notes){ const ri=ROWS.indexOf(n.pitch);
+      const nx=n.startTick/COLTICKS*colW-scrollX, nw=n.durTicks/COLTICKS*colW;
+      if(nx<r&&nx+nw>l&&ri*rowH<b&&(ri+1)*rowH>t) selection.add(n.id); }
+    trace('marquee → '+selection.size+' selected'); marq=null;
+  }
+  if(st!=='STAMP') st='IDLE';
+  downPt=null; downNote=null; render();
+}
+wrap.addEventListener('pointerup',up); wrap.addEventListener('pointercancel',up);
+wrap.addEventListener('wheel',ev=>{ scrollX=clampX(scrollX+(ev.deltaX||ev.deltaY)); render(); ev.preventDefault(); },{passive:false});
+function clampX(x){ return Math.max(0,Math.min(TOTALCOLS*colW-wrap.clientWidth,x)); }
+
+// ---------- selection bar ----------
+delBtn.onclick=()=>{ const snap=begin(); notes=notes.filter(n=>!selection.has(n.id)); selection.clear(); commitFrom(snap,'delete'); render(); };
+deselBtn.onclick=()=>{ selection.clear(); render(); };
+copyBtn.onclick=()=>{ const sel=notes.filter(n=>selection.has(n.id)); if(!sel.length)return;
+  const minT=Math.min(...sel.map(n=>n.startTick)), base=sel.reduce((a,b)=>a.pitch>b.pitch?a:b);
+  ghost={rel:sel.map(n=>({dp:n.pitch-base.pitch,dt:n.startTick-minT,dur:n.durTicks})),anchor:{pitch:base.pitch,tick:minT+8*COLTICKS}};
+  st='STAMP'; selection.clear(); trace('copy → tap to stamp'); render(); };
+function placeStamp(p){
+  ghost.anchor={pitch:ROWS[y2row(p.y)],tick:Math.max(0,tickFloor(p.x))};
+  const snap=begin();
+  for(const g of ghost.rel){ const pi=ghost.anchor.pitch+g.dp;
+    if(ROWS.includes(pi)) addNote(pi,Math.min(TOTALCOLS*COLTICKS-g.dur,ghost.anchor.tick+g.dt),g.dur); }
+  commitFrom(snap,'stamp'); ghost=null; st='IDLE'; trace('stamped'); render();
+}
+
+// ---------- keyboard (desktop baseline) ----------
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='z'&&(ev.ctrlKey||ev.metaKey)){ ev.shiftKey?redo():undo(); ev.preventDefault(); }
+  if(ev.key==='y'&&(ev.ctrlKey||ev.metaKey)){ redo(); ev.preventDefault(); }
+  if(ev.key==='Delete'||ev.key==='Backspace'){ if(selection.size){ delBtn.onclick(); ev.preventDefault(); } }
+  if(ev.key==='Escape'){ ghost=null; st='IDLE'; selection.clear(); render(); }
+  if(ev.key===' '){ playBtn.onclick(); ev.preventDefault(); }
+});
+
+// ---------- tiny lookahead player ----------
+let actx=null, playing=false, playTick=0, playTimer=null;
+function blip(pitch,when,dur){
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const t=when||actx.currentTime, d=dur||0.3;
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.frequency.value=440*Math.pow(2,(pitch-69)/12); o.type='triangle';
+    g.gain.setValueAtTime(.16,t); g.gain.setValueAtTime(.16,t+Math.max(.05,d-.08));
+    g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t+d+.05);
+  }catch(e){}
+}
+const TEMPO=100, TICKSEC=60/TEMPO/PPQ;
+playBtn.onclick=()=>{
+  if(playing){ playing=false; clearInterval(playTimer); playBtn.textContent='▶ Play'; render(); return; }
+  playing=true; playBtn.textContent='⏹ Stop'; playTick=0;
+  actx=actx||new (window.AudioContext||window.webkitAudioContext)(); actx.resume();
+  const t0=actx.currentTime+.08; let scheduledTo=0;
+  playTimer=setInterval(()=>{
+    if(!playing) return;
+    const now=actx.currentTime, horizon=(now-t0+0.15)/TICKSEC;
+    for(const n of notes) if(n.startTick>=scheduledTo&&n.startTick<horizon)
+      blip(n.pitch, t0+n.startTick*TICKSEC, Math.max(.15,n.durTicks*TICKSEC));
+    scheduledTo=horizon;
+    playTick=Math.max(0,(now-t0)/TICKSEC);
+    if(playTick>TOTALCOLS*COLTICKS){ playing=false; clearInterval(playTimer); playBtn.textContent='▶ Play'; }
+    render();
+  },40);
+};
+
+undoBtn.onclick=undo; redoBtn.onclick=redo;
+window.addEventListener('resize',render);
+syncBtns(); render();
+</script>
+</body>
+</html>
