@@ -61,7 +61,6 @@
   button.toggle.on:active{ box-shadow:0 1px 0 var(--leaf-deep);}
   select{ background:var(--card); color:var(--soil);
     box-shadow:0 3px 0 #D6CBB2, 0 4px 8px rgba(62,58,57,.10), inset 0 0 0 1px var(--line); padding-right:30px;}
-  #craft{ min-width:108px; }   /* fixed width so 🔨 Fuse ↔ ✓ Save (N) doesn't reflow the toolbar */
   .settings{ margin-top:-2px; opacity:.95; }
   label.ctl{ display:flex; align-items:center; gap:6px; font-size:.85rem; opacity:.92;}
   input[type=range]{ accent-color:var(--leaf); }
@@ -71,12 +70,11 @@
   .mainscroll{ width:100%; overflow-x:auto;}                                  /* desktop: scroll the app row if the window is too narrow */
   .main{ display:flex; gap:14px; align-items:flex-start; flex-wrap:nowrap; width:max-content; margin:0 auto;}
   .fieldcol{ flex:0 0 auto; }
-  @media (max-width:760px){ .main{ width:auto; flex-wrap:wrap;} .sidebar,.fieldcol{ width:100%;} }  /* mobile: stack the columns */
-  .stage{ position:relative; padding-left:72px; display:flex; align-items:stretch; gap:8px; }   /* left gutter so field cells line up with drum cells */
-  .moremenu{ display:flex; flex-direction:column; gap:6px; flex:0 0 auto; }
-  .moreside{ display:flex; align-items:center; justify-content:center; width:44px; padding:0;
-    font-size:1.6rem; line-height:1; border-radius:14px; flex:1 1 0; }
-  #sidetools{ position:fixed; top:16px; right:16px; display:flex; flex-direction:column; gap:8px; z-index:40;}
+  @media (max-width:760px){ .main{ width:auto; flex-wrap:wrap;} .sidebar,.fieldcol{ width:100%;} }  /* mobile: stack the columns (the rail needs no phone case — it lives in space already reserved) */
+  .stage{ position:relative; display:flex; align-items:stretch; gap:0; }   /* the 72px tool rail IS the gutter that lines field cells up with drum cells */
+  /* A fixed element is never inset past the page scrollbar. --sbw measures a CLASSIC bar (it steals layout
+     width); an OVERLAY bar steals none and can't be measured at all, so 34px covers it by hand. */
+  #sidetools{ position:fixed; top:16px; right:calc(34px + var(--sbw, 0px)); display:flex; flex-direction:column; gap:8px; z-index:40;}
   #sidetools button{ width:46px; height:46px; padding:0; font-size:1.25rem; border-radius:50%; background:var(--card); color:var(--soil);
     box-shadow:0 3px 0 #D6CBB2, 0 4px 8px rgba(62,58,57,.10), inset 0 0 0 1px var(--line);}
   #sidetools button#speak.on{ background:var(--leaf);}
@@ -92,12 +90,12 @@
   body[data-region="weather-of-wanting"] { --bed:#90C4C4; --bedDeep:#74B0B0; --bedRing:#5B9494; --pageEdge:#DBE8E8; }
   body[data-region="twin-gardens"]       { --bed:#BBACE6; --bedDeep:#A491DB; --bedRing:#8674BE; --pageEdge:#E2DEEF; }
   .scroller{ max-width:100%; overflow-x:auto; overflow-y:hidden; border-radius:16px;}
-  #drumArea{ max-width:100%; overflow-x:auto; }
+  #drumArea{ max-width:100%; overflow-x:auto; margin-top:4px; }   /* the beat lane sits close under the seeds — they are one timeline, and the cursor strip between them says so */
   .track{ position:relative; display:inline-block;}
-  .drumrows{ display:inline-block; padding:10px; border-radius:16px; background:linear-gradient(170deg,#B2D6C6,#98C4B0);
+  .drumrows{ position:relative; display:inline-block; padding:10px; border-radius:16px; background:linear-gradient(170deg,#B2D6C6,#98C4B0);
     box-shadow:inset 0 0 0 1px #79A890, 0 2px 4px rgba(62,58,57,.14), 0 12px 30px rgba(62,58,57,.22);}
-  .drumrow{ display:flex; align-items:center; gap:0; margin-bottom:4px;}
-  .drumrow:last-child{ margin-bottom:0;}
+  .drumrow{ display:flex; align-items:center; gap:0;}
+  .drumrow + .drumrow{ margin-top:4px;}   /* gap BETWEEN rows only — :last-child broke once the cursor rail became the last child */
   .drumlabel{ width:72px; font-size:.78rem; text-align:right; opacity:.92; padding-right:8px;}
   .dcellgrid{ display:grid; grid-template-columns:repeat(16,34px); gap:4px;}
   /* round "pads" in a different palette so beats look distinct from square seed tiles */
@@ -126,12 +124,59 @@
   @keyframes stand{ 0%{ transform:translateY(7px) scale(.9);} 60%{ transform:translateY(-2px) scale(1.05);} 100%{ transform:translateY(0) scale(1);} }
   .cell.wob{ animation:wob .55s ease-in-out; }
   @keyframes wob{ 0%,100%{transform:rotate(0);} 20%{transform:rotate(-9deg);} 50%{transform:rotate(8deg);} 80%{transform:rotate(-4deg);} }
+  /* ---- Phase 1: seed tray (selection), undo, focus baseline ---- */
+  .cell.tsel{ outline:3px solid var(--sky); outline-offset:-2px; }
+  .cell.tghost{ box-shadow:inset 0 0 0 3px var(--purple); background:#D8CDF5; }
+  .dcell.tband{ outline:2px dashed var(--purple); outline-offset:-2px; }   /* time ops touch the beat lane too — show it */
+  .marqueebox{ position:absolute; border:2px dashed var(--purple); background:rgba(138,111,232,.14);
+    border-radius:8px; pointer-events:none; z-index:6; }
+  #grid.traymode .cell{ cursor:crosshair; }
+  /* TWO bands, split by verb: the row above the field LISTENS, the RAIL beside it is the HANDS.
+     The rail stands in the 72px gutter the drum labels already reserve — so it costs no horizontal
+     space at all — and runs the field's full height, keeping a tool beside the finger that's planting. */
+  #fieldbar{ flex:0 0 72px; width:72px; display:flex; flex-direction:column; gap:6px; padding-top:10px; }  /* 10px = .grid's padding, so the first tool lines up with the first row of plots */
+  #fieldbar button{ font-size:.68rem; padding:6px 2px; min-height:34px; white-space:nowrap;   /* 34px = the touch floor this project set for itself */
+    box-shadow:0 2px 0 #D6CBB2, inset 0 0 0 1px var(--line); }        /* a quieter pill than the transport row's — the rail should recede behind the field */
+  #fieldbar button.wide{ width:72px; }
+  #fieldbar button:active{ box-shadow:inset 0 0 0 1px var(--line); }
+  .fbgroup{ display:flex; flex-direction:column; gap:1px; }
+  .fbpair{ display:flex; gap:4px; }                 /* 34 + 4 + 34 = the gutter exactly */
+  .fbpair button{ width:34px; }
+  .fbcap{ font-size:.64rem; text-align:center; opacity:.75; letter-spacing:.3px; line-height:1.2; font-weight:600; }
+  /* the morph slot: 🧹 Clear steps aside for ⧉ Copy·🗑 Dig up while the Scoop is armed. It COLLAPSES rather
+     than reserving the taller set's height — a permanent hole in the rail reads as unfinished, and the only
+     cost is that 🔨 Fuse and ↶↷ slide down while you are actually scooping, then come straight back. */
+  .morphslot{ display:flex; flex-direction:column; gap:6px; }
+  .morphslot>span{ display:flex; flex-direction:column; gap:6px; }
+  .morphslot .mScoop{ display:none; }
+  .morphslot .mScoop{ visibility:hidden; pointer-events:none; }
+  body.scooping .morphslot .mIdle{ display:none; }
+  body.scooping .morphslot .mScoop{ display:flex; }
+  /* the cursor: a stake under the field — Play starts here, ＋/－ column work here */
+  #cursorStrip{ position:relative; height:20px; margin-top:2px; border-radius:999px;
+    background:linear-gradient(180deg,var(--panel),var(--line)); box-shadow:inset 0 1px 2px rgba(62,58,57,.15);
+    cursor:pointer; touch-action:none; }
+  #cursorKnob{ position:absolute; top:-3px; width:34px; text-align:center; font-size:15px;
+    pointer-events:none; transition:left .12s ease; filter:drop-shadow(0 1px 1px rgba(62,58,57,.3)); }
+  #cursorCol{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px; left:10px;
+    border:2px dashed var(--leaf); background:rgba(68,163,95,.08); pointer-events:none; transition:left .12s ease; }
+  /* the cursor marks a TIME SLOT in both lanes — same dashed-green language over the pads.
+     A rail, not a per-pad class: a .swung pad leans OUT of its slot on purpose, and ±room works on ticks. */
+  #drumCursorCol{ position:absolute; width:34px; border-radius:10px;                      /* top/height come from the real pads (syncCursor) — the pads are circles, so the frame sits OUTSIDE them */
+    border:2px dashed var(--leaf); background:rgba(68,163,95,.08); pointer-events:none; transition:left .12s ease; }
+  .track.traymode{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  /* contain the HORIZONTAL overscroll (swiping past the end of the field must not rubber-band the page),
+     but leave the VERTICAL axis alone — `overscroll-behavior:contain` was swallowing up/down swipes that
+     started over the field, so the page only scrolled when you touched empty space beside it. */
+  .scroller, #drumArea{ overscroll-behavior-x:contain; overscroll-behavior-y:auto; touch-action:pan-x pan-y; }
+  button:disabled{ opacity:.45; cursor:default; transform:none; filter:none; }
+  button:focus-visible, select:focus-visible, input:focus-visible{ outline:3px solid var(--sky); outline-offset:2px; }
   .playhead{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px;
     background:rgba(90,169,230,.20); pointer-events:none; left:0; transition:left .04s linear; opacity:0;}
   .playhead.on{ opacity:1; }
-  .vlabel{ position:absolute; left:18px; top:50%; transform:translateY(-50%) rotate(-90deg);
-    transform-origin:center; opacity:.75; font-size:.7rem; letter-spacing:2px; font-weight:700;}
-  .hlabel{ opacity:.75; font-size:.7rem; letter-spacing:2px; margin-top:6px; text-align:center; font-weight:700;}
+  /* Every standing caption around the field is gone — PITCH →, TIME →, and the beat lane's "tap the beat".
+     The level text says it once, the player learns it once, and after that a permanent label is just noise;
+     the space buys the tool rail and the closeness between the two lanes instead. */
 
   .sidebar{ display:flex; flex-direction:column; gap:14px; width:205px; flex:0 0 auto; }
   .card{ background:var(--card); border-radius:14px; padding:14px; border:1px solid var(--line);
@@ -143,6 +188,7 @@
   .card .teach{ font-size:.7rem; opacity:.72; font-style:italic; line-height:1.34; margin:-2px 0 10px;
     padding-left:8px; border-left:2px solid rgba(62,58,57,.22);}
   #nextBtn{ margin-top:10px; width:100%; }
+  #levelCard #hint{ margin-top:10px; width:100%; }   /* Hint lives with the goals it unsticks */
   ul.goals{ list-style:none; margin:0; padding:0; font-size:.85rem; }
   ul.goals li{ padding:5px 0; opacity:.85; transition:opacity .2s,color .2s; }
   ul.goals li.done{ opacity:1; color:var(--leaf-deep); font-weight:700; }
@@ -343,16 +389,14 @@
   </div>
   <h1 id="title">🌱 Tune Garden</h1>
 
-  <div class="controls">
+  <!-- The LISTEN band: everything here only makes the garden sound. Every tool that CHANGES it lives on #fieldbar, under the field. -->
+  <div class="controls" id="actionRow">
     <button id="play">▶ Play</button>
-    <button id="listen" class="secondary" style="display:none">🔊 Listen</button>
     <button id="loop" class="secondary toggle">↻ Loop</button>
     <button id="jam" class="secondary toggle">🎸 Jam</button>
     <select id="groove" title="Groove style"></select>
     <button id="beat" class="secondary toggle">🥁 Beat</button>
-    <button id="craft" class="secondary toggle">🔨 Fuse</button>
-    <button id="hint" class="secondary">💡 Hint</button>
-    <button id="clear" class="secondary">🧹 Clear</button>
+    <button id="listen" class="secondary" style="display:none">🔊 Listen</button>
   </div>
   <div class="controls settings">
     <label class="ctl">Voice
@@ -382,26 +426,57 @@
         <div class="teach" id="levelTeach" style="display:none"></div>
         <ul class="goals" id="goalList"></ul>
         <div class="hint" id="goalHint"></div>
+        <!-- Hint is the LEVEL speaking, not the player's hand — it belongs under the goals it unsticks,
+             and it toggles per step, so on a tool bar it would be the one button that reflows mid-level. -->
+        <button id="hint" class="secondary">💡 Hint</button>
         <button id="nextBtn" style="display:none">Next level ▶</button>
       </div>
     </div>
     <div class="fieldcol">
       <div id="pitchArea">
         <div class="stage">
-          <div class="vlabel">PITCH →</div>
+          <!-- The HANDS rail. It stands in the 72px gutter the drum labels already reserve, so it costs NO
+               horizontal space, and it runs the full height of the field — a tool is beside your finger
+               wherever you are planting, instead of a scroll away at the bottom. -->
+          <div id="fieldbar">
+            <span class="fbgroup">
+              <span class="fbpair">
+                <button id="colPlus" class="secondary" title="Make room for one more step at the cursor 🌱 — seeds and beat slide right">＋</button>
+                <button id="colMinus" class="secondary" title="Close up the cursor's step ✂ — the rest pulls together, beat too">－</button>
+              </span>
+              <span class="fbcap">room</span>
+            </span>
+            <span class="fbgroup" id="moremenu">
+              <span class="fbpair">
+                <button id="more" class="secondary" title="Add a whole patch of room — one more bar (16 steps) at the end">＋</button>
+                <button id="less" class="secondary" title="Take back the last patch — one whole bar">－</button>
+              </span>
+              <span class="fbcap">patch</span>
+            </span>
+            <button id="trayBtn" class="secondary toggle wide">🧺 Scoop</button>
+            <span class="morphslot">
+              <span class="mIdle"><button id="clear" class="secondary wide">🧹 Clear</button></span>
+              <span class="mScoop">
+                <button id="trayCopy" class="secondary wide" disabled>⧉ Copy</button>
+                <button id="trayDel" class="secondary wide" disabled title="Dig up just the picked seeds — the time stays">🗑 Dig up</button>
+              </span>
+            </span>
+            <button id="craft" class="secondary toggle wide">🔨 Fuse</button>
+            <span class="fbpair oops">
+              <button id="undoBtn" class="secondary" title="Undo (Ctrl+Z)" disabled>↶</button>
+              <button id="redoBtn" class="secondary" title="Redo (Ctrl+Y)" disabled>↷</button>
+            </span>
+          </div>
           <div class="scroller" id="scroller">
             <div class="track" id="track">
               <div id="grid" class="grid"></div>
               <svg id="contourGhost" class="contourghost" style="display:none"></svg>
+              <div id="cursorCol"></div>
               <div id="playhead" class="playhead"></div>
             </div>
-          </div>
-          <div id="moremenu" class="moremenu">
-            <button id="more" class="moreside secondary" title="Add a bar of room">＋</button>
-            <button id="less" class="moreside secondary" title="Remove a bar of room">－</button>
+            <div id="cursorStrip" title="The cursor — tap to move it. Play starts here; ＋/－ room work here."><div id="cursorKnob">🔻</div></div>
           </div>
         </div>
-        <div class="hlabel">TIME →</div>
         <div id="wobbleMeter" class="densitymeter" style="display:none">
           <div class="dmtrack"><div class="dmfill"></div></div>
           <div class="dmlabel">weather</div>
@@ -414,7 +489,6 @@
           <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
         </div>
         <div class="drumrows" id="drumrows"></div>
-        <div class="hlabel">🥁 TAP THE BEAT — press ▶ and it loops →</div>
         <div id="densityMeter" class="densitymeter" style="display:none">
           <div class="dmtrack"><div class="dmfill"></div></div>
           <div class="dmlabel">density</div>
@@ -809,7 +883,7 @@ function jamStep(step,t){
 const DRUMS=[{name:"Kick",emoji:"🥁",play:t=>kick(t,1.0,drumBus)},
              {name:"Snare",emoji:"👏",play:t=>snare(t,0.7,drumBus)},
              {name:"Hi-hat",emoji:"🎩",play:t=>hat(t,0.4,drumBus)}];
-let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false;
+let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false; let drumCursorEl=null;
 function buildDrums(){ const rows=document.getElementById("drumrows"); rows.innerHTML="";
   DRUMS.forEach((dm,d)=>{ dcells[d]=[];
     const row=document.createElement("div"); row.className="drumrow";
@@ -819,7 +893,10 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
       el.className="dcell"+(c%4===0?" beat":"")+(drumG[d][c]?" on":"");
       el.addEventListener("mousedown",()=>drumClick(d,c)); g.appendChild(el); dcells[d][c]=el; }
     row.appendChild(g); rows.appendChild(row); });
+  drumCursorEl=document.createElement("div"); drumCursorEl.id="drumCursorCol";   // innerHTML="" above ate the old rail — the cursor lives in BOTH lanes, so re-hang it
+  rows.appendChild(drumCursorEl);
   applySwingVisual();   // a rebuild makes fresh cells — re-mark the swung "and" pads if swing is on
+  if(typeof syncCursor==="function") syncCursor();
 }
 function drumClick(d,c){ initAudio(); actx.resume();
   const on=!drumG[d][c];
@@ -861,17 +938,53 @@ function reproject(){                          // doc → the legacy boolean gri
   for(const n of drumTrack().notes){ const c=noteCol(n);
     if(n.pitch>=0&&n.pitch<DRUMS.length&&c>=0&&c<COLS) drumG[n.pitch][c]=true; }
 }
-// Every mutation is a transaction: a snapshot journal feeds undo/redo (UI lands in Phase 1) + autosave.
+// Every mutation is a transaction: a snapshot journal feeds undo/redo + autosave. Snapshots carry
+// palette + COLS too, so undoing a resize (or any op near one) restores the whole editing surface.
 const JOURNAL_MAX=100; let journal=[], journalRedo=[];
-let _txDepth=0, _txBefore=null;
+// tempo + groove are SONG state (v3 time.tempo/groove) — they snapshot and restore with the notes,
+// which is what makes undoing a famous reveal also return the player's tempo.
+function snapState(){ return JSON.stringify({palette:paletteId, cols:COLS, tempo:+tempoEl.value, groove:grooveIdx, tracks:doc.tracks}); }
+// scripted placements (level setup, reveals, choices, song loads) journal for undo but must NEVER
+// claim the player's autosave slot — the rescued sprout holds PLAYER work only.
+const SCRIPTED_TX=new Set(["place","famous","choice","load-song","palette"]);
+let _txDepth=0, _txBefore=null, _txLabel=null;
 function tx(label,fn){
-  if(_txDepth===0) _txBefore=JSON.stringify(doc.tracks);
+  if(_txDepth===0){ _txBefore=snapState(); _txLabel=label; }
   _txDepth++; try{ fn(); } finally{ _txDepth--; }
-  if(_txDepth===0){ const after=JSON.stringify(doc.tracks);
-    if(after!==_txBefore){ journal.push({label,before:_txBefore,after});
+  if(_txDepth===0){ const after=snapState();
+    if(after!==_txBefore){ journal.push({label:_txLabel,before:_txBefore,after});
       if(journal.length>JOURNAL_MAX) journal.shift();
-      journalRedo=[]; scheduleAutosave(); } }
+      journalRedo=[]; if(!SCRIPTED_TX.has(_txLabel)) scheduleAutosave(); syncUndoUI(); } }
 }
+// undo/redo: restore a full snapshot (palette vars + COLS + tracks), reproject, rebuild, recheck.
+// Never runs through tx() — an undo must not journal itself.
+function restoreSnapshot(json){ const s=JSON.parse(json);
+  if(s.palette!==paletteId){ const p=PALETTES[s.palette]||PALETTES.pentatonic;
+    paletteId=p.id; MIDI=p.MIDI; NAMES=p.NAMES; TONIC_PC=p.tonicPC; ROWS=MIDI.length; }
+  COLS=s.cols; doc.tracks=s.tracks;
+  if(typeof s.tempo==="number"){ tempoEl.value=s.tempo; Transport.retime(); }
+  if(typeof s.groove==="number"&&GROOVES[s.groove]){ grooveIdx=s.groove; grooveEl.value=s.groove; }
+  clearFamousTimers();                       // stale flash timers must not fire on the rebuilt field
+  trayPlace=null; clearGhosts();             // an armed copy's geometry is stale against the restored field
+  reproject(); rebuildField();               // rebuildField prunes the tray selection to surviving ids
+  applyStageDecor();                         // the rebuilt cells need the stage's tints back (phrase split, beat guide, locks…)
+  ev.played=false; scheduleAutosave(); syncUndoUI(); checkLevel(); updateGarden(); }
+// re-apply the current stage's per-cell decorations after any mid-stage rebuild (undo, time surgery)
+function applyStageDecor(){ if(typeof LEVELS==="undefined"||!LEVELS||!LEVELS[levelIdx]) return;
+  const L=LEVELS[levelIdx], st=curStage();
+  setBeatGuide(!!st.beatGuide); setPhraseGuide(!!(L.phrase||st.phrase));
+  setColorReveal(st.colors||L.colors||null); setMood(st.mood||L.mood||null); setMotifGuide(!!(st.motif||L.motif)); }
+function undoEdit(){ const e=journal.pop(); if(!e) return;
+  if(playing) stop();                        // also unwinds a running reveal's restore hook safely
+  journalRedo.push(e); restoreSnapshot(e.before); setStatus("↶ Undone — the garden stepped back 🌱"); }
+function redoEdit(){ const e=journalRedo.pop(); if(!e) return;
+  if(playing) stop();
+  journal.push(e); restoreSnapshot(e.after); setStatus("↷ Redone 🌱"); }
+function journalClear(){ journal.length=0; journalRedo.length=0; syncUndoUI();
+  clearTimeout(autosaveT); }   // every journalClear site means "this state is not player work" — a pending autosave must not claim the rescue slot
+function syncUndoUI(){ const u=document.getElementById("undoBtn"), r=document.getElementById("redoBtn");
+  if(u) u.disabled=!journal.length;
+  if(r) r.disabled=!journalRedo.length; }   // redo is always THERE, just greyed until an undo makes it meaningful — same language as undo (a hidden button left a hole beside ↶)
 // ---- model operations (the only writers; everything else reads the projection) ----
 function modelSetCell(r,c,on){ tx(on?"plant":"unplant",()=>{ const t=melTrack();
   if(on){ if(!t.notes.some(n=>projRow(n.pitch)===r&&noteCol(n)===c))
@@ -893,6 +1006,17 @@ function modelSetCols(cols){ tx("resize",()=>{ const lim=cols*TICKS_PER_COL;   /
   melTrack().notes=melTrack().notes.filter(n=>n.startTick<lim);
   drumTrack().notes=drumTrack().notes.filter(n=>n.startTick<lim);
   COLS=cols; reproject(); }); }
+// time surgery (R4): insert or remove a span of musical time — the WHOLE timeline shifts, drums included
+function modelInsertTime(atTick,ticks){ tx("insert-time",()=>{
+  for(const t of doc.tracks) for(const n of t.notes) if(n.startTick>=atTick) n.startTick+=ticks;
+  COLS+=Math.round(ticks/TICKS_PER_COL); reproject(); }); }
+function modelRemoveTime(atTick,ticks){ tx("remove-time",()=>{
+  ticks=Math.min(ticks, Math.max(0, COLS*TICKS_PER_COL-atTick));   // a span can't overhang the timeline — otherwise notes before it get stranded past the shrunk COLS
+  if(ticks<=0) return;
+  for(const t of doc.tracks){
+    t.notes=t.notes.filter(n=>n.startTick<atTick||n.startTick>=atTick+ticks);
+    for(const n of t.notes) if(n.startTick>=atTick+ticks) n.startTick-=ticks; }
+  COLS=Math.max(16,COLS-Math.round(ticks/TICKS_PER_COL)); reproject(); }); }
 // R19 write side: a rolling autosave of the working song (the recovery UI lands in Phase 1)
 let autosaveT=null;
 function scheduleAutosave(){ clearTimeout(autosaveT); autosaveT=setTimeout(()=>{ try{
@@ -930,7 +1054,7 @@ gridEl.addEventListener("mouseover",e=>{ const cell=e.target.closest(".cell"); i
     document.body.appendChild(noteTipEl); }, 450); });
 gridEl.addEventListener("mouseleave",hideNoteTip);                            // left the field entirely
 scroller.addEventListener("scroll",hideNoteTip);                              // don't leave a stale tip when the field scrolls
-function rebuildField(){ buildGrid(); buildDrums(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart
+function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
   modelSetCols(c2); rebuildField(); updateGarden(); }
@@ -944,42 +1068,27 @@ function settle(){ document.body.classList.add("settle");
   clearTimeout(settleT); settleT=setTimeout(()=>document.body.classList.remove("settle"),420); }
 
 // ---------- Interaction: plant / fuse / stamp ----------
-let craftMode=false, craftSel=[];
+// Fuse is an ACTION, not a mode (2026-07-27 redesign): it crafts the Scoop pick, or — with no pick —
+// the field's single 2–3-seed stack directly (plant a stack, press Fuse: one step). An ambiguous
+// field arms Scoop with a coaching line. The old click-seeds-then-Save picking mode is gone.
 function cellClick(r,c,el){
+  if(trayMode) return;   // the tray owns the field — its pointer handlers on the track do the work (also eats synthesized post-touch mousedowns)
   initAudio(); actx.resume(); hideNoteTip();
   if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
   if(activeTool){ stampTool(r,c); return; }
-  if(craftMode){ pickForFuse(r,c,el); return; }
   setCell(r,c,!grid[r][c]);
   if(grid[r][c]){ playRow(r,actx.currentTime); flash(el,r); bloom(el, noteFlower(r)); compReact(); }
   ev.played=false;                 // editing means "Play" must be pressed again to count
   checkLevel();
 }
-function pickForFuse(r,c,el){
-  if(!grid[r][c]){ setStatus("Plant the seed first 🌱, then fuse it."); return; }   // only fuse planted seeds
-  const i=craftSel.findIndex(s=>s.r===r&&s.c===c);
-  if(i>=0){ craftSel.splice(i,1); el.classList.remove("sel"); updateFuseLabel(); return; }
-  if(craftSel.length && c!==craftSel[0].c){                                          // chords live in ONE column (same time)
-    setStatus("Stack seeds in the <b>same column</b> 📍 (one above another) to make a chord."); return; }
-  if(craftSel.length>=3){ setStatus("Up to <b>3</b> seeds — press <b>✓ Save</b>, or unpick one."); return; }
-  craftSel.push({r,c}); el.classList.add("sel"); playRow(r,actx.currentTime); flash(el,r);
-  updateFuseLabel();
-  setStatus(craftSel.length===1 ? "Good — now stack 1–2 more seeds in the <b>same column</b>, then ✓ Save."
-                                : `${craftSel.length} seeds stacked — press <b>✓ Save</b>, or add one more.`);
-}
-function updateFuseLabel(){ craftBtn.textContent = craftMode ? `✓ Save (${craftSel.length})` : "🔨 Fuse"; }
-function exitFuse(){ craftMode=false; craftBtn.classList.remove("on"); clearSel(); updateFuseLabel(); }
-function fuse(){
-  if(craftSel.length<2){ exitFuse(); return; }
-  const rows=craftSel.map(s=>s.r);
+function craftFromCells(list){                     // list: [{r,c}] — same column, 2–3 seeds
+  const rows=list.map(s=>s.r);
   const base=Math.max(...rows);                    // bottom note = lowest pitch
   const offs=[...new Set(rows.map(r=>base-r))].sort((a,b)=>a-b);
   const midis=[...new Set(rows.map(r=>MIDI[r]))].sort((a,b)=>a-b);
-  if(offs.length<2){ setStatus("Pick seeds at <b>different heights</b> 🎵 (not the same row)."); return; }  // keep selection, let them fix it
+  if(offs.length<2){ setStatus("Fuse needs seeds at <b>different heights</b> 🎵 (not the same row)."); return; }
   const stable=stableMidis(midis);
-  const placed=craftSel.slice();
-  placed.forEach((s,i)=>{ cells[s.r][s.c].classList.remove("sel");
-    anim(cells[s.r][s.c], stable?"stand":"wob"); playRow(s.r,actx.currentTime+i*0.05); });
+  list.forEach((s,i)=>{ anim(cells[s.r][s.c], stable?"stand":"wob"); playRow(s.r,actx.currentTime+i*0.05); });
   // record what kind of thing was crafted (counts even if the shape is a duplicate)
   if(offs.length===2){ ev.craftedPair=true; const k=pairKind(midis); ev.lastPairKind=k;   // also track pair personality, ladder-span + real gap (Twin Blooms)
     ev.pairKinds.push(k); ev.pairs.push({span:offs[offs.length-1], kind:k, gap:midis[midis.length-1]-midis[0]}); }
@@ -992,9 +1101,24 @@ function fuse(){
     toast(offs.length===2 ? `${m.em} New pair: ${m.name}!`
           : stable ? "🏛️ Tower — smooth & open!" : "🌀 Wobbler — tense & clashy!");
   } else setStatus(`That's a <b>${m.name}</b> — already in your toolbox.`);
-  bloom(cells[Math.min(...placed.map(s=>s.r))][placed[0].c], "💐");   // crafted pair/chord → bouquet
-  exitFuse();                                       // one-shot: back to planting after a craft
+  bloom(cells[Math.min(...rows)][list[0].c], "💐");   // crafted pair/chord → bouquet
   checkLevel(); saveProgress();
+}
+function fusePick(){                               // Fuse pressed with a Scoop pick
+  const ns=trayNotes();
+  const colsIn=[...new Set(ns.map(n=>noteCol(n)))];
+  if(colsIn.length>1){ setStatus("A chord lives in <b>one column</b> 📍 — scoop seeds stacked one above another."); return; }
+  if(ns.length<2){ setStatus("Scoop <b>2–3 seeds</b> in one column 🧺, then press 🔨 Fuse."); return; }
+  if(ns.length>3){ setStatus("Up to <b>3</b> seeds make a chord — scoop fewer (tap a seed to drop it from the pick)."); return; }
+  craftFromCells(ns.map(n=>({r:projRow(n.pitch), c:noteCol(n)})));
+}
+function fuseField(){                              // Fuse pressed with no pick: find the stack, or coach
+  const cand=[]; for(let c=0;c<COLS;c++) if(colCount(c)>=2) cand.push(c);
+  if(!cand.length){ setStatus("Plant <b>2–3 seeds stacked in one column</b> 🌱 (one above another), then press 🔨 Fuse."); return; }
+  if(cand.length===1 && colCount(cand[0])<=3){
+    const c=cand[0], list=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) list.push({r,c});
+    craftFromCells(list); return; }
+  enterTray(); setStatus("A few stacks here — 🧺 <b>scoop the 2–3 seeds</b> you want to bond, then press <b>🔨 Fuse</b>.");
 }
 function stampTool(r,c){
   const offs=activeTool.offs;
@@ -1002,7 +1126,8 @@ function stampTool(r,c){
   if(rows.some(x=>x<0)) rows=offs.map(o=>r+o);      // flip downward if it runs off the top
   rows=rows.filter(x=>x>=0&&x<ROWS);
   if(!rows.length) return;
-  rows.forEach((rr,i)=>{ setCell(rr,c,true); playRow(rr,actx.currentTime+i*0.05); });
+  tx("stamp",()=>rows.forEach(rr=>setCell(rr,c,true)));   // ONE journal entry — undo removes the whole stamped chord, not one seed of it
+  rows.forEach((rr,i)=>playRow(rr,actx.currentTime+i*0.05));
   const stable=stableMidis(rows.map(r2=>MIDI[r2]).sort((a,b)=>a-b));
   rows.forEach(rr=>anim(cells[rr][c], stable?"stand":"wob"));
   if(isTonic(rows[rows.length-1])||isTonic(rows[0])) settle();
@@ -1027,12 +1152,239 @@ function renderBag(popSig){
 }
 function toggleStamp(tool){
   activeTool = (activeTool&&sig(activeTool.offs)===sig(tool.offs)) ? null : tool;
-  exitFuse(); renderBag();
+  exitTray(); renderBag();
   if(activeTool){ const m=toolMeta(tool.offs, tool.midis);
     setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the grid to stamp it once.`);
   } else setStatus("Plant seeds 🌱, or 🔨 Fuse to craft.");
 }
-function clearSel(){ craftSel.forEach(s=>cells[s.r][s.c].classList.remove("sel")); craftSel=[]; }
+
+// ---------- Phase 1: the seed tray — select / move / copy / delete / transpose + time surgery ----------
+// A one-shot MODE like Fuse (tap-to-plant stays untouched): 🧺 Scoop arms it (button morphs to ✕ Done),
+// drag a marquee to pick melody seeds (marquees UNION, a tap toggles one seed), then drag the pick to
+// move — vertical = scale-degree transpose, sounded live via the anchor seed. Design-panel rules baked in:
+// armed modes must still pan (two fingers pan, the pick survives; in copy-place a drag pans, a tap places),
+// locked rows refuse tray drops, horizontal moves never touch true pitch, pointercancel discards.
+// Selection = doc note IDs (§4c earning its keep) — it survives moves, resizes, and reprojection.
+let trayMode=false, traySel=[];
+let trayDrag=null, trayGhosts=[], trayMarqEl=null, trayPlace=null;
+const trackEl=document.getElementById("track"), trayBtn=document.getElementById("trayBtn");
+const TRAY_CW=38, TRAY_CH=34, TRAY_PAD=10;                 // grid geometry: 34px cell + 4px gap, 10px pad
+function trayNotes(){ const t=melTrack(); return traySel.map(id=>t.notes.find(n=>n.id===id)).filter(Boolean); }
+function trayCellOf(n){ return {r:projRow(n.pitch), c:noteCol(n)}; }
+function trayPaint(){
+  document.querySelectorAll(".cell.tsel").forEach(e=>e.classList.remove("tsel"));
+  document.querySelectorAll(".dcell.tband").forEach(e=>e.classList.remove("tband"));
+  const ns=trayNotes();
+  ns.forEach(n=>{ const q=trayCellOf(n); if(cells[q.r]&&cells[q.r][q.c]) cells[q.r][q.c].classList.add("tsel"); });
+  if(ns.length && drumsOn){                    // time operations touch the WHOLE column span — show it on the beat lane too
+    const cs=ns.map(n=>trayCellOf(n).c), c0=Math.min(...cs), c1=Math.max(...cs);
+    for(let d=0;d<DRUMS.length;d++) for(let c=c0;c<=c1;c++) if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("tband");
+  }
+  if(trayMode) trayBtn.textContent = ns.length ? `✕ Done (${ns.length})` : "✕ Done";   // the single exit carries the count
+  const dis=!ns.length;
+  ["trayCopy","trayDel"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled=dis; });
+}
+function trayPrune(){ if(!traySel.length) return; const t=melTrack();
+  traySel=traySel.filter(id=>t.notes.some(n=>n.id===id)); if(trayMode) trayPaint(); }
+function clearGhosts(){ trayGhosts.forEach(e=>e.classList.remove("tghost")); trayGhosts=[]; }
+function syncCellDOM(){   // repaint .on from the projection without rebuilding DOM (no flicker mid-gesture)
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c]) cells[r][c].classList.toggle("on",grid[r][c]);
+  for(let d=0;d<DRUMS.length;d++) for(let c=0;c<COLS;c++) if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.toggle("on",drumG[d][c]);
+}
+function trayCommitDone(msg){ clearGhosts(); syncCellDOM(); trayPaint(); ev.played=false; checkLevel(); if(msg) setStatus(msg); }
+function enterTray(){ if(trayMode) return; trayMode=true; initAudio(); actx.resume();
+  activeTool=null; renderBag();
+  trayBtn.classList.add("on"); trayBtn.textContent="✕ Done"; document.body.classList.add("scooping");
+  gridEl.classList.add("traymode"); trackEl.classList.add("traymode"); scroller.style.touchAction="none";
+  trayPaint(); setStatus("🧺 <b>Scoop</b>: drag a box around seeds to pick them up — then drag the pick to move it, ⧉ Copy, 🗑 Dig up, or 🔨 Fuse it.");
+}
+function exitTray(){ if(!trayMode) return; trayMode=false; traySel=[]; trayDrag=null; trayPlace=null; trayPtrs.clear();
+  clearGhosts(); document.querySelectorAll(".cell.tsel").forEach(e=>e.classList.remove("tsel"));
+  document.querySelectorAll(".dcell.tband").forEach(e=>e.classList.remove("tband"));
+  if(trayMarqEl){ trayMarqEl.remove(); trayMarqEl=null; }
+  trayBtn.classList.remove("on"); trayBtn.textContent="🧺 Scoop"; document.body.classList.remove("scooping");
+  gridEl.classList.remove("traymode"); trackEl.classList.remove("traymode"); scroller.style.touchAction="";
+}
+trayBtn.onclick=()=>{ if(trayMode){ exitTray(); setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); } else enterTray(); };
+function trayGridPos(e){ const b=gridEl.getBoundingClientRect(); return {x:e.clientX-b.left, y:e.clientY-b.top}; }
+function trayPosCell(p){ return { r:Math.max(0,Math.min(ROWS-1,Math.floor((p.y-TRAY_PAD)/TRAY_CH))),
+                                  c:Math.max(0,Math.min(COLS-1,Math.floor((p.x-TRAY_PAD)/TRAY_CW))) }; }
+function trayMarqUpdate(){ if(!trayMarqEl||!trayDrag) return;
+  const x0=Math.min(trayDrag.from.x,trayDrag.to.x), y0=Math.min(trayDrag.from.y,trayDrag.to.y);
+  trayMarqEl.style.left=x0+"px"; trayMarqEl.style.top=y0+"px";
+  trayMarqEl.style.width=Math.abs(trayDrag.to.x-trayDrag.from.x)+"px";
+  trayMarqEl.style.height=Math.abs(trayDrag.to.y-trayDrag.from.y)+"px"; }
+function trayAutoScroll(e){ const sb=scroller.getBoundingClientRect();
+  if(e.clientX>sb.right-30) scroller.scrollLeft+=14; else if(e.clientX<sb.left+30) scroller.scrollLeft-=14; }
+function trayClampD(ns,dr,dc){ const rs=ns.map(n=>trayCellOf(n).r), cs=ns.map(n=>trayCellOf(n).c);
+  return [ Math.max(-Math.min(...rs), Math.min(ROWS-1-Math.max(...rs), dr)),
+           Math.max(-Math.min(...cs), Math.min(COLS-1-Math.max(...cs), dc)) ]; }
+function trayTargetsLocked(ns,dr,dc){ return ns.some(n=>{ const q=trayCellOf(n); return isLockedRow(q.r+dr); }); }
+function trayMove(dr,dc,msg){ const ns=trayNotes(); if(!ns.length) return;
+  [dr,dc]=trayClampD(ns,dr,dc); if(!dr&&!dc) return;
+  if(dr && trayTargetsLocked(ns,dr,dc)){ setStatus("That color isn't awake yet 🔒 — the pick can't land there."); clearGhosts(); return; }
+  tx("move",()=>{ const t=melTrack();
+    ns.forEach(n=>{ const q=trayCellOf(n);
+      if(dr) n.pitch=MIDI[q.r+dr];                          // vertical = scale-degree transpose (snaps a visitor pitch)
+      n.startTick=(q.c+dc)*TICKS_PER_COL; });               // horizontal-only moves never touch true pitch
+    const seen=new Map();                                   // moved exactly onto a twin seed → they merge (selected one wins)
+    for(const n of t.notes){ const k=n.pitch+":"+n.startTick; const p=seen.get(k);
+      if(!p) seen.set(k,n); else if(traySel.includes(n.id)&&!traySel.includes(p.id)) seen.set(k,n); }
+    t.notes=[...seen.values()]; reproject(); });
+  if(dr){ const q=trayCellOf(trayNotes()[0]||{pitch:MIDI[0],startTick:0}); playRow(q.r, actx.currentTime); }
+  trayCommitDone(msg); }
+// pointer flow: one finger = marquee / move / (in copy-place: tap places, drag pans);
+// a SECOND finger = pan — the in-flight gesture cancels but the pick and armed mode survive (spike rule).
+const trayPtrs=new Map(); const TRAY_SLOP=8;
+function trayCancelGesture(){ if(trayMarqEl){ trayMarqEl.remove(); trayMarqEl=null; } clearGhosts(); trayDrag=null; }
+trackEl.addEventListener("pointerdown",e=>{ if(!trayMode) return; e.preventDefault();
+  try{ trackEl.setPointerCapture(e.pointerId); }catch(err){}
+  trayPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(trayPtrs.size>=2){ trayCancelGesture(); return; }      // two fingers: pan mode until a finger lifts
+  const p=trayGridPos(e), cell=trayPosCell(p);
+  if(trayPlace){ trayDrag={mode:"placetap", from:{x:e.clientX,y:e.clientY}, cell, panned:false}; return; }
+  const onSel=trayNotes().some(n=>{ const q=trayCellOf(n); return q.r===cell.r&&q.c===cell.c; });
+  if(onSel){ trayDrag={mode:"move", from:cell, d:{r:0,c:0}, lastR:0}; }
+  else { trayDrag={mode:"marquee", from:p, to:p};
+    trayMarqEl=document.createElement("div"); trayMarqEl.className="marqueebox"; trackEl.appendChild(trayMarqEl); trayMarqUpdate(); }
+});
+trackEl.addEventListener("pointermove",e=>{ if(!trayMode) return;
+  const prev=trayPtrs.get(e.pointerId);
+  if(prev) trayPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(trayPtrs.size>=2){ if(prev) scroller.scrollLeft-=(e.clientX-prev.x); return; }   // two-finger pan
+  if(trayPlace){
+    if(trayDrag&&trayDrag.mode==="placetap"){
+      if(Math.hypot(e.clientX-trayDrag.from.x,e.clientY-trayDrag.from.y)>TRAY_SLOP) trayDrag.panned=true;
+      if(trayDrag.panned&&prev) scroller.scrollLeft-=(e.clientX-prev.x);              // drag with a copy armed = pan
+    } else trayPlacePreview(trayPosCell(trayGridPos(e)));                              // hover ghost (mouse/pen)
+    return; }
+  if(!trayDrag) return; e.preventDefault(); trayAutoScroll(e);
+  const p=trayGridPos(e);
+  if(trayDrag.mode==="marquee"){ trayDrag.to=p; trayMarqUpdate(); }
+  else if(trayDrag.mode==="move"){ const cell=trayPosCell(p), ns=trayNotes();
+    const [dr,dc]=trayClampD(ns, cell.r-trayDrag.from.r, cell.c-trayDrag.from.c);
+    trayDrag.d={r:dr,c:dc}; clearGhosts();
+    if(dr||dc) ns.forEach(n=>{ const q=trayCellOf(n); const el=cells[q.r+dr]&&cells[q.r+dr][q.c+dc];
+      if(el){ el.classList.add("tghost"); trayGhosts.push(el); } });
+    if(dr!==trayDrag.lastR){ trayDrag.lastR=dr;             // sound the transpose as it happens — ears first
+      const q=trayCellOf(ns[0]); if(!isLockedRow(q.r+dr)) playRow(q.r+dr, actx.currentTime); } }
+});
+function trayUp(e){ trayPtrs.delete(e.pointerId);
+  if(!trayMode||!trayDrag) return;
+  if(trayPtrs.size>=1) return;                              // other finger still down (pan) — gesture already cancelled
+  const d=trayDrag; trayDrag=null;
+  if(d.mode==="placetap"){ if(!d.panned) trayPlaceCommit(d.cell); return; }
+  if(d.mode==="marquee"){
+    if(trayMarqEl){ trayMarqEl.remove(); trayMarqEl=null; }
+    const w=Math.abs(d.to.x-d.from.x), h=Math.abs(d.to.y-d.from.y);
+    if(w<6&&h<6){                                           // a TAP: toggle one seed in/out of the pick, or coach
+      const cell=trayPosCell(d.from);
+      const hit=melTrack().notes.find(n=>{ const q=trayCellOf(n); return q.r===cell.r&&q.c===cell.c; });
+      if(hit){ const i=traySel.indexOf(hit.id); if(i>=0) traySel.splice(i,1); else traySel.push(hit.id);
+        trayPaint(); setStatus(traySel.length+" picked 🧺"); }
+      else setStatus("Drag a <b>box</b> around your seeds to pick them up 🧺 — or press <b>✕ Done</b> to go back to planting.");
+      return; }
+    const c0=trayPosCell({x:Math.min(d.from.x,d.to.x), y:Math.min(d.from.y,d.to.y)});
+    const c1=trayPosCell({x:Math.max(d.from.x,d.to.x), y:Math.max(d.from.y,d.to.y)});
+    melTrack().notes.forEach(n=>{ const q=trayCellOf(n);    // marquees UNION — gather a wide passage screen by screen
+      if(q.r>=c0.r&&q.r<=c1.r&&q.c>=c0.c&&q.c<=c1.c&&!traySel.includes(n.id)) traySel.push(n.id); });
+    trayPaint();
+    setStatus(traySel.length ? traySel.length+" seeds picked 🧺 — drag the pick to move it, or use the buttons under the field."
+      : "Nothing in the box — drag around some planted seeds 🌱.");
+  } else if(d.mode==="move"){
+    if(d.d.r||d.d.c) trayMove(d.d.r, d.d.c, "Moved 🧺 — undo brings it back.");
+    else { const hit=melTrack().notes.find(n=>{ const q=trayCellOf(n);   // a clean tap on a picked seed drops just it
+        return q.r===d.from.r&&q.c===d.from.c&&traySel.includes(n.id); });
+      if(hit){ traySel.splice(traySel.indexOf(hit.id),1); trayPaint(); setStatus(traySel.length+" picked 🧺"); }
+      clearGhosts(); }
+  } else clearGhosts();
+}
+function trayCancel(e){ trayPtrs.delete(e.pointerId); if(trayMode) trayCancelGesture(); }   // interrupted gesture: discard, never commit
+trackEl.addEventListener("pointerup",trayUp); trackEl.addEventListener("pointercancel",trayCancel);
+document.getElementById("trayCopy").onclick=()=>{ const ns=trayNotes(); if(!ns.length) return;
+  const qs=ns.map(n=>trayCellOf(n)), minR=Math.min(...qs.map(q=>q.r)), minC=Math.min(...qs.map(q=>q.c));
+  trayPlace={ rel:qs.map(q=>({dr:q.r-minR, dc:q.c-minC})),
+              h:Math.max(...qs.map(q=>q.r))-minR, w:Math.max(...qs.map(q=>q.c))-minC };
+  trayPlacePreview({r:minR, c:minC});                        // ghost is visible immediately (touch has no hover)
+  setStatus("⧉ Copied — <b>tap where the copy should grow</b> 🌱 (drag pans · Esc cancels).");
+};
+function trayPlaceClamp(cell){ return { r:Math.max(0,Math.min(ROWS-1-trayPlace.h,cell.r)),
+                                        c:Math.max(0,Math.min(COLS-1-trayPlace.w,cell.c)) }; }
+function trayPlacePreview(cell){ clearGhosts(); const a=trayPlaceClamp(cell);
+  trayPlace.rel.forEach(o=>{ const el=cells[a.r+o.dr]&&cells[a.r+o.dr][a.c+o.dc];
+    if(el){ el.classList.add("tghost"); trayGhosts.push(el); } }); }
+function trayPlaceCommit(cell){ const a=trayPlaceClamp(cell), made=[];
+  if(trayPlace.w>COLS-1||trayPlace.h>ROWS-1){ setStatus("Not enough room for that copy here 🌱 — make the field bigger first."); trayPlace=null; clearGhosts(); return; }
+  if(trayPlace.rel.some(o=>isLockedRow(a.r+o.dr))){ setStatus("That color isn't awake yet 🔒 — plant the copy somewhere else."); return; }
+  tx("paste",()=>{ const t=melTrack();
+    trayPlace.rel.forEach(o=>{ const pitch=MIDI[a.r+o.dr], tick=(a.c+o.dc)*TICKS_PER_COL;
+      if(!t.notes.some(n=>n.pitch===pitch&&n.startTick===tick)){
+        const n={id:newNoteId(),pitch,startTick:tick,durationTicks:TICKS_PER_COL,velocity:1};
+        t.notes.push(n); made.push(n.id); } });
+    reproject(); });
+  trayPlace=null; if(made.length) traySel=made;               // the copy becomes the new pick — chained placing feels natural
+  trayCommitDone("Planted a copy 🌱 — it's the new pick.");
+}
+document.getElementById("trayDel").onclick=()=>{ if(!traySel.length) return;
+  tx("delete",()=>{ const t=melTrack(); t.notes=t.notes.filter(n=>!traySel.includes(n.id)); reproject(); });
+  traySel=[]; trayCommitDone("Dug up 🗑 — undo if you change your mind.");
+};
+// time surgery is blocked on stages whose layout is scripted (Q&A call/answer split, pattern-choice stages)
+function traySurgeryBlocked(){
+  if(document.querySelector(".cell.callcol")){ setStatus("This level's path is split into call and answer — time can't stretch here 🌿."); return true; }
+  const ch=document.getElementById("choiceRow");
+  if(ch && ch.style.display!=="none"){ setStatus("This level lays out the choices itself — no time surgery here 🌿."); return true; }
+  return false; }
+// ---------- The cursor: WHERE in time (2026-07-27 redesign) ----------
+// A stake on the strip under the field. Play starts here; ＋/－ column surgery works here —
+// one column per press, no selection needed. The Scoop stays purely about SEEDS.
+let cursorCol=0;
+const cursorStripEl=document.getElementById("cursorStrip"), cursorKnobEl=document.getElementById("cursorKnob"),
+      cursorColEl=document.getElementById("cursorCol");
+function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
+  cursorStripEl.style.width=(COLS*38+16)+"px";               // match the grid: 10px pad ×2 + cols×38 − last gap
+  const x=10+cursorCol*38;
+  cursorKnobEl.style.left=x+"px"; cursorColEl.style.left=x+"px";
+  if(drumCursorEl){ drumCursorEl.style.left=(72+x)+"px";     // the beat lane carries the same slot, 72px later (the drum labels' gutter)
+    const a=dcells[0]&&dcells[0][0], z=dcells[DRUMS.length-1]&&dcells[DRUMS.length-1][0];
+    if(a&&z&&z.offsetHeight){ drumCursorEl.style.top=(a.offsetTop-4)+"px";        // measure the real pads: a round pad needs the frame to clear it, not sit on its edge
+      drumCursorEl.style.height=(z.offsetTop+z.offsetHeight-a.offsetTop+8)+"px"; } } }
+function setCursor(c){ cursorCol=Math.max(0,Math.min(COLS-1,c)); syncCursor(); }
+function cursorFromEvent(e){ const b=cursorStripEl.getBoundingClientRect();
+  setCursor(Math.floor((e.clientX-b.left-10)/38)); }
+cursorStripEl.addEventListener("pointerdown",e=>{ e.preventDefault();
+  try{ cursorStripEl.setPointerCapture(e.pointerId); }catch(err){}
+  cursorStripEl._drag=true; cursorFromEvent(e); });
+cursorStripEl.addEventListener("pointermove",e=>{ if(cursorStripEl._drag) cursorFromEvent(e); });
+cursorStripEl.addEventListener("pointerup",()=>{ cursorStripEl._drag=false; });
+cursorStripEl.addEventListener("pointercancel",()=>{ cursorStripEl._drag=false; });
+// seeds and beat are ONE timeline: two independent scrollers could hold different columns under the same
+// cursor (and playback's auto-scroll only ever moved the seed lane). Mirror them, with a re-entrancy guard.
+// the fixed top-right buttons sit OUTSIDE the document flow, so nothing insets them past the page
+// scrollbar — measure it and let CSS subtract it. Re-measured on resize (zoom changes the bar's width).
+function syncScrollbarWidth(){ const w=window.innerWidth-document.documentElement.clientWidth;
+  document.documentElement.style.setProperty("--sbw", Math.max(0,w)+"px"); }
+syncScrollbarWidth(); window.addEventListener("resize",syncScrollbarWidth);
+let _scrollSync=false;
+[["scroller","drumArea"],["drumArea","scroller"]].forEach(([a,b])=>{
+  const A=document.getElementById(a), B=document.getElementById(b); if(!A||!B) return;
+  A.addEventListener("scroll",()=>{ if(_scrollSync) return;
+    _scrollSync=true;                                   // clear it SYNCHRONOUSLY — a throttled tab may never run a rAF,
+    if(B.scrollLeft!==A.scrollLeft) B.scrollLeft=A.scrollLeft;   // and a stuck flag would silently unlock the lanes forever.
+    _scrollSync=false; });                              // the reflected event then finds the lanes equal and stops there
+});
+// one column of surgery per press, at the cursor — melody AND beat move together
+document.getElementById("colPlus").onclick=()=>{ if(traySurgeryBlocked()) return;
+  if(playing) stop();
+  modelInsertTime(cursorCol*TICKS_PER_COL, TICKS_PER_COL);
+  rebuildField(); applyStageDecor(); trayPaint(); ev.played=false; checkLevel();
+  setStatus("＋ Room for one more step, right at the cursor 🌱 (everything after slid along, beat too). Press again for more — undo brings it back."); };
+document.getElementById("colMinus").onclick=()=>{ if(traySurgeryBlocked()) return;
+  if(COLS<=16){ setStatus("The field is at its smallest 🌱 — one bar always stays."); return; }
+  if(playing) stop();
+  modelRemoveTime(cursorCol*TICKS_PER_COL, TICKS_PER_COL);
+  rebuildField(); applyStageDecor(); trayPaint(); ev.played=false; checkLevel();
+  setStatus("－ The cursor's step closed up ✂ (the rest pulled together, beat too). Undo brings it back."); };
 
 // ---------- Levels ----------
 function colCount(c){ let n=0; for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; return n; }
@@ -1045,7 +1397,7 @@ function gridState(){
   return {placed,pair,chord,home};
 }
 function wipe(){ modelClearMelody();
-  cells.flat().forEach(e=>e.classList.remove("on")); clearSel(); }
+  cells.flat().forEach(e=>e.classList.remove("on")); }
 function freshEv(){ return {played:false,craftedPair:false,craftedTower:false,craftedWobbler:false,
   stampedTool:false,previewed:false,previewedTower:false,previewedWobbler:false,jammed:false,choicePick:-1,
   pairKinds:[],pairs:[],lastPairKind:null,towerSigs:[]}; }
@@ -1105,7 +1457,7 @@ function previewTool(tool){ playChordMidis(tool.midis); ev.previewed=true;
   if(tool.offs.length>=3){ stableMidis(tool.midis)?ev.previewedTower=true:ev.previewedWobbler=true; }
   checkLevel(); }
 
-function placeTune(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+function placeTune(notes){ tx("place",()=>notes.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); })); }   // ONE journal entry — a scripted placement undoes in one step
 // count DISTINCT tools in the toolbox by type (toolbox dedupes by shape, so these enforce "different")
 const countTools=pred=>toolbox.filter(pred).length;
 const isPairTool=t=>t.offs.length===2;
@@ -1116,7 +1468,7 @@ function gridMatches(t){ let n=0; for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)
   return n===t.length && t.every(([r,c])=>grid[r]&&grid[r][c]); }
 const echoTarget=()=>curStage().echo||[];
 const echoMatch=()=>gridMatches(echoTarget());
-function echoHint(){ wipe(); echoTarget().forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+function echoHint(){ tx("place",()=>{ wipe(); echoTarget().forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }); }
 function playPhrase(notes){ initAudio(); actx.resume(); const t0=actx.currentTime+0.12, sd=stepDur()/1000;
   notes.forEach(([r,c])=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd)); }
 
@@ -1313,12 +1665,13 @@ const FAMOUS = {
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
 const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126, chopsticks:132 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
-function placeFamous(f){ if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
+function placeFamous(f){ tx("famous",()=>{                                    // ONE journal entry — a 100-note reveal must not evict the player's undo history
+  if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
   (f.chords||[]).forEach(([midis,col])=> midis.forEach(m=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }));  // chords (block triads, MIDI)
   (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); });                            // melody on top
   if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } drumArea.style.display="";            // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
-    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); } }
+    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } }); }   // the lane just became visible — re-measure the cursor rail
 let famousTimers=[];
 function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[]; }
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
@@ -1416,7 +1769,7 @@ function motifFamilyCount(kind){ let n=0; for(let w=1;w<Math.floor(COLS/MOTIF_W)
   const ok = kind==="repeat"?motifExactRepeat(0,w) : kind==="echo"?motifEcho(0,w) : kind==="vary"?motifVariation(0,w)
     : (motifExactRepeat(0,w)||motifEcho(0,w)||motifVariation(0,w)); if(ok) n++; } return n; }
 // a worked-example motif + a transposed echo of it (for 💡 Hint / setup), placed from a heights array at window w
-function placeMotif(heights, w){ const base=w*MOTIF_W; heights.forEach((h,i)=>{ if(h==null) return; const r=(ROWS-1)-h; if(grid[r]&&base+i<COLS) setCell(r,base+i,true); }); }
+function placeMotif(heights, w){ tx("place",()=>{ const base=w*MOTIF_W; heights.forEach((h,i)=>{ if(h==null) return; const r=(ROWS-1)-h; if(grid[r]&&base+i<COLS) setCell(r,base+i,true); }); }); }
 // tint alternating 4-column "windows" so the player can see the motif groupings (Tiny Motifs)
 function setMotifGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ const el=cells[r]&&cells[r][c]; if(!el) continue;
   el.classList.toggle("motifwin", !!on && Math.floor(c/MOTIF_W)%2===1); } }
@@ -1459,8 +1812,8 @@ function showChoices(opts,answer,prompt){ choiceOpts=opts; choiceAnswer=answer; 
     b.textContent="🎵 Path "+String.fromCharCode(65+i); b.onclick=()=>pickChoice(i); row.appendChild(b); });
   setStatus(prompt||"Tap each path to hear and see it — listen to <b>all three</b> first, then choose the one that traces the glowing arc."); }
 function hideChoices(){ const row=document.getElementById("choiceRow"); if(row){ row.style.display="none"; row.innerHTML=""; } choiceOpts=null; choiceAnswer=-1; choiceViewed=[]; }
-function pickChoice(i){ if(!choiceOpts) return; wipe();
-  placeTune(choiceOpts[i].map((r,c)=>[r,c]));
+function pickChoice(i){ if(!choiceOpts) return;
+  tx("choice",()=>{ wipe(); placeTune(choiceOpts[i].map((r,c)=>[r,c])); });
   initAudio(); actx.resume(); const t0=actx.currentTime+0.05, sd=stepDur()/1000;
   choiceOpts[i].forEach((r,c)=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));
   choiceViewed[i]=true;
@@ -1633,8 +1986,8 @@ function setPhraseGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ co
   el.classList.toggle("answercol", !!on && c>=PHRASE_SPLIT);
   el.classList.toggle("answeredge",!!on && c===PHRASE_SPLIT); } }
 const curCall = () => curStage().call || [];
-function placeCall(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c<PHRASE_SPLIT) setCell(r,c,true); }); }   // pre-place the call in phrase A
-function placeAnswer(notes){ notes.forEach(([r,c])=>{ if(grid[r]&&c>=PHRASE_SPLIT&&c<COLS) setCell(r,c,true); }); checkLevel(); }  // worked-example answers (hints), leaves the call intact
+function placeCall(notes){ tx("place",()=>notes.forEach(([r,c])=>{ if(grid[r]&&c<PHRASE_SPLIT) setCell(r,c,true); })); }   // pre-place the call in phrase A
+function placeAnswer(notes){ tx("place",()=>notes.forEach(([r,c])=>{ if(grid[r]&&c>=PHRASE_SPLIT&&c<COLS) setCell(r,c,true); })); checkLevel(); }  // worked-example answers (hints), leaves the call intact
 const playCall = () => playPhrase(curCall());
 // top-note height per occupied column, restricted to one half (like contourSeq)
 function halfSeq(lo,hi){ const seq=[]; for(let c=lo;c<hi;c++){ for(let r=0;r<ROWS;r++){ if(grid[r][c]){ seq.push((ROWS-1)-r); break; } } } return seq; }
@@ -1701,7 +2054,7 @@ const restsAtHome = () => endPC()===TONIC_PC;   // the tune comes to rest on thi
 // the plagal IV→I is a gentler pull; vi (A minor) is the "false door" (deceptive landing). Reasons in real semitones.
 const DEGREE_OF = {0:"I",2:"ii",4:"iii",5:"IV",7:"V",9:"vi",11:"vii"};
 const CHORDS = { I:[13,11,9], ii:[12,10,8], iii:[11,9,7], IV:[10,8,6], V:[9,7,5], vi:[8,6,4], vii:[7,5,3] };   // row-sets (root position, low octave)
-function placeProg(specs){ wipe(); specs.forEach(([rows,col])=>rows.forEach(r=>{ if(grid[r]&&col<COLS) setCell(r,col,true); })); }   // specs: [[rows,col],…]
+function placeProg(specs){ tx("place",()=>{ wipe(); specs.forEach(([rows,col])=>rows.forEach(r=>{ if(grid[r]&&col<COLS) setCell(r,col,true); })); }); }   // specs: [[rows,col],…]
 function colChordRoot(c){ const ms=colMidisSorted(c); if(ms.length<3) return null;
   const pcs=[...new Set(ms.map(m=>((m%12)+12)%12))].sort((a,b)=>a-b); if(pcs.length!==3) return null;
   for(const root of pcs){ const k=pcs.map(p=>((p-root)%12+12)%12).sort((a,b)=>a-b).join(",");
@@ -1897,11 +2250,11 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   power:{em:"🔗",name:"Binding",line:"You can fuse voices into one shape."},
   intent:"Can you discover two different bonds?",
   teach:"Two notes bound together make an 'interval'.", steps:[
-   {intro:"You've unlocked 🔨 Fuse + the 🎒 Toolbox! Two voices can belong together: plant two seeds in the SAME column, one above the other, then 🔨 Fuse and ✓ Save the bond.",
+   {intro:"You've unlocked 🔨 Fuse + the 🎒 Toolbox! Two voices can belong together: plant two seeds in the SAME column, one above the other, then press 🔨 Fuse to save the bond.",
     hint:()=>hintSeeds([[9,4],[7,4]]),
     goals:[{id:"cp",label:"Fuse a pair into your Toolbox",chk:(s,e)=>e.craftedPair},
            {id:"hp",label:"Click your pair in the Toolbox to hear it",chk:(s,e)=>e.previewed}]},
-   {intro:"Now discover a DIFFERENT bond — two seeds a different distance apart (closer or farther) — then 🔨 Fuse and ✓ Save.",
+   {intro:"Now discover a DIFFERENT bond — two seeds a different distance apart (closer or farther) — then press 🔨 Fuse.",
     hint:()=>hintSeeds([[9,5],[6,5]]),
     goals:[{id:"cp2",label:"Craft a second, different pair",chk:()=>countTools(isPairTool)>=2}]},
  ]},
@@ -1910,11 +2263,11 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   reveal:structureReveal,
   intent:"Can you build something that stands tall?",
   teach:"Three notes spread apart make a stable 'triad' — a chord.", steps:[
-   {intro:"Build a shape strong enough to stand: stack THREE seeds in ONE column, SPREAD APART (gaps between them), then 🔨 Fuse and ✓ Save — a TOWER 🏛️ stands tall and sounds smooth & open.",
+   {intro:"Build a shape strong enough to stand: stack THREE seeds in ONE column, SPREAD APART (gaps between them), then press 🔨 Fuse — a TOWER 🏛️ stands tall and sounds smooth & open.",
     hint:()=>hintSeeds([[9,4],[7,4],[5,4]]),
     goals:[{id:"ct",label:"Craft a TOWER chord into your Toolbox",chk:(s,e)=>e.craftedTower},
            {id:"ht",label:"Click your Tower to hear how SMOOTH it sounds",chk:(s,e)=>e.previewedTower}]},
-   {intro:"Raise a DIFFERENT Tower — three spread-apart seeds in a new shape — then 🔨 Fuse and ✓ Save.",
+   {intro:"Raise a DIFFERENT Tower — three spread-apart seeds in a new shape — then press 🔨 Fuse.",
     hint:()=>hintSeeds([[8,4],[6,4],[4,4]]),
     goals:[{id:"ct2",label:"Craft a second, different Tower",chk:()=>countTools(isTowerTool)>=2}]},
  ]},
@@ -1926,7 +2279,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
     hint:()=>hintSeeds([[9,4],[8,4],[6,4]]),
     goals:[{id:"cw",label:"Craft a WOBBLER chord into your Toolbox",chk:(s,e)=>e.craftedWobbler},
            {id:"hw",label:"Click your Wobbler to hear how TENSE it sounds",chk:(s,e)=>e.previewedWobbler}]},
-   {intro:"Stir a DIFFERENT storm — another clashy chord in a new shape — then 🔨 Fuse and ✓ Save.",
+   {intro:"Stir a DIFFERENT storm — another clashy chord in a new shape — then press 🔨 Fuse.",
     hint:()=>hintSeeds([[8,4],[7,4],[5,4]]),
     goals:[{id:"cw2",label:"Craft a second, different Wobbler",chk:()=>countTools(isWobTool)>=2}]},
  ]},
@@ -2179,30 +2532,30 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   desc:"Bind two notes into a bloom — and discover that every pair has a feeling.", requires:["intro"], version:1, author:"official", levels:[
  {name:"First Bond", unlock:["fuse"], power:{em:"🌷",name:"Bond",line:"You can bind two notes into one bloom."},
   hint:()=>hintSeeds([[8,4],[6,4]]),
-  intro:"Two flowers can bloom together 🌸. Plant TWO seeds stacked in one column, press 🔨 Fuse, click both seeds, then ✓ Save — and click your new bloom in the 🎒 Toolbox to HEAR it.",
+  intro:"Two flowers can bloom together 🌸. Plant TWO seeds stacked in one column, then press 🔨 Fuse — and click your new bloom in the 🎒 Toolbox to HEAR it.",
   teach:"Two notes sounded together make an 'interval'.",
   goals:[{id:"bond",label:"Fuse a pair of notes into your Toolbox",chk:(s,e)=>e.craftedPair},
          {id:"hear",label:"Click your bloom to hear how the two notes feel together",chk:(s,e)=>e.previewed}]},
  {name:"Open & Close", power:{em:"↔️",name:"Spacing",line:"You can make a pair feel open or close."}, steps:[
    {hint:()=>hintSeeds([[9,4],[6,4]]),
-    intro:"Some pairs feel OPEN and spacious 🍃 — the two notes sit FAR apart, an airy gap. The farther apart, the more open it feels. Fuse a wide one and ✓ Save.",
+    intro:"Some pairs feel OPEN and spacious 🍃 — the two notes sit FAR apart, an airy gap. The farther apart, the more open it feels. Fuse a wide one.",
     goals:[{id:"o",label:"Craft an OPEN pair (notes far apart)",chk:()=>craftedOpen()}]},
    {hint:()=>hintSeeds([[9,4],[8,4]]),
-    intro:"Others feel CLOSE and cozy 🌿 — two notes right next to each other, humming together. Fuse a close one and ✓ Save.",
+    intro:"Others feel CLOSE and cozy 🌿 — two notes right next to each other, humming together. Fuse a close one.",
     goals:[{id:"c",label:"Craft a CLOSE pair (neighbouring notes)",chk:()=>craftedClose()}]},
  ]},
  {name:"Bright Bloom", power:{em:"🌸",name:"Bright",line:"You can find the sweet, bright pairs."},
   hint:()=>hintSeeds([[9,4],[7,4]]),
-  intro:"In between is the BRIGHT bloom 🌸 — a sweet, sunny pair with a small gap (a little wider than CLOSE, but not far apart like OPEN). Fuse one and ✓ Save.",
+  intro:"In between is the BRIGHT bloom 🌸 — a sweet, sunny pair with a small gap (a little wider than CLOSE, but not far apart like OPEN). Fuse one.",
   teach:"A bright pair is a 3rd — sweet, and the building block of every chord.",
   goals:[{id:"b",label:"Craft a BRIGHT pair (a small gap)",chk:()=>craftedBright()}]},
  {name:"Same Distance, New Feel", power:{em:"🔍",name:"Listener",line:"You can hear that the same shape can feel different."},
   teach:"On the uneven pentatonic ladder, one 'step' can be a 2nd OR a 3rd.", steps:[
    {hint:()=>hintSeeds([[9,4],[8,4]]),
-    intro:"Here's a secret 🔍 — two seeds ONE step apart usually hum CLOSE together. Craft a close, neighbouring pair (like the two lowest stones). ✓ Save.",
+    intro:"Here's a secret 🔍 — two seeds ONE step apart usually hum CLOSE together. Craft a close, neighbouring pair (like the two lowest stones).",
     goals:[{id:"s1",label:"Craft a CLOSE pair, one step apart",chk:()=>craftedSpanBand(1,"close")}]},
    {hint:()=>hintSeeds([[7,4],[6,4]]),
-    intro:"But some stones, the SAME one step apart, sound BRIGHT instead! 🌸 Find two neighbouring stones higher up that bloom bright, and ✓ Save. (Same shape — different feeling!)",
+    intro:"But some stones, the SAME one step apart, sound BRIGHT instead! 🌸 Find two neighbouring stones higher up that bloom bright,. (Same shape — different feeling!)",
     goals:[{id:"s2",label:"Craft a BRIGHT pair, also one step apart",chk:()=>craftedSpanBand(1,"bright")}]},
  ]},
  {name:"Hear the Bloom", power:{em:"👂",name:"Pair Ear",line:"You can pick a pair's feeling by ear."},
@@ -2212,10 +2565,10 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"pick",label:"Hear all three, then pick the OPEN pair",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
  {name:"Find the Match", power:{em:"💞",name:"Matchmaker",line:"You can give a creature the pair that fits its mood."}, steps:[
    {hint:()=>hintSeeds([[9,4],[8,4]]),
-    intro:"A sleepy mole wants a CALM, cozy song 😴. Craft a CLOSE pair to soothe it, then ✓ Save.",
+    intro:"A sleepy mole wants a CALM, cozy song 😴. Craft a CLOSE pair to soothe it.",
     goals:[{id:"m1",label:"Give the sleepy mole a CLOSE pair",chk:()=>craftedClose()}]},
    {hint:()=>hintSeeds([[9,4],[6,4]]),
-    intro:"A soaring hawk wants a WIDE-OPEN, spacious song 🦅. Craft an OPEN pair (notes far apart) for it, then ✓ Save.",
+    intro:"A soaring hawk wants a WIDE-OPEN, spacious song 🦅. Craft an OPEN pair (notes far apart) for it.",
     goals:[{id:"m2",label:"Give the soaring hawk an OPEN pair",chk:()=>craftedOpen()}]},
  ]},
  {name:"Two Gardens", loop:true, power:{em:"🏡",name:"Bond Gardener",line:"You can plant a whole bed of feelings."},
@@ -2241,17 +2594,17 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   requires:["twin-blooms","two-new-colors"], version:1, author:"official", levels:[
  {name:"The Restless Pair", unlock:["fuse"], power:{em:"🌶️",name:"Tension",line:"You can bind two notes that clash and feel restless."},
   hint:()=>hintSeeds([[7,4],[6,4]]),
-  intro:"The world has new colours now — and some pairs CLASH 🌶️. Stack the two NEIGHBOURS B and C in one column, 🔨 Fuse and ✓ Save, then click it to HEAR how restless and crunchy it sounds.",
+  intro:"The world has new colours now — and some pairs CLASH 🌶️. Stack the two NEIGHBOURS B and C in one column, press 🔨 Fuse, then click it to HEAR how restless and crunchy it sounds.",
   teach:"Two notes a half-step apart (a minor 2nd) is the sharpest clash there is.",
   goals:[{id:"tense",label:"Fuse a restless, clashing pair",chk:()=>craftedTense()},
          {id:"hear",label:"Click it to hear the tension",chk:(s,e)=>e.previewed}]},
  {name:"Two Kinds of Restless", power:{em:"👻",name:"Two Tensions",line:"You know the clash and the spooky tritone."},
   teach:"A 'clash' is a minor 2nd; a 'tritone' is three whole steps — both crave release.", steps:[
    {hint:()=>hintSeeds([[7,4],[6,4]]),
-    intro:"One kind of restless is the CLASH 🌶️ — two neighbours grinding right against each other (like B and C, or E and F). Fuse a clashing pair and ✓ Save.",
+    intro:"One kind of restless is the CLASH 🌶️ — two neighbours grinding right against each other (like B and C, or E and F). Fuse a clashing pair.",
     goals:[{id:"clash",label:"Craft a CLASH (two neighbours)",chk:()=>craftedClash()}]},
    {hint:()=>hintSeeds([[10,4],[7,4]]),
-    intro:"The other is the TRITONE 👻 — the spookiest pair of all, made of F and B sitting a wide, uneasy distance apart. Fuse F with B and ✓ Save, then hear how unsettled it feels.",
+    intro:"The other is the TRITONE 👻 — the spookiest pair of all, made of F and B sitting a wide, uneasy distance apart. Fuse F with B, then hear how unsettled it feels.",
     goals:[{id:"tri",label:"Craft a TRITONE (F with B)",chk:()=>craftedTritone()}]},
  ]},
  {name:"Tension Wants Home", power:{em:"➡️",name:"Resolver",line:"You can let tension pull, then release into rest."},
@@ -2268,10 +2621,10 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   goals:[{id:"pick",label:"Hear all three, then pick the restless pair",chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
  {name:"Match the Mood", power:{em:"🎭",name:"Mood Binder",line:"You can pick tension or calm to fit a scene."}, steps:[
    {hint:()=>hintSeeds([[10,4],[7,4]]),
-    intro:"A creeping ghost wants a SPOOKY, restless song 👻. Craft a TENSE pair (a clash or a tritone) to give it the shivers, then ✓ Save.",
+    intro:"A creeping ghost wants a SPOOKY, restless song 👻. Craft a TENSE pair (a clash or a tritone) to give it the shivers.",
     goals:[{id:"sp",label:"Give the ghost a tense pair",chk:()=>craftedTense()}]},
    {hint:()=>hintSeeds([[6,4],[2,4]]),
-    intro:"A sleepy turtle wants a CALM, settled song 😌. Craft a RESTFUL pair (a smooth, consonant gap — no clash) to soothe it, then ✓ Save.",
+    intro:"A sleepy turtle wants a CALM, settled song 😌. Craft a RESTFUL pair (a smooth, consonant gap — no clash) to soothe it.",
     goals:[{id:"cl",label:"Give the turtle a restful pair",chk:()=>craftedRestful()}]},
  ]},
  {name:"Resolve the Clash", power:{em:"🛠️",name:"Releaser",line:"You can give a hanging tension somewhere to land."},
@@ -2454,7 +2807,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   desc:"Stack three notes into a tower that stands tall — and learn to build, mend, and ring them.", requires:["intro","twin-blooms"], version:1, author:"official", levels:[
  {name:"Raise the First Tower", unlock:["fuse"], power:{em:"🏛️",name:"Tower",line:"You can stack notes into a shape that stands."},
   hint:()=>hintSeeds([[9,4],[7,4],[6,4]]),
-  intro:"Stack THREE seeds in one column, SPREAD APART, then 🔨 Fuse and ✓ Save — a TOWER 🏛️ stands tall and sounds smooth. Click it in your 🎒 Toolbox to hear how solid it is.",
+  intro:"Stack THREE seeds in one column, SPREAD APART, then press 🔨 Fuse — a TOWER 🏛️ stands tall and sounds smooth. Click it in your 🎒 Toolbox to hear how solid it is.",
   teach:"Three notes a 3rd or more apart make a stable triad — a 'tower'.",
   goals:[{id:"t",label:"Build a TOWER chord into your Toolbox",chk:(s,e)=>e.craftedTower},
          {id:"h",label:"Click your Tower to hear how solid it sounds",chk:(s,e)=>e.previewedTower}]},
@@ -3228,7 +3581,8 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
-  activeTool=null; exitFuse();
+  activeTool=null; exitTray();
+  cursorCol=0; syncCursor();   // every level/step starts with the cursor at the top
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
   step=0; shownPage=-1; playhead.classList.remove("on"); scroller.scrollLeft=0;
@@ -3291,9 +3645,10 @@ function renderStage(){   // render the current step (or the whole level if it h
   setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
-    : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: <b>🔨 Fuse</b> → click planted seeds → <b>✓ Save</b>."
+    : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."
     : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
   populateDevJump();
+  journalClear();   // undo spans the PLAYER's edits only — never the stage's own setup (calls, starter beats, pre-placed seeds)
   checkLevel();
 }
 // dev jump dropdowns: a package selector (any package, ignoring lock state) + a level selector that refreshes per package
@@ -3595,9 +3950,12 @@ const Transport={ timer:null,
   end(){ if(this.timer){ clearInterval(this.timer); this.timer=null; } },
   retime(){ if(this.timer) this.begin(); } };   // tempo/groove changed mid-play: re-arm at the new step length
 const stepDur=()=>60000/tempoEl.value/2;
-function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true; step=0;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
+function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
+  step=Math.max(0,Math.min(COLS-1,cursorCol));                                 // ▶ Play always starts at the cursor (2026-07-27)
+  const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; tick(); Transport.begin();
-  ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; checkLevel(); }   // Off the Path L4 tracks hearing BOTH feels
+  if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
+  checkLevel(); }
 function stop(){ playing=false; Transport.end();
   playBtn.textContent="▶ Play"; playhead.classList.remove("on");
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
@@ -3605,7 +3963,7 @@ function stop(){ playing=false; Transport.end();
 }
 function tick(){
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
-  if(step>=COLS){ if(looping){ step=0; } else { stop(true); return; } }
+  if(step>=COLS){ if(looping){ step=Math.max(0,Math.min(COLS-1,cursorCol)); } else { stop(true); return; } }   // loop wraps back to the cursor
   const sw=(jamMode && step%2===1) ? GROOVES[grooveIdx].swing*stepDur()/1000        // jam shuffle = delay off-beats
          : (levelSwing && step%4===2) ? stepDur()/1000 : 0;                         // level swing feel = the "ands" land one full step late, on the crack before the beat (Off the Path; matches the pad slide)
   const t=actx.currentTime+0.02+sw;
@@ -3628,9 +3986,12 @@ function tick(){
   step++;
 }
 playBtn.onclick=()=> playing?stop():start();
+document.getElementById("undoBtn").onclick=undoEdit;
+document.getElementById("redoBtn").onclick=redoEdit;
 loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
 drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   drumArea.style.display=drumsOn?"":"none";
+  if(drumsOn) syncCursor();          // the lane was display:none, so its pads had no geometry — re-measure the cursor rail now that they do
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
 listenBtn.onclick=()=>playPhrase(curStage().call ? curCall() : echoTarget());
@@ -3648,21 +4009,39 @@ GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.
 grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
   if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };
 craftBtn.onclick=()=>{
+  initAudio(); actx.resume();
   if(activeTool){ activeTool=null; renderBag(); }                 // drop any picked tool first
-  if(!craftMode){ craftMode=true; craftBtn.classList.add("on"); updateFuseLabel();
-    setStatus("Fuse: click <b>2–3 planted seeds in one column</b>, then press <b>✓ Save</b>."); }
-  else if(craftSel.length>=2){ fuse(); }                          // fuse() crafts, then exits to planting
-  else { exitFuse(); setStatus("Fuse cancelled — plant seeds, or 🔨 Fuse again."); }
+  if(trayMode && traySel.length){ fusePick(); return; }           // Fuse crafts the Scoop pick
+  fuseField();                                                    // no pick: a lone 2–3-seed stack fuses in ONE press; an ambiguous field arms Scoop with a hint
 };
 tempoEl.oninput=()=>Transport.retime();
 tempoEl.addEventListener("change",saveProgress);
 instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveProgress(); });
-document.getElementById("clear").onclick=()=>{ wipe(); if(drumsOn) wipeDrums(); checkLevel(); };
+document.getElementById("clear").onclick=()=>{ tx("clear",()=>{ wipe(); if(drumsOn) wipeDrums(); }); checkLevel(); };   // one press = one undo step
 const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(16);   // extend the timeline by one bar
 const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(16);
 const moreMenu=document.getElementById("moremenu");
-document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ activeTool=null; exitFuse(); renderBag();
-  setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); }});
+// ONE keyboard handler, a priority ladder — never two listeners fighting over the same key (design-panel rule).
+function overlayUp(){ return ["powoverlay","congratsoverlay","moverlay","homeoverlay","landingoverlay","compoverlay","instroverlay","mixoverlay"]
+  .some(id=>{ const el=document.getElementById(id); return el && getComputedStyle(el).display!=="none"; }); }
+document.addEventListener("keydown",e=>{
+  const t=e.target;
+  if(t && (t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA")) return;   // native editing wins
+  if(e.key==="Escape"){
+    if(trayPlace){ trayPlace=null; clearGhosts(); setStatus("Copy put away."); return; }          // 1. cancel a pending copy
+    if(trayDrag){ trayCancelGesture(); return; }                                                  // 2. cancel the gesture, keep the pick
+    if(trayMode && traySel.length){ traySel=[]; trayPaint(); setStatus("Pick emptied 🧺 — drag a new box, or press ✕ Done."); return; }  // 3. drop the pick
+    if(trayMode){ exitTray(); setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); return; }        // 4. leave the tray
+    activeTool=null; renderBag();                                                                 // 5. drop an armed stamp tool
+    setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); return; }
+  if(overlayUp()) return;                                    // shortcuts sleep while a card/menu is up
+  if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z")){ e.shiftKey?redoEdit():undoEdit(); e.preventDefault(); return; }
+  if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y")){ redoEdit(); e.preventDefault(); return; }
+  if(trayMode && traySel.length){
+    if(e.key==="Delete"||e.key==="Backspace"){ document.getElementById("trayDel").onclick(); e.preventDefault(); return; }
+    const nudge={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];
+    if(nudge){ trayMove(nudge[0],nudge[1]); e.preventDefault(); return; } }
+});
 
 // ---------- helpers ----------
 const statusEl=document.getElementById("status");
@@ -3677,13 +4056,13 @@ function confetti(){ const colors=["#F4C95D","#44A35F","#F28C8C","#5AA9E6","#8A6
     document.body.appendChild(d); setTimeout(()=>d.remove(),3600); } }
 
 // ---------- starter content + per-level hints ----------
-function setMelody(pairs){ wipe();
-  pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); checkLevel(); }
+function setMelody(pairs){ tx("place",()=>{ wipe();
+  pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }); checkLevel(); }
 function hintMelody(){ const pairs=[]; let r=Math.floor(Math.random()*ROWS);
   for(let c=0;c<COLS;c+=2){ r=Math.max(0,Math.min(ROWS-1,r+(Math.floor(Math.random()*3)-1)*(1+Math.floor(Math.random()*2)))); pairs.push([r,c]); }
   const tr=[...MIDI.keys()].filter(isTonic); pairs[pairs.length-1]=[tr[Math.floor(Math.random()*tr.length)],14];
   setMelody(pairs); }
-function hintSeeds(pairs){ wipe(); pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }
+function hintSeeds(pairs){ tx("place",()=>{ wipe(); pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }); }
 const hintBtn=document.getElementById("hint");
 hintBtn.onclick=()=>{ const st=curStage(); if(st.hint){ st.hint(); ev.played=false; checkLevel();
   setStatus("💡 Here's an example — now try it yourself!"); } };
@@ -3745,11 +4124,11 @@ function applySong(s){
       .map(n=>({id:newNoteId(),pitch:n.p,startTick:n.c*TICKS_PER_COL,durationTicks:(n.len||1)*TICKS_PER_COL,velocity:1}));
     drumTrack().notes=(dr.hits||[]).filter(h=>h.lane>=0&&h.lane<DRUMS.length&&h.c>=0&&h.c<COLS)
       .map(h=>({id:newNoteId(),pitch:h.lane,startTick:h.c*TICKS_PER_COL,durationTicks:TICKS_PER_COL,velocity:1}));
+    const t=s.time||{};                                     // tempo/groove are song state — set INSIDE the tx so redo restores them too
+    if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
+    if(t.tempo) tempoEl.value=t.tempo;
     reproject(); });
   rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
-  const t=s.time||{};
-  if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
-  if(t.tempo) tempoEl.value=t.tempo;
   if(mel.voice) setVoice(mel.voice);
   updateGarden();
 }
@@ -3822,6 +4201,16 @@ async function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
     row.appendChild(mkBtn("▶ Play",()=>playSong(famousToSong(id)))); mlist.appendChild(row); });
   // --- On this device (localStorage) ---
   mlist.appendChild(mhint("🎵 My Melodies — on this device", true));
+  // R19 recovery: the rolling autosave surfaces here as a "rescued sprout" — quiet, always reachable, never a modal
+  const rescue=Store.get("autosave",null);
+  if(rescue && rescue.song && rescue.song.v===3){
+    const mins=Math.max(1,Math.round((Date.now()-(rescue.when||0))/60000));
+    const when=mins<60?mins+" min ago":mins<60*24?Math.round(mins/60)+" h ago":Math.round(mins/1440)+" days ago";
+    const row=document.createElement("div"); row.className="mrow";
+    const nm=document.createElement("span"); nm.className="mname"; nm.textContent="🌱 Rescued sprout — auto-saved "+when; row.appendChild(nm);
+    row.appendChild(mkBtn("▶ Load",()=>loadSong(rescue.song)));
+    mlist.appendChild(row);
+  }
   if(!a.length) mlist.appendChild(mhint("No saved melodies yet — make something, then press 💾 Save!"));
   a.forEach((it,i)=>{ const row=document.createElement("div"); row.className="mrow";
     const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.meta&&it.meta.title)||"Untitled"; row.appendChild(nm);
@@ -3888,7 +4277,7 @@ function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
   applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
-function openStudioWith(song){ openStudio(); if(song) applySong(song); }   // carry a finale's creation into the Studio
+function openStudioWith(song){ openStudio(); if(song) applySong(song); journalClear(); }   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
 //   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.
@@ -4235,7 +4624,7 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
   const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]+)/);
   if(cloud){ openStudio();
     cloudSongGet(decodeURIComponent(cloud[1])).then(res=>{
-      if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; applySong(res.song);
+      if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; applySong(res.song); journalClear();   // the async load must not be the first undoable "edit"
         setStatus("🎵 A song from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A song from a friend!"); }
       else toast("⚠️ That song link didn't work — it may have been deleted."); }); }
 })();
