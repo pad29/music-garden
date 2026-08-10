@@ -37,7 +37,11 @@
     --font-body:'Nunito','Segoe UI',system-ui,sans-serif;
   }
   *{box-sizing:border-box;}
-  html,body{height:100%;margin:0;}
+  /* body must NOT be height:100% — it is a flex column, so pinning it to the viewport squeezed .mainscroll
+     into a 100px box that ate the whole app and left the DOCUMENT with nothing to scroll (fatal on a short
+     landscape phone). min-height keeps the background filling the screen; height:auto lets the page grow. */
+  html{height:100%;margin:0;}
+  body{margin:0;}
   body{
     font-family:var(--font-body); color:var(--soil);
     background:radial-gradient(circle at 50% 0%,#F7F2E6,var(--cream) 60%,var(--pageEdge));
