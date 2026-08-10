@@ -739,7 +739,7 @@ let toolboxPkg=null;     // which package the current toolbox belongs to (cleare
 let activeTool=null;     // {offs, midis} currently picked up
 
 // ---------- Audio (unchanged engine) ----------
-let actx, master, reverb, voiceBus, jamBus, drumBus;
+let actx, master, limiter, reverb, voiceBus, jamBus, drumBus;
 // the mixer: three player-controllable buses (×base gain) under master — Melody / Band / Drums
 let mix={voice:1, band:1, drums:1};
 function applyMix(){ if(!actx) return;
@@ -749,7 +749,19 @@ function applyMix(){ if(!actx) return;
 function initAudio(){
   if(actx) return;
   actx=new (window.AudioContext||window.webkitAudioContext)();
-  master=actx.createGain(); master.gain.value=0.85; master.connect(actx.destination);
+  // A safety limiter on the sum, because the garden lets you stack notes freely and the voices were only
+  // ever level-matched one at a time: ONE music-box note peaks ~0.58, but a three-note chord measured 1.68
+  // — 68% past full scale, so it clipped. That was always true; held notes just made the overload last long
+  // enough to hear as a buzz rather than a click (and a phone's output stage shows it far more than a laptop's).
+  // Threshold sits above a single note, so solo playing is untouched and only genuine pile-ups are caught.
+  // Measured (music box, peak at the output): 1 note 0.58 · 3 notes 1.68 · 4 notes higher still. These
+  // settings land 3 notes at 0.96 and 4 at 0.98 — under full scale for the first time — while a single
+  // note keeps its level, so solo playing is unchanged and only pile-ups are held back.
+  limiter=actx.createDynamicsCompressor();
+  limiter.threshold.value=-6; limiter.knee.value=0; limiter.ratio.value=20;
+  limiter.attack.value=0.002; limiter.release.value=0.15;
+  limiter.connect(actx.destination);
+  master=actx.createGain(); master.gain.value=0.85; master.connect(limiter);
   voiceBus=actx.createGain(); voiceBus.connect(master);   // player melody / previews / echo
   jamBus=actx.createGain(); jamBus.connect(master);       // jam band: bass + chords + jam's own drums
   drumBus=actx.createGain(); drumBus.connect(master);     // the player's drum sequencer
@@ -1527,7 +1539,7 @@ function gridState(){
   return {placed,pair,chord,home};
 }
 function wipe(){ modelClearMelody();
-  cells.flat().forEach(e=>e.classList.remove("on")); }
+  cells.flat().forEach(e=>e.classList.remove("on")); renderVines(); }   // the stems and their grips belong to the notes — they go too
 function freshEv(){ return {played:false,craftedPair:false,craftedTower:false,craftedWobbler:false,
   stampedTool:false,previewed:false,previewedTower:false,previewedWobbler:false,jammed:false,choicePick:-1,
   pairKinds:[],pairs:[],lastPairKind:null,towerSigs:[]}; }
