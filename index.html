@@ -162,8 +162,8 @@
      cost is that 🔨 Fuse and ↶↷ slide down while you are actually scooping, then come straight back. */
   .morphslot{ display:flex; flex-direction:column; gap:6px; }
   .morphslot>span{ display:flex; flex-direction:column; gap:6px; }
-  .morphslot .mScoop{ display:none; }
-  .morphslot .mScoop{ visibility:hidden; pointer-events:none; }
+  .morphslot .mScoop{ display:none; }        /* display is the ONLY switch here — a leftover visibility:hidden
+                                                once left ⧉ Copy and 🗑 Dig up holding their space but invisible */
   body.scooping .morphslot .mIdle{ display:none; }
   body.scooping .morphslot .mScoop{ display:flex; }
   /* the cursor: a stake under the field — Play starts here, ＋/－ column work here */
