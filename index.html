@@ -1702,7 +1702,8 @@ function placeFamous(f){ tx("famous",()=>{                                    //
   if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } drumArea.style.display="";            // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
     wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } }); }   // the lane just became visible — re-measure the cursor rail
 let famousTimers=[];
-function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[]; }
+function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[];
+  document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing")); }   // a reveal lights cells outside the transport — litEls doesn't know about those
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   if(playing) stop(); clearFamousTimers();
   placeFamous(f);                                       // draw the chords + melody on the field (it STAYS — ▶ replays it)
@@ -3615,7 +3616,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   cursorCol=0; syncCursor();   // every level/step starts with the cursor at the top
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
-  step=0; shownPage=-1; playhead.classList.remove("on"); scroller.scrollLeft=0;
+  step=0; shownPage=-1; playhead.classList.remove("on"); scroller.scrollLeft=0; litEls.length=0;
 }
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
   const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
@@ -3972,48 +3973,124 @@ const playBtn=document.getElementById("play"), loopBtn=document.getElementById("
 const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");
 const playhead=document.getElementById("playhead");
 let playing=false, step=0, looping=false, shownPage=-1;
-// ---------- Transport: the one owner of the playback wake timer (EDITOR-DESIGN §12 seam) ----------
-// Phase 0 keeps today's step-interval engine behind this facade; the spike-validated lookahead
-// scheduler replaces the internals in Phase 2 (duration/note-off) without touching the call sites.
+// ---------- Transport: the lookahead scheduler (EDITOR-DESIGN §12; spike/scheduler.html) ----------
+// WHY: sound must be BOOKED against AudioContext.currentTime ~120ms early. A setInterval that also plays
+// is at the mercy of every layout the main thread does (measured 13–20ms of drift, tools/goldens/README).
+// So audio and pixels stop being one event: bookColumn() owns sound, paintCol() owns pixels, and the paint
+// queue carries the UNSWUNG column time because that is exactly where today's picture already lands.
+const LOOK_ON=0.12, WAKE_ON=25, LOOK_HID=1.5, WAKE_HID=250, ANCHOR_PAD=0.03;
+let look=LOOK_ON, wake=WAKE_ON, paintRaf=0;
+const nowSec=()=>actx.currentTime;                 // the ONLY clock read in the engine
+const stepDur=()=>60000/tempoEl.value/2;           // ms per column — unchanged; playPhrase/famous/jam still use it
+const secPerTick=()=>stepDur()/1000/TICKS_PER_COL; // === 60/bpm/96 — one source of truth with stepDur
+let anchorTime=0, anchorTick=0, anchorSPT=0;       // anchorSPT is FROZEN at anchor time: reading tempo live here
+const tick2time=tk=>anchorTime+(tk-anchorTick)*anchorSPT;   // would retroactively rewrite the sound time of every
+const time2tick=s=>anchorTick+(s-anchorTime)/anchorSPT;     // note already booked — a garble on the tempo drag
+let bookTick=0, bookCol=0, endTime=Infinity;
+const paintQ=[], colGains=[], litEls=[];
+// Swing is a PLAYBACK LENS — it never touches note.startTick (§4b). Same branch order as the old tick(),
+// so the jam/levelSwing overlap resolves identically and tools/goldens/playback.json holds by construction.
+function swingTicks(col){
+  if(jamMode && col%2===1) return GROOVES[grooveIdx].swing*TICKS_PER_COL;
+  if(levelSwing && col%4===2) return TICKS_PER_COL;          // the "ands" land one WHOLE column late
+  return 0; }
+// Cancellation with no node ledger: voiceBus/jamBus/drumBus/reverb are module-level lets that EVERY audio
+// factory reads at call time, so borrowing them for the length of one booking routes that whole column —
+// samples, reverb send, jam, drums — through four gains we can zero on Stop. No factory is touched.
+function bookColumn(col,tk){
+  const t=tick2time(tk+swingTicks(col));
+  step=col;                                                  // detectors + the goldens harness read bare `step`
+  const V=voiceBus,J=jamBus,D=drumBus,R=reverb;
+  const gv=actx.createGain(),gj=actx.createGain(),gd=actx.createGain(),gr=actx.createGain();
+  gv.connect(V); gj.connect(J); gd.connect(D); gr.connect(R);
+  voiceBus=gv; jamBus=gj; drumBus=gd; reverb=gr;
+  try{                                                       // same ORDER as the old tick() — golden event order
+    if(jamMode) jamStep(col,t);
+    for(let r=0;r<ROWS;r++) if(grid[r][col]) playRow(r,t);
+    if(revealHarm) for(let r=0;r<ROWS;r++) if(grid[r][col]){ const h=r+2;
+      if(h<ROWS) bTone(t+0.02, midiToFreq(MIDI[h]), 0.5, "triangle", 0.14, 0.03); }
+    if(drumsOn) for(let d=0;d<DRUMS.length;d++) if(drumG[d][col]) DRUMS[d].play(t);
+  } finally{ voiceBus=V; jamBus=J; drumBus=D; reverb=R; }     // ALWAYS restore: applyMix and every preview read these live
+  colGains.push({when:t, g:[gv,gj,gd,gr]});
+}
+function pump(){
+  clearTimeout(Transport.timer); Transport.timer=null;       // every caller re-arms through here — one chain, never N
+  if(!playing) return;
+  if(!actx || actx.state!=="running"){ Transport.timer=setTimeout(pump,wake); return; }   // iOS suspend freezes currentTime
+  const ct=nowSec(), horizon=ct+look;
+  while(endTime===Infinity && tick2time(bookTick)<horizon){
+    if(bookCol>=COLS){
+      if(!looping){ endTime=tick2time(bookTick); break; }     // the phantom column after the last
+      bookCol=Math.max(0,Math.min(COLS-1,cursorCol)); }       // the wrap re-reads the cursor LIVE, as the old tick did
+    bookColumn(bookCol,bookTick);
+    paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
+    bookTick+=TICKS_PER_COL; bookCol++; }
+  paintDue(ct);
+  while(colGains.length && colGains[0].when<ct-4){ const e=colGains.shift();
+    e.g.forEach(g=>{ try{ g.disconnect(); }catch(x){} }); }   // or a ten-minute loop grows the graph forever
+  if(ct>=endTime){ stop(); return; }
+  Transport.timer=setTimeout(pump,wake);
+}
+function paintDue(ct){
+  let last=null, stale=false;
+  while(paintQ.length && paintQ[0].at<=ct+0.02){ const p=paintQ.shift();
+    if(paintQ.length && paintQ[0].at<=ct-0.12) stale=true;    // back from a hidden tab: coalesce the backlog
+    last=p; }
+  if(last) paintCol(last.col, stale);
+}
+function paintCol(col,stale){
+  if(col>=COLS || !cells[0] || col>=cells[0].length) return;  // a queued paint can outlive a rebuildField (song load,
+  for(const el of litEls) el.classList.remove("col-playing"); // palette swap) — the old tick() was atomic against that
+  litEls.length=0;
+  const onRows=[];
+  for(let r=0;r<ROWS;r++){ const el=cells[r]&&cells[r][col]; if(!el) continue;
+    if(grid[r][col]){ onRows.push(r); if(!stale) flash(el,r); }
+    el.classList.add("col-playing"); litEls.push(el); }
+  if(!stale){
+    if(onRows.length===1) bloom(cells[onRows[0]][col], noteFlower(onRows[0]));
+    else if(onRows.length>=2) bloom(cells[onRows[0]][col], "💐");
+    if(onRows.length) compReact();
+    if(revealSync && col%4===0) [gridEl,document.getElementById("drumrows")].forEach(el=>{
+      el.classList.remove("gpulse"); void el.offsetWidth; el.classList.add("gpulse"); }); }
+  if(drumsOn) for(let d=0;d<DRUMS.length;d++){ const el=dcells[d]&&dcells[d][col];
+    if(el){ el.classList.add("col-playing"); litEls.push(el); } }
+  playhead.style.left=(10+col*38)+"px";
+  const page=Math.floor(col/16);                              // scroll one 16-column span at a time
+  if(page!==shownPage){ shownPage=page; scroller.scrollTo({left:page*16*38, behavior:stale?"auto":"smooth"}); }
+}
+function paintLoop(){ if(!playing){ paintRaf=0; return; } paintDue(nowSec()); paintRaf=requestAnimationFrame(paintLoop); }
 const Transport={ timer:null,
-  begin(){ this.end(); this.timer=setInterval(tick,stepDur()); },
-  end(){ if(this.timer){ clearInterval(this.timer); this.timer=null; } },
-  retime(){ if(this.timer) this.begin(); } };   // tempo/groove changed mid-play: re-arm at the new step length
-const stepDur=()=>60000/tempoEl.value/2;
+  begin(){ this.end();
+    bookCol=Math.max(0,Math.min(COLS-1,cursorCol)); bookTick=0; endTime=Infinity;
+    anchorTick=0; anchorSPT=secPerTick(); anchorTime=nowSec()+ANCHOR_PAD;
+    pump(); if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop); },
+  end(){ clearTimeout(this.timer); this.timer=null;
+    if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; }
+    if(actx){ const ct=nowSec();                              // 120ms of sound is ALREADY booked; without this, ■ Stop
+      for(const e of colGains) if(e.when>ct)                  // plays on for a beat and a level change bleeds the old
+        e.g.forEach(g=>g.gain.setValueAtTime(0,ct)); }        // song over the new intro. Sounding notes still ring out.
+    paintQ.length=0; litEls.length=0; },
+  // Tempo (per slider pixel) / groove mid-play: re-anchor at the next UNBOOKED column. Nothing past bookTick
+  // is booked, so there is nothing to cancel, ticks stay integral, and no column can re-fire.
+  retime(){ if(!playing) return;
+    anchorTime=tick2time(bookTick); anchorTick=bookTick; anchorSPT=secPerTick(); } };
+document.addEventListener("visibilitychange",()=>{            // spike: hidden tabs throttle timers to ≥1s unless
+  look=document.hidden?LOOK_HID:LOOK_ON;                      // audibly playing — stretch the horizon anyway
+  wake=document.hidden?WAKE_HID:WAKE_ON;
+  if(!playing) return;
+  if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } }
+  else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
+  pump(); });
 function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   step=Math.max(0,Math.min(COLS-1,cursorCol));                                 // ▶ Play always starts at the cursor (2026-07-27)
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
-  playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; tick(); Transport.begin();
+  playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
   if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
   checkLevel(); }
 function stop(){ playing=false; Transport.end();
   playBtn.textContent="▶ Play"; playhead.classList.remove("on");
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
-}
-function tick(){
-  document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
-  if(step>=COLS){ if(looping){ step=Math.max(0,Math.min(COLS-1,cursorCol)); } else { stop(true); return; } }   // loop wraps back to the cursor
-  const sw=(jamMode && step%2===1) ? GROOVES[grooveIdx].swing*stepDur()/1000        // jam shuffle = delay off-beats
-         : (levelSwing && step%4===2) ? stepDur()/1000 : 0;                         // level swing feel = the "ands" land one full step late, on the crack before the beat (Off the Path; matches the pad slide)
-  const t=actx.currentTime+0.02+sw;
-  if(jamMode) jamStep(step,t);
-  const onRows=[];
-  for(let r=0;r<ROWS;r++){ if(grid[r][step]){ playRow(r,t); flash(cells[r][step],r); onRows.push(r); }
-    cells[r][step].classList.add("col-playing"); }
-  if(onRows.length===1) bloom(cells[onRows[0]][step], noteFlower(onRows[0]));        // single note → its flower
-  else if(onRows.length>=2) bloom(cells[onRows[0]][step], "💐");                     // interval/chord → bouquet
-  if(onRows.length) compReact();                                                     // companion dances to the music
-  if(revealHarm) onRows.forEach(r=>{ const h=r+2;                                    // reveal: a gentle in-key 3rd under the melody
-    if(h<ROWS) bTone(t+0.02, midiToFreq(MIDI[h]), 0.5, "triangle", 0.14, 0.03); });
-  if(revealSync && step%4===0){ [gridEl,document.getElementById("drumrows")].forEach(el=>{   // reveal: the whole garden pulses on the beat
-    el.classList.remove("gpulse"); void el.offsetWidth; el.classList.add("gpulse"); }); }
-  if(drumsOn){ for(let d=0;d<DRUMS.length;d++){ if(drumG[d][step]) DRUMS[d].play(t);   // drums span the whole field now
-    if(dcells[d][step]) dcells[d][step].classList.add("col-playing"); } }
-  playhead.style.left=(10+step*38)+"px";
-  const page=Math.floor(step/16);                                              // scroll one 16-column span at a time
-  if(page!==shownPage){ shownPage=page; scroller.scrollTo({left:page*16*38, behavior:"smooth"}); }
-  step++;
 }
 playBtn.onclick=()=> playing?stop():start();
 document.getElementById("undoBtn").onclick=undoEdit;

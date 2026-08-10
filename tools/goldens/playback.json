@@ -1,5 +1,6 @@
 {
   "_README": "Playback goldens captured from the STEP-TIMER engine on 2026-07-27, immediately before the Phase 2 lookahead-scheduler swap. The invariant each run asserts is MUSICAL, not wall-clock: for every step that sounds, WHICH melody rows and WHICH drum lanes fire, and at WHICH ideal step position ('at' — level swing delays the 'ands' by one whole step, so step 2 sounds at 3). 'beforeDriftMs' records how far the old setInterval engine actually landed from that ideal; the lookahead scheduler must keep every 'steps' entry byte-identical and should drive drift toward zero. Re-capture recipe: tools/goldens/README.md.",
+  "_RESULT_2026_07_27": "Lookahead swap VERIFIED against every run: content byte-identical, and drift 13-20ms -> 0.00ms exactly, because column times are now pure arithmetic from a frozen anchor instead of a per-tick clock read. D_jam checked for content only (all 16 steps fire jamStep).",
   "A_melody_straight": {
     "tempo": 108, "cols": 16, "swing": 0, "stepDurMs": 277.7778,
     "beforeDriftMs": { "maxMs": 15.1, "meanMs": 8.9 },
