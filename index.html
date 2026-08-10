@@ -873,17 +873,27 @@ function voice(instr,freq,now,hold){
   } else if(instr==="marimba"){
     const o=actx.createOscillator(); o.type="triangle"; o.frequency.value=freq;
     const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*4;
-    const g2=actx.createGain(); g2.gain.value=0.15; o2.connect(g2); g2.connect(out);
+    const g2=actx.createGain(); o2.connect(g2); g2.connect(out);
     const d=Math.max(0.6,hold?hold+0.15:0);
-    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+0.25);
+    const shim=hold?Math.max(0.25,d*0.5):0.25;              // same fix as the music box: fade the bar's ring, never cut it
+    g2.gain.setValueAtTime(0.15,now); g2.gain.setValueAtTime(0.15,now+shim*0.6);
+    g2.gain.exponentialRampToValueAtTime(0.0006,now+shim);
+    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+shim+0.05);
     env(out.gain,now,0.004,1.0,hold?0.12:0.0,d);            // bars ring — a small floor holds the tone under a vine
   } else {
     const o=actx.createOscillator(); o.type="sine"; o.frequency.value=freq;
     const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*2.01;
-    const g2=actx.createGain(); g2.gain.value=0.25; o2.connect(g2); g2.connect(out);
+    const g2=actx.createGain(); o2.connect(g2); g2.connect(out);
     const d=Math.max(1.1,hold?hold+0.35:0);                 // the music box is the ONE voice whose hold is invented
-    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+0.6);   // rather than recorded (§6) — keep the floor low
-    env(out.gain,now,0.005,1.2,hold?0.22:0.0,d);            // and let the ×2.01 strike shimmer stay short
+    // The ×2.01 partial IS the music box's shimmer (it beats slowly against the fundamental). It used to be
+    // cut dead at a FIXED now+0.6s, so a held note lost ~35dB of upper partial at the same wall-clock moment
+    // however long it was — an audible change of tone around the third step. Now it fades, over a window
+    // that scales with the note, so a vine keeps one voice from strike to silence.
+    const shim=hold?Math.max(0.6,d*0.8):0.6;
+    g2.gain.setValueAtTime(0.25,now); g2.gain.setValueAtTime(0.25,now+shim*0.7);
+    g2.gain.exponentialRampToValueAtTime(0.0008,now+shim);
+    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+shim+0.05);
+    env(out.gain,now,0.005,1.2,hold?0.22:0.0,d);
   }
 }
 function playRow(r,t,hold){ initAudio(); voice(instrEl.value, midiToFreq(MIDI[r]), t, hold); }
