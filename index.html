@@ -78,9 +78,19 @@
   .stage{ position:relative; display:flex; align-items:stretch; gap:0; }   /* the 72px tool rail IS the gutter that lines field cells up with drum cells */
   /* A fixed element is never inset past the page scrollbar. --sbw measures a CLASSIC bar (it steals layout
      width); an OVERLAY bar steals none and can't be measured at all, so 34px covers it by hand. */
-  #sidetools{ position:fixed; top:16px; right:calc(34px + var(--sbw, 0px)); display:flex; flex-direction:column; gap:8px; z-index:40;}
-  #sidetools button{ width:46px; height:46px; padding:0; font-size:1.25rem; border-radius:50%; background:var(--card); color:var(--soil);
+  #sidetoggle{ position:fixed; top:16px; right:calc(34px + var(--sbw, 0px)); z-index:41;
+    width:46px; height:46px; padding:0; font-size:1.3rem; border-radius:50%; background:var(--card); color:var(--soil);
     box-shadow:0 3px 0 #D6CBB2, 0 4px 8px rgba(62,58,57,.10), inset 0 0 0 1px var(--line);}
+  #sidetoggle.on{ background:var(--leaf); color:#fff; box-shadow:0 3px 0 var(--leaf-deep), 0 4px 8px rgba(62,58,57,.12);}
+  #sidetools{ position:fixed; top:70px; right:calc(34px + var(--sbw, 0px)); z-index:40;
+    display:flex; flex-direction:column; gap:8px; padding:10px; border-radius:16px;
+    background:var(--card); border:1px solid var(--line); box-shadow:0 10px 28px rgba(62,58,57,.24);
+    max-height:calc(100vh - 86px); overflow-y:auto;}   /* a short landscape screen scrolls the menu instead of losing its last items */
+  #sidetools[hidden]{ display:none; }
+  .sidetool{ display:flex; align-items:center; gap:10px;}
+  .sidetool span{ font-size:.8rem; white-space:nowrap;}
+  #sidetools button{ width:46px; height:46px; padding:0; font-size:1.25rem; border-radius:50%; background:var(--card); color:var(--soil);
+    box-shadow:0 3px 0 #D6CBB2, 0 4px 8px rgba(62,58,57,.10), inset 0 0 0 1px var(--line); flex:0 0 auto;}
   #sidetools button#speak.on{ background:var(--leaf);}
   .grid{ display:grid; gap:4px; padding:10px; border-radius:16px;
     background:linear-gradient(170deg,var(--bed),var(--bedDeep));
@@ -169,10 +179,11 @@
   #drumCursorCol{ position:absolute; width:34px; border-radius:10px;                      /* top/height come from the real pads (syncCursor) — the pads are circles, so the frame sits OUTSIDE them */
     border:2px dashed var(--leaf); background:rgba(68,163,95,.08); pointer-events:none; transition:left .12s ease; }
   .track.traymode{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-  /* contain the HORIZONTAL overscroll (swiping past the end of the field must not rubber-band the page),
-     but leave the VERTICAL axis alone — `overscroll-behavior:contain` was swallowing up/down swipes that
-     started over the field, so the page only scrolled when you touched empty space beside it. */
-  .scroller, #drumArea{ overscroll-behavior-x:contain; overscroll-behavior-y:auto; touch-action:pan-x pan-y; }
+  /* NO overscroll containment on either axis. These lanes usually have nothing to scroll themselves — the
+     field fits inside them and the outer .mainscroll does the scrolling — so `contain` did not "contain"
+     anything, it just refused to pass the swipe outward and ate it. It killed vertical scrolling first,
+     then horizontal. Default chaining is what a finger on the field actually needs. */
+  .scroller, #drumArea{ touch-action:pan-x pan-y; }
   button:disabled{ opacity:.45; cursor:default; transform:none; filter:none; }
   button:focus-visible, select:focus-visible, input:focus-visible{ outline:3px solid var(--sky); outline-offset:2px; }
   .playhead{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px;
@@ -383,13 +394,18 @@
 </head>
 <body>
   <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select> <button id="devrelock" title="Relock all instruments (keeps progress) so region discovery cards replay">🔒 Relock instruments</button></div>
-  <div id="sidetools">
-    <button id="home" title="World map">🗺️</button>
-    <button id="mixer" title="Mix / volume">🎚️</button>
-    <button id="save" title="Save melody">💾</button>
-    <button id="share" title="Share link">🔗</button>
-    <button id="melodies" title="Jukebox">🎵</button>
-    <button id="speak" title="Read aloud: OFF">🔇</button>
+  <!-- One ☰ instead of a standing column of six: on a short landscape phone the column was taller than the
+       screen, and even on desktop these are "every so often" tools, not per-note ones. Labels come along
+       for free once they live in a panel — each is a SIBLING of its button, so the code that rewrites a
+       button's own text (🔇↔🔊) can't clobber them. -->
+  <button id="sidetoggle" title="Menu" aria-expanded="false" aria-controls="sidetools">☰</button>
+  <div id="sidetools" hidden>
+    <div class="sidetool"><button id="home" title="World map">🗺️</button><span>World map</span></div>
+    <div class="sidetool"><button id="mixer" title="Mix / volume">🎚️</button><span>Mix</span></div>
+    <div class="sidetool"><button id="save" title="Save melody">💾</button><span>Save melody</span></div>
+    <div class="sidetool"><button id="share" title="Share link">🔗</button><span>Share link</span></div>
+    <div class="sidetool"><button id="melodies" title="Jukebox">🎵</button><span>Jukebox</span></div>
+    <div class="sidetool"><button id="speak" title="Read aloud: OFF">🔇</button><span id="speakLabel">Read aloud: off</span></div>
   </div>
   <h1 id="title">🌱 Tune Garden</h1>
 
@@ -1364,6 +1380,15 @@ cursorStripEl.addEventListener("pointerup",()=>{ cursorStripEl._drag=false; });
 cursorStripEl.addEventListener("pointercancel",()=>{ cursorStripEl._drag=false; });
 // seeds and beat are ONE timeline: two independent scrollers could hold different columns under the same
 // cursor (and playback's auto-scroll only ever moved the seed lane). Mirror them, with a re-entrancy guard.
+// ---- the ☰ menu (world map / mix / save / share / jukebox / read-aloud) ----
+const sideToggle=document.getElementById("sidetoggle"), sideTools=document.getElementById("sidetools");
+function setSideMenu(open){ sideTools.hidden=!open; sideToggle.classList.toggle("on",open);
+  sideToggle.setAttribute("aria-expanded", open?"true":"false"); }
+sideToggle.addEventListener("click",e=>{ e.stopPropagation(); setSideMenu(sideTools.hidden); });
+sideTools.addEventListener("click",()=>setSideMenu(false));      // picking anything closes the menu behind you
+document.addEventListener("pointerdown",e=>{                     // …and so does a tap anywhere else
+  if(!sideTools.hidden && !sideTools.contains(e.target) && !sideToggle.contains(e.target)) setSideMenu(false); });
+
 // the fixed top-right buttons sit OUTSIDE the document flow, so nothing insets them past the page
 // scrollbar — measure it and let CSS subtract it. Re-measured on resize (zoom changes the bar's width).
 function syncScrollbarWidth(){ const w=window.innerWidth-document.documentElement.clientWidth;
@@ -3573,7 +3598,8 @@ function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.can
 // The player has reached a level (picked a buddy / signed in / opened a package) — let narration begin and speak the current story.
 function enterPlay(){ narrateReady=true; if(speakOn) narrate(curStage().intro||""); }
 function renderSpeak(){ if(!speakBtn) return; speakBtn.classList.toggle("on",speakOn);
-  speakBtn.textContent=speakOn?"🔊":"🔇"; speakBtn.title=speakOn?"Read aloud: ON":"Read aloud: OFF"; }
+  speakBtn.textContent=speakOn?"🔊":"🔇"; speakBtn.title=speakOn?"Read aloud: ON":"Read aloud: OFF";
+  const lb=document.getElementById("speakLabel"); if(lb) lb.textContent="Read aloud: "+(speakOn?"on":"off"); }
 if(speakBtn) speakBtn.onclick=()=>{ speakOn=!speakOn; renderSpeak();
   if(speakOn){ narrateReady=true; narrate(curStage().intro||""); } else stopSpeech();
   progress.settings=progress.settings||{}; progress.settings.speak=speakOn; saveProgress(); };
@@ -4032,6 +4058,7 @@ document.addEventListener("keydown",e=>{
   const t=e.target;
   if(t && (t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA")) return;   // native editing wins
   if(e.key==="Escape"){
+    if(!sideTools.hidden){ setSideMenu(false); return; }                                          // 0. close the ☰ menu
     if(trayPlace){ trayPlace=null; clearGhosts(); setStatus("Copy put away."); return; }          // 1. cancel a pending copy
     if(trayDrag){ trayCancelGesture(); return; }                                                  // 2. cancel the gesture, keep the pick
     if(trayMode && traySel.length){ traySel=[]; trayPaint(); setStatus("Pick emptied 🧺 — drag a new box, or press ✕ Done."); return; }  // 3. drop the pick
