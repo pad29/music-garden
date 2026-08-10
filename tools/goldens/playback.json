@@ -1,0 +1,82 @@
+{
+  "_README": "Playback goldens captured from the STEP-TIMER engine on 2026-07-27, immediately before the Phase 2 lookahead-scheduler swap. The invariant each run asserts is MUSICAL, not wall-clock: for every step that sounds, WHICH melody rows and WHICH drum lanes fire, and at WHICH ideal step position ('at' — level swing delays the 'ands' by one whole step, so step 2 sounds at 3). 'beforeDriftMs' records how far the old setInterval engine actually landed from that ideal; the lookahead scheduler must keep every 'steps' entry byte-identical and should drive drift toward zero. Re-capture recipe: tools/goldens/README.md.",
+  "A_melody_straight": {
+    "tempo": 108, "cols": 16, "swing": 0, "stepDurMs": 277.7778,
+    "beforeDriftMs": { "maxMs": 15.1, "meanMs": 8.9 },
+    "steps": [
+      { "step": 0, "notes": [2], "drums": [], "at": 0 },
+      { "step": 2, "notes": [4], "drums": [], "at": 2 },
+      { "step": 4, "notes": [6], "drums": [], "at": 4 },
+      { "step": 6, "notes": [3], "drums": [], "at": 6 },
+      { "step": 8, "notes": [5], "drums": [], "at": 8 },
+      { "step": 10, "notes": [1], "drums": [], "at": 10 },
+      { "step": 12, "notes": [7], "drums": [], "at": 12 },
+      { "step": 14, "notes": [4], "drums": [], "at": 14 }
+    ]
+  },
+  "B_melody_drums": {
+    "tempo": 108, "cols": 16, "swing": 0, "stepDurMs": 277.7778,
+    "beforeDriftMs": { "maxMs": 19.6, "meanMs": 7.2 },
+    "steps": [
+      { "step": 0, "notes": [2], "drums": [0], "at": 0 },
+      { "step": 2, "notes": [4], "drums": [2], "at": 2 },
+      { "step": 4, "notes": [6], "drums": [0, 1], "at": 4 },
+      { "step": 6, "notes": [3], "drums": [2], "at": 6 },
+      { "step": 8, "notes": [5], "drums": [0], "at": 8 },
+      { "step": 10, "notes": [1], "drums": [2], "at": 10 },
+      { "step": 12, "notes": [7], "drums": [0, 1], "at": 12 },
+      { "step": 14, "notes": [4], "drums": [2], "at": 14 }
+    ]
+  },
+  "C_swing": {
+    "tempo": 108, "cols": 16, "swing": 1, "stepDurMs": 277.7778,
+    "beforeDriftMs": { "maxMs": 13.3, "meanMs": 4.5 },
+    "steps": [
+      { "step": 0, "notes": [2], "drums": [0], "at": 0 },
+      { "step": 2, "notes": [4], "drums": [2], "at": 3 },
+      { "step": 4, "notes": [6], "drums": [0, 1], "at": 4 },
+      { "step": 6, "notes": [3], "drums": [2], "at": 7 },
+      { "step": 8, "notes": [5], "drums": [0], "at": 8 },
+      { "step": 10, "notes": [1], "drums": [2], "at": 11 },
+      { "step": 12, "notes": [7], "drums": [0, 1], "at": 12 },
+      { "step": 14, "notes": [4], "drums": [2], "at": 15 }
+    ]
+  },
+  "D_jam": {
+    "_note": "Jam adds a groove-dependent shuffle to odd steps that 'at' does NOT model, so D's beforeDriftMs is model mismatch, not jitter. Its value is the step CONTENT and the fact that every step fires a jamStep.",
+    "tempo": 120, "cols": 16, "swing": 0, "stepDurMs": 250,
+    "beforeDriftMs": { "maxMs": 30.7, "meanMs": 23 },
+    "steps": [
+      { "step": 0, "notes": [2], "drums": [], "at": 0 },
+      { "step": 1, "notes": [], "drums": [], "at": 1 },
+      { "step": 2, "notes": [4], "drums": [], "at": 2 },
+      { "step": 3, "notes": [], "drums": [], "at": 3 },
+      { "step": 4, "notes": [6], "drums": [], "at": 4 },
+      { "step": 5, "notes": [], "drums": [], "at": 5 },
+      { "step": 6, "notes": [3], "drums": [], "at": 6 },
+      { "step": 7, "notes": [], "drums": [], "at": 7 },
+      { "step": 8, "notes": [5], "drums": [], "at": 8 },
+      { "step": 9, "notes": [], "drums": [], "at": 9 },
+      { "step": 10, "notes": [1], "drums": [], "at": 10 },
+      { "step": 11, "notes": [], "drums": [], "at": 11 },
+      { "step": 12, "notes": [7], "drums": [], "at": 12 },
+      { "step": 13, "notes": [], "drums": [], "at": 13 },
+      { "step": 14, "notes": [4], "drums": [], "at": 14 },
+      { "step": 15, "notes": [], "drums": [], "at": 15 }
+    ]
+  },
+  "E_fast_tempo": {
+    "tempo": 160, "cols": 16, "swing": 0, "stepDurMs": 187.5,
+    "beforeDriftMs": { "maxMs": 18, "meanMs": 7.5 },
+    "steps": [
+      { "step": 0, "notes": [2], "drums": [], "at": 0 },
+      { "step": 2, "notes": [4], "drums": [], "at": 2 },
+      { "step": 4, "notes": [6], "drums": [], "at": 4 },
+      { "step": 6, "notes": [3], "drums": [], "at": 6 },
+      { "step": 8, "notes": [5], "drums": [], "at": 8 },
+      { "step": 10, "notes": [1], "drums": [], "at": 10 },
+      { "step": 12, "notes": [7], "drums": [], "at": 12 },
+      { "step": 14, "notes": [4], "drums": [], "at": 14 }
+    ]
+  }
+}
