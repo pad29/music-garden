@@ -146,6 +146,13 @@
     box-shadow:inset 0 0 0 1px var(--cellOnEdge); }        /* the seed's own amber, slimmer — a vine is the SAME note held, not a second one */
   .stem.tsel{ box-shadow:inset 0 0 0 2px var(--sky); }
   .stem.ringing{ filter:brightness(1.12) saturate(1.25); }
+  /* The grip is the ONLY pointer target in this layer, and it lives in the OVERLAY rather than inside the
+     cell — planting is bound to the cell's own mousedown, which would fire before a pull could ever arm. */
+  .grip{ position:absolute; width:14px; height:30px; display:none; }
+  body.growing #vines .grip{ display:block; pointer-events:auto; touch-action:none; cursor:ew-resize; }
+  body.growing #vines .grip::after{ content:"🌿"; position:absolute; right:-1px; top:50%;
+    transform:translateY(-50%); font-size:11px; opacity:.55; pointer-events:none; }
+  body.growing #vines .grip:active::after{ opacity:1; }
   .cell.tsel{ outline:3px solid var(--sky); outline-offset:-2px; }
   .cell.tghost{ box-shadow:inset 0 0 0 3px var(--purple); background:#D8CDF5; }
   .dcell.tband{ outline:2px dashed var(--purple); outline-offset:-2px; }   /* time ops touch the beat lane too — show it */
@@ -1104,18 +1111,68 @@ scroller.addEventListener("scroll",hideNoteTip);                              //
 // The vine layer: one stem per held note, drawn over the grid from the tray's own geometry
 // (34px cell + 4px gap, 10px pad). Inline left/top/width so it is assertable with no transition running.
 const vinesEl=document.getElementById("vines");
+const vineLen=n=>Math.max(1,Math.round(n.durationTicks/TICKS_PER_COL));
+const stemLeft=c=>TRAY_PAD+c*TRAY_CW+26, stemTop=r=>TRAY_PAD+r*TRAY_CH+8, stemW=L=>(L-1)*TRAY_CW+8;
+const gripLeft=(c,L)=>TRAY_PAD+(c+L-1)*TRAY_CW+24;
 function renderVines(){ if(!vinesEl) return; vinesEl.innerHTML="";
+  const grow=document.body.classList.contains("growing");
   for(const n of melTrack().notes){
-    if(n.durationTicks<=TICKS_PER_COL) continue;             // a plain seed has no stem
     const r=projRow(n.pitch), c=noteCol(n); if(r==null||c<0||c>=COLS) continue;
-    const L=Math.min(Math.round(n.durationTicks/TICKS_PER_COL), COLS-c);
-    if(L<=1) continue;
-    const s=document.createElement("div"); s.className="stem"+(traySel.includes(n.id)?" tsel":"");
-    s.dataset.id=n.id;
-    s.style.left=(TRAY_PAD+c*TRAY_CW+26)+"px";               // start inside the seed's right edge, so it reads as growing OUT of it
-    s.style.top=(TRAY_PAD+r*TRAY_CH+8)+"px";
-    s.style.width=((L-1)*TRAY_CW+8)+"px";
-    vinesEl.appendChild(s); } }
+    const L=Math.min(vineLen(n), COLS-c);
+    if(L>1){ const s=document.createElement("div");                 // a plain seed has no stem
+      s.className="stem"+(traySel.includes(n.id)?" tsel":""); s.dataset.id=n.id;
+      s.style.left=stemLeft(c)+"px";                                // starts inside the seed's right edge, so it reads as growing OUT of it
+      s.style.top=stemTop(r)+"px"; s.style.width=stemW(L)+"px";
+      vinesEl.appendChild(s); }
+    if(grow){ const g=document.createElement("div"); g.className="grip"; g.dataset.id=n.id;
+      g.style.left=gripLeft(c,L)+"px"; g.style.top=(TRAY_PAD+r*TRAY_CH)+"px";
+      vinesEl.appendChild(g); } } }
+// ---------- Pulling a vine (EDITOR-DESIGN §6) ----------
+// Studio-only for now (owner, 2026-08-10) — the one surface with no goal detector and no narrated rest a
+// held note could contradict. Which package TEACHES duration is parked in §17.
+let pull=null;
+const canGrow=()=>currentPkg==="studio" || !!(curStage()&&curStage().grow);
+const growOn=()=>document.body.classList.contains("growing") && !trayMode && !activeTool;
+function vineMax(n){ const c=noteCol(n), r=projRow(n.pitch);
+  let stop=Math.min(COLS, c+MAX_VINE);                              // a vine stops when it meets a seed on its OWN row —
+  for(let k=c+1;k<stop;k++) if(grid[r]&&grid[r][k]){ stop=k; break; }  // kid-legible, and it prevents same-pitch overlap
+  return Math.max(1, stop-c); }
+if(vinesEl){
+  vinesEl.addEventListener("pointerdown",e=>{
+    const g=e.target.closest && e.target.closest(".grip"); if(!g||!growOn()) return;
+    const n=melTrack().notes.find(q=>q.id===+g.dataset.id); if(!n) return;
+    e.preventDefault(); e.stopPropagation();
+    try{ g.setPointerCapture(e.pointerId); }catch(x){}
+    const r=projRow(n.pitch), c=noteCol(n), L=vineLen(n);
+    let s=vinesEl.querySelector('.stem[data-id="'+n.id+'"]');       // pre-make the stem so the drag can grow it
+    if(!s){ s=document.createElement("div"); s.className="stem"; s.dataset.id=n.id;   // WITHOUT a re-render, which would
+      s.style.left=stemLeft(c)+"px"; s.style.top=stemTop(r)+"px";                     // destroy the element holding capture
+      s.style.width="0px"; s.style.display="none"; vinesEl.appendChild(s); }
+    pull={id:n.id, base:n.durationTicks, x0:e.clientX, len:L, armed:false, stem:s, grip:g, c, r};
+    initAudio(); actx.resume(); });
+  vinesEl.addEventListener("pointermove",e=>{ if(!pull) return;
+    const n=melTrack().notes.find(q=>q.id===pull.id); if(!n){ pull=null; return; }
+    const dx=e.clientX-pull.x0;
+    if(!pull.armed){ if(Math.abs(dx)<=TRAY_SLOP) return; pull.armed=true; }   // 8px — the spike's threshold
+    const len=Math.max(1, Math.min(vineMax(n), Math.round(pull.base/TICKS_PER_COL + dx/TRAY_CW)));
+    if(len===pull.len) return;
+    pull.len=len; n.durationTicks=len*TICKS_PER_COL;                 // mutate live for the ear; the JOURNAL entry is written on release
+    pull.stem.style.display = len>1?"block":"none";
+    pull.stem.style.width=stemW(len)+"px";
+    pull.grip.style.left=gripLeft(pull.c,len)+"px";
+    playRow(pull.r, actx.currentTime, len>1?len*TICKS_PER_COL*secPerTick():0);   // ears first, exactly like a tray move
+    setStatus(len>1?`🌿 Vine — this note holds for <b>${len}</b> steps. Pull back to shorten it.`
+                   :"🌱 Back to a single seed — one short note."); });
+  const endPull=(commit)=>{ if(!pull) return; const p=pull; pull=null;
+    const n=melTrack().notes.find(q=>q.id===p.id);
+    if(n){ const finalTicks=n.durationTicks; n.durationTicks=p.base;  // rewind, then let tx() snapshot the REAL before-state
+      if(commit && p.armed && finalTicks!==p.base){
+        tx("grow",()=>{ n.durationTicks=finalTicks; reproject(); });
+        ev.played=false; checkLevel(); } }
+    renderVines(); };
+  vinesEl.addEventListener("pointerup",()=>endPull(true));
+  vinesEl.addEventListener("pointercancel",()=>endPull(false));
+}
 function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
@@ -3722,6 +3779,8 @@ function renderStage(){   // render the current step (or the whole level if it h
   setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."
     : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
+  document.body.classList.toggle("growing", canGrow());   // vines are pullable in the Studio only, for now (§17)
+  renderVines();
   populateDevJump();
   journalClear();   // undo spans the PLAYER's edits only — never the stage's own setup (calls, starter beats, pre-placed seeds)
   checkLevel();
@@ -4099,6 +4158,11 @@ function paintCol(col,stale){
     if(grid[r][col]){ onRows.push(r); if(!stale) flash(el,r); }
     el.classList.add("col-playing"); litEls.push(el); }
   if(!stale){
+    // a vine lights up for as long as it actually rings — and bloom() still fires ONCE, at the head, so a
+    // four-column vine drops one flower where four seeds would drop four. That contrast IS the lesson.
+    for(const r of onRows){ const n=gridNote[r]&&gridNote[r][col];
+      if(n && n.durationTicks>TICKS_PER_COL){ const st=vinesEl&&vinesEl.querySelector('.stem[data-id="'+n.id+'"]');
+        if(st){ st.classList.add("ringing"); setTimeout(()=>st.classList.remove("ringing"), n.durationTicks*anchorSPT*1000); } } }
     if(onRows.length===1) bloom(cells[onRows[0]][col], noteFlower(onRows[0]));
     else if(onRows.length>=2) bloom(cells[onRows[0]][col], "💐");
     if(onRows.length) compReact();
