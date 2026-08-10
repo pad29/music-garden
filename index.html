@@ -139,6 +139,13 @@
   .cell.wob{ animation:wob .55s ease-in-out; }
   @keyframes wob{ 0%,100%{transform:rotate(0);} 20%{transform:rotate(-9deg);} 50%{transform:rotate(8deg);} 80%{transform:rotate(-4deg);} }
   /* ---- Phase 1: seed tray (selection), undo, focus baseline ---- */
+  /* ---- Phase 2: the vine — a held note, drawn as a stem trailing out of its seed ---- */
+  #vines{ position:absolute; inset:0; pointer-events:none; z-index:4; }
+  .stem{ position:absolute; height:14px; border-radius:7px; pointer-events:none;
+    background:linear-gradient(180deg,#F6B446,var(--cellOn) 60%,#E5941C);
+    box-shadow:inset 0 0 0 1px var(--cellOnEdge); }        /* the seed's own amber, slimmer — a vine is the SAME note held, not a second one */
+  .stem.tsel{ box-shadow:inset 0 0 0 2px var(--sky); }
+  .stem.ringing{ filter:brightness(1.12) saturate(1.25); }
   .cell.tsel{ outline:3px solid var(--sky); outline-offset:-2px; }
   .cell.tghost{ box-shadow:inset 0 0 0 3px var(--purple); background:#D8CDF5; }
   .dcell.tband{ outline:2px dashed var(--purple); outline-offset:-2px; }   /* time ops touch the beat lane too — show it */
@@ -490,6 +497,8 @@
           <div class="scroller" id="scroller">
             <div class="track" id="track">
               <div id="grid" class="grid"></div>
+              <div id="vines"></div>   <!-- a SIBLING of the grid, so buildGrid()'s innerHTML="" never eats it -->
+
               <svg id="contourGhost" class="contourghost" style="display:none"></svg>
               <div id="cursorCol"></div>
               <div id="playhead" class="playhead"></div>
@@ -664,6 +673,7 @@ let COLS = 16, ROWS = MIDI.length;        // ROWS is now palette-derived (was co
 const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
 const isTonic = r => MIDI[r]%12===TONIC_PC;
 let grid = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+let gridNote = Array.from({length:ROWS},()=>Array(COLS).fill(null));   // the doc note behind each lit cell — duration lookup + vine hit test
 // swap the active palette and rebuild the grid; no-op if already active (so it's cheap to call on every level entry)
 function setPalette(id){ const p=PALETTES[id]||PALETTES.pentatonic;
   if(p.id===paletteId) return;
@@ -813,7 +823,7 @@ function loadSamples(instr){
   };
   document.head.appendChild(tag);
 }
-function sampleVoice(instr,freq,now,out){
+function sampleVoice(instr,freq,now,out,hold){
   const bank=sampleBank[instr]; if(!bank||!bank.ready) return false;
   const up=SAMPLED[instr].up||0;                            // transposing voices (glockenspiel sounds 2 octaves
   freq*=Math.pow(2,up/12);                                  // up, like real orchestration — its bars don't go lower)
@@ -821,37 +831,43 @@ function sampleVoice(instr,freq,now,out){
   let best=null; for(const m in bank.buffers) if(best===null||Math.abs(m-midi)<Math.abs(best-midi)) best=+m;
   const src=actx.createBufferSource(); src.buffer=bank.buffers[best];
   src.playbackRate.value=freq/midiToFreq(best);
-  src.connect(out); src.start(now); src.stop(now+1.9);
+  // A vine just DELAYS the damping — same τ, so a held note is the same sound allowed to ring on, never a
+  // looped or invented sustain (§6). conditionSample trims every buffer to ~3s with a baked tail fade, so a
+  // long vine simply runs out of recording and is honestly over; that is why MAX_VINE is a whole note.
+  src.connect(out); src.start(now); src.stop(hold?Math.min(now+hold+0.9,now+2.9):now+1.9);
   out.gain.setValueAtTime(SAMPLED[instr].gain,now);         // let the strike speak, then damp it like an un-pedaled
-  out.gain.setTargetAtTime(0.0001,now+0.08,0.38);           // note — the raw recording rings pedal-down for many bars
+  out.gain.setTargetAtTime(0.0001,now+(hold?Math.max(0.08,hold-0.15):0.08),0.38);   // note — the raw recording rings pedal-down for many bars
   return true;
 }
-function voice(instr,freq,now){
+function voice(instr,freq,now,hold){
   const out=actx.createGain(); out.connect(voiceBus); out.connect(reverb);
   if(SAMPLED[instr]){
-    if(sampleVoice(instr,freq,now,out)) return;
+    if(sampleVoice(instr,freq,now,out,hold)) return;
     loadSamples(instr);                                     // not decoded yet — fetch, and sound the music box just this once
   }
   if(instr==="pluck"||instr==="guitar"){                    // synth pluck: now only the guitar's loading fallback
     const o=actx.createOscillator(); o.type="sawtooth"; o.frequency.value=freq;
     const lp=actx.createBiquadFilter(); lp.type="lowpass"; lp.frequency.setValueAtTime(4500,now);
     lp.frequency.exponentialRampToValueAtTime(700,now+0.4); o.connect(lp); lp.connect(out);
-    o.start(now); o.stop(now+0.9); env(out.gain,now,0.005,0.5,0.0,0.8);   // pluck: saw is bright — tame it
+    const d=Math.max(0.8,hold?hold+0.15:0);                 // a plucked string's honest hold IS its decay — no sustain floor
+    o.start(now); o.stop(now+d+0.1); env(out.gain,now,0.005,0.5,0.0,d);   // pluck: saw is bright — tame it
   } else if(instr==="marimba"){
     const o=actx.createOscillator(); o.type="triangle"; o.frequency.value=freq;
     const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*4;
     const g2=actx.createGain(); g2.gain.value=0.15; o2.connect(g2); g2.connect(out);
-    o.connect(out); o.start(now); o.stop(now+0.7); o2.start(now); o2.stop(now+0.25);
-    env(out.gain,now,0.004,1.0,0.0,0.6);
+    const d=Math.max(0.6,hold?hold+0.15:0);
+    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+0.25);
+    env(out.gain,now,0.004,1.0,hold?0.12:0.0,d);            // bars ring — a small floor holds the tone under a vine
   } else {
     const o=actx.createOscillator(); o.type="sine"; o.frequency.value=freq;
     const o2=actx.createOscillator(); o2.type="sine"; o2.frequency.value=freq*2.01;
     const g2=actx.createGain(); g2.gain.value=0.25; o2.connect(g2); g2.connect(out);
-    o.connect(out); o.start(now); o.stop(now+1.2); o2.start(now); o2.stop(now+0.6);
-    env(out.gain,now,0.005,1.2,0.0,1.1);
+    const d=Math.max(1.1,hold?hold+0.35:0);                 // the music box is the ONE voice whose hold is invented
+    o.connect(out); o.start(now); o.stop(now+d+0.1); o2.start(now); o2.stop(now+0.6);   // rather than recorded (§6) — keep the floor low
+    env(out.gain,now,0.005,1.2,hold?0.22:0.0,d);            // and let the ×2.01 strike shimmer stay short
   }
 }
-function playRow(r,t){ initAudio(); voice(instrEl.value, midiToFreq(MIDI[r]), t); }
+function playRow(r,t,hold){ initAudio(); voice(instrEl.value, midiToFreq(MIDI[r]), t, hold); }
 
 // ---------- Jam backing: drums + bass + chords (C – G – Am – F) ----------
 // dest defaults to jamBus (the band); the drum sequencer passes drumBus so its pads mix separately
@@ -952,9 +968,13 @@ function projRow(p){ let best=null,bd=Infinity;
 function noteCol(n){ return Math.round(n.startTick/TICKS_PER_COL); }
 function reproject(){                          // doc → the legacy boolean grids (the detector adapter, §15)
   grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  gridNote=Array.from({length:ROWS},()=>Array(COLS).fill(null));
   drumG=DRUMS.map(()=>Array(COLS).fill(false));
+  // ONSET-ONLY, and it must stay that way: a vine changes note-OFF, never note-ON, so every shipped
+  // detector keeps reading exactly what it reads today. gridNote rides along in the same sweep as the
+  // note behind each lit cell — the duration lookup at play time, and the vine layer's hit test.
   for(const n of melTrack().notes){ const r=projRow(n.pitch), c=noteCol(n);
-    if(r!=null&&c>=0&&c<COLS) grid[r][c]=true; }
+    if(r!=null&&c>=0&&c<COLS){ grid[r][c]=true; gridNote[r][c]=n; } }
   for(const n of drumTrack().notes){ const c=noteCol(n);
     if(n.pitch>=0&&n.pitch<DRUMS.length&&c>=0&&c<COLS) drumG[n.pitch][c]=true; }
 }
@@ -1010,7 +1030,8 @@ function modelSetCell(r,c,on){ tx(on?"plant":"unplant",()=>{ const t=melTrack();
   if(on){ if(!t.notes.some(n=>projRow(n.pitch)===r&&noteCol(n)===c))
     t.notes.push({id:newNoteId(),pitch:MIDI[r],startTick:c*TICKS_PER_COL,durationTicks:TICKS_PER_COL,velocity:1}); }
   else t.notes=t.notes.filter(n=>!(projRow(n.pitch)===r&&noteCol(n)===c));
-  if(grid[r]) grid[r][c]=on; }); }
+  if(grid[r]) grid[r][c]=on;
+  if(gridNote[r]) gridNote[r][c]=on?t.notes[t.notes.length-1]:null; }); }   // this path patches the projection instead of reprojecting — keep the twin in step
 function modelClearMelody(){ tx("wipe",()=>{ melTrack().notes=[]; reproject(); }); }
 function modelSetDrum(d,c,on){ tx(on?"drum-on":"drum-off",()=>{ const t=drumTrack();
   if(on){ if(!t.notes.some(n=>n.pitch===d&&noteCol(n)===c))
@@ -1025,17 +1046,23 @@ function modelPlaceDrums(list){ tx("place-drums",()=>{ const t=drumTrack();
 function modelSetCols(cols){ tx("resize",()=>{ const lim=cols*TICKS_PER_COL;   // shrink truncates, like the old grid did
   melTrack().notes=melTrack().notes.filter(n=>n.startTick<lim);
   drumTrack().notes=drumTrack().notes.filter(n=>n.startTick<lim);
+  for(const n of melTrack().notes) n.durationTicks=Math.max(TICKS_PER_COL,Math.min(n.durationTicks,lim-n.startTick));  // a vine can't hang past the field's end
   COLS=cols; reproject(); }); }
 // time surgery (R4): insert or remove a span of musical time — the WHOLE timeline shifts, drums included
 function modelInsertTime(atTick,ticks){ tx("insert-time",()=>{
-  for(const t of doc.tracks) for(const n of t.notes) if(n.startTick>=atTick) n.startTick+=ticks;
+  for(const t of doc.tracks) for(const n of t.notes){
+    if(n.startTick>=atTick) n.startTick+=ticks;
+    else if(t.role==="melody" && n.startTick+n.durationTicks>atTick) n.durationTicks+=ticks; }  // ＋room INSIDE a vine stretches it rather than cutting it in half
   COLS+=Math.round(ticks/TICKS_PER_COL); reproject(); }); }
 function modelRemoveTime(atTick,ticks){ tx("remove-time",()=>{
   ticks=Math.min(ticks, Math.max(0, COLS*TICKS_PER_COL-atTick));   // a span can't overhang the timeline — otherwise notes before it get stranded past the shrunk COLS
   if(ticks<=0) return;
   for(const t of doc.tracks){
     t.notes=t.notes.filter(n=>n.startTick<atTick||n.startTick>=atTick+ticks);
-    for(const n of t.notes) if(n.startTick>=atTick+ticks) n.startTick-=ticks; }
+    for(const n of t.notes){
+      if(n.startTick>=atTick+ticks) n.startTick-=ticks;
+      else if(t.role==="melody" && n.startTick+n.durationTicks>atTick)                    // －room INSIDE a vine shortens it,
+        n.durationTicks=Math.max(TICKS_PER_COL, n.durationTicks-ticks); } }               // but never below its own onset column
   COLS=Math.max(16,COLS-Math.round(ticks/TICKS_PER_COL)); reproject(); }); }
 // R19 write side: a rolling autosave of the working song (the recovery UI lands in Phase 1)
 let autosaveT=null;
@@ -1074,11 +1101,26 @@ gridEl.addEventListener("mouseover",e=>{ const cell=e.target.closest(".cell"); i
     document.body.appendChild(noteTipEl); }, 450); });
 gridEl.addEventListener("mouseleave",hideNoteTip);                            // left the field entirely
 scroller.addEventListener("scroll",hideNoteTip);                              // don't leave a stale tip when the field scrolls
-function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
+// The vine layer: one stem per held note, drawn over the grid from the tray's own geometry
+// (34px cell + 4px gap, 10px pad). Inline left/top/width so it is assertable with no transition running.
+const vinesEl=document.getElementById("vines");
+function renderVines(){ if(!vinesEl) return; vinesEl.innerHTML="";
+  for(const n of melTrack().notes){
+    if(n.durationTicks<=TICKS_PER_COL) continue;             // a plain seed has no stem
+    const r=projRow(n.pitch), c=noteCol(n); if(r==null||c<0||c>=COLS) continue;
+    const L=Math.min(Math.round(n.durationTicks/TICKS_PER_COL), COLS-c);
+    if(L<=1) continue;
+    const s=document.createElement("div"); s.className="stem"+(traySel.includes(n.id)?" tsel":"");
+    s.dataset.id=n.id;
+    s.style.left=(TRAY_PAD+c*TRAY_CW+26)+"px";               // start inside the seed's right edge, so it reads as growing OUT of it
+    s.style.top=(TRAY_PAD+r*TRAY_CH+8)+"px";
+    s.style.width=((L-1)*TRAY_CW+8)+"px";
+    vinesEl.appendChild(s); } }
+function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
   modelSetCols(c2); rebuildField(); updateGarden(); }
-function setCell(r,c,on){ modelSetCell(r,c,on); cells[r][c].classList.toggle("on",on); }
+function setCell(r,c,on){ modelSetCell(r,c,on); cells[r][c].classList.toggle("on",on); renderVines(); }   // digging up a vined seed must take its stem with it
 function flash(el,r){ el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse");
   if(isTonic(r)) settle(); }
 function anim(el,cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
@@ -1200,6 +1242,7 @@ function trayPaint(){
     const cs=ns.map(n=>trayCellOf(n).c), c0=Math.min(...cs), c1=Math.max(...cs);
     for(let d=0;d<DRUMS.length;d++) for(let c=c0;c<=c1;c++) if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.add("tband");
   }
+  renderVines();                               // stems follow the pick's highlight
   if(trayMode) trayBtn.textContent = ns.length ? `✕ Done (${ns.length})` : "✕ Done";   // the single exit carries the count
   const dis=!ns.length;
   ["trayCopy","trayDel"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled=dis; });
@@ -1210,6 +1253,7 @@ function clearGhosts(){ trayGhosts.forEach(e=>e.classList.remove("tghost")); tra
 function syncCellDOM(){   // repaint .on from the projection without rebuilding DOM (no flicker mid-gesture)
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c]) cells[r][c].classList.toggle("on",grid[r][c]);
   for(let d=0;d<DRUMS.length;d++) for(let c=0;c<COLS;c++) if(dcells[d]&&dcells[d][c]) dcells[d][c].classList.toggle("on",drumG[d][c]);
+  renderVines();
 }
 function trayCommitDone(msg){ clearGhosts(); syncCellDOM(); trayPaint(); ev.played=false; checkLevel(); if(msg) setStatus(msg); }
 function enterTray(){ if(trayMode) return; trayMode=true; initAudio(); actx.resume();
@@ -3994,6 +4038,14 @@ function swingTicks(col){
   if(jamMode && col%2===1) return GROOVES[grooveIdx].swing*TICKS_PER_COL;
   if(levelSwing && col%4===2) return TICKS_PER_COL;          // the "ands" land one WHOLE column late
   return 0; }
+// A vine EXTENDS a note; it never truncates one. Every shipped level, every FAMOUS entry and every saved
+// song is exactly one column long, and one column is 278ms at 108 BPM against a music-box ring of 1.1s —
+// honoring one-column durations symmetrically would make the whole game dry and clicky at once, on content
+// nobody thought they had touched. The > gate keeps every shipped note on the byte-identical old path.
+// anchorSPT (frozen) is deliberate: a tempo drag mid-vine must not stretch a note already booked.
+const MAX_VINE=8;                                            // a whole note — and the ceiling every sampled voice can actually deliver
+const holdOf=(r,c)=>{ const n=gridNote[r]&&gridNote[r][c];
+  return (n && n.durationTicks>TICKS_PER_COL) ? n.durationTicks*anchorSPT : 0; };
 // Cancellation with no node ledger: voiceBus/jamBus/drumBus/reverb are module-level lets that EVERY audio
 // factory reads at call time, so borrowing them for the length of one booking routes that whole column —
 // samples, reverb send, jam, drums — through four gains we can zero on Stop. No factory is touched.
@@ -4006,7 +4058,7 @@ function bookColumn(col,tk){
   voiceBus=gv; jamBus=gj; drumBus=gd; reverb=gr;
   try{                                                       // same ORDER as the old tick() — golden event order
     if(jamMode) jamStep(col,t);
-    for(let r=0;r<ROWS;r++) if(grid[r][col]) playRow(r,t);
+    for(let r=0;r<ROWS;r++) if(grid[r][col]) playRow(r,t,holdOf(r,col));
     if(revealHarm) for(let r=0;r<ROWS;r++) if(grid[r][col]){ const h=r+2;
       if(h<ROWS) bTone(t+0.02, midiToFreq(MIDI[h]), 0.5, "triangle", 0.14, 0.03); }
     if(drumsOn) for(let d=0;d<DRUMS.length;d++) if(drumG[d][col]) DRUMS[d].play(t);
