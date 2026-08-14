@@ -171,6 +171,11 @@
   .fbpair{ display:flex; gap:4px; }                 /* 34 + 4 + 34 = the gutter exactly */
   .fbpair button{ width:34px; }
   .fbcap{ font-size:.64rem; text-align:center; opacity:.75; letter-spacing:.3px; line-height:1.2; font-weight:600; }
+  /* duration's own pair — an honest collapse (round 4b): the group does not exist outside a growing package,
+     so every other package's rail is byte-for-byte the rail that shipped. body.growing already tracks canGrow(). */
+  #growgroup{ display:none; }
+  body.growing #growgroup{ display:flex; }
+  #growgroup .fbpair button{ font-size:1rem; padding:4px 0; }   /* the glyph IS the label here — .68rem draws an 11px leaf */
   /* the morph slot: 🧹 Clear steps aside for ⧉ Copy·🗑 Dig up while the Scoop is armed. It COLLAPSES rather
      than reserving the taller set's height — a permanent hole in the rail reads as unfinished, and the only
      cost is that 🔨 Fuse and ↶↷ slide down while you are actually scooping, then come straight back. */
@@ -486,6 +491,13 @@
                 <button id="less" class="secondary" title="Take back the last patch — one whole bar">－</button>
               </span>
               <span class="fbcap">patch</span>
+            </span>
+            <span class="fbgroup" id="growgroup">
+              <span class="fbpair">
+                <button id="growBtn" class="secondary" aria-label="Grow — hold these notes one step longer" title="Grow 🌿 — hold these seeds one step longer (G)">🌿</button>
+                <button id="trimBtn" class="secondary" aria-label="Trim — let these notes go one step sooner" title="Trim ✂ — let these seeds go one step sooner (T)">✂</button>
+              </span>
+              <span class="fbcap">grow · trim</span>
             </span>
             <button id="trayBtn" class="secondary toggle wide">🧺 Scoop</button>
             <span class="morphslot">
@@ -1195,6 +1207,71 @@ if(vinesEl){
   vinesEl.addEventListener("pointerup",()=>endPull(true));
   vinesEl.addEventListener("pointercancel",()=>endPull(false));
 }
+// ---------- Grow / Trim: duration WITHOUT a drag (EDITOR-DESIGN §6) ----------
+// The drag is a lovely gesture and a terrible only-way: a 14px grip is the smallest target in the game, a
+// keyboard can't perform it at all, and it can only ever lengthen ONE note. These two buttons are the other
+// path, and they gate on canGrow()/body.growing ONLY — deliberately NOT on growOn(), which ANDs !trayMode and
+// would switch them off exactly while the Scoop is armed, deleting the many-at-once case they exist for.
+const GROW_COPY = {
+  one:      len => `🌿 Vine — this note holds for <b>${len}</b> steps. Press ✂ to let it go sooner.`,
+  oneSeed:  "🌱 Back to a single seed — one short note.",              // verbatim from the drag, so both paths say the same thing
+  chord:    (k,len) => `🌿 The whole stack holds for <b>${len}</b> steps — it breathes as one.`,
+  many:     k => `🌿 <b>${k}</b> seeds holding a step longer — all together.`,
+  manyTrim: k => `✂ <b>${k}</b> seeds letting go a step sooner.`,
+  someGrew:    (k,b) => `🌿 <b>${k}</b> grew — <b>${b}</b> had something in the way 🌱.`,
+  someTrimmed: (k,b) => `✂ <b>${k}</b> got shorter — <b>${b}</b> ${b===1?"was":"were"} already as short as a seed 🌱.`,
+  wall: {   // three different walls, three different answers — Math.min() in vineMax throws the reason away
+    ceiling: "🌿 Eight steps is as long as a vine grows — that's a whole bar of holding.",
+    edge:    "🌿 The field ends here — press <b>＋ room</b> to make more, then try again.",
+    seed:    "🌿 It bumped into the next seed on its own line 🌱 — a vine can't grow through a seed."
+  },
+  floor: "🌱 These are already as short as a seed gets.",
+  none:  "🌱 No seed <b>starts</b> under the green dashes — slide the 🔻 to one (or 🧺 Scoop some), then press 🌿."
+};
+// The pick is WHAT, the cursor is WHERE — the same doctrine the rest of the rail runs on. Branch on the
+// RESOLVED notes, not traySel.length, so a pruned id can never produce a phantom target.
+function growTargets(){
+  const picked=trayNotes();
+  const set = picked.length ? picked : melTrack().notes.filter(n=>noteCol(n)===cursorCol);
+  return set.filter(n=>!isLockedRow(projRow(n.pitch))); }
+function growWall(n){ const c=noteCol(n), len=vineLen(n);
+  if(len>=MAX_VINE) return "ceiling";                 // ceiling FIRST: at the field's end with a full vine both
+  if(c+len>=COLS)   return "edge";                    // are true, and ＋ room would not help
+  return "seed"; }
+function cursorIntoView(){ const x=TRAY_PAD+cursorCol*TRAY_CW, w=scroller.clientWidth;
+  if(x<scroller.scrollLeft) scroller.scrollLeft=Math.max(0,x-TRAY_CW);
+  else if(x+34>scroller.scrollLeft+w) scroller.scrollLeft=x+34-w+TRAY_PAD; }
+function growTrim(dir){
+  if(pull) return;                                                  // a grip drag owns the note right now
+  if(trayPlace||trayDrag){ setStatus("Put the copy down first ⧉ — or press <b>Esc</b> to put it away."); return; }
+  const set=growTargets();
+  if(!set.length){ setStatus(GROW_COPY.none); return; }
+  const moved=[], blocked=[];
+  for(const n of set){
+    const len=vineLen(n), max=vineMax(n);
+    // NEVER Math.min(max,len+1): vineMax is a POSITION cap read from the onset and never looks at
+    // durationTicks, so len>max is reachable (＋ room inside a full vine; a seed planted inside one) and
+    // clamping there would AMPUTATE a note the player never asked to shorten. Grow only ever grows.
+    const tgt = dir>0 ? (len>=max ? len : len+1) : Math.max(1,len-1);
+    if(tgt===len) blocked.push(n); else moved.push({n,tgt}); }
+  if(!moved.length){                                                // pure refusal — no transaction, no journal entry
+    blocked.slice(0,3).forEach(n=>{ const r=projRow(n.pitch), c=noteCol(n);
+      if(cells[r]&&cells[r][c]) anim(cells[r][c],"wob"); });
+    setStatus(dir>0 ? GROW_COPY.wall[growWall(blocked[0])] : GROW_COPY.floor); return; }
+  tx("grow",()=>{ moved.forEach(m=>{ m.n.durationTicks=m.tgt*TICKS_PER_COL; }); reproject(); });
+  initAudio(); actx.resume();                                       // ears first, like every other edit
+  moved.slice().sort((a,b)=>a.n.pitch-b.n.pitch).slice(0,3)         // 3 lowest — every voice rings 0.6s+ whatever the hold
+    .forEach(m=>playRow(projRow(m.n.pitch), actx.currentTime, m.tgt>1 ? m.tgt*TICKS_PER_COL*secPerTick() : 0));
+  if(trayMode) trayPaint(); else renderVines();                     // trayPaint repaints the stems AND keeps ✕ Done (n) honest
+  ev.played=false; checkLevel();
+  const k=moved.length, b=blocked.length;
+  if(b) setStatus(dir>0 ? GROW_COPY.someGrew(k,b) : GROW_COPY.someTrimmed(k,b));
+  else if(k===1) setStatus(moved[0].tgt>1 ? GROW_COPY.one(moved[0].tgt) : GROW_COPY.oneSeed);
+  else { const cols=new Set(moved.map(m=>noteCol(m.n))), lens=new Set(moved.map(m=>m.tgt));
+    setStatus(cols.size===1 && lens.size===1 ? GROW_COPY.chord(k,moved[0].tgt)
+            : dir>0 ? GROW_COPY.many(k) : GROW_COPY.manyTrim(k)); } }
+document.getElementById("growBtn").onclick=()=>growTrim(+1);
+document.getElementById("trimBtn").onclick=()=>growTrim(-1);
 function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
@@ -4283,11 +4360,36 @@ document.addEventListener("keydown",e=>{
   if(overlayUp()) return;                                    // shortcuts sleep while a card/menu is up
   if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z")){ e.shiftKey?redoEdit():undoEdit(); e.preventDefault(); return; }
   if((e.ctrlKey||e.metaKey) && (e.key==="y"||e.key==="Y")){ redoEdit(); e.preventDefault(); return; }
+  // duration: plain letters, so nothing shipped loses a key. NOT Shift+Arrow — the tray rung below matches a
+  // bare e.key with no modifier test, so Shift+ArrowRight ALREADY nudges a pick, and two behaviours
+  // negotiating one key is the thing this ladder exists to prevent.
+  if(canGrow() && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat){   // no auto-repeat: one press is one journal
+    if(e.key==="g"||e.key==="G"){ growTrim(+1); e.preventDefault(); return; }   // entry, and JOURNAL_MAX is 100 — a
+    if(e.key==="t"||e.key==="T"){ growTrim(-1); e.preventDefault(); return; } } // stuck key would roll away real edits
   if(trayMode && traySel.length){
     if(e.key==="Delete"||e.key==="Backspace"){ document.getElementById("trayDel").onclick(); e.preventDefault(); return; }
     const nudge={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];
     if(nudge){ trayMove(nudge[0],nudge[1]); e.preventDefault(); return; } }
+  // the cursor, LAST so a pick keeps the plain arrows for nudging. Not gated on canGrow(): the cursor belongs
+  // to every package (＋/－ room already work there), and #cursorStrip is pointer-only, so without this the
+  // cursor is frozen at column 0 for anyone not using a mouse or a finger.
+  if(!e.ctrlKey && !e.metaKey && !e.altKey && (e.key==="ArrowLeft"||e.key==="ArrowRight")){
+    const c2=cursorCol+(e.key==="ArrowRight"?1:-1);
+    if(c2<0||c2>COLS-1) return;                    // at either end, leave the browser its own scrolling
+    setCursor(c2); cursorIntoView(); e.preventDefault(); return; }
 });
+// A mouse click leaves the button FOCUSED, silently — Chrome hides the ring for pointer input. Then the
+// first plain keypress flips it into keyboard mode and rings whatever still holds focus, so pressing → to
+// move the cursor lit up ▶ Play, which had nothing to do with it. Drop focus after a POINTER click only:
+// `detail` is 0 when Enter/Space fires the click from the keyboard, and THAT ring is telling the truth —
+// it is the only way a Tab-ing player can see where they are. Selects keep focus too, since their own
+// arrow-key behaviour is native and correct.
+// Capture phase, because ☰ stops its click from propagating and would otherwise keep its ring; blurring
+// mid-dispatch does not cancel anything, so the button's own handler still runs (and nothing in the file
+// reads document.activeElement).
+document.addEventListener("click",e=>{
+  const b=e.target && e.target.closest && e.target.closest("button");
+  if(b && e.detail>0) b.blur(); }, true);
 
 // ---------- helpers ----------
 const statusEl=document.getElementById("status");
