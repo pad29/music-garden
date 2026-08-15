@@ -71,10 +71,24 @@
   .status{ min-height:22px; font-size:.85rem; opacity:.9; margin:4px 0 12px; text-align:center; padding:0 64px; }  /* keep long messages (e.g. famous-song credits) clear of the fixed side buttons at top-right */
   .status b{ color:var(--leaf-deep); }
 
-  .mainscroll{ width:100%; overflow-x:auto;}                                  /* desktop: scroll the app row if the window is too narrow */
-  .main{ display:flex; gap:14px; align-items:flex-start; flex-wrap:nowrap; width:max-content; margin:0 auto;}
-  .fieldcol{ flex:0 0 auto; }
-  @media (max-width:760px){ .main{ width:auto; flex-wrap:wrap;} .sidebar,.fieldcol{ width:100%;} }  /* mobile: stack the columns (the rail needs no phone case — it lives in space already reserved) */
+  .mainscroll{ width:100%; overflow-x:auto;}                                  /* a last-resort escape hatch; after the fix below it has nothing to scroll */
+  /* THE FIELD SCROLLS, NOT THE APP ROW. Until now `width:max-content` here made every descendant content-sized,
+     so .scroller's `max-width:100%` resolved against its own contents and could never overflow: measured at
+     1280px with 66 columns, .scroller was 2508/2508 (scrollLeft permanently 0) while .mainscroll carried the
+     scroll at 1244/3018. Every scroller.scrollTo in the file was writing to an element that could not move —
+     the playhead marched off-screen with nothing following it, and because .mainscroll also carries #fieldbar,
+     scrolling right slid the tool rail away. One cause, both complaints.
+     max-content STAYS so a short song is still centred (a 16-column field at 1600px would otherwise leave a
+     ~444px hole beside the sidebar); max-width:100% is what finally lets the column be asked to shrink. */
+  .main{ display:flex; gap:14px; align-items:flex-start; flex-wrap:nowrap; width:max-content; max-width:100%; margin:0 auto;}
+  /* min-width:0 is LOAD-BEARING, and not for the usual reason. .scroller is a flex item whose computed overflow
+     is not `visible`, so its automatic minimum size is already 0 — but #drumArea is a BLOCK child, exempt from
+     that rule, and it hands .fieldcol its full min-content width. Measured: without this one line the change is
+     a silent no-op — .scroller stays 2508/2508 and .mainscroll still scrolls 1244/3018, byte-identical to before. */
+  .fieldcol{ flex:0 1 auto; min-width:0; }
+  /* 1000, not 760: measured at 770px, side-by-side left the field 209px = 5.2 columns, against a 390px phone's
+     6.9. The band just above the old breakpoint was the worst layout in the game. */
+  @media (max-width:1000px){ .main{ width:auto; flex-wrap:wrap;} .sidebar,.fieldcol{ width:100%;} }  /* narrow: stack the columns (the rail needs no phone case — it lives in space already reserved) */
   .stage{ position:relative; display:flex; align-items:stretch; gap:0; }   /* the 72px tool rail IS the gutter that lines field cells up with drum cells */
   /* A fixed element is never inset past the page scrollbar. --sbw measures a CLASSIC bar (it steals layout
      width); an OVERLAY bar steals none and can't be measured at all, so 34px covers it by hand. */
@@ -104,13 +118,37 @@
   body[data-region="weather-of-wanting"] { --bed:#90C4C4; --bedDeep:#74B0B0; --bedRing:#5B9494; --pageEdge:#DBE8E8; }
   body[data-region="twin-gardens"]       { --bed:#BBACE6; --bedDeep:#A491DB; --bedRing:#8674BE; --pageEdge:#E2DEEF; }
   .scroller{ max-width:100%; overflow-x:auto; overflow-y:hidden; border-radius:16px;}
-  #drumArea{ max-width:100%; overflow-x:auto; margin-top:4px; }   /* the beat lane sits close under the seeds — they are one timeline, and the cursor strip between them says so */
+  /* The beat lane, shaped like the pitch lane: [72px labels][the scroller]. gap MUST be 0, or the two lanes
+     shear — the same rule .stage lives by. Because #drumArea is now a flex sibling of a 72px bar, its width
+     is exactly .scroller's, so one scrollLeft shows the SAME columns in both lanes (it used to be 72px wider,
+     showing ~1.9 columns more at the same position). */
+  .drumstage{ display:flex; align-items:flex-start; gap:0; margin-top:4px; }   /* sits close under the seeds — they are one timeline, and the cursor strip between them says so */
+  #drumbar{ flex:0 0 72px; width:72px; padding-top:10px; display:flex; flex-direction:column; gap:4px; }  /* 10px + 30px rows + 4px gaps = .drumrows' own padding and rhythm, so label i lines up with row i */
+  #drumArea{ max-width:100%; overflow-x:auto; flex:0 1 auto; min-width:0; border-radius:16px; }
+  /* Both lanes really scroll now, so both would grow a native bar — and .scroller's renders directly under
+     #cursorStrip, appearing and vanishing as ＋/－ room crosses the overflow threshold, hopping everything
+     below it by 15px. The camera does the following; the edge shadow below says there is more garden. */
+  .scroller, #drumArea{ scrollbar-width:none; }
+  .scroller::-webkit-scrollbar, #drumArea::-webkit-scrollbar{ height:0; width:0; }
+  /* …so something else has to say "there is more garden that way". A soft edge, lit only when there really is
+     more on that side, over the field's own rounded corners. */
+  .stage::before, .stage::after{ content:""; position:absolute; top:0; bottom:0; width:26px; z-index:5;
+    pointer-events:none; opacity:0; transition:opacity .18s; }
+  .stage::before{ left:72px; border-radius:16px 0 0 16px;                     /* 72px = past the tool rail, at the field's true left edge */
+    background:linear-gradient(90deg, rgba(62,58,57,.20), rgba(62,58,57,0)); }
+  .stage::after{ right:0; border-radius:0 16px 16px 0;
+    background:linear-gradient(90deg, rgba(62,58,57,0), rgba(62,58,57,.20)); }
+  .stage.moreleft::before, .stage.moreright::after{ opacity:1; }
   .track{ position:relative; display:inline-block;}
   .drumrows{ position:relative; display:inline-block; padding:10px; border-radius:16px; background:linear-gradient(170deg,#B2D6C6,#98C4B0);
     box-shadow:inset 0 0 0 1px #79A890, 0 2px 4px rgba(62,58,57,.14), 0 12px 30px rgba(62,58,57,.22);}
   .drumrow{ display:flex; align-items:center; gap:0;}
   .drumrow + .drumrow{ margin-top:4px;}   /* gap BETWEEN rows only — :last-child broke once the cursor rail became the last child */
-  .drumlabel{ width:72px; font-size:.78rem; text-align:right; opacity:.92; padding-right:8px;}
+  /* Labels live in #drumbar, off the bed entirely — so they need no background, and a sticky one is gone with
+     the two faults it had: a tinted band that never quite matched the bed's gradient, and labels riding over
+     the pads with the bed's left edge reading as a cut. (Owner, 2026-08-15.) */
+  .drumlabel{ width:72px; height:30px; font-size:.78rem; opacity:.92; padding-right:10px; flex:0 0 auto;
+    display:flex; align-items:center; justify-content:flex-end; }   /* 30px = a pad's height; 10px echoes the bed's padding on the other side of the edge */
   .dcellgrid{ display:grid; grid-template-columns:repeat(16,34px); gap:4px;}
   /* round "pads" in a different palette so beats look distinct from square seed tiles */
   .dcell{ width:34px; height:30px; border-radius:50%; background:#E7EEE6; cursor:pointer;
@@ -530,17 +568,27 @@
           <div class="dmlabel">weather</div>
         </div>
       </div>
-      <div id="drumArea" style="display:none">
-        <div id="feelRow" class="feelrow" style="display:none">
-          <span class="feellabel">Feel:</span>
-          <button id="feelStraight" class="secondary toggle on">🚶 Straight</button>
-          <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
+      <!-- Feel and density live OUTSIDE the beat lane now. As block children of a scroll container they keep
+           the viewport's width but sit at scroll offset 0, so the moment #drumArea really scrolled they slid
+           off the left with the pads. #wobbleMeter was already outside for the pitch lane — same shape. -->
+      <div id="feelRow" class="feelrow" style="display:none">
+        <span class="feellabel">Feel:</span>
+        <button id="feelStraight" class="secondary toggle on">🚶 Straight</button>
+        <button id="feelSwing" class="secondary toggle">🕺 Swing</button>
+      </div>
+      <!-- The beat lane now mirrors the pitch lane's SHAPE exactly: a 72px label bar OUTSIDE the scroller,
+           the way #fieldbar stands outside .scroller. The labels cannot scroll, cannot ride over a pad, and
+           need no background of their own — and the drum bed's left edge finally lands on the seed bed's,
+           which is what makes the two lanes read as one timeline instead of two boxes. -->
+      <div id="drumStage" class="drumstage" style="display:none">
+        <div id="drumbar"></div>
+        <div id="drumArea">
+          <div class="drumrows" id="drumrows"></div>
         </div>
-        <div class="drumrows" id="drumrows"></div>
-        <div id="densityMeter" class="densitymeter" style="display:none">
-          <div class="dmtrack"><div class="dmfill"></div></div>
-          <div class="dmlabel">density</div>
-        </div>
+      </div>
+      <div id="densityMeter" class="densitymeter" style="display:none">
+        <div class="dmtrack"><div class="dmfill"></div></div>
+        <div class="dmlabel">density</div>
       </div>
     </div>
 
@@ -962,9 +1010,11 @@ const DRUMS=[{name:"Kick",emoji:"🥁",play:t=>kick(t,1.0,drumBus)},
              {name:"Hi-hat",emoji:"🎩",play:t=>hat(t,0.4,drumBus)}];
 let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false; let drumCursorEl=null;
 function buildDrums(){ const rows=document.getElementById("drumrows"); rows.innerHTML="";
+  const bar=document.getElementById("drumbar"); if(bar) bar.innerHTML="";   // the labels live OUTSIDE the scroller now — one per row, same order, same heights
   DRUMS.forEach((dm,d)=>{ dcells[d]=[];
+    if(bar){ const lab=document.createElement("div"); lab.className="drumlabel";
+      lab.textContent=`${dm.emoji} ${dm.name}`; bar.appendChild(lab); }
     const row=document.createElement("div"); row.className="drumrow";
-    const lab=document.createElement("div"); lab.className="drumlabel"; lab.textContent=`${dm.emoji} ${dm.name}`; row.appendChild(lab);
     const g=document.createElement("div"); g.className="dcellgrid"; g.style.gridTemplateColumns=`repeat(${COLS},34px)`;
     for(let c=0;c<COLS;c++){ const el=document.createElement("div");
       el.className="dcell"+(c%4===0?" beat":"")+(drumG[d][c]?" on":"");
@@ -1143,6 +1193,77 @@ gridEl.addEventListener("mouseover",e=>{ const cell=e.target.closest(".cell"); i
     document.body.appendChild(noteTipEl); }, 450); });
 gridEl.addEventListener("mouseleave",hideNoteTip);                            // left the field entirely
 scroller.addEventListener("scroll",hideNoteTip);                              // don't leave a stale tip when the field scrolls
+// ---------- The camera: one law for following the playhead AND the cursor ----------
+// What was here before was a fixed 16-column page-turn that assumed the viewport was exactly 16 columns wide.
+// It never is — 19 columns at 1280px, 6.9 on a 390px phone — so on a phone the playhead was off-screen for
+// nine columns out of every sixteen. On desktop it wrote to a scroller that could not scroll at all (see .main
+// in the CSS), so nothing followed anything, and cursorIntoView was dead the day it was written. One function
+// now, so the cursor and the playhead can never disagree about what "in view" means.
+// W/SW are CACHED, not read per column: camEnsure runs from paintCol, which has just dirtied layout by adding
+// .col-playing to a column of cells, so a live clientWidth read would force a reflow on every step of every
+// song. Only two things can change them — the box (ResizeObserver) and the field's length (camReseed).
+const CAM={ expect:0, raf:0, yielded:false, W:0, SW:0 };
+function camMeasure(){ CAM.W=scroller.clientWidth; CAM.SW=scroller.scrollWidth; }
+function camGeom(){ const W=CAM.W||scroller.clientWidth, S=Math.max(0,(CAM.SW||scroller.scrollWidth)-W);
+  const vis=Math.max(1,Math.floor((W-TRAY_PAD)/TRAY_CW));      // geometry is READ, never assumed: ＋room, a palette
+  return { W, S, vis,                                          // swap and a window resize each change it
+    behind:Math.max(1,Math.round(vis*0.20)),                   // keep this much of where we came from…
+    ahead: Math.max(2,Math.round(vis*0.30)) }; }               // …and this much of where we are going
+// A live gesture always wins. Correctness, not manners: the vine pull measures against the FIELD, so a field
+// that slid under a held finger would lengthen a note nobody dragged.
+function camBusy(){ return !!(pull || trayDrag || trayPtrs.size || cursorStripEl._drag); }
+function camStop(){ if(CAM.raf){ cancelAnimationFrame(CAM.raf); CAM.raf=0; playhead.style.transition=""; } }
+function camReseed(){ camMeasure(); CAM.expect=scroller.scrollLeft; camEdges(); }   // after ±room or a rebuild, the browser's own clamp is not the child
+const stageEl=document.querySelector(".stage");
+function camEdges(){ if(!stageEl) return;                      // the hidden scrollbars' replacement: light an edge only where there IS more
+  const sl=scroller.scrollLeft, max=scroller.scrollWidth-scroller.clientWidth;
+  stageEl.classList.toggle("moreleft", sl>1);
+  stageEl.classList.toggle("moreright", sl<max-1); }
+function camTo(x,instant){
+  const g=camGeom();
+  x=Math.max(0,Math.min(g.S,Math.round(x)));
+  camStop();
+  const from=scroller.scrollLeft, d=x-from;
+  CAM.expect=x; if(!d) return;
+  // document.hidden: a hidden tab does not run rAF at all, so a tween started there would never advance and
+  // CAM.raf would stay armed forever — which also mutes the take-the-wheel detector below. Jump instead.
+  if(instant || document.hidden || Math.abs(d)>g.W){ scroller.scrollLeft=x; return; }   // further than one view reads as a cut, not a pan
+  // Hand-rolled, never scrollTo({behavior:"smooth"}): its duration is the browser's to choose, and it emits
+  // scroll events the take-the-wheel detector below could not tell apart from a child's finger.
+  const dur=Math.min(260, Math.max(120, Math.abs(d)*0.6), Math.max(60, stepDur()*0.9));   // never longer than one column
+  const t0=performance.now();
+  playhead.style.transition="none";                            // ONE clock — the blue bar must not ease while the field eases
+  const frame=now=>{ const k=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-k,3);
+    scroller.scrollLeft=Math.round(from+d*e);
+    if(k<1){ CAM.raf=requestAnimationFrame(frame); return; }
+    CAM.raf=0; scroller.scrollLeft=x; CAM.expect=x; playhead.style.transition=""; };
+  CAM.raf=requestAnimationFrame(frame); }
+function camEnsure(col,opts){
+  opts=opts||{};
+  if(camBusy()) return;
+  const g=camGeom(); if(g.S<=0){ camReseed(); return; }         // the whole song fits — there is nothing to follow
+  const x=TRAY_PAD+col*TRAY_CW, sl=scroller.scrollLeft;         // same origin as playhead.style.left, so no 10px drift
+  const inView = x-TRAY_CW*g.behind>=sl && x+TRAY_CW*(1+g.ahead)<=sl+g.W;
+  // Hand-back is NOT on a timer. A timeout expires exactly when the child has stopped to look, and by then the
+  // playhead may be a whole screen away — so resuming reads as a teleport, and repeats every few seconds. The
+  // camera waits until the music comes back to where they are looking, or until they press something.
+  if(CAM.yielded){ if(!inView) return; CAM.yielded=false; }
+  if(inView) return;
+  let want=TRAY_CW*(col-g.behind);
+  for(const q of [TRAY_CW*8, TRAY_CW*4, TRAY_CW]){              // land on a musical boundary, not on the minimum fix:
+    const s=Math.floor(want/q)*q;                               // six moves across a 66-column song instead of forty-eight
+    if(x+TRAY_CW*(1+g.ahead) <= s+g.W){ want=s; break; } }
+  camTo(want, !!opts.instant); }
+// The child is detected by DISAGREEMENT — any scroll position that is not the one we last asked for is theirs.
+// Our own tween is exempt (it records its landing value when it lands), and the beat lane mirroring us arrives
+// here as an equal value, so the sync never registers as a person.
+// The field's box can change without a scroll and without a rebuild — an overlay closing, the sidebar
+// appearing, a palette swap — and the edges would keep whatever they were told last. Observe the box itself.
+if(window.ResizeObserver) new ResizeObserver(()=>{ camMeasure(); camEdges(); }).observe(scroller);
+scroller.addEventListener("scroll",()=>{ camEdges();
+  if(CAM.raf) return;
+  if(Math.abs(scroller.scrollLeft-CAM.expect)<=2) return;
+  CAM.expect=scroller.scrollLeft; CAM.yielded=true; });
 // The vine layer: one stem per held note, drawn over the grid from the tray's own geometry
 // (34px cell + 4px gap, 10px pad). Inline left/top/width so it is assertable with no transition running.
 const vinesEl=document.getElementById("vines");
@@ -1184,11 +1305,14 @@ if(vinesEl){
     if(!s){ s=document.createElement("div"); s.className="stem"; s.dataset.id=n.id;   // WITHOUT a re-render, which would
       s.style.left=stemLeft(c)+"px"; s.style.top=stemTop(r)+"px";                     // destroy the element holding capture
       s.style.width="0px"; s.style.display="none"; vinesEl.appendChild(s); }
-    pull={id:n.id, base:n.durationTicks, x0:e.clientX, len:L, armed:false, stem:s, grip:g, c, r};
+    // Anchor in FIELD coordinates, re-read per event the way trayGridPos and cursorFromEvent already do. A raw
+    // viewport delta was the one gesture in the file that could not survive the field moving under the finger —
+    // and now the camera, a two-finger pan and the beat-lane sync can all move it mid-pull.
+    pull={id:n.id, base:n.durationTicks, x0:e.clientX-gridEl.getBoundingClientRect().left, len:L, armed:false, stem:s, grip:g, c, r};
     initAudio(); actx.resume(); });
   vinesEl.addEventListener("pointermove",e=>{ if(!pull) return;
     const n=melTrack().notes.find(q=>q.id===pull.id); if(!n){ pull=null; return; }
-    const dx=e.clientX-pull.x0;
+    const dx=(e.clientX-gridEl.getBoundingClientRect().left)-pull.x0;
     if(!pull.armed){ if(Math.abs(dx)<=TRAY_SLOP) return; pull.armed=true; }   // 8px — the spike's threshold
     const len=Math.max(1, Math.min(vineMax(n), Math.round(pull.base/TICKS_PER_COL + dx/TRAY_CW)));
     if(len===pull.len) return;
@@ -1240,9 +1364,7 @@ function growWall(n){ const c=noteCol(n), len=vineLen(n);
   if(len>=MAX_VINE) return "ceiling";                 // ceiling FIRST: at the field's end with a full vine both
   if(c+len>=COLS)   return "edge";                    // are true, and ＋ room would not help
   return "seed"; }
-function cursorIntoView(){ const x=TRAY_PAD+cursorCol*TRAY_CW, w=scroller.clientWidth;
-  if(x<scroller.scrollLeft) scroller.scrollLeft=Math.max(0,x-TRAY_CW);
-  else if(x+34>scroller.scrollLeft+w) scroller.scrollLeft=x+34-w+TRAY_PAD; }
+function cursorIntoView(){ CAM.yielded=false; camEnsure(cursorCol,{instant:true}); }   // an arrow key is a deliberate act: take the wheel back
 function growTrim(dir){
   if(pull) return;                                                  // a grip drag owns the note right now
   if(growBlocked()) return;                                         // …and this covers the G/T keys too — growTrim is the single entry point
@@ -1275,7 +1397,7 @@ function growTrim(dir){
             : dir>0 ? GROW_COPY.many(k) : GROW_COPY.manyTrim(k)); } }
 document.getElementById("growBtn").onclick=()=>growTrim(+1);
 document.getElementById("trimBtn").onclick=()=>growTrim(-1);
-function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps
+function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); camReseed(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps, and the camera re-seeds so a shrinking field's own scroll clamp is not mistaken for the child
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
 function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
   modelSetCols(c2); rebuildField(); updateGarden(); }
@@ -1575,7 +1697,7 @@ function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
   cursorStripEl.style.width=(COLS*38+16)+"px";               // match the grid: 10px pad ×2 + cols×38 − last gap
   const x=10+cursorCol*38;
   cursorKnobEl.style.left=x+"px"; cursorColEl.style.left=x+"px";
-  if(drumCursorEl){ drumCursorEl.style.left=(72+x)+"px";     // the beat lane carries the same slot, 72px later (the drum labels' gutter)
+  if(drumCursorEl){ drumCursorEl.style.left=x+"px";          // the beat lane carries the same slot — and now at the SAME x, since the labels moved out of the bed and the two beds share a left edge
     const a=dcells[0]&&dcells[0][0], z=dcells[DRUMS.length-1]&&dcells[DRUMS.length-1][0];
     if(a&&z&&z.offsetHeight){ drumCursorEl.style.top=(a.offsetTop-4)+"px";        // measure the real pads: a round pad needs the frame to clear it, not sit on its edge
       drumCursorEl.style.height=(z.offsetTop+z.offsetHeight-a.offsetTop+8)+"px"; } } }
@@ -1603,7 +1725,7 @@ document.addEventListener("pointerdown",e=>{                     // …and so do
 // scrollbar — measure it and let CSS subtract it. Re-measured on resize (zoom changes the bar's width).
 function syncScrollbarWidth(){ const w=window.innerWidth-document.documentElement.clientWidth;
   document.documentElement.style.setProperty("--sbw", Math.max(0,w)+"px"); }
-syncScrollbarWidth(); window.addEventListener("resize",syncScrollbarWidth);
+syncScrollbarWidth(); window.addEventListener("resize",()=>{ syncScrollbarWidth(); camReseed(); });   // a resize changes how many columns fit — the camera's whole geometry
 let _scrollSync=false;
 [["scroller","drumArea"],["drumArea","scroller"]].forEach(([a,b])=>{
   const A=document.getElementById(a), B=document.getElementById(b); if(!A||!B) return;
@@ -1612,6 +1734,12 @@ let _scrollSync=false;
     if(B.scrollLeft!==A.scrollLeft) B.scrollLeft=A.scrollLeft;   // and a stuck flag would silently unlock the lanes forever.
     _scrollSync=false; });                              // the reflected event then finds the lanes equal and stops there
 });
+// A display:none element cannot hold a scrollLeft and fires no scroll event, so the mirror above cannot repair
+// the beat lane by itself: every path that reveals it has to hand it the field's position back, or the two
+// lanes show different columns under one cursor the moment the field is scrolled.
+function showDrumArea(on){ const st=document.getElementById("drumStage");
+  if(st) st.style.display=on?"flex":"none";                 // the STAGE toggles now — the labels have to come and go with the pads
+  if(on) drumArea.scrollLeft=scroller.scrollLeft; }
 // one column of surgery per press, at the cursor — melody AND beat move together
 document.getElementById("colPlus").onclick=()=>{ if(traySurgeryBlocked()) return;
   if(playing) stop();
@@ -1948,7 +2076,7 @@ function placeFamous(f){ tx("famous",()=>{                                    //
     const n=t.notes.find(q=>q.pitch===m && noteCol(q)===col); if(!n) return;
     n.durationTicks=Math.min(len, MAX_VINE, COLS-col)*TICKS_PER_COL; });
   reproject();
-  if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } drumArea.style.display="";            // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
+  if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } showDrumArea(true);                   // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
     wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } });     // the lane just became visible — re-measure the cursor rail
   renderVines(); }                       // …and draw the stems: setCell's own render ran before the lengths were written
 let famousTimers=[];
@@ -1960,6 +2088,10 @@ function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   if(FAMOUS_TEMPO[id]) tempoEl.value=FAMOUS_TEMPO[id];   // play at the song's OWN tempo (Taps slow, grooves brisk); ▶ replay inherits it
   setStatus(f.credit);
   initAudio(); actx.resume();
+  // This sweep runs entirely outside tick(), so it has never moved the view — and placeFamous widens the field
+  // to the tune's own length (32–100 columns), so on a phone a child watched most of the reveal happen
+  // off-screen. It is the one moment the whole level was built to earn.
+  CAM.yielded=false; camTo(0,true);
   const sd=stepDur()/1000, t0=actx.currentTime+0.12; let lastC=0;   // same tempo as ▶ Play (which now replays this arrangement)
   const hasDrums=!!(f.drums&&f.drums.length);
   for(let c=0;c<COLS;c++){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
@@ -1971,7 +2103,8 @@ function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
       const hold=(n&&n.durationTicks>TICKS_PER_COL) ? (n.durationTicks/TICKS_PER_COL)*sd : 0;
       voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd, hold); });
     lanes.forEach(d=>DRUMS[d].play(t0+c*sd));                                       // sound the drum hits
-    famousTimers.push(setTimeout(()=>{ rows.forEach(r=>flash(cells[r][c],r));      // light it (wall clock, aligned)
+    famousTimers.push(setTimeout(()=>{ camEnsure(c,{});                            // follow the sweep, same law as ▶
+      rows.forEach(r=>flash(cells[r][c],r));                                       // light it (wall clock, aligned)
       if(rows.length) bloom(cells[rows[0]][c], rows.length>=2?"💐":noteFlower(rows[0]));
       lanes.forEach(d=>{ const el=dcells[d]&&dcells[d][c]; if(el){ el.classList.add("col-playing"); setTimeout(()=>el.classList.remove("col-playing"),150); } });
       compReact(); }, 120+c*sd*1000)); }
@@ -4023,7 +4156,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   cursorCol=0; syncCursor();   // every level/step starts with the cursor at the top
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
-  step=0; shownPage=-1; playhead.classList.remove("on"); scroller.scrollLeft=0; litEls.length=0;
+  step=0; playhead.classList.remove("on"); camStop(); scroller.scrollLeft=0; camReseed(); CAM.yielded=false; litEls.length=0;
 }
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
   const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
@@ -4038,7 +4171,7 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   drumsOn = drumsUnlocked && (!!L.rhythm || !!L.drums);
   drumBtn.style.display=(drumsUnlocked && !L.rhythm)?"":"none";
   drumBtn.classList.toggle("on",drumsOn);
-  drumArea.style.display=drumsOn?"":"none"; pitchArea.style.display="";
+  showDrumArea(drumsOn); pitchArea.style.display="";
   looping=!!L.rhythm || !!L.loop; loopBtn.classList.toggle("on",looping);
   if(L.unlock && L.unlock.length) toast("🔓 Unlocked: "+L.unlock.map(featName).join(", "));
   stepIdx=0; renderStage(); saveProgress(); renderWorld();
@@ -4382,7 +4515,7 @@ document.getElementById("instrClose").onclick=closeInstrCard;
 const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");
 const craftBtn=document.getElementById("craft"), jamBtn=document.getElementById("jam"), drumBtn=document.getElementById("beat");
 const playhead=document.getElementById("playhead");
-let playing=false, step=0, looping=false, shownPage=-1;
+let playing=false, step=0, looping=false;
 // ---------- Transport: the lookahead scheduler (EDITOR-DESIGN §12; spike/scheduler.html) ----------
 // WHY: sound must be BOOKED against AudioContext.currentTime ~120ms early. A setInterval that also plays
 // is at the mercy of every layout the main thread does (measured 13–20ms of drift, tools/goldens/README).
@@ -4439,7 +4572,8 @@ function pump(){
   while(endTime===Infinity && tick2time(bookTick)<horizon){
     if(bookCol>=COLS){
       if(!looping){ endTime=tick2time(bookTick); break; }     // the phantom column after the last
-      bookCol=Math.max(0,Math.min(COLS-1,cursorCol)); }       // the wrap re-reads the cursor LIVE, as the old tick did
+      bookCol=Math.max(0,Math.min(COLS-1,cursorCol));         // the wrap re-reads the cursor LIVE, as the old tick did
+      CAM.yielded=false; }                                    // a wrap is a landmark — the camera comes back for it
     bookColumn(bookCol,bookTick);
     paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
     bookTick+=TICKS_PER_COL; bookCol++; }
@@ -4478,8 +4612,7 @@ function paintCol(col,stale){
   if(drumsOn) for(let d=0;d<DRUMS.length;d++){ const el=dcells[d]&&dcells[d][col];
     if(el){ el.classList.add("col-playing"); litEls.push(el); } }
   playhead.style.left=(10+col*38)+"px";
-  const page=Math.floor(col/16);                              // scroll one 16-column span at a time
-  if(page!==shownPage){ shownPage=page; scroller.scrollTo({left:page*16*38, behavior:stale?"auto":"smooth"}); }
+  camEnsure(col,{instant:stale});                             // stale = back from a hidden tab, so cut rather than pan
 }
 function paintLoop(){ if(!playing){ paintRaf=0; return; } paintDue(nowSec()); paintRaf=requestAnimationFrame(paintLoop); }
 const Transport={ timer:null,
@@ -4501,7 +4634,7 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   look=document.hidden?LOOK_HID:LOOK_ON;                      // audibly playing — stretch the horizon anyway
   wake=document.hidden?WAKE_HID:WAKE_ON;
   if(!playing) return;
-  if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } }
+  if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } camStop(); }   // …and drop any camera tween: it cannot advance while hidden
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
 function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
@@ -4512,7 +4645,9 @@ function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers();
   if(growPkg() && cursorCol!==0) setCursor(0);
   step=Math.max(0,Math.min(COLS-1,cursorCol));                                 // ▶ Play always starts at the cursor (2026-07-27)
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
-  playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
+  playBtn.textContent="■ Stop"; playhead.classList.add("on");
+  CAM.yielded=false; camEnsure(step,{instant:true});          // ▶ is a deliberate act: take the wheel back and cut to the start
+  Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
   if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
   checkLevel(); }
 function stop(){ playing=false; Transport.end();
@@ -4525,7 +4660,7 @@ document.getElementById("undoBtn").onclick=undoEdit;
 document.getElementById("redoBtn").onclick=redoEdit;
 loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
 drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
-  drumArea.style.display=drumsOn?"":"none";
+  showDrumArea(drumsOn);
   if(drumsOn) syncCursor();          // the lane was display:none, so its pads had no geometry — re-measure the cursor rail now that they do
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
