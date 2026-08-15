@@ -567,7 +567,7 @@
               <div id="cursorCol"></div>
               <div id="playhead" class="playhead"></div>
             </div>
-            <div id="cursorStrip" title="The cursor — tap to move it. Play starts here; ＋/－ room work here."><div id="cursorKnob">🔻</div></div>
+            <div id="cursorStrip" title="The cursor — it follows where you plant. ＋/－ room and 🌿 Grow work here. Drag it yourself to start ▶ Play from that spot."><div id="cursorKnob">🔻</div></div>
           </div>
         </div>
         <div id="wobbleMeter" class="densitymeter" style="display:none">
@@ -1033,6 +1033,7 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
   if(typeof syncCursor==="function") syncCursor();
 }
 function drumClick(d,c){ initAudio(); actx.resume();
+  followCursor(c);                 // the beat lane is the same timeline — tapping a pad is working at that column too
   const on=!drumG[d][c];
   modelSetDrum(d,c,on); dcells[d][c].classList.toggle("on",on);
   if(on) DRUMS[d].play(actx.currentTime+0.01);
@@ -1425,6 +1426,7 @@ function cellClick(r,c,el){
   if(trayMode) return;   // the tray owns the field — its pointer handlers on the track do the work (also eats synthesized post-touch mousedowns)
   initAudio(); actx.resume(); hideNoteTip();
   if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
+  followCursor(c);   // …and covers the stamp path below, which is only ever reached from here
   if(activeTool){ stampTool(r,c); return; }
   setCell(r,c,!grid[r][c]);
   if(grid[r][c]){ playRow(r,actx.currentTime); flash(el,r); bloom(el, noteFlower(r)); compReact(); }
@@ -1697,7 +1699,16 @@ function growBlocked(){ if(choiceUp()){
 // ---------- The cursor: WHERE in time (2026-07-27 redesign) ----------
 // A stake on the strip under the field. Play starts here; ＋/－ column surgery works here —
 // one column per press, no selection needed. The Scoop stays purely about SEEDS.
-let cursorCol=0;
+// The cursor moves for two different reasons and they must not be treated alike. It follows your HAND when you
+// plant (incidental), and it is PINNED when you put it somewhere deliberately — the strip or the arrow keys.
+// ▶ starts at the pin if there is one and at loopStart otherwise, so plain ▶ still plays the whole path even
+// though planting now moves the cursor. Planting clears the pin, because once you are editing elsewhere that
+// intent is stale. Consequence the owner accepted: play-from-here becomes a deliberate gesture, not the default.
+let cursorCol=0, cursorPinned=false;
+// The loop's return point. A VARIABLE rather than a hardcoded 0 so Phase 2's loop range is this gaining a UI
+// rather than a rewrite. It used to be the cursor, which the owner never wanted ("I never actually needed
+// looping back to the cursor") and which also meant nudging the cursor mid-song silently moved the wrap point.
+let loopStart=0;
 const cursorStripEl=document.getElementById("cursorStrip"), cursorKnobEl=document.getElementById("cursorKnob"),
       cursorColEl=document.getElementById("cursorCol");
 function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
@@ -1709,8 +1720,10 @@ function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
     if(a&&z&&z.offsetHeight){ drumCursorEl.style.top=(a.offsetTop-4)+"px";        // measure the real pads: a round pad needs the frame to clear it, not sit on its edge
       drumCursorEl.style.height=(z.offsetTop+z.offsetHeight-a.offsetTop+8)+"px"; } } }
 function setCursor(c){ cursorCol=Math.max(0,Math.min(COLS-1,c)); syncCursor(); }
+function pinCursor(c){ cursorPinned=true; setCursor(c); }    // deliberate: the strip, the arrow keys — ▶ will honour it
+function followCursor(c){ cursorPinned=false; setCursor(c); }  // incidental: your hand just worked here, so the tools should too
 function cursorFromEvent(e){ const b=cursorStripEl.getBoundingClientRect();
-  setCursor(Math.floor((e.clientX-b.left-10)/38)); }
+  pinCursor(Math.floor((e.clientX-b.left-10)/38)); }   // putting the stake down by hand IS the deliberate act
 cursorStripEl.addEventListener("pointerdown",e=>{ e.preventDefault();
   try{ cursorStripEl.setPointerCapture(e.pointerId); }catch(err){}
   cursorStripEl._drag=true; cursorFromEvent(e); });
@@ -4160,7 +4173,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitTray();
-  cursorCol=0; syncCursor();   // every level/step starts with the cursor at the top
+  cursorCol=0; cursorPinned=false; loopStart=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
   step=0; playhead.classList.remove("on"); camStop(); scroller.scrollLeft=0; camReseed(); CAM.yielded=false; litEls.length=0;
@@ -4579,7 +4592,7 @@ function pump(){
   while(endTime===Infinity && tick2time(bookTick)<horizon){
     if(bookCol>=COLS){
       if(!looping){ endTime=tick2time(bookTick); break; }     // the phantom column after the last
-      bookCol=Math.max(0,Math.min(COLS-1,cursorCol));         // the wrap re-reads the cursor LIVE, as the old tick did
+      bookCol=Math.max(0,Math.min(COLS-1,loopStart));         // …to the START of the loop, not to the cursor
       CAM.yielded=false; }                                    // a wrap is a landmark — the camera comes back for it
     bookColumn(bookCol,bookTick);
     paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
@@ -4624,7 +4637,7 @@ function paintCol(col,stale){
 function paintLoop(){ if(!playing){ paintRaf=0; return; } paintDue(nowSec()); paintRaf=requestAnimationFrame(paintLoop); }
 const Transport={ timer:null,
   begin(){ this.end();
-    bookCol=Math.max(0,Math.min(COLS-1,cursorCol)); bookTick=0; endTime=Infinity;
+    bookCol=Math.max(0,Math.min(COLS-1,step)); bookTick=0; endTime=Infinity;   // start() has already decided WHERE — booking must not re-derive it from the cursor, which no longer always agrees
     anchorTick=0; anchorSPT=secPerTick(); anchorTime=nowSec()+ANCHOR_PAD;
     pump(); if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop); },
   end(){ clearTimeout(this.timer); this.timer=null;
@@ -4645,18 +4658,21 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
 function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
-  // In a package that TEACHES duration the cursor is a TOOL — 🌿 Grow acts on whatever starts under it — so a
-  // child is routinely parked mid-field, where ▶ earns no listen credit and a loop would loop only the tail.
-  // There, ▶ walks the cursor home first: the goal says "hear it", so play the whole path. Gated on the
-  // unlock rather than canGrow(), so the Studio keeps play-from-here and every shipped package is untouched.
-  if(growPkg() && cursorCol!==0) setCursor(0);
-  step=Math.max(0,Math.min(COLS-1,cursorCol));                                 // ▶ Play always starts at the cursor (2026-07-27)
+  // ▶ starts at the cursor only if it was put there DELIBERATELY; otherwise at the loop's start. This replaces
+  // 2d's `if(growPkg() && cursorCol!==0) setCursor(0)` walk-home, which is deleted rather than generalized:
+  // that hack had ▶ DRAG the cursor to 0, so planting a seed and pressing 🌿 Grow afterwards grew whatever
+  // started at column 0 — the "it grew an old seed" the owner reported. ▶ no longer moves the cursor at all.
+  step=Math.max(0,Math.min(COLS-1, cursorPinned?cursorCol:loopStart));
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on");
   CAM.yielded=false; camEnsure(step,{instant:true});          // ▶ is a deliberate act: take the wheel back and cut to the start
   Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
   if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
-  checkLevel(); }
+  checkLevel();
+  // Refusing credit for a partial listen is honest, but silence about it is not: a child who parked the stake
+  // on purpose would press ▶ and watch a goal simply not tick. Say why. AFTER checkLevel, which can clobber it.
+  if(!fromTop && !ev.played && ((curStage().goals||[]).some(g=>g.play)))
+    setStatus("▶ from the cursor 🔻 — this one only counts from the very beginning. Drag 🔻 back to the start and press ▶ again."); }
 function stop(){ playing=false; Transport.end();
   playBtn.textContent="▶ Play"; playhead.classList.remove("on");
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
@@ -4731,7 +4747,7 @@ document.addEventListener("keydown",e=>{
   if(!e.ctrlKey && !e.metaKey && !e.altKey && (e.key==="ArrowLeft"||e.key==="ArrowRight")){
     const c2=cursorCol+(e.key==="ArrowRight"?1:-1);
     if(c2<0||c2>COLS-1) return;                    // at either end, leave the browser its own scrolling
-    setCursor(c2); cursorIntoView(); e.preventDefault(); return; }
+    pinCursor(c2); cursorIntoView(); e.preventDefault(); return; }   // driving the cursor by hand is deliberate — ▶ will start here
 });
 // A mouse click leaves the button FOCUSED, silently — Chrome hides the ring for pointer input. Then the
 // first plain keypress flips it into keyboard mode and rings whatever still holds focus, so pressing → to
