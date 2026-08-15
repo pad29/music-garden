@@ -317,7 +317,14 @@
     animation:fall linear forwards;}
   @keyframes fall{ to{ transform:translateY(108vh) rotate(560deg); opacity:.85;} }
   .intent{ color:var(--leaf-deep);}
-  #world{ display:flex; gap:7px; margin:0 0 12px; font-size:1.1rem; min-height:1.3em;}
+  /* max-width is what makes the wrap possible at all: body is a centred flex COLUMN, so this strip was sized
+     by max-content and simply grew past the screen — 13 powers (the intro package, the longest) measured
+     398px against a 390px phone's 354px of content box, and body's overflow-x:hidden clipped the last one
+     rather than showing it. Bounded, it wraps and centres instead; the shrink below keeps 13 on one line down
+     to ~367px so the wrap is a safety net rather than the normal look. */
+  #world{ display:flex; flex-wrap:wrap; justify-content:center; max-width:100%;
+    gap:7px; margin:0 0 12px; font-size:1.1rem; min-height:1.3em;}
+  @media (max-width:430px){ #world{ gap:4px; font-size:1rem; } }
   #world span{ filter:grayscale(1) opacity(.28); transition:filter .5s;}
   #world span.lit{ filter:none; text-shadow:0 0 12px rgba(244,201,93,.75);}
   #world span.pop{ animation:pop .55s ease-out;}
