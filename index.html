@@ -1093,7 +1093,8 @@ function modelSetCols(cols){ tx("resize",()=>{ const lim=cols*TICKS_PER_COL;   /
 function modelInsertTime(atTick,ticks){ tx("insert-time",()=>{
   for(const t of doc.tracks) for(const n of t.notes){
     if(n.startTick>=atTick) n.startTick+=ticks;
-    else if(t.role==="melody" && n.startTick+n.durationTicks>atTick) n.durationTicks+=ticks; }  // ＋room INSIDE a vine stretches it rather than cutting it in half
+    else if(t.role==="melody" && n.startTick+n.durationTicks>atTick)                            // ＋room INSIDE a vine stretches it rather than cutting it in half —
+      n.durationTicks=Math.min(n.durationTicks+ticks, MAX_VINE*TICKS_PER_COL); }                // but never past the ceiling 🌿 Grow itself refuses to cross
   COLS+=Math.round(ticks/TICKS_PER_COL); reproject(); }); }
 function modelRemoveTime(atTick,ticks){ tx("remove-time",()=>{
   ticks=Math.min(ticks, Math.max(0, COLS*TICKS_PER_COL-atTick));   // a span can't overhang the timeline — otherwise notes before it get stranded past the shrunk COLS
@@ -1158,14 +1159,15 @@ function renderVines(){ if(!vinesEl) return; vinesEl.innerHTML="";
       s.style.left=stemLeft(c)+"px";                                // starts inside the seed's right edge, so it reads as growing OUT of it
       s.style.top=stemTop(r)+"px"; s.style.width=stemW(L)+"px";
       vinesEl.appendChild(s); }
-    if(grow){ const g=document.createElement("div"); g.className="grip"; g.dataset.id=n.id;
+    if(grow && !choiceUp()){ const g=document.createElement("div"); g.className="grip"; g.dataset.id=n.id;   // a picker's demo is to be HEARD, not edited
       g.style.left=gripLeft(c,L)+"px"; g.style.top=(TRAY_PAD+r*TRAY_CH)+"px";
       vinesEl.appendChild(g); } } }
 // ---------- Pulling a vine (EDITOR-DESIGN §6) ----------
 // Studio-only for now (owner, 2026-08-10) — the one surface with no goal detector and no narrated rest a
 // held note could contradict. Which package TEACHES duration is parked in §17.
 let pull=null;
-const canGrow=()=>currentPkg==="studio" || !!(curStage()&&curStage().grow);
+const growPkg=()=>unlockedSet(levelIdx).has("grow");   // a package that TEACHES duration keeps the tool for the rest of itself
+const canGrow=()=>currentPkg==="studio" || growPkg() || !!(curStage()&&curStage().grow);
 const growOn=()=>document.body.classList.contains("growing") && !trayMode && !activeTool;
 function vineMax(n){ const c=noteCol(n), r=projRow(n.pitch);
   let stop=Math.min(COLS, c+MAX_VINE);                              // a vine stops when it meets a seed on its OWN row —
@@ -1221,7 +1223,7 @@ const GROW_COPY = {
   someGrew:    (k,b) => `🌿 <b>${k}</b> grew — <b>${b}</b> had something in the way 🌱.`,
   someTrimmed: (k,b) => `✂ <b>${k}</b> got shorter — <b>${b}</b> ${b===1?"was":"were"} already as short as a seed 🌱.`,
   wall: {   // three different walls, three different answers — Math.min() in vineMax throws the reason away
-    ceiling: "🌿 Eight steps is as long as a vine grows — that's a whole bar of holding.",
+    ceiling: "🌿 Eight steps is as long as a vine grows — that's two whole beats of holding.",
     edge:    "🌿 The field ends here — press <b>＋ room</b> to make more, then try again.",
     seed:    "🌿 It bumped into the next seed on its own line 🌱 — a vine can't grow through a seed."
   },
@@ -1243,6 +1245,7 @@ function cursorIntoView(){ const x=TRAY_PAD+cursorCol*TRAY_CW, w=scroller.client
   else if(x+34>scroller.scrollLeft+w) scroller.scrollLeft=x+34-w+TRAY_PAD; }
 function growTrim(dir){
   if(pull) return;                                                  // a grip drag owns the note right now
+  if(growBlocked()) return;                                         // …and this covers the G/T keys too — growTrim is the single entry point
   if(trayPlace||trayDrag){ setStatus("Put the copy down first ⧉ — or press <b>Esc</b> to put it away."); return; }
   const set=growTargets();
   if(!set.length){ setStatus(GROW_COPY.none); return; }
@@ -1523,7 +1526,7 @@ function trayCancel(e){ trayPtrs.delete(e.pointerId); if(trayMode) trayCancelGes
 trackEl.addEventListener("pointerup",trayUp); trackEl.addEventListener("pointercancel",trayCancel);
 document.getElementById("trayCopy").onclick=()=>{ const ns=trayNotes(); if(!ns.length) return;
   const qs=ns.map(n=>trayCellOf(n)), minR=Math.min(...qs.map(q=>q.r)), minC=Math.min(...qs.map(q=>q.c));
-  trayPlace={ rel:qs.map(q=>({dr:q.r-minR, dc:q.c-minC})),
+  trayPlace={ rel:qs.map((q,i)=>({dr:q.r-minR, dc:q.c-minC, dur:ns[i].durationTicks})),   // carry LENGTH: copying a vine must not flatten it
               h:Math.max(...qs.map(q=>q.r))-minR, w:Math.max(...qs.map(q=>q.c))-minC };
   trayPlacePreview({r:minR, c:minC});                        // ghost is visible immediately (touch has no hover)
   setStatus("⧉ Copied — <b>tap where the copy should grow</b> 🌱 (drag pans · Esc cancels).");
@@ -1539,7 +1542,8 @@ function trayPlaceCommit(cell){ const a=trayPlaceClamp(cell), made=[];
   tx("paste",()=>{ const t=melTrack();
     trayPlace.rel.forEach(o=>{ const pitch=MIDI[a.r+o.dr], tick=(a.c+o.dc)*TICKS_PER_COL;
       if(!t.notes.some(n=>n.pitch===pitch&&n.startTick===tick)){
-        const n={id:newNoteId(),pitch,startTick:tick,durationTicks:TICKS_PER_COL,velocity:1};
+        const dur=Math.min(o.dur||TICKS_PER_COL, (COLS-(a.c+o.dc))*TICKS_PER_COL);   // honour the source length, clipped at the field's end
+        const n={id:newNoteId(),pitch,startTick:tick,durationTicks:dur,velocity:1};
         t.notes.push(n); made.push(n.id); } });
     reproject(); });
   trayPlace=null; if(made.length) traySel=made;               // the copy becomes the new pick — chained placing feels natural
@@ -1554,6 +1558,12 @@ function traySurgeryBlocked(){
   if(document.querySelector(".cell.callcol")){ setStatus("This level's path is split into call and answer — time can't stretch here 🌿."); return true; }
   const ch=document.getElementById("choiceRow");
   if(ch && ch.style.display!=="none"){ setStatus("This level lays out the choices itself — no time surgery here 🌿."); return true; }
+  return false; }
+// the same gate for DURATION (EDITOR-DESIGN §17's growBlocked, now that a package finally needs it): while a
+// picker is up, its options are laid out for the EAR — editing one would leave choiceViewed/choicePick lying.
+function choiceUp(){ const ch=document.getElementById("choiceRow"); return !!ch && ch.style.display!=="none"; }
+function growBlocked(){ if(choiceUp()){
+    setStatus("This level lays out the walks itself 👂 — tap each one, then pick."); return true; }
   return false; }
 // ---------- The cursor: WHERE in time (2026-07-27 redesign) ----------
 // A stake on the strip under the field. Play starts here; ＋/－ column surgery works here —
@@ -1890,17 +1900,57 @@ const FAMOUS = {
            [60,84],[72,84],                                                                                 // one final octave…
            [67,86],[64,88],[60,90]] },                                                                      // …and the walk home: G, E, C
     credit:"🥢 That's Chopsticks — the first tune half the world ever learns to play! Listen to what it is made of: one SOFT wobble, two notes rubbing shoulders, struck again and again — and then the wobble melts, step by step, wider and wider, all the way home to a perfectly calm octave. A whole famous song built from a single softening shimmer." },
+  // Two Kinds of Walking — the FIRST entry written with real note lengths (the third number on each tuple).
+  // Traditional spiritual, public domain; transposed from the score's F major UP a fifth into C, which lands
+  // the whole tune inside the pentatonic palette (it only ever uses do-re-mi-sol-la) and inside the C4–A5 field.
+  // One column = one eighth at ♩=88, so a quarter is 2 columns and the tonic it lands on is a whole note = MAX_VINE.
+  // NOTE LENGTHS ARE THE OWNER'S, from his own save link (2026-08-13) — in particular the dotted cha-ri-ot figure,
+  // which keeps the score's printed 3:1 dot rather than evening it into swung eighths. Never re-even it.
+  swinglow: { title:"Swing Low, Sweet Chariot", cols:32,
+    // CAPSTONE = the first phrase only, a pure TRUNCATION of the jukebox below (shortening is allowed, rewriting
+    // is not — so the last note keeps its own length rather than being stretched to fill the bar). It lands on
+    // the fifth, which leaves the phrase asking a question; the Studio version below answers it by going home.
+    mel:[[76,0,2],                                            // Swing              (quarter pickup)
+         [72,2,6],                                            // low,               (dotted half — the first hold)
+         [76,8,2],                                            // sweet
+         [72,10,3],[72,13],[69,14],[67,15,3],                 // cha-ri-ot,         a dotted step, two quick ones, a hold
+         [72,18],[72,19],[72,20],[72,21],                     // Com-in' for to     four quick steps
+         [76,22],[76,23],[79,24,2],                           // car-ry me
+         [79,26,6]],                                          // home.              held — but on the fifth, still hanging
+    jukebox:{ cols:66,                                        // JUKEBOX = both phrases, landing home. Capstone & jukebox MAY differ.
+      mel:[[76,0,2],[72,2,6],[76,8,2],
+           [72,10,3],[72,13],[69,14],[67,15,3],
+           [72,18],[72,19],[72,20],[72,21],
+           [76,22],[76,23],[79,24,2],[79,26,6],
+           [81,32],[79,33],                                   // Swing — a two-note pickup into the second phrase
+           [76,34,6],                                         // low,
+           [79,40,2],                                         // sweet
+           [72,42,3],[72,45],[69,46],[67,47,3],               // cha-ri-ot,
+           [72,50],[72,51],[72,52],[72,53],                   // Com-in' for to
+           [76,54],[76,55],[74,56,2],                         // car-ry me          (this time it steps DOWN to land)
+           [72,58,8]] },                                      // home.              the tonic, a whole note, longest of all
+    credit:"🎧 That's Swing Low, Sweet Chariot — and listen to where it holds. Every line hurries along in quick little steps and then leans on a long one, exactly like the walks you have been building. It ends the way your own walks do, on a note that holds. 🎶" },
 };
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
-const FAMOUS_TEMPO={ taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126, chopsticks:132 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
+const FAMOUS_TEMPO={ swinglow:88, taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126, chopsticks:132 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
 function placeFamous(f){ tx("famous",()=>{                                    // ONE journal entry — a 100-note reveal must not evict the player's undo history
   if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
   (f.chords||[]).forEach(([midis,col])=> midis.forEach(m=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }));  // chords (block triads, MIDI)
   (f.mel||[]).forEach(([m,col])=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); });                            // melody on top
+  // …then the LENGTHS, once every onset is down. A third element on a mel tuple is the note's length in
+  // columns — omitted everywhere it was written before duration existed, so every shipped entry stays flat.
+  // Only packages from `two-kinds-of-walking` onward should use it: before a child has been taught the vine,
+  // a held note in a reveal is an unexplained mystery; after, it is the lesson turning up in a real song.
+  const t=melTrack();
+  (f.mel||[]).forEach(([m,col,len])=>{ if(!len||len<2) return; const r=famousRow(m); if(r<0||col>=COLS) return;
+    const n=t.notes.find(q=>q.pitch===m && noteCol(q)===col); if(!n) return;
+    n.durationTicks=Math.min(len, MAX_VINE, COLS-col)*TICKS_PER_COL; });
+  reproject();
   if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } drumArea.style.display="";            // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
-    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } }); }   // the lane just became visible — re-measure the cursor rail
+    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } });     // the lane just became visible — re-measure the cursor rail
+  renderVines(); }                       // …and draw the stems: setCell's own render ran before the lengths were written
 let famousTimers=[];
 function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[];
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing")); }   // a reveal lights cells outside the transport — litEls doesn't know about those
@@ -1915,7 +1965,11 @@ function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   for(let c=0;c<COLS;c++){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
     const lanes=[]; if(hasDrums) for(let d=0;d<DRUMS.length;d++) if(drumG[d][c]) lanes.push(d);
     if(!rows.length && !lanes.length) continue; lastC=c;
-    rows.forEach(r=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd));            // sound the pitched column (audio clock)
+    // sound the pitched column (audio clock), each note for as long as it actually holds. NOT holdOf(): that
+    // reads anchorSPT, which the Transport freezes at ITS anchor — and this sweep books its own time from sd.
+    rows.forEach(r=>{ const n=gridNote[r]&&gridNote[r][c];
+      const hold=(n&&n.durationTicks>TICKS_PER_COL) ? (n.durationTicks/TICKS_PER_COL)*sd : 0;
+      voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd, hold); });
     lanes.forEach(d=>DRUMS[d].play(t0+c*sd));                                       // sound the drum hits
     famousTimers.push(setTimeout(()=>{ rows.forEach(r=>flash(cells[r][c],r));      // light it (wall clock, aligned)
       if(rows.length) bloom(cells[rows[0]][c], rows.length>=2?"💐":noteFlower(rows[0]));
@@ -2036,12 +2090,13 @@ function drawContourGhost(type){ const svg=document.getElementById("contourGhost
 const clearContourGhost=()=>drawContourGhost(null);
 // "choose the matching path" levels (the `compare` pattern)
 let choiceOpts=null, choiceAnswer=-1, choiceViewed=[];
+let choiceStatus=null;   // a picker owns the status line: renderStage sets it AFTER setup(), and would otherwise clobber the prompt
 function showChoices(opts,answer,prompt){ choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1;
   const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
   opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
     b.textContent="🎵 Path "+String.fromCharCode(65+i); b.onclick=()=>pickChoice(i); row.appendChild(b); });
   setStatus(prompt||"Tap each path to hear and see it — listen to <b>all three</b> first, then choose the one that traces the glowing arc."); }
-function hideChoices(){ const row=document.getElementById("choiceRow"); if(row){ row.style.display="none"; row.innerHTML=""; } choiceOpts=null; choiceAnswer=-1; choiceViewed=[]; }
+function hideChoices(){ const row=document.getElementById("choiceRow"); if(row){ row.style.display="none"; row.innerHTML=""; } choiceOpts=null; choiceAnswer=-1; choiceViewed=[]; choiceStatus=null; }
 function pickChoice(i){ if(!choiceOpts) return;
   tx("choice",()=>{ wipe(); placeTune(choiceOpts[i].map((r,c)=>[r,c])); });
   initAudio(); actx.resume(); const t0=actx.currentTime+0.05, sd=stepDur()/1000;
@@ -2106,6 +2161,31 @@ function pickPatternChoice(i){ if(!choiceOpts) return; wipeDrums();
   ev.choicePick=i; checkLevel();
   setStatus(i===choiceAnswer ? (patternMsgs&&patternMsgs.yes||"✨ That's the one that breathes!")
                              : (patternMsgs&&patternMsgs.no ||"That one's crowded — find the pattern with room to breathe.")); }
+// The DURATION audition. showChoices places one note per column and sounds each with no hold, so it
+// physically cannot present a long note; showPatternChoices is drums-only. Options here are [row,col,len]
+// triples, and A KICK WALKS UNDER EVERY ONE — without a reference pulse "all long" is heard as "slower",
+// which is the one thing a duration package must never teach.
+const LEN_BEATS=[0,4,8,12];
+function showLenChoices(opts,answer,prompt,msgs){
+  choiceOpts=opts; choiceAnswer=answer; choiceViewed=opts.map(()=>false); ev.choicePick=-1; patternMsgs=msgs||null;
+  const row=document.getElementById("choiceRow"); if(!row) return; row.style.display="flex"; row.innerHTML="";
+  opts.forEach((_,i)=>{ const b=document.createElement("button"); b.className="secondary toggle";
+    b.textContent="🚶 Walk "+String.fromCharCode(65+i); b.onclick=()=>pickLenChoice(i); row.appendChild(b); });
+  choiceStatus = prompt || "Tap each walk to hear it — listen to <b>all three</b> first, then pick.";
+  setStatus(choiceStatus); }
+function pickLenChoice(i){ if(!choiceOpts) return;
+  setMelodyLens(choiceOpts[i]);                              // the picture matches the sound — stems and all
+  initAudio(); actx.resume(); const t0=actx.currentTime+0.05, sd=stepDur()/1000;
+  choiceOpts[i].forEach(([r,c,L])=>voice(instrEl.value, midiToFreq(MIDI[r]), t0+c*sd, (L||1)>1 ? (L||1)*sd : 0));
+  LEN_BEATS.forEach(c=>DRUMS[0].play(t0+c*sd));              // the ruler: the SAME pulse under all three
+  choiceViewed[i]=true;
+  const row=document.getElementById("choiceRow"); if(row) [...row.children].forEach((b,bi)=>b.classList.toggle("on", bi===i));
+  if(!choiceViewed.every(Boolean)){ ev.choicePick=-1;
+    const left=choiceViewed.filter(x=>!x).length;
+    setStatus(`Keep listening — hear all three walks first (${left} to go).`); checkLevel(); return; }
+  ev.choicePick=i; checkLevel();
+  setStatus(i===choiceAnswer ? (patternMsgs&&patternMsgs.yes||"✨ That's the one that walks!")
+                             : (patternMsgs&&patternMsgs.no ||"Not that one — find the walk that mixes long steps and quick ones.")); }
 
 // ---------- Off the Path: syncopation & swing (package PW-3) ----------
 // Vocabulary on the 16-step bar: beats = 0,4,8,12 · off-beats ("ands") = 2,6,10,14 · odd steps = the cracks.
@@ -2118,6 +2198,22 @@ const PUSH_STEPS=[3,7,11,15];                                                 //
 const pushHits = () => PUSH_STEPS.filter(c=>[0,1,2].some(d=>drumG[d][c])).length;
 // melody seeds that land off the beat columns (the melodic mirror of gridNotesOnBeats)
 function gridNotesOffBeats(){ let n=0; for(let c=0;c<COLS;c++){ if(c%4===0) continue; for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; } return n; }
+
+// ---------- Two Kinds of Walking: note DURATION (package PW-4) ----------
+// grid[r][c] is ONSET-ONLY by invariant — it marks where a note STARTS and never the cells it covers — so it
+// structurally cannot see a hold. Every detector here reads the real note objects instead.
+// vineLen(n) is length in COLUMNS: 1 = a plain quick seed, MAX_VINE = 8. One beat = 4 columns.
+function melNotes(){ return melTrack().notes.filter(n=>{ const c=noteCol(n); return c>=0 && c<COLS; }); }
+const longCount   = (min=2) => melNotes().filter(n=>vineLen(n)>=min).length;   // notes holding >= min steps
+const shortCount  = ()      => melNotes().filter(n=>vineLen(n)===1).length;    // plain quick seeds
+const longestVine = ()      => melNotes().reduce((m,n)=>Math.max(m,vineLen(n)),0);   // 0 on an empty field
+// ONE note spans columns a..b end to end — a real hold, never a row of re-struck seeds faking one
+const heldThrough = (a,b)   => melNotes().some(n=>noteCol(n)<=a && noteCol(n)+vineLen(n)-1>=b);
+// the tune LANDS: something starts at the last occupied column, and everything starting there is long.
+// .every() and not .some(), so a stray quick note stacked on the ending fails honestly instead of hiding.
+function endsLong(min=3){ const c=lastCol(); if(c<0) return false;
+  const at=melNotes().filter(n=>noteCol(n)===c);
+  return at.length>0 && at.every(n=>vineLen(n)>=min); }
 // Feel switch: 🚶 straight vs 🕺 swing. Swing delays the mid-point off-beats (steps 2,6,10,14) by ~a
 // triplet — same notes, different feel. tick() applies it to melody AND drums; jam keeps its own swing.
 let levelSwing=0;
@@ -3372,6 +3468,116 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
   intro:"The circle keeps dancing on its own now 🦊. This clearing is yours — march it, skip it, swing it, no goals, just play. Head 🏡 Home whenever you want a new trail.",
   goals:[]},
 ]},
+// Pulse Woods' fourth and last package — the one that teaches note DURATION. Every note in the game was
+// exactly one step long until here; the vine is the first time doing LESS makes MORE. Drums are deliberately
+// held back to L4 (the siblings all unlock them on L1): L1-L3 turn on the subtlest sound difference the game
+// has ever asked for — a seed that decays against a vine that keeps ringing — and a kick underneath during
+// first contact would mask exactly what those levels exist to reveal.
+"two-kinds-of-walking":{ id:"two-kinds-of-walking", name:"🥾 Two Kinds of Walking",
+  topic:"rhythm-duration", region:"pulse-woods",
+  desc:"Some steps are quick and some are long — hold one note and let it fill four.",
+  requires:["intro","footsteps","off-the-path"], version:1, author:"official", levels:[
+ {name:"One Long Step", unlock:["grow"],
+  power:{em:"🌿",name:"Hold",line:"You can make one note last instead of planting more."},
+  setup:()=>setMelodyLens([[9,0,1]]),
+  hint:()=>setMelodyLens([[9,0,4]]),
+  intro:"One seed is one quick step 🌱. But a note can also hold. Press the 🌿 Grow button in the rail beside the field and watch a green vine stretch out of the seed — each press makes the note hold one step longer. Keep going until the vine is four steps long, then press ▶ to hear it ring.",
+  teach:"How long a note lasts is its duration — some notes are quick, some are held.",
+  goals:[{id:"hold",label:"Grow the vine until the note holds 4 steps or more",chk:()=>longestVine()>=4},
+         {id:"pl",label:"Press ▶ to hear it hold",play:true}]},
+ {name:"Four Steps, or One",
+  power:{em:"🌼",name:"One Flower",line:"You can fill the same time with one note instead of four."},
+  teach:"Four short notes and one long note can fill the same time — but one is four sounds and the other is one.",
+  steps:[
+   {hint:()=>setMelodyLens([[9,0,1],[8,1,1],[7,2,1],[8,3,1]]),
+    intro:"Two ways to walk the same little stretch of path 🌼. First the quick way — plant a seed in each of the first four squares, then press ▶ and count the flowers that pop up. One flower for every step.",
+    goals:[{id:"four",label:"A quick seed on each of the first four squares",
+            chk:s=>s.placed===4 && [0,1,2,3].every(c=>colCount(c)===1) && longCount(2)===0},
+           {id:"pl",label:"Press ▶ and count the flowers",play:true}]},
+   {setup:()=>setMelodyLens([[9,0,1]]),
+    hint:()=>setMelodyLens([[9,0,4]]),
+    intro:"Now the same stretch, held as one long note 🌸. The field is clear and a single seed is waiting on the first square. Press 🌿 Grow until it holds all four steps, then press ▶. The sound lasts just as long, so how many flowers this time?",
+    goals:[{id:"one",label:"One seed only — grow it until it holds 4 steps",
+            chk:s=>s.placed===1 && longestVine()>=4},
+           {id:"pl",label:"Press ▶ and count the flowers again",play:true}]},
+ ]},
+ {name:"The Hole and the Hold",
+  power:{em:"🕳️",name:"Fill the Gap",line:"You can fill a gap with silence, or with a note that keeps singing."},
+  teach:"A gap can be silence — a rest — or a note still holding. They sound different and they look different.",
+  steps:[
+   {setup:()=>setMelodyLens([[9,0,1],[7,5,1],[6,6,1],[7,7,1],[9,8,1]]),
+    intro:"A little walk with a hole in it 🕳️. One step, then a gap where nothing sings at all, then the walk carries on. Press ▶ and listen to the silence sitting in that gap.",
+    goals:[{id:"hear",label:"Press ▶ and hear the hole",play:true}]},
+   {setup:()=>setMelodyLens([[9,0,1],[7,5,1],[6,6,1],[7,7,1],[9,8,1]]),
+    hint:()=>setMelodyLens([[9,0,5],[7,5,1],[6,6,1],[7,7,1],[9,8,1]]),
+    intro:"Now fill that gap a different way — with sound 🌿. Do not plant anything new. The first seed is already waiting under the green marker. Press 🌿 Grow again and again until its vine stretches right across the gap, then press ▶. The same hole, and now a note is still singing inside it.",
+    goals:[{id:"fill",label:"Fill the gap with one long note — no new seeds",
+            chk:s=>s.placed===5 && heldThrough(0,4)},
+           {id:"pl",label:"Press ▶ and hear it singing in the gap",play:true}]},
+ ]},
+ {name:"How Long Is Long?", drums:true, beatGuide:true, unlock:["drums"],
+  power:{em:"📏",name:"Measure",line:"You can count how many beats a note holds."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  setup:()=>setMelodyLens([[9,0,1],[6,8,1]]),
+  hint:()=>setMelodyLens([[9,0,5],[6,8,5]]),
+  intro:"The path is walking again 🥁 — four kicks, evenly. Grow the first note until it is still singing when the second kick lands. Then tap the strip under the field to slide the green marker along to the third kick, and grow that note the same way. Two long steps over four kicks.",
+  teach:"A held note keeps sounding while the beat walks on underneath it.",
+  goals:[{id:"first",label:"The first note still singing when the 2nd kick lands",chk:()=>heldThrough(0,4)},
+         {id:"second",label:"Slide the 🔻 to the 3rd kick and grow that note too",chk:()=>heldThrough(8,12)},
+         {id:"kick",label:"Keep the kick walking on all 4 beats",chk:()=>kickOn4()},
+         {id:"pl",label:"Press ▶ and count the kicks under your long notes",play:true}]},
+ {name:"Which Walk?",
+  power:{em:"👂",name:"Long Ear",line:"You can hear the difference between scurrying, plodding, and walking."},
+  setup:()=>showLenChoices([
+     [[7,0,1],[6,1,1],[7,2,1],[9,3,1],[7,4,1],[6,5,1],[7,6,1],[9,7,1],
+      [7,8,1],[6,9,1],[7,10,1],[9,11,1],[7,12,1],[6,13,1],[7,14,1],[9,15,1]],   // A — a scurry: 16 quick steps
+     [[7,0,8],[9,8,8]],                                                          // B — a plod: two long holds
+     [[7,0,1],[6,1,1],[9,2,6],[7,8,1],[6,9,1],[9,10,6]]],                        // C — quick, quick, LONG (the answer)
+     2, null,
+     {yes:"✨ That's the one that walks — quick steps AND long ones!",
+      no:"Not that one — one scurries all the way, one plods all the way. Find the walk that mixes both."}),
+  intro:"Three walks are coming down the path 👂. Tap each one and listen to all three. One scurries along in tiny quick steps, one plods in long slow ones, and one mixes both — quick, quick, long. Pick the one that sounds like a real walk.",
+  teach:"Music that is all one length gets dull — mixing long and short is what makes a rhythm walk.",
+  goals:[{id:"pick",label:"Hear all three walks, then pick the one that mixes quick and long",
+          chk:()=>ev.choicePick===choiceAnswer&&choiceAnswer>=0}]},
+ {name:"Both Kinds of Steps", drums:true, beatGuide:true,
+  power:{em:"🐢",name:"Two Kinds",line:"You can mix quick steps and long ones in one walk."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  hint:()=>setMelodyLens([[7,0,1],[6,1,1],[9,2,4],[7,8,1],[6,9,1],[7,10,1],[9,12,4]]),
+  intro:"Your turn to walk 🥾. Build a path of your own with both kinds of step — several quick seeds, and at least two you grow into long holds. Leave an empty square or two after a seed you want to grow, so its vine has somewhere to go. Then press ▶ and hear it stride.",
+  teach:"Quick, quick, long — that is a walk. Both kinds of step in one line.",
+  goals:[{id:"mix",label:"Both kinds: 4 or more quick seeds and 2 or more long holds",
+          chk:()=>shortCount()>=4 && longCount(3)>=2},
+         {id:"pl",label:"Press ▶ and hear it stride",play:true}]},
+ {name:"The Last Step", drums:true, beatGuide:true,
+  power:{em:"🏡",name:"Landing",line:"You can end a tune on a long note so it comes to rest."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
+  setup:()=>setMelodyLens([[7,0,1],[6,2,1],[9,4,1],[7,6,1],[6,8,1],[9,10,1]]),
+  hint:()=>setMelodyLens([[7,0,1],[6,2,1],[9,4,1],[7,6,1],[6,8,1],[9,10,5]]),
+  intro:"This little tune stops dead 🏡 — the last note is as quick as all the others, so the walk never gets to rest. Tap the strip under the field to slide the green marker under that last seed, then press 🌿 Grow until it holds. Press ▶ and hear the walk arrive and stand still.",
+  teach:"Most tunes end on a long note — it lets the music arrive and breathe.",
+  goals:[{id:"land",label:"Slide the 🔻 under the last seed and grow it — 4 steps or more",chk:()=>endsLong(4)},
+         {id:"home",label:"Keep the tune ending at HOME (a C row)",chk:s=>s.home},
+         {id:"pl",label:"Press ▶ and hear the walk arrive",play:true}]},
+ {name:"The Long Way Home", drums:true, beatGuide:true, loop:true, famous:"swinglow",
+  intent:"Which of your steps are long?",
+  power:{em:"🌄",name:"Long Walker",line:"You can walk a whole tune in two kinds of step and land it."},
+  drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]),
+  hint:()=>{ placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]);
+             setMelodyLens([[7,0,1],[6,1,1],[9,2,4],[7,8,1],[6,9,1],[7,10,1],[9,12,4]]); },
+  intro:"The long way home 🌄 — a beat is already walking under you. Plant a melody with both kinds of step, quick ones and long ones, and finish it on a long note at home. Loop it and listen to your whole walk go round.",
+  teach:"Long and short together, ending long, is a rhythm you can walk to.",
+  goals:[{id:"mix",label:"A walk with both kinds: 4+ quick seeds and 2+ long holds",
+          chk:()=>shortCount()>=4 && longCount(3)>=2},
+         {id:"land",label:"End it on a long note at HOME",chk:s=>endsLong(3)&&s.home},
+         {id:"pl",label:"Press ▶ and walk the whole path",play:true}]},
+ {name:"Free Walk 🥾", drums:true, loop:true,
+  power:{em:"🌲",name:"Free Walk",line:"This walking path is yours — quick, slow, or both."},
+  hint:()=>{ placeDrums([[0,0],[0,4],[0,8],[0,12],[1,4],[1,12]]);
+             setMelodyLens([[9,0,4],[7,4,2],[6,6,2],[9,8,4],[7,12,4]]); },
+  intro:"The woods are walking on their own now 🥾. This path is yours — quick steps, long holds, a beat if you want one, no goals, just play. Head 🏡 Home whenever you want a new world.",
+  goals:[]},
+]},
 "two-new-colors":{ id:"two-new-colors", name:"🌈 Two New Colors", topic:"palette-diatonic", region:"color-spring",
   palette:"diatonic", desc:"The world discovers two new colors — F, then B. Your garden widens to the full scale.",
   requires:["standing-towers"], version:1, author:"official", levels:[
@@ -3754,7 +3960,8 @@ const isPkgUnlocked = id => ((PACKAGES[id]&&PACKAGES[id].requires)||[]).every(re
 function unlockedSet(idx){ const s=new Set();
   for(let i=0;i<=idx && i<LEVELS.length;i++) (LEVELS[i].unlock||[]).forEach(f=>s.add(f)); return s; }
 function featName(f){ return {jam:"🎸 Jam — call the band",fuse:"🔨 Fuse & 🎒 Toolbox — bind voices",
-  drums:"🥁 Drums — the heartbeat",more:"➕ More room — grow the garden"}[f]||f; }
+  drums:"🥁 Drums — the heartbeat",more:"➕ More room — grow the garden",
+  grow:"🌿 Grow & ✂ Trim — hold a note longer"}[f]||f; }
 let levelIdx=0, levelDone=false, stepIdx=0, stepDone=false;
 const curStage=()=>{ const L=LEVELS[levelIdx]; return L.steps?L.steps[stepIdx]:L; };   // a level is either single or a list of steps
 const levelTitle=document.getElementById("levelTitle"), levelIntro=document.getElementById("levelIntro"),
@@ -3875,10 +4082,11 @@ function renderStage(){   // render the current step (or the whole level if it h
   setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
   setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
   if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
-  setStatus( L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
+  setStatus( choiceStatus ? choiceStatus                                 // a picker's own prompt survives — setup() runs BEFORE this line
+    : L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."
     : "Plant seeds 🌱 — click squares, then press <b>▶ Play</b>. Need an idea? Try <b>💡 Hint</b>." );
-  document.body.classList.toggle("growing", canGrow());   // vines are pullable in the Studio only, for now (§17)
+  document.body.classList.toggle("growing", canGrow());   // the Studio, and any package that unlocks "grow" — Two Kinds of Walking teaches it
   renderVines();
   populateDevJump();
   journalClear();   // undo spans the PLAYER's edits only — never the stage's own setup (calls, starter beats, pre-placed seeds)
@@ -4297,6 +4505,11 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
 function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
+  // In a package that TEACHES duration the cursor is a TOOL — 🌿 Grow acts on whatever starts under it — so a
+  // child is routinely parked mid-field, where ▶ earns no listen credit and a loop would loop only the tail.
+  // There, ▶ walks the cursor home first: the goal says "hear it", so play the whole path. Gated on the
+  // unlock rather than canGrow(), so the Studio keeps play-from-here and every shipped package is untouched.
+  if(growPkg() && cursorCol!==0) setCursor(0);
   step=Math.max(0,Math.min(COLS-1,cursorCol));                                 // ▶ Play always starts at the cursor (2026-07-27)
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on"); shownPage=-1; Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
@@ -4406,6 +4619,19 @@ function confetti(){ const colors=["#F4C95D","#44A35F","#F28C8C","#5AA9E6","#8A6
 // ---------- starter content + per-level hints ----------
 function setMelody(pairs){ tx("place",()=>{ wipe();
   pairs.forEach(([r,c])=>{ if(grid[r]&&c<COLS) setCell(r,c,true); }); }); checkLevel(); }
+// setMelody's duration-aware sibling: [row,col] or [row,col,lengthInColumns]. Every scripted path — setMelody,
+// placeTune, placeFamous, paste — creates notes exactly one column long, so without this NO level setup and no
+// 💡 Hint could ever show a child a held note. Onsets go down FIRST so vineMax() sees the finished field before
+// any length is clamped, and each note is found by (row,col) rather than through gridNote.
+function setMelodyLens(list){
+  tx("place",()=>{ wipe();
+    list.forEach(([r,c])=>{ if(grid[r] && c>=0 && c<COLS) setCell(r,c,true); });
+    const t=melTrack();
+    list.forEach(([r,c,L])=>{ if(!L || L<2) return;
+      const n=t.notes.find(q=>projRow(q.pitch)===r && noteCol(q)===c); if(!n) return;
+      n.durationTicks = Math.max(1, Math.min(L, MAX_VINE, vineMax(n))) * TICKS_PER_COL; });   // never show what a child couldn't build
+    reproject(); });
+  renderVines(); checkLevel(); }                       // setCell's own renderVines ran before the lengths were written
 function hintMelody(){ const pairs=[]; let r=Math.floor(Math.random()*ROWS);
   for(let c=0;c<COLS;c+=2){ r=Math.max(0,Math.min(ROWS-1,r+(Math.floor(Math.random()*3)-1)*(1+Math.floor(Math.random()*2)))); pairs.push([r,c]); }
   const tr=[...MIDI.keys()].filter(isTonic); pairs[pairs.length-1]=[tr[Math.floor(Math.random()*tr.length)],14];
@@ -4531,10 +4757,10 @@ function mhint(text,top){ const e=document.createElement("div"); e.className="hi
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full
 // versions; Blooms & the Four-Chord progression are constructs, not songs.) Each is just a v3 song. ---
-const JUKEBOX_FAMOUS=["mary","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","bachprelude","chopsticks","pachelbel","bodiddley","charleston"];
+const JUKEBOX_FAMOUS=["mary","swinglow","taps","amazinggrace","joy","odetojoy","bigben","shave","moldau","goinhome","igotrhythm","bachprelude","chopsticks","pachelbel","bodiddley","charleston"];
 function famousPalette(id){ for(const pid in PACKAGES){ if((PACKAGES[pid].levels||[]).some(l=>l.famous===id)) return PACKAGES[pid].palette||"pentatonic"; } return "diatonic"; }
 function famousToSong(id){ const f=FAMOUS[id]; if(!f) return null; const v=f.jukebox||f;   // the JUKEBOX gets the fuller version (e.g. all 4 verses) when an entry provides one; the capstone reward keeps the short teaching excerpt (top-level mel/chords)
-  const notes=[]; (v.mel||[]).forEach(([p,c])=>notes.push({p,c,len:1}));
+  const notes=[]; (v.mel||[]).forEach(([p,c,len])=>notes.push({p,c,len:Math.max(1,Math.min(len||1,MAX_VINE))}));   // a saved famous tune keeps its holds
   (v.chords||[]).forEach(([ms,c])=>ms.forEach(p=>notes.push({p,c,len:1})));            // chords = stacked notes in one column
   const hits=(v.drums||[]).map(([lane,c])=>({lane,c})); const now=Date.now();
   return { v:3, meta:{title:f.title,created:now,updated:now,author:"Tune Garden",famous:id},

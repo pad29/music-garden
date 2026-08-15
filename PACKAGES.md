@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-07-13 — **19 packages are BUILT** (every Wave A–D package except `two-kinds-of-walking`; Stone Chorus Canyon and Wave C are COMPLETE); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-08-13 — **20 packages are BUILT** (every Wave A–D package; **Wave A, Pulse Woods, Stone Chorus Canyon and Wave C are COMPLETE**); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -134,7 +134,7 @@ Tag every rhythm-touching package with the tier it needs.
 |---|---|---|---|---|
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
-| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **3 built** (footsteps, wind-and-gaps, off-the-path); `two-kinds-of-walking` remains |
+| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **4 built — COMPLETE** (footsteps, wind-and-gaps, off-the-path, two-kinds-of-walking) |
 | 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **5 built — COMPLETE** (twin-blooms, standing-towers, twin-blooms-plus, shifting-shadows, soft-wobble-strong-wobble) |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
 | 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
@@ -152,7 +152,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
-- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅, off-the-path ✅ · remaining: two-kinds-of-walking
+- **Wave A — Voice & Pulse** *(pentatonic):* follow-the-fireflies ✅, footsteps ✅, stepping-stones ✅, wind-and-gaps ✅, question-and-answer ✅, tiny-motifs ✅, off-the-path ✅, two-kinds-of-walking ✅ — **Wave A COMPLETE**
 - **Wave B — First Structures** *(pentatonic-thin; richer post-widening):* twin-blooms ✅, standing-towers ✅
 - **★ Milestone:** **two-new-colors** ✅ *(diatonic widening; tool-transposition deferred per §1a)*
 - **Wave C — Harmony & Function** *(diatonic):* twin-blooms-plus ✅, ways-home ✅, river-turns ✅, pull-of-the-moon ✅, false-doors ✅, shifting-shadows ✅, soft-wobble-strong-wobble ✅ — **COMPLETE**
@@ -236,14 +236,26 @@ Tag every rhythm-touching package with the tier it needs.
 - **Famous reward:** `igotrhythm` — Gershwin's *I Got Rhythm* (1930, US public domain since 2026-01-01): pure-pentatonic melody that lands a beat behind a steady kick pulse. **Owner score-checked (Pavel's save-link version, 2026-07-10, ♩=156); 13th Jukebox song.**
 - **Why:** first package whose replayability comes from *feel*, not correctness.
 
-#### `two-kinds-of-walking` — Two Kinds of Walking  [PW-4]
+#### `two-kinds-of-walking` — Two Kinds of Walking  [PW-4]  — **BUILT ✅ (2026-08-13)**
+- **Capability:** make notes hold — long steps and quick ones.
+- **Theory:** note duration (long vs short), and that a gap can be silence *or* a note still singing. **Palette:** pentatonic. **Rhythm tier:** R3 (duration). **Prereqs:** *(as built)* `intro`, footsteps, off-the-path.
+- **Patterns:** transform, compare, classify, build_constraint, capstone. **Success:** broad/targeted.
+- **Quest:** *The Long Way Home* — walk a whole tune in two kinds of step and land it.
+- **Sandbox:** Free Walk — quick steps, long holds, a beat if you want one.
+- **Unlocks:** 🌿 **Grow & ✂ Trim** (`unlock:["grow"]` on L1 — the first package outside the Studio to render the duration tools) and 🥁 Drums on L4.
+- **System needs (S) — BUILT:** the whole duration stack shipped in EDITOR-DESIGN Phase 2 (`durationTicks`, vines, `vineLen`, 🌿 Grow / ✂ Trim, `setMelodyLens`, `showLenChoices`).
+- **Famous reward:** 🎧 **Swing Low, Sweet Chariot** on the capstone *(owner-scored 2026-08-13)* — the FIRST famous entry with real note lengths. Capstone = the first phrase, landing on the long fifth; the Jukebox/Studio version = both phrases, landing home on the long tonic. Traditional spiritual, public domain, transposed from the score's F major up a fifth into C so the whole tune sits inside the pentatonic palette and the C4–A5 field. **Policy set with it (owner):** note lengths appear in famous reveals **only from this package onward** — before a child is taught the vine a held note is an unexplained mystery, after it the lesson turns up in a real song. Existing capstone reveals stay flat; their **Jukebox** versions get true lengths in a later batched pass.
+- **Why:** the first time in the game that doing *less* makes *more*; the misconception it defeats is "more notes = more music".
+
+#### `march-and-waltz` — March and Waltz  [PW-5]  *(the parked meter material from PW-4)*
 - **Capability:** make music march, sway, or spin (embodied meter feel).
-- **Theory:** meter / grouping feel (2 vs 3 vs 4). **Palette:** pentatonic. **Rhythm tier:** R1 + meter extension. **Prereqs:** garden-basics, footsteps, off-the-path.
+- **Theory:** meter / grouping feel (2 vs 3 vs 4). **Palette:** pentatonic. **Rhythm tier:** R1 + meter extension. **Prereqs:** `intro`, footsteps, **two-kinds-of-walking**.
 - **Patterns:** classify, transform, match_feel, build_constraint. **Success:** broad/targeted.
 - **Quest:** *Waltz Garden / festival* — dance the correct step; gateway to folk/world styles.
 - **Sandbox:** movement-feel presets; dance-style groove families.
-- **System needs (M):** meter beyond fixed 4/4 (triple groupings) — a real grid/meter change. Flag as the heaviest Wave-A item.
-- **Why:** makes rhythm *embodied*; bridges into the style worlds.
+- **System needs (M):** meter beyond fixed 4/4 (triple groupings) — a real grid/meter change. **Blocked on that engine work; file with the system-gated wave, NOT Wave A.**
+- **Why:** makes rhythm *embodied*; bridges into the style worlds. Duration is a genuine prerequisite, not a consolation — a waltz's identity is ONE-two-three, a long stressed beat and two short ones, so a child needs to hear length before they can feel a triple grouping.
+- **Note when scheduling:** `regionStage()` caps a region friend at `stages.length-1`, and Hopper has five stages, so Pulse Woods' *fifth* package awards no companion growth. Acceptable (Stone Chorus Canyon already has that shape) but a stated decision, not a surprise.
 
 ### REGION 3 — Stone Chorus Canyon  *(cluster: shape · pentatonic→diatonic)*
 
@@ -424,7 +436,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 #### `campfire-trails` — Campfire Trails  [AS-1]
 - **Capability:** compose inside a folk/communal/acoustic physics world.
-- **Theory:** folk-like modal simplicity, drone, dance feel. **Palette:** diatonic (modal). **Prereqs:** question-and-answer, two-kinds-of-walking, standing-towers, ways-home.
+- **Theory:** folk-like modal simplicity, drone, dance feel. **Palette:** diatonic (modal). **Prereqs:** question-and-answer, **march-and-waltz** *(repointed 2026-08-13 — this one wants the dance FEEL, which is meter, not duration)*, standing-towers, ways-home.
 - **Patterns:** build_constraint, match_feel, arrange, restore. **Success:** broad.
 - **Quest:** *Prepare a village gathering*; share songs by the fire.
 - **Sandbox:** folk timbres; drone mode; campfire biome theme.
@@ -451,7 +463,7 @@ Beyond the region/capability packages above, **constraint packages** are a first
 **Resolved (this round):** tool-transposition → phased hybrid (§1a); diatonic transition → progressive reveal (§1a); rhythm readiness → tiers R1–R4 (§2f).
 
 Still open:
-1. **Bars & plots / duration editor (R3)** — gates the full `wind-and-gaps`, `rain-and-sun`, and all of Region 7. Sequence after Wave A.
+1. ~~**Bars & plots / duration editor (R3)**~~ — **RESOLVED 2026-08-13**: duration shipped as EDITOR-DESIGN Phase 2 (vines + 🌿 Grow/✂ Trim) and is taught by `two-kinds-of-walking`. What remains of the old item is **meter/bars** (dance feels, bar numbers, loop range, count-in), which still gates `march-and-waltz`, `rain-and-sun` and Region 7.
 2. **Multi-voice system** — gates all of Region 6. Largest new system in this map.
 3. **Level-template / generator engine** — needed before 24 packages is realistic; validated by building `follow-the-fireflies` end-to-end first.
 4. **World-map UI** — the player-facing region map (current Home screen is package cards); separate workstream, driven by this DAG.
