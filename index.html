@@ -85,6 +85,9 @@
        all; only a credit, which arrives at a reward moment rather than mid-gesture, makes it taller. */
     #topband .status{ margin:2px 0 4px; padding:0; font-size:.78rem; line-height:1.25; min-height:2.5em; }
     #topband #actionRow{ margin-bottom:0; gap:5px; }
+    /* The band's height is the field's rent, so the transport pays it down. Measured on a 14-row diatonic
+       level: the groove <select> alone was 157px of a 298px line, wrapping the row and costing 49px — enough
+       to push a 514px field 13px past a real Pixel's ~640px of usable screen. */
     #topband #actionRow button{ padding:8px 9px; font-size:.86rem; }   /* the Studio's four verbs must fit ONE row inside 292px, or the band grows 40px and the field pays for it */
     /* Everything that is not part of the plant → Play → listen loop moves BELOW the field. body is a flex
        column, so this is pure order — no markup moves, and desktop is untouched. */
@@ -149,6 +152,19 @@
   /* Both lanes really scroll now, so both would grow a native bar — and .scroller's renders directly under
      #cursorStrip, appearing and vanishing as ＋/－ room crosses the overflow threshold, hopping everything
      below it by 15px. The camera does the following; the edge shadow below says there is more garden. */
+  /* ---- Step back and see the whole garden (owner request, phone, 2026-08-15) ----
+     `zoom` on the SCROLL CONTAINERS, never on their contents. Measured: at zoom .6 the scroller reports
+     clientWidth 734→1223 and scrollWidth 2448→2448 — i.e. every metric comes back in the SAME field-pixel
+     space TRAY_CW/TRAY_PAD already live in, so the camera needs zero edits and #cursorStrip (a child of
+     .scroller) can never disagree with the columns it points at. Native pinch cannot do this job: with
+     `initial-scale=1` and body overflow-x hidden Chrome clamps the minimum page scale to 1.0, so pinching
+     OUT does nothing at all — the owner confirmed that on the device before this was written. */
+  .fieldcol{ --fz:1; }
+  #scroller, #drumArea{ zoom:var(--fz); }
+  /* #drumbar is an UNZOOMED flex sibling, so its vertical rhythm has to be scaled by hand or the labels
+     shear off their pads. Its 72px WIDTH deliberately does not scale — that gutter is what aligns the lanes. */
+  #drumbar{ padding-top:calc(10px * var(--fz)); gap:calc(4px * var(--fz)); }
+  .drumlabel{ height:calc(30px * var(--fz)); font-size:max(9px, calc(.78rem * var(--fz))); }
   .scroller, #drumArea{ scrollbar-width:none; }
   .scroller::-webkit-scrollbar, #drumArea::-webkit-scrollbar{ height:0; width:0; }
   /* …so something else has to say "there is more garden that way". A soft edge, lit only when there really is
@@ -212,6 +228,10 @@
   body.growing #vines .grip::after{ content:"🌿"; position:absolute; right:-1px; top:50%;
     transform:translateY(-50%); font-size:11px; opacity:.55; pointer-events:none; }
   body.growing #vines .grip:active::after{ opacity:1; }
+  /* At the smallest zoom stop the field is for LOOKING: a 14px grip would be 8px, and withdrawing a target is
+     kinder than offering one too small to hit. This MUST sit after the rule above — equal specificity, so
+     authored earlier it would be a silent no-op. */
+  body.lookonly #vines .grip{ display:none; }
   .cell.tsel{ outline:3px solid var(--sky); outline-offset:-2px; }
   .cell.tghost{ box-shadow:inset 0 0 0 3px var(--purple); background:#D8CDF5; }
   .dcell.tband{ outline:2px dashed var(--purple); outline-offset:-2px; }   /* time ops touch the beat lane too — show it */
@@ -221,7 +241,15 @@
   /* TWO bands, split by verb: the row above the field LISTENS, the RAIL beside it is the HANDS.
      The rail stands in the 72px gutter the drum labels already reserve — so it costs no horizontal
      space at all — and runs the field's full height, keeping a tool beside the finger that's planting. */
-  #fieldbar{ flex:0 0 72px; width:72px; display:flex; flex-direction:column; gap:6px; padding-top:10px; }  /* 10px = .grid's padding, so the first tool lines up with the first row of plots */
+  /* OUT OF FLOW, so the rail cannot floor the lane it stands beside. .stage is align-items:stretch, and the
+     rail's own buttons have an intrinsic height (measured 378 plain, up to 324 in a fully-unlocked Studio) —
+     as a flex item it held the stage that tall no matter how far the field zoomed out, so zooming reclaimed
+     nothing: measured 324px at BOTH 0.8 and 0.6 before this. Now 378 → 302 → 227. At --fz:1 nothing moves. */
+  #fieldbar{ position:absolute; left:0; top:0; width:72px; max-height:100%; overflow-y:auto;
+    display:flex; flex-direction:column; gap:6px; padding-top:10px; }  /* 10px = .grid's padding, so the first tool lines up with the first row of plots */
+  /* Divided by the zoom because this margin lives INSIDE the zoomed element: a flat 72px would itself shrink
+     and slide the field under the rail (measured: the field's left edge went 90 → 61 at 0.6). */
+  .stage > .scroller{ margin-left:calc(72px / var(--fz)); }
   #fieldbar button{ font-size:.68rem; padding:6px 2px; min-height:34px; white-space:nowrap;   /* 34px = the touch floor this project set for itself */
     box-shadow:0 2px 0 #D6CBB2, inset 0 0 0 1px var(--line); }        /* a quieter pill than the transport row's — the rail should recede behind the field */
   #fieldbar button.wide{ width:72px; }
@@ -250,6 +278,12 @@
     cursor:pointer; touch-action:none; }
   #cursorKnob{ position:absolute; top:-3px; width:34px; text-align:center; font-size:15px;
     pointer-events:none; transition:left .12s ease; filter:drop-shadow(0 1px 1px rgba(62,58,57,.3)); }
+  /* DIVIDED by the zoom, not multiplied: the stake is a touch target, so it keeps a constant VISUAL size
+     while the garden behind it shrinks. These must sit AFTER the two rules above — authored earlier (with
+     the rest of the zoom CSS) the plain `height:20px` and `font-size:15px` won and the strip shrank with
+     everything else: measured 20 → 16 → 12px before this was moved. */
+  #cursorStrip{ height:calc(20px / var(--fz)); }
+  #cursorKnob{ font-size:calc(15px / var(--fz)); }
   #cursorCol{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px; left:10px;
     border:2px dashed var(--leaf); background:rgba(68,163,95,.08); pointer-events:none; transition:left .12s ease; }
   /* the cursor marks a TIME SLOT in both lanes — same dashed-green language over the pads.
@@ -496,6 +530,7 @@
     <div class="sidetool"><button id="save" title="Save melody">💾</button><span>Save melody</span></div>
     <div class="sidetool"><button id="share" title="Share link">🔗</button><span>Share link</span></div>
     <div class="sidetool"><button id="melodies" title="Jukebox">🎵</button><span>Jukebox</span></div>
+    <div class="sidetool"><button id="zoomBtn" title="Step back to see the whole garden">🔍</button><span id="zoomLabel">Whole garden: off</span></div>
     <div class="sidetool"><button id="speak" title="Read aloud: OFF">🔇</button><span id="speakLabel">Read aloud: off</span></div>
   </div>
   <h1 id="title">🌱 Tune Garden</h1>
@@ -1261,6 +1296,29 @@ function camGeom(){ const W=CAM.W||scroller.clientWidth, S=Math.max(0,(CAM.SW||s
 function camBusy(){ return !!(pull || trayDrag || trayPtrs.size || cursorStripEl._drag); }
 function camStop(){ if(CAM.raf){ cancelAnimationFrame(CAM.raf); CAM.raf=0; playhead.style.transition=""; } }
 function camReseed(){ camMeasure(); CAM.expect=scroller.scrollLeft; camEdges(); }   // after ±room or a rebuild, the browser's own clamp is not the child
+// ---------- Zoom: step back to see a tall palette whole ----------
+// Read LIVE from the DOM rather than trusted from a variable: offsetWidth is layout px and getBoundingClientRect
+// is visual px, so their ratio IS the zoom — and on a browser that ignores `zoom` the ratio is 1 and every
+// conversion below degrades to a true no-op instead of silently doubling.
+const zoomOf=()=>{ const w=gridEl.offsetWidth; return w ? gridEl.getBoundingClientRect().width/w : 1; };
+const ZOOM_STOPS=[1, 0.8, 0.6];        // 0.8 = 27x24px cells, the last EDITABLE stop (24px is the target floor); 0.6 = 20x18, look-only
+let fieldZoom=1;
+function setFieldZoom(z){
+  fieldZoom=z;
+  const fc=document.querySelector(".fieldcol"); if(fc) fc.style.setProperty("--fz", z);
+  document.body.classList.toggle("lookonly", z<0.7);
+  syncCursor();                        // the stake's own size is 1/z, so it has to be re-laid out
+  camReseed();                         // MANDATORY: the ResizeObserver on .scroller never fires for a zoom —
+  camEnsure(playing?step:cursorCol,{instant:true});   // the box keeps its layout size, only its scale changes
+  setStatus(z===1 ? "🔍 Back to full size — plant away."
+    : z<0.7 ? "🔍 The whole garden, small. Lovely for listening — zoom back in to plant."
+            : "🔍 Stepped back a little. You can still plant and pull vines here.");
+}
+function cycleZoom(){ const i=ZOOM_STOPS.indexOf(fieldZoom);
+  setFieldZoom(ZOOM_STOPS[(i<0?0:i+1)%ZOOM_STOPS.length]);
+  const lab=document.getElementById("zoomLabel");
+  if(lab) lab.textContent = fieldZoom===1 ? "Whole garden: off" : "Whole garden: "+Math.round(fieldZoom*100)+"%";
+  const b=document.getElementById("zoomBtn"); if(b) b.classList.toggle("on", fieldZoom!==1); }
 const stageEl=document.querySelector(".stage");
 function camEdges(){ if(!stageEl) return;                      // the hidden scrollbars' replacement: light an edge only where there IS more
   const sl=scroller.scrollLeft, max=scroller.scrollWidth-scroller.clientWidth;
@@ -1355,12 +1413,12 @@ if(vinesEl){
     // Anchor in FIELD coordinates, re-read per event the way trayGridPos and cursorFromEvent already do. A raw
     // viewport delta was the one gesture in the file that could not survive the field moving under the finger —
     // and now the camera, a two-finger pan and the beat-lane sync can all move it mid-pull.
-    pull={id:n.id, base:n.durationTicks, x0:e.clientX-gridEl.getBoundingClientRect().left, len:L, armed:false, stem:s, grip:g, c, r};
+    pull={id:n.id, base:n.durationTicks, x0:(e.clientX-gridEl.getBoundingClientRect().left)/zoomOf(), len:L, armed:false, stem:s, grip:g, c, r};
     initAudio(); actx.resume(); });
   vinesEl.addEventListener("pointermove",e=>{ if(!pull) return;
     const n=melTrack().notes.find(q=>q.id===pull.id); if(!n){ pull=null; return; }
-    const dx=(e.clientX-gridEl.getBoundingClientRect().left)-pull.x0;
-    if(!pull.armed){ if(Math.abs(dx)<=TRAY_SLOP) return; pull.armed=true; }   // 8px — the spike's threshold
+    const z=zoomOf(), dx=(e.clientX-gridEl.getBoundingClientRect().left)/z-pull.x0;
+    if(!pull.armed){ if(Math.abs(dx*z)<=TRAY_SLOP) return; pull.armed=true; }   // 8px — the spike's threshold, kept in VIEWPORT px so it feels the same at any zoom
     const len=Math.max(1, Math.min(vineMax(n), Math.round(pull.base/TICKS_PER_COL + dx/TRAY_CW)));
     if(len===pull.len) return;
     pull.len=len; n.durationTicks=len*TICKS_PER_COL;                 // mutate live for the ear; the JOURNAL entry is written on release
@@ -1599,7 +1657,8 @@ function exitTray(){ if(!trayMode) return; trayMode=false; traySel=[]; trayDrag=
   gridEl.classList.remove("traymode"); trackEl.classList.remove("traymode"); scroller.style.touchAction="";
 }
 trayBtn.onclick=()=>{ if(trayMode){ exitTray(); setStatus("Plant seeds 🌱, or 🔨 Fuse to craft."); } else enterTray(); };
-function trayGridPos(e){ const b=gridEl.getBoundingClientRect(); return {x:e.clientX-b.left, y:e.clientY-b.top}; }
+function trayGridPos(e){ const b=gridEl.getBoundingClientRect(), z=zoomOf();   // → FIELD px, so trayPosCell, the marquee box and the move ghost all stay in one space
+  return {x:(e.clientX-b.left)/z, y:(e.clientY-b.top)/z}; }
 function trayPosCell(p){ return { r:Math.max(0,Math.min(ROWS-1,Math.floor((p.y-TRAY_PAD)/TRAY_CH))),
                                   c:Math.max(0,Math.min(COLS-1,Math.floor((p.x-TRAY_PAD)/TRAY_CW))) }; }
 function trayMarqUpdate(){ if(!trayMarqEl||!trayDrag) return;
@@ -1644,11 +1703,11 @@ trackEl.addEventListener("pointerdown",e=>{ if(!trayMode) return; e.preventDefau
 trackEl.addEventListener("pointermove",e=>{ if(!trayMode) return;
   const prev=trayPtrs.get(e.pointerId);
   if(prev) trayPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(trayPtrs.size>=2){ if(prev) scroller.scrollLeft-=(e.clientX-prev.x); return; }   // two-finger pan
+  if(trayPtrs.size>=2){ if(prev) scroller.scrollLeft-=(e.clientX-prev.x)/zoomOf(); return; }   // two-finger pan — scrollLeft is FIELD px, the finger is viewport px
   if(trayPlace){
     if(trayDrag&&trayDrag.mode==="placetap"){
       if(Math.hypot(e.clientX-trayDrag.from.x,e.clientY-trayDrag.from.y)>TRAY_SLOP) trayDrag.panned=true;
-      if(trayDrag.panned&&prev) scroller.scrollLeft-=(e.clientX-prev.x);              // drag with a copy armed = pan
+      if(trayDrag.panned&&prev) scroller.scrollLeft-=(e.clientX-prev.x)/zoomOf();     // drag with a copy armed = pan
     } else trayPlacePreview(trayPosCell(trayGridPos(e)));                              // hover ghost (mouse/pen)
     return; }
   if(!trayDrag) return; e.preventDefault(); trayAutoScroll(e);
@@ -1669,7 +1728,7 @@ function trayUp(e){ trayPtrs.delete(e.pointerId);
   if(d.mode==="placetap"){ if(!d.panned) trayPlaceCommit(d.cell); return; }
   if(d.mode==="marquee"){
     if(trayMarqEl){ trayMarqEl.remove(); trayMarqEl=null; }
-    const w=Math.abs(d.to.x-d.from.x), h=Math.abs(d.to.y-d.from.y);
+    const z=zoomOf(), w=Math.abs(d.to.x-d.from.x)*z, h=Math.abs(d.to.y-d.from.y)*z;   // compare in VIEWPORT px: a tap is 6 real pixels at any zoom
     if(w<6&&h<6){                                           // a TAP: toggle one seed in/out of the pick, or coach
       const cell=trayPosCell(d.from);
       const hit=melTrack().notes.find(n=>{ const q=trayCellOf(n); return q.r===cell.r&&q.c===cell.c; });
@@ -1762,7 +1821,7 @@ function setCursor(c){ cursorCol=Math.max(0,Math.min(COLS-1,c)); syncCursor(); }
 function pinCursor(c){ cursorPinned=true; setCursor(c); }    // deliberate: the strip, the arrow keys — ▶ will honour it
 function followCursor(c){ cursorPinned=false; setCursor(c); }  // incidental: your hand just worked here, so the tools should too
 function cursorFromEvent(e){ const b=cursorStripEl.getBoundingClientRect();
-  pinCursor(Math.floor((e.clientX-b.left-10)/38)); }   // putting the stake down by hand IS the deliberate act
+  pinCursor(Math.floor(((e.clientX-b.left)/zoomOf()-10)/38)); }   // putting the stake down by hand IS the deliberate act. Divide BEFORE subtracting the pad — it is a field-pixel quantity
 cursorStripEl.addEventListener("pointerdown",e=>{ e.preventDefault();
   try{ cursorStripEl.setPointerCapture(e.pointerId); }catch(err){}
   cursorStripEl._drag=true; cursorFromEvent(e); });
@@ -4213,6 +4272,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitTray();
   cursorCol=0; cursorPinned=false; loopStart=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
+  if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
   step=0; playhead.classList.remove("on"); camStop(); scroller.scrollLeft=0; camReseed(); CAM.yielded=false; litEls.length=0;
@@ -4738,6 +4798,16 @@ jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
   else { setStatus("Jam off 🌱"); if(jamStartedPlayback){ jamStartedPlayback=false; stop(); } }
 };
 const grooveEl=document.getElementById("groove"), grooveCtlEl=document.getElementById("grooveCtl");
+document.getElementById("zoomBtn").onclick=cycleZoom;
+// Tap the shrunken garden to come straight back — a child who is stuck small must never have to find the menu
+// again. A clean tap only: any real drag is a pan, and while a pick is armed the Scoop owns the pointer.
+scroller.addEventListener("pointerdown",e=>{ if(fieldZoom===1||trayMode) return;
+  const x0=e.clientX, y0=e.clientY, t0=performance.now();
+  const up=u=>{ scroller.removeEventListener("pointerup",up);
+    if(Math.hypot(u.clientX-x0,u.clientY-y0)<=8 && performance.now()-t0<400){ setFieldZoom(1);
+      const lab=document.getElementById("zoomLabel"); if(lab) lab.textContent="Whole garden: off";
+      document.getElementById("zoomBtn").classList.remove("on"); } };
+  scroller.addEventListener("pointerup",up); });
 GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=g.name; grooveEl.appendChild(o); });
 grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
   if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };
