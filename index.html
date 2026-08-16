@@ -69,6 +69,27 @@
   label.ctl{ display:flex; align-items:center; gap:6px; font-size:.85rem; opacity:.92;}
   input[type=range]{ accent-color:var(--leaf); }
   .status{ min-height:22px; font-size:.85rem; opacity:.9; margin:4px 0 12px; text-align:center; padding:0 64px; }  /* keep long messages (e.g. famous-song credits) clear of the fixed side buttons at top-right */
+  /* ---- The pinned band (phones): Play and the game's voice, always beside the field ----
+     Even with the level card at zero height the chrome above the field measures 261px, and 261 + a 500px
+     field is 761 against ~640px of usable screen — so no amount of shrinking puts Play and a whole field
+     on screen together. Pinning is forced, not preferred. #sidetoggle stays OUTSIDE this element on
+     purpose: an opaque band is a stacking context, and a z-index:41 toggle nested inside one would lose
+     to its own z-index:40 menu and become unclickable while the menu was open. */
+  @media (max-width:1000px){
+    #topband{ position:sticky; top:0; z-index:30;
+      width:calc(100% + 36px); margin:0 -18px 6px; padding:8px 80px 2px 18px;   /* 80px right = the fixed ☰'s own footprint; the row centres inside this box, and with the Studio's four controls it fills it, so anything less puts 🥁 Beat under the menu */
+      background:var(--cream); box-shadow:0 4px 14px rgba(62,58,57,.16); }
+    /* min-height, NOT max-height. A clamp kept the band perfectly stable and cut a famous-song credit off
+       mid-sentence (78px of reward text into 31px) — the game's voice silently truncated is a worse trade
+       than a band that grows. Two lines reserved means the common one-and-two-line replies never move it at
+       all; only a credit, which arrives at a reward moment rather than mid-gesture, makes it taller. */
+    #topband .status{ margin:2px 0 4px; padding:0; font-size:.78rem; line-height:1.25; min-height:2.5em; }
+    #topband #actionRow{ margin-bottom:0; gap:5px; }
+    #topband #actionRow button{ padding:8px 9px; font-size:.86rem; }   /* the Studio's four verbs must fit ONE row inside 292px, or the band grows 40px and the field pays for it */
+    /* Everything that is not part of the plant → Play → listen loop moves BELOW the field. body is a flex
+       column, so this is pure order — no markup moves, and desktop is untouched. */
+    .mainscroll{ order:3; } #choiceRow{ order:4; } #world{ order:5; } .settings{ order:6; }
+  }
   .status b{ color:var(--leaf-deep); }
 
   .mainscroll{ width:100%; overflow-x:auto;}                                  /* a last-resort escape hatch; after the fix below it has nothing to scroll */
@@ -251,6 +272,12 @@
      the space buys the tool rail and the closeness between the two lanes instead. */
 
   .sidebar{ display:flex; flex-direction:column; gap:14px; width:205px; flex:0 0 auto; }
+  /* SOURCE-ORDER TRAP, shipped and measured: the phone block up at .fieldcol says `.sidebar{width:100%}`,
+     but a media query adds NO specificity, so this later single-class rule was quietly winning and the level
+     card stayed 205px wide inside a 354px line on a phone. Restating it here — after the rule it has to beat —
+     is what makes it apply. Measured at 390px: the card goes 608px tall to 418px and the field rises 190px,
+     for nothing. max-width keeps a tablet from turning the same card into a 100-character line. */
+  @media (max-width:1000px){ .sidebar{ width:100%; } .sidebar .card{ max-width:34rem; align-self:center; width:100%; } }
   .card{ background:var(--card); border-radius:14px; padding:14px; border:1px solid var(--line);
     box-shadow:0 2px 4px rgba(62,58,57,.10), 0 8px 22px rgba(62,58,57,.14);}
   .card h3{ margin:0 0 10px; font-size:1rem; font-family:var(--font-display); font-weight:500;}
@@ -473,14 +500,23 @@
   </div>
   <h1 id="title">🌱 Tune Garden</h1>
 
-  <!-- The LISTEN band: everything here only makes the garden sound. Every tool that CHANGES it lives on #fieldbar, under the field. -->
+  <!-- The LISTEN band: everything here only makes the garden sound. Every tool that CHANGES it lives on #fieldbar, under the field.
+       On a phone this whole band PINS to the top of the viewport, carrying the status line with it — the field
+       starts hundreds of pixels down the page, and Play being a scroll away from the garden was the owner's
+       complaint. The status comes along because it is the game's voice: every refusal and coaching reply
+       appears there, and a child who can act but not read the answer is worse off than one who can do neither.
+       #status sits BELOW the buttons on purpose, so the band edge that touches the field is inert text rather
+       than ▶ Play — an opaque pinned band eats taps on whatever it covers, and this makes the worst mis-tap
+       harmless instead of starting playback. -->
+  <div id="topband">
   <div class="controls" id="actionRow">
     <button id="play">▶ Play</button>
     <button id="loop" class="secondary toggle">↻ Loop</button>
     <button id="jam" class="secondary toggle">🎸 Jam</button>
-    <select id="groove" title="Groove style"></select>
     <button id="beat" class="secondary toggle">🥁 Beat</button>
     <button id="listen" class="secondary" style="display:none">🔊 Listen</button>
+  </div>
+  <div class="status" id="status">Plant seeds 🌱 — click squares, then press <b>▶ Play</b>.</div>
   </div>
   <div class="controls settings">
     <label class="ctl">Voice
@@ -496,8 +532,11 @@
       </select>
     </label>
     <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
+    <!-- Groove moved here from the transport row (2026-08-15): it is a set-once CHOICE like Voice and Tempo,
+         not a verb, and at 157px it was over half the pinned band's width on a phone — wrapping the row and
+         costing 49px of height that the field needs. Every reference to it is by id, so nothing else moved. -->
+    <label class="ctl" id="grooveCtl">Groove <select id="groove" title="Groove style"></select></label>
   </div>
-  <div class="status" id="status">Plant seeds 🌱 — click squares, then press <b>▶ Play</b>.</div>
   <div id="world" title="The garden wakes as you play — one emblem per restored level"></div>
   <div id="choiceRow" class="controls" style="display:none"></div>
 
@@ -4184,7 +4223,8 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   setPalette(PACKAGES[currentPkg].palette || L.palette || "pentatonic");   // swap pitch set + rebuild grid (per-package palette)
   if(currentPkg!==toolboxPkg) loadPkgToolbox();   // fresh toolbox per package — don't inherit another lesson's (or palette's) tools
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
-  jamBtn.style.display=U.has("jam")?"":"none"; grooveEl.style.display=U.has("jam")?"":"none";
+  jamBtn.style.display=U.has("jam")?"":"none";
+  grooveCtlEl.style.display=U.has("jam")?"":"none";   // the LABEL, not the select — groove now lives in the settings row, and hiding only the select would leave the word "Groove" behind
   craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
   moreMenu.style.display=U.has("more")?"":"none";
   const drumsUnlocked=U.has("drums");
@@ -4697,7 +4737,7 @@ jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
     checkLevel(); }
   else { setStatus("Jam off 🌱"); if(jamStartedPlayback){ jamStartedPlayback=false; stop(); } }
 };
-const grooveEl=document.getElementById("groove");
+const grooveEl=document.getElementById("groove"), grooveCtlEl=document.getElementById("grooveCtl");
 GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=g.name; grooveEl.appendChild(o); });
 grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
   if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };
