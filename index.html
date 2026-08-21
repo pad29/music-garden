@@ -1113,7 +1113,8 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
   applySwingVisual();   // a rebuild makes fresh cells — re-mark the swung "and" pads if swing is on
   if(typeof syncCursor==="function") syncCursor();
 }
-function drumClick(d,c){ initAudio(); actx.resume();
+function drumClick(d,c){ if(zoomBlocksEdit()) return;   // same as the melody bed: at 60% a tap zooms in, it does not lay a beat
+  initAudio(); actx.resume();
   followCursor(c);                 // the beat lane is the same timeline — tapping a pad is working at that column too
   const on=!drumG[d][c];
   modelSetDrum(d,c,on); dcells[d][c].classList.toggle("on",on);
@@ -1308,24 +1309,64 @@ function camReseed(){ camMeasure(); CAM.expect=scroller.scrollLeft; camEdges(); 
 // is visual px, so their ratio IS the zoom — and on a browser that ignores `zoom` the ratio is 1 and every
 // conversion below degrades to a true no-op instead of silently doubling.
 const zoomOf=()=>{ const w=gridEl.offsetWidth; return w ? gridEl.getBoundingClientRect().width/w : 1; };
-const ZOOM_STOPS=[1, 0.8, 0.6];        // 0.8 = 27x24px cells, the last EDITABLE stop (24px is the target floor); 0.6 = 20x18, look-only
+const ZOOM_PLANT=0.8, ZOOM_LOOK=0.6;   // 0.8 = 27x24px cells, the last EDITABLE stop (24px is the target floor); 0.6 = 20x18, look-only
+const ZOOM_STOPS=[1, ZOOM_PLANT, ZOOM_LOOK];
 let fieldZoom=1;
+// Below the midpoint the squares are 20x18 and a fingertip covers three of them: the field becomes something to
+// LOOK at. Everything that aims at a square asks this first, so "look-only" is one fact, not a class name copied around.
+const lookOnly=()=>fieldZoom<0.7;
+// …and a tap that zooms us back IN must not also leave a seed. Planting fires on mousedown, the tap on pointerup —
+// and on TOUCH the browser's synthesized mousedown arrives AFTER pointerup, by which time the zoom has already
+// changed and lookOnly() is false again. So the tap books a swallow for exactly ONE mousedown: its own.
+// One-shot, not a dead window — the child's very next press plants at once, which is what lets the deadline be
+// generous enough to survive a main thread too busy to synthesize on time. A mouse never needs it at all.
+let swallowTapUntil=0;
+const zoomBlocksEdit=()=>{ if(lookOnly()) return true;
+  if(swallowTapUntil && performance.now()<swallowTapUntil){ swallowTapUntil=0; return true; }
+  return false; };
+// Tap the look-only garden to step back in far enough to work — a child who is stuck small must never have to
+// find the menu again. Only from look-only, and only as far as ZOOM_PLANT: at a stop where you CAN plant, a tap is
+// a plant. Returning to full size stays the 🔍 button's job, never a stray finger's.
+// One finger, one bed, and NO clock. A pan travels (>8px); a pinch brings a second finger; and Chrome fires
+// pointercancel the moment it takes the touch over for its own scrolling — each of those disarms, and disarming
+// must release the listener or a stale closure revives on somebody else's pointerup. What is left is a press that
+// went nowhere: a child's careful slow press has to count exactly as much as a quick one.
+let zoomTap=null;                      // the single pointer we are watching — shared across BOTH beds
+function zoomTapDrop(){ if(!zoomTap) return;
+  zoomTap.el.removeEventListener("pointerup",zoomTap.end);
+  zoomTap.el.removeEventListener("pointercancel",zoomTap.end);
+  zoomTap=null; }
+function armZoomTap(el){ if(!el) return;
+  el.addEventListener("pointerdown",e=>{
+    if(zoomTap){ zoomTapDrop(); return; }      // a second finger is down: pan or pinch, never a tap
+    if(!lookOnly()||trayMode) return;          // (while a pick is armed the Scoop owns the pointer)
+    const t={ el, id:e.pointerId, x:e.clientX, y:e.clientY, touch:e.pointerType!=="mouse" };
+    t.end=u=>{ if(u.pointerId!==t.id) return;
+      const tap = u.type==="pointerup" && Math.hypot(u.clientX-t.x,u.clientY-t.y)<=8;
+      zoomTapDrop();
+      if(!tap) return;
+      initAudio(); actx.resume();              // a child's first gesture is too precious to spend without unlocking sound
+      if(t.touch) swallowTapUntil=performance.now()+900;
+      setFieldZoom(ZOOM_PLANT); };
+    zoomTap=t;
+    el.addEventListener("pointerup",t.end);
+    el.addEventListener("pointercancel",t.end); }); }
 function setFieldZoom(z){
   fieldZoom=z;
   const fc=document.querySelector(".fieldcol"); if(fc) fc.style.setProperty("--fz", z);
-  document.body.classList.toggle("lookonly", z<0.7);
+  document.body.classList.toggle("lookonly", lookOnly());
+  const lab=document.getElementById("zoomLabel");   // the menu label and the lit button live HERE, not at the call sites —
+  if(lab) lab.textContent = z===1 ? "Whole garden: off" : "Whole garden: "+Math.round(z*100)+"%";   // a level change resets the zoom too
+  const b=document.getElementById("zoomBtn"); if(b) b.classList.toggle("on", z!==1);
   syncCursor();                        // the stake's own size is 1/z, so it has to be re-laid out
   camReseed();                         // MANDATORY: the ResizeObserver on .scroller never fires for a zoom —
   camEnsure(playing?step:cursorCol,{instant:true});   // the box keeps its layout size, only its scale changes
   setStatus(z===1 ? "🔍 Back to full size — plant away."
-    : z<0.7 ? "🔍 The whole garden, small. Lovely for listening — zoom back in to plant."
+    : lookOnly() ? "🔍 The whole garden, small. Lovely for listening — <b>tap the garden</b> when you want to plant again."
             : "🔍 Stepped back a little. You can still plant and pull vines here.");
 }
 function cycleZoom(){ const i=ZOOM_STOPS.indexOf(fieldZoom);
-  setFieldZoom(ZOOM_STOPS[(i<0?0:i+1)%ZOOM_STOPS.length]);
-  const lab=document.getElementById("zoomLabel");
-  if(lab) lab.textContent = fieldZoom===1 ? "Whole garden: off" : "Whole garden: "+Math.round(fieldZoom*100)+"%";
-  const b=document.getElementById("zoomBtn"); if(b) b.classList.toggle("on", fieldZoom!==1); }
+  setFieldZoom(ZOOM_STOPS[(i<0?0:i+1)%ZOOM_STOPS.length]); }
 const stageEl=document.querySelector(".stage");
 function camEdges(){ if(!stageEl) return;                      // the hidden scrollbars' replacement: light an edge only where there IS more
   const sl=scroller.scrollLeft, max=scroller.scrollWidth-scroller.clientWidth;
@@ -1528,6 +1569,7 @@ function settle(){ document.body.classList.add("settle");
 // field arms Scoop with a coaching line. The old click-seeds-then-Save picking mode is gone.
 function cellClick(r,c,el){
   if(trayMode) return;   // the tray owns the field — its pointer handlers on the track do the work (also eats synthesized post-touch mousedowns)
+  if(zoomBlocksEdit()) return;   // …and at 60% the tap is aimed at the ZOOM, not at a square: it must not leave a seed behind on the way in
   initAudio(); actx.resume(); hideNoteTip();
   if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
   followCursor(c);   // …and covers the stamp path below, which is only ever reached from here
@@ -4279,6 +4321,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitTray();
   cursorCol=0; cursorPinned=false; loopStart=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
+  zoomTapDrop(); swallowTapUntil=0;    // …with no half-finished tap and no pending swallow carried across the seam
   if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
@@ -4806,15 +4849,7 @@ jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
 };
 const grooveEl=document.getElementById("groove"), grooveCtlEl=document.getElementById("grooveCtl");
 document.getElementById("zoomBtn").onclick=cycleZoom;
-// Tap the shrunken garden to come straight back — a child who is stuck small must never have to find the menu
-// again. A clean tap only: any real drag is a pan, and while a pick is armed the Scoop owns the pointer.
-scroller.addEventListener("pointerdown",e=>{ if(fieldZoom===1||trayMode) return;
-  const x0=e.clientX, y0=e.clientY, t0=performance.now();
-  const up=u=>{ scroller.removeEventListener("pointerup",up);
-    if(Math.hypot(u.clientX-x0,u.clientY-y0)<=8 && performance.now()-t0<400){ setFieldZoom(1);
-      const lab=document.getElementById("zoomLabel"); if(lab) lab.textContent="Whole garden: off";
-      document.getElementById("zoomBtn").classList.remove("on"); } };
-  scroller.addEventListener("pointerup",up); });
+armZoomTap(scroller); armZoomTap(drumArea);   // both beds — the beat lane is the same garden
 GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=g.name; grooveEl.appendChild(o); });
 grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
   if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };

@@ -69,3 +69,61 @@ it read the repo's history and docs more thoroughly than I did.
 **Cost:** design review 846k input tokens (763k cached) / 12k out, ~11 min on Sol. Cross-test
 2.19M input (1.98M cached) / 24k out on Terra. Naming tighter doc *sections* is the lever
 before downgrading models.
+
+---
+
+## 2026-08-20 — field zoom: the tap must not fight the plant
+
+**No design review.** The owner specified the behaviour from a Pixel 10a playtest ("tap should only
+change the zoom when it's at 60, and go 60 to 80"), so a design review would have re-litigated their
+decision. Went straight to implement + cross-test. Two scope calls I made beyond the literal ask are
+flagged to the owner, not to GPT: the beat lane got the same tap, and the 60% status copy now
+advertises the tap.
+
+**Found before GPT saw it (my own browser run):** the `lookOnly()` guard alone does not close the
+hole on TOUCH. Planting fires on `mousedown`, the tap on `pointerup`, and the browser's synthesized
+mousedown arrives *after* pointerup — by then the zoom has changed and the guard is false again.
+Reproduced: seeds 0 → 1 on the tap that was only supposed to zoom. First fix was a 400ms time latch.
+
+**Cross-testing (gpt-5.6-terra, workspace-write)** — wrote `tests/field-zoom.test.mjs`, did not touch
+`index.html`. Two failures it left deliberately failing, both of which I re-verified:
+
+1. [Med] **`pointercancel` leaks the pending `pointerup` listener** → **accepted, fixed.** Decisive
+   point I had missed: `#scroller`/`#drumArea` are `touch-action:pan-x pan-y`, so Chrome cancelling a
+   touch is the *common* path, not the exotic one — and every other pointer gesture in the file
+   (lines 1456, 1773, 1848) already handles it. A cancelled pan could be revived by an unrelated
+   later pointerup and zoom the field.
+2. [Low] **`resetTransient()` reset the zoom but not the latch** → **accepted, fixed** (also drops a
+   half-finished tap at the seam).
+3. [Med] **A legitimate fast edit is swallowed for 400ms**, desktop included → **accepted, fixed by
+   redesign**, see below.
+4. [Med] **The 400ms window is not guaranteed by spec** (Pointer Events §13 leaves compat-mouse
+   timing to the UA; a busy main thread could exceed it) → **accepted, fixed by the same redesign.**
+5. [Med] **Two-finger pan with one stationary finger zooms** — GPT reasoned it, then upgraded it to
+   reproduced → **accepted, fixed** (a second pointer down disarms the tap).
+6. [Low] Cursor-strip tap at 60% moves the cursor *and* zooms → **noted, not changed.** Unchanged
+   from the shipped commit, and landing the cursor where you tapped before zooming in is arguably
+   the nicer behaviour. Flagged to the owner.
+7. [Low] The first 60% tap never unlocked audio → **accepted, fixed** (`initAudio(); actx.resume()`
+   in the tap).
+
+**The redesign 3 and 4 forced:** the time latch became a **one-shot swallow** — the tap books the
+right to eat exactly ONE mousedown, and the next press plants immediately. That removes the dead
+window entirely (3) and, because one-shot costs nothing when generous, lets the deadline go to 900ms
+to survive a slow main thread (4). Only touch books it at all; a mouse never needed it.
+
+**What I found that GPT missed:** the inherited `performance.now()-t0 < 400` press-duration test meant
+**a slow deliberate press at 60% did nothing at all** — no zoom, no seed, no feedback. Harmless in the
+old handler; not harmless now that tap is the only advertised way back to planting. Dropped the clock
+entirely and kept only the 8px slop: a pan travels, a pinch brings a second finger, and `pointercancel`
+covers browser-initiated scrolling, so nothing is left that a clock still had to catch.
+
+**Disagreements:** none material. GPT's Scoop verdict (keep it editable at 60% rather than strand a
+child mid-pick) I agree with and adopted. I hold #6 is not a defect.
+
+**Result:** suite 35/35 (12 new zoom tests; I rewrote GPT's two latch tests to the one-shot contract
+and added coverage for multi-touch, pointercancel listener release, the slow press, the mouse path,
+and the level seam). Browser-verified at 390x640 on a 14-row diatonic level. Goldens not re-run —
+nothing here touches the scheduler.
+
+**Cost:** cross-test 1.48M input (1.38M cached) / 15k out on Terra, ~6 min. No design-review call.
