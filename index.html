@@ -835,14 +835,21 @@ const sig = offs => offs.join("-");
 // "apartness" is measured in real pitch (semitones), NOT uneven ladder rungs:
 // a 3rd-or-wider (>=3) stands; a 2nd (<=2) wobbles. So both inversions of a chord agree.
 const stableMidis = midis => { for(let i=1;i<midis.length;i++) if(midis[i]-midis[i-1]<3) return false; return true; };
-// pair "personality" bands by real semitone gap: close (2nd) / bright (3rd) / open (a 4th and wider) / octave twins
-function widthBand(g){ g=(g%12===0&&g>0)?12:g; return g>=12?"octave": g<=2?"close": g<=4?"bright":"open"; }
-function pairMeta(g){ const b=widthBand(g);
-  return b==="octave" ? {em:"🌟",name:"Octave twins"} : b==="close" ? {em:"🌿",name:"Close pair"}
-    : b==="bright" ? {em:"🌸",name:"Bright pair"} : {em:"🍃",name:"Open pair"}; }
-function pairKind(midis){ return widthBand(midis[midis.length-1]-midis[0]); }
+// A pair has TWO independent readings; don't confuse them:
+//   WIDTH (here) - how far apart it looks on the ladder and sounds: close (2nd) / bright (3rd) / open (a 4th and wider).
+//   TENSION (pairTension, below) - whether it clashes. That one folds to pitch class, so a compound minor 2nd is tense.
+// Width reads the RAW gap and never folds by octave: two seeds an octave-and-a-2nd apart are visibly far apart, so they
+// are open, not close. "Octave twins" is a DISPLAY NAME for an exact octave - a special-sounding OPEN pair, not a fourth
+// band. Goals only ever ask for close/bright/open, and craftedOpen/countColBands must agree about that.
+const pairSpan = midis => Math.abs(Math.max(...midis) - Math.min(...midis));   // order-independent: saved toolbox arrays aren't re-sorted on load
+const isOctavePair = g => { const w=Math.abs(g); return w>0 && w%12===0; };
+function widthBand(g){ const w=Math.abs(g); return w<=2?"close": w<=4?"bright":"open"; }   // w===0 (unison) bands close; not craftable from the grid
+function pairMeta(g){ if(isOctavePair(g)) return {em:"🌟",name:"Octave twins"};
+  const b=widthBand(g);
+  return b==="close" ? {em:"🌿",name:"Close pair"} : b==="bright" ? {em:"🌸",name:"Bright pair"} : {em:"🍃",name:"Open pair"}; }
+function pairKind(midis){ return widthBand(pairSpan(midis)); }
 function toolMeta(offs, midis){
-  if(offs.length===2) return pairMeta(midis[midis.length-1]-midis[0]);
+  if(offs.length===2) return pairMeta(pairSpan(midis));
   return stableMidis(midis) ? {em:"🏛️",name:"Tower"} : {em:"🌀",name:"Wobbler"};
 }
 
@@ -856,8 +863,8 @@ function intervalName(g){ if(g>0&&g%12===0) return "octave";
 function chordName(midis){
   const pcs=[...new Set(midis.map(m=>((m%12)+12)%12))].sort((a,b)=>a-b);
   if(pcs.length<=1) return "unison";
-  if(pcs.length===2) return intervalName(midis[midis.length-1]-midis[0])
-    +" ("+NOTE_NAMES[midis[0]%12]+"–"+NOTE_NAMES[midis[midis.length-1]%12]+")";
+  if(pcs.length===2){ const lo=Math.min(...midis), hi=Math.max(...midis);
+    return intervalName(hi-lo)+" ("+NOTE_NAMES[lo%12]+"–"+NOTE_NAMES[hi%12]+")"; }
   for(const r of pcs){ const key=pcs.map(p=>((p-r)%12+12)%12).sort((a,b)=>a-b).join(",");
     if(CHORD_TPL[key]) return NOTE_NAMES[r]+" "+CHORD_TPL[key]; }
   let cluster=((pcs[0]+12)-pcs[pcs.length-1])<=2;
@@ -1540,7 +1547,7 @@ function craftFromCells(list){                     // list: [{r,c}] — same col
   list.forEach((s,i)=>{ anim(cells[s.r][s.c], stable?"stand":"wob"); playRow(s.r,actx.currentTime+i*0.05); });
   // record what kind of thing was crafted (counts even if the shape is a duplicate)
   if(offs.length===2){ ev.craftedPair=true; const k=pairKind(midis); ev.lastPairKind=k;   // also track pair personality, ladder-span + real gap (Twin Blooms)
-    ev.pairKinds.push(k); ev.pairs.push({span:offs[offs.length-1], kind:k, gap:midis[midis.length-1]-midis[0]}); }
+    ev.pairKinds.push(k); ev.pairs.push({span:offs[offs.length-1], kind:k, gap:pairSpan(midis)}); }
   else if(stable){ ev.craftedTower=true; ev.towerSigs.push(midis.join("-")); } else ev.craftedWobbler=true;  // distinct by actual NOTES (the uneven ladder makes offs collide)
   const m=toolMeta(offs,midis);
   if(!toolbox.some(t=>sig(t.offs)===sig(offs))){
@@ -1895,7 +1902,7 @@ const distinctBands = () => new Set((ev.pairs||[]).map(p=>widthBand(p.gap))).siz
 // for levels that PLACE pairs on the grid: classify each 2-note column by width band, then tally
 function colBand(c){ const rows=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) rows.push(r);
   return rows.length===2 ? widthBand(Math.abs(MIDI[rows[0]]-MIDI[rows[1]])) : null; }
-function countColBands(){ const n={close:0,bright:0,open:0,octave:0}; for(let c=0;c<COLS;c++){ const b=colBand(c); if(b) n[b]++; } return n; }
+function countColBands(){ const n={close:0,bright:0,open:0}; for(let c=0;c<COLS;c++){ const b=colBand(c); if(b) n[b]++; } return n; }
 // ---------- Twin Blooms Plus: TENSION pairs + their pull to resolution (package, diatonic) ----------
 // Only possible once diatonic adds F & B: a minor 2nd (gap 1) or major 7th (gap 11) CLASHES; the tritone (gap 6)
 // is the restless "spooky" pair. All are dissonant and want to RESOLVE — to step out to a restful (consonant) pair.

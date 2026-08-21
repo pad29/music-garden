@@ -1,5 +1,8 @@
-# Feedback / brainstorm source documents — not needed in the repo
+# Local reference material — kept on disk, deliberately not checked in.
+# Feedback/brainstorm/brand source docs and finished hand-off briefs live in archive/.
+# NOTE: nothing in here is backed up by git. Keep your own copy of anything you'd miss.
 *.docx
+/archive/
 
 # Generated Netlify deploy copy (regenerate with: cp index.html site/index.html)
 /site/
@@ -10,9 +13,17 @@ backend/.aws-sam/
 # Node
 node_modules/
 
-# Local Claude config (keep only launch.json for the dev preview)
+# Local Claude config. Most of .claude/ is local-only, but the multi-model workflow
+# (subagents, slash commands, the GPT wrapper) is tracked on purpose: each Desktop session
+# gets a fresh worktree, and gitignored files don't come along — an untracked workflow would
+# silently not exist there.
 .claude/*
 !.claude/launch.json
+!.claude/agents/
+!.claude/skills/
+!.claude/gpt/
+.claude/gpt/*
+!.claude/gpt/ask.sh
 
 # OS / editor cruft
 .DS_Store
