@@ -127,3 +127,90 @@ and the level seam). Browser-verified at 390x640 on a 14-row diatonic level. Gol
 nothing here touches the scheduler.
 
 **Cost:** cross-test 1.48M input (1.38M cached) / 15k out on Terra, ~6 min. No design-review call.
+
+---
+
+## 2026-08-20 — pinch to zoom the field (branch `pinch-zoom`)
+
+**Design review (gpt-5.6-sol)** — 13 findings, verdict **"Replace this design. Do not build it as written."**
+Design doc was scratchpad-only; the amended design is what shipped.
+
+1. [Critical] `preventDefault()` on a two-finger `touchmove` cannot take the gesture back once Chrome has
+   begun scrolling → **accepted as a platform fact, severity rejected.** In a real pinch both fingers land
+   within ~50ms with no intervening move, so nothing has begun scrolling. Confined to "one finger already
+   panning, then a second lands." Design now abandons the whole gesture when `!e.cancelable`. GPT could not
+   answer the second half (does cancelling `touchstart` kill the compat `mousedown` planting rides on) —
+   **sidestepped entirely: we never preventDefault the touchstart.**
+2. [High] `.fieldcol` is the wrong listener boundary → **accepted, fixed.** Only `#scroller` / `#drumArea`
+   carry `touch-action:pan-x pan-y`; `#fieldbar` is an absolutely positioned SIBLING. My doc listed the
+   wider coverage as a feature; it was a liability. Single most concrete error in the design.
+3. [High] The cursor strip and grips own their own pointer gestures → **accepted, fixed** (excluded from
+   eligibility; `cursorStripEl._drag===true` also blocks arming).
+4. [High] "A pinch books nothing" was an assumption → **accepted**, and mooted by never cancelling touchstart.
+5. [High] The anchor write poisons `CAM.expect`, so the end-of-gesture `camEnsure` silently does nothing
+   → **accepted.** The design defeated its own recovery step.
+6. [High] Recentring at gesture end contradicts the focal anchor it just promised → **accepted, fixed by
+   DELETING the step.** Made the design smaller.
+7. [High] The anchor equation needs clamping; exact anchoring is impossible at the ends → **accepted,
+   severity rejected (Medium):** the browser clamps `scrollLeft` itself. Its sub-point that we must read
+   live `zoomOf()` rather than the requested `z` deserved higher billing than it got — that is the file's
+   own doctrine. **Confirmed Q5: the anchor maths is correct and the `calc(72px / var(--fz))` margin does
+   not break the re-read.**
+8. [High] Document-wide `e.touches`, third-finger stale-`d0` resumption, and no pinch cleanup in
+   `resetTransient()` → **accepted, fixed.** The last is a LITERAL repeat of this log's 2026-08-20
+   field-zoom finding #2, same function, one commit later.
+9. [High] "All two-finger gestures are pinch" costs the player a working two-finger pan → **part one
+   accepted, fixed** (the latch only claims when spread change exceeds centroid travel). **Part two
+   (TalkBack) severity rejected → Low:** GPT cited how the gesture works for the user, not what the page
+   receives; with touch exploration on, Android intercepts at system level.
+10. [Medium] Thresholds get harder with wide hand spacing → **accepted, severity RAISED to High:** walking
+   two stops in needs a 354px final spread, impossible one-handed on a 390px phone. **Answers Q4: one stop
+   per gesture.** Re-seeding `d0` was dropped.
+11. [Medium] Non-passive listeners slow the compositor even when every branch returns → **accepted, fixed
+   better than asked:** the blocking listener now exists only while two fingers are down. **Answers Q2:
+   no Scoop interference — `enterTray()` already sets `touchAction:"none"`.**
+12. [High] `pinching` can strand the camera permanently → **accepted, fixed.** Idempotent `pinchDrop()` from
+   touchend, touchcancel, `visibilitychange`, `pagehide`, `blur`, `resetTransient`. **Answers Q6: yes.**
+   GPT missed that `trayPtrs.size` in `camBusy()` has the identical latent failure today — **not fixed,
+   pre-existing, logged here so the next reader finds it.**
+13. [Medium] Untestable as written → **accepted:** `nextPinchStop` and `anchoredScroll` are pure and unit-tested.
+
+**Verdict rejected.** GPT's own fallback option (a) — beds only, one stop, best-effort, abandon when Chrome
+owns it — IS the amended design; its verdict word contradicted its own remedy. Its fallback reasoning
+("the 🔍 button already delivers the owner's actual need") is not responsive to a reflex: the owner reached
+for pinch instinctively and it did nothing. That is the same framing the game rejected when it added
+tap-to-zoom-in. **Its one genuinely good process suggestion — a disposable device event-logger — was adopted
+as `spike/pinch-probe.html`.**
+
+**Cross-testing (gpt-5.6-terra)** — wrote `tests/pinch-integration.test.mjs` (9 tests), touched no source.
+
+1. [Critical→High] Cross-bed listener leak: a third contact on `#cursorStrip` (a CHILD of `#scroller`)
+   bubbles to the seed bed, `pinchPair` filters it out, and `touchstart` re-armed over the live gesture,
+   stranding the other bed's blocking listener → **fixed:** any contact arriving mid-gesture now ends it.
+   Severity lowered: the listener is inert and cleared by the next pinch on that bed.
+2. [High] A pinch during a live vine `pull` silently changes a note's duration — `pull` is zoom-invariant
+   only AT the centroid; 0.25 field px per px of separation at 1.0→0.8, so a grip 300px away jumps ~2
+   columns → **accepted, I was wrong, fixed** with a `pull` guard.
+3. [Medium→Low] `CAM.yielded=true` on every drop stopped the camera for two merely-resting fingers →
+   **fixed:** only a pinch that committed a stop yields.
+4. [Low] `touchcancel` was not terminal when its TouchList still named the pair → **fixed.**
+5-6. [Low] `NaN`/non-finite guards → **rejected as unreachable**, tests deleted; reasoning in the task log.
+
+**What I found that GPT missed:** the probe as first written could not answer the question it exists for.
+The game attaches its blocking `touchmove` INSIDE the second finger's `touchstart`; the probe attached it at
+load. If Chrome does not honour a mid-sequence registration, every move is non-cancelable and the pinch
+silently never works. The probe now A/Bs exactly that, and the game now SAYS so once per session rather than
+failing invisibly. Also: applying `zoom` to the grid rather than the scroller inverted what `scrollLeft`
+meant, so the probe could not have validated the anchoring at all.
+
+**GPT answered three of my untested items:** window `blur` is safe (it does not bubble; no iframes,
+`window.open` or `showModal` in the file); a touch that starts on a bed and slides onto the strip stays
+eligible because `Touch.target` is fixed at touchstart; and no path re-enters the touch handler.
+
+**Result:** suite 52/52 (12 pure pinch tests + GPT's 7 integration tests, two of its nine deleted as mutually
+unsatisfiable, two as unreachable). Browser-verified with real `Touch`/`TouchEvent` at 390x640; anchor drift
+**0 field px**. Everything about whether Chrome yields the gesture is still a device fact.
+
+**Cost:** design review 2.39M input (2.21M cached) / 20k out on Sol, ~18 min. Cross-test 4.94M (4.49M cached)
+/ 40k out on Terra — double the previous, because resuming replayed the design-review transcript. Delete
+`.claude/gpt/.thread-id` between tasks.

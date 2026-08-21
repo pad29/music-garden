@@ -1301,7 +1301,8 @@ function camGeom(){ const W=CAM.W||scroller.clientWidth, S=Math.max(0,(CAM.SW||s
     ahead: Math.max(2,Math.round(vis*0.30)) }; }               // …and this much of where we are going
 // A live gesture always wins. Correctness, not manners: the vine pull measures against the FIELD, so a field
 // that slid under a held finger would lengthen a note nobody dragged.
-function camBusy(){ return !!(pull || trayDrag || trayPtrs.size || cursorStripEl._drag); }
+let pinch=null;                        // declared up here so camBusy() below can never read it in the temporal dead zone
+function camBusy(){ return !!(pull || trayDrag || trayPtrs.size || cursorStripEl._drag || pinch); }
 function camStop(){ if(CAM.raf){ cancelAnimationFrame(CAM.raf); CAM.raf=0; playhead.style.transition=""; } }
 function camReseed(){ camMeasure(); CAM.expect=scroller.scrollLeft; camEdges(); }   // after ±room or a rebuild, the browser's own clamp is not the child
 // ---------- Zoom: step back to see a tall palette whole ----------
@@ -1351,6 +1352,87 @@ function armZoomTap(el){ if(!el) return;
     zoomTap=t;
     el.addEventListener("pointerup",t.end);
     el.addEventListener("pointercancel",t.end); }); }
+// ---------- Pinch: two fingers walk the same ladder the 🔍 button walks ----------
+// Only the two BEDS. They are the only elements carrying `touch-action: pan-x pan-y`, which is what stops the
+// browser page-zooming a touch that starts there; #fieldbar is an absolutely positioned SIBLING of #scroller,
+// not a descendant, so a finger on the rail is still the browser's to scale.
+// Best-effort on purpose. Chrome makes touchmove non-cancelable the moment it has begun scrolling, and no
+// amount of preventDefault takes a gesture back after that — so when we cannot have it we let go completely
+// rather than own half of it. And we never preventDefault the touchSTART, which leaves the synthesized
+// mousedown that planting rides on exactly as it was.
+let pinchLost=false;                                 // one telling per session that Chrome kept a pinch
+const PINCH_IN=1.22, PINCH_OUT=0.82, PINCH_MIN=32;   // ratio each way, plus an absolute floor so a narrow grip
+                                                     // cannot trip on jitter and a wide one need not travel absurdly
+// Pure, so the arithmetic is testable without a browser (the harness has no touches).
+function nextPinchStop(cur, ratio){                  // which stop a spread ratio selects, or null for "not decisive"
+  if(ratio<PINCH_IN && ratio>PINCH_OUT) return null;
+  const i=ZOOM_STOPS.indexOf(cur), at=(i<0?0:i);
+  const next = ratio>=PINCH_IN ? at-1 : at+1;        // ZOOM_STOPS is [1, .8, .6] — index 0 IS full size, so IN means DOWN
+  return (next>=0 && next<ZOOM_STOPS.length) ? ZOOM_STOPS[next] : null; }
+function anchoredScroll(sl, cx, left, z, left2, z2){ // keep the field point under the fingers where it is
+  return (sl + (cx-left)/z) - (cx-left2)/z2; }       // scrollLeft is FIELD px under CSS zoom; rect.left is VISUAL px
+const pinchDist=p=>Math.hypot(p[0].clientX-p[1].clientX, p[0].clientY-p[1].clientY);
+function pinchEligible(t){                           // a bed, and not a control that already owns its own pointer
+  const el=t&&t.target;
+  if(!el||typeof el.closest!=="function") return false;
+  if(el.closest("#cursorStrip")||el.closest(".grip")) return false;
+  return !!(el.closest("#scroller")||el.closest("#drumArea")); }
+function pinchPair(e){                               // OUR two touches — e.touches is document-wide, so filter it
+  const out=[]; for(const t of e.touches) if(pinchEligible(t)) out.push(t);
+  return out.length===2 ? out : null; }
+function pinchDrop(){ if(!pinch) return;             // idempotent: every exit, including the ones with no touchend
+  const moved=!!pinch.done;                          // two fingers that only RESTED changed nothing —
+  if(pinch.el && pinch.move) pinch.el.removeEventListener("touchmove", pinch.move);
+  pinch=null;
+  camReseed();                                       // the anchor moved the box out from under CAM.expect
+  if(moved) CAM.yielded=true; }                      // …so only a real zoom takes the camera off the playhead
+function pinchZoom(z2, cx){
+  const z=zoomOf(), r=scroller.getBoundingClientRect();      // the LIVE zoom, never the requested one: on a browser
+  const sl=scroller.scrollLeft;                              // that ignores `zoom` both reads are 1 and this is a no-op
+  setFieldZoom(z2);                                          // (its own camEnsure is inert - camBusy() sees the pinch)
+  const r2=scroller.getBoundingClientRect();
+  scroller.scrollLeft=anchoredScroll(sl, cx, r.left, z, r2.left, zoomOf());   // the browser clamps at both ends for us
+  camReseed(); }
+function armPinch(el){ if(!el) return;
+  const move=e=>{
+    if(!pinch) return;
+    const p=pinchPair(e);
+    if(!p || !pinch.ids.includes(p[0].identifier) || !pinch.ids.includes(p[1].identifier)){ pinchDrop(); return; }
+    const d=pinchDist(p), cx=(p[0].clientX+p[1].clientX)/2, cy=(p[0].clientY+p[1].clientY)/2;
+    const spread=Math.abs(d-pinch.d0), travel=Math.hypot(cx-pinch.cx0, cy-pinch.cy0);
+    if(spread<8 || spread<=travel) return;           // the centre is moving more than the fingers are: a PAN, and it stays one
+    if(!e.cancelable){                               // Chrome got there first; half a gesture is worse than none
+      if(!pinchLost && spread>=PINCH_MIN){ pinchLost=true;   // say it ONCE: a pinch that quietly does nothing
+        setStatus("🔍 That pinch slipped away — the 🔍 in the ☰ menu always works."); }   // is the one failure a child cannot report
+      pinchDrop(); return; }
+    e.preventDefault();                              // claimed - early enough that no scroll has begun
+    if(pinch.done || spread<PINCH_MIN) return;
+    const z2=nextPinchStop(fieldZoom, d/pinch.d0);
+    if(z2==null) return;
+    pinchZoom(z2, cx);
+    pinch.done=true; };                              // ONE stop per gesture: two is not reachable one-handed on a phone
+  el.addEventListener("touchstart",e=>{
+    // ANY contact arriving mid-gesture ends it — including one we filter out. #cursorStrip and the grips
+    // live INSIDE #scroller, so a third finger there bubbles here; re-arming on the surviving pair would
+    // hand the gesture a fresh one-stop budget and strand the other bed's listener where nothing can reach it.
+    if(pinch){ pinchDrop(); return; }
+    if(trayMode || pull || cursorStripEl._drag===true) return;   // the Scoop, a vine being pulled, and the stake each own their own fingers
+    const p=pinchPair(e);
+    if(!p) return;                                   // one finger, or a touch off the beds: not ours
+    pinch={ el, move, d0:pinchDist(p), done:false,
+            cx0:(p[0].clientX+p[1].clientX)/2, cy0:(p[0].clientY+p[1].clientY)/2,
+            ids:[p[0].identifier, p[1].identifier] };
+    el.addEventListener("touchmove",move,{passive:false}); },{passive:true});
+  //  ^ the non-passive listener exists only while two fingers are down, so one-finger scrolling never waits on us
+  el.addEventListener("touchend",e=>{ if(pinch && !pinchPair(e)) pinchDrop(); },{passive:true});
+  el.addEventListener("touchcancel",()=>pinchDrop(),{passive:true}); }
+  //  ^ cancellation is TERMINAL. Chrome may still list the pair in e.touches, so a remaining-touch test
+  //    would leave the gesture armed — and an armed pinch holds camBusy() true for the rest of the level.
+// A gesture can end without a touchend — a phone call, the app backgrounded. Left armed, `pinch` would make
+// camBusy() true forever and the camera would never move again for the rest of the level.
+document.addEventListener("visibilitychange",()=>{ if(document.hidden) pinchDrop(); });
+window.addEventListener("pagehide",pinchDrop);
+window.addEventListener("blur",pinchDrop);
 function setFieldZoom(z){
   fieldZoom=z;
   const fc=document.querySelector(".fieldcol"); if(fc) fc.style.setProperty("--fz", z);
@@ -4321,7 +4403,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitTray();
   cursorCol=0; cursorPinned=false; loopStart=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
-  zoomTapDrop(); swallowTapUntil=0;    // …with no half-finished tap and no pending swallow carried across the seam
+  zoomTapDrop(); pinchDrop(); swallowTapUntil=0;   // …with no half-finished gesture and no pending swallow carried across the seam
   if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
@@ -4850,6 +4932,7 @@ jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
 const grooveEl=document.getElementById("groove"), grooveCtlEl=document.getElementById("grooveCtl");
 document.getElementById("zoomBtn").onclick=cycleZoom;
 armZoomTap(scroller); armZoomTap(drumArea);   // both beds — the beat lane is the same garden
+armPinch(scroller);   armPinch(drumArea);
 GROOVES.forEach((g,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=g.name; grooveEl.appendChild(o); });
 grooveEl.onchange=()=>{ grooveIdx=+grooveEl.value; applyGrooveTempo();
   if(jamMode) setStatus(`🎸 Groove: <b>${GROOVES[grooveIdx].name}</b> — keep jamming! 🎶`); };

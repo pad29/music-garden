@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tune Garden · Pinch Probe</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --cream:#F1ECDF; --ink:#3E3A39; --green:#35824A; --edge:#E5DCC8; --red:#B4462F; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; padding:10px; font-family:'Nunito','Segoe UI',system-ui,sans-serif; color:var(--ink);
+        background:var(--cream); overflow-x:hidden; }
+  h1{ font-family:'Fredoka',sans-serif; font-weight:600; font-size:1.05rem; margin:0 0 4px;}
+  .hint{ font-size:.73rem; opacity:.78; margin:0 0 8px; line-height:1.35;}
+  .row{ display:flex; gap:6px; flex-wrap:wrap; margin:7px 0;}
+  button{ font-family:inherit; font-weight:700; font-size:.78rem; padding:7px 10px; border-radius:11px;
+          border:1px solid var(--edge); background:#fff; color:var(--ink); cursor:pointer;}
+  button.go{ background:var(--green); color:#fff; border-color:var(--green);}
+  button.on{ background:#FFD98A; }
+
+  /* The bed mirrors the game exactly: same touch-action, same overflow, same cell size — and the CSS
+     `zoom` goes on the SCROLLER, not on the grid inside it, because that is what makes scrollLeft
+     field-pixels and getBoundingClientRect visual-pixels. Put it on the child and the anchoring
+     arithmetic this page exists to check is a different problem. */
+  .stage{ position:relative; background:#fff; border:1px solid var(--edge); border-radius:14px;
+          padding:8px; box-shadow:0 3px 10px rgba(62,58,57,.08); }
+  .scroller{ overflow-x:auto; overflow-y:hidden; touch-action:pan-x pan-y; -webkit-overflow-scrolling:touch;
+             scrollbar-width:none; zoom:var(--fz,1); }
+  .scroller::-webkit-scrollbar{ height:0; }
+  .scroller.none{ touch-action:none; }
+  .grid{ display:grid; grid-auto-flow:column; gap:4px; padding:10px; width:max-content; position:relative;}
+  .col{ display:grid; gap:4px; }
+  .cell{ width:34px; height:30px; border-radius:8px; background:#DDE3EC; }
+  .cell.on{ background:#7FBF8F; }
+  /* A stand-in for #cursorStrip: a child of the scroller that the game excludes from the pinch. */
+  .strip{ position:absolute; left:0; right:0; top:0; height:14px; background:#EADFC4; touch-action:none; }
+
+  .readout{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.63rem; line-height:1.4;
+            background:#fff; border:1px solid var(--edge); border-radius:11px; padding:8px;
+            height:24vh; overflow-y:auto; white-space:pre; margin-top:8px; }
+  .verdict{ background:#fff; border:1px solid var(--edge); border-radius:11px; padding:9px 11px; margin-top:8px;
+            font-size:.75rem; line-height:1.5; }
+  .verdict h2{ font-family:'Fredoka',sans-serif; font-weight:500; color:var(--green); font-size:.85rem; margin:0 0 5px;}
+  .k{ display:inline-block; min-width:11em; opacity:.7; }
+  .bad{ color:var(--red); font-weight:700; }
+  .good{ color:var(--green); font-weight:700; }
+  .ab{ display:flex; gap:8px; margin-top:6px; }
+  .ab div{ flex:1; border:1px solid var(--edge); border-radius:9px; padding:6px 8px; font-size:.72rem;}
+  .ab b{ display:block; font-family:'Fredoka',sans-serif; font-weight:500; margin-bottom:2px;}
+</style>
+</head>
+<body>
+<h1>🤏 Pinch Probe</h1>
+<p class="hint">Disposable. The desktop harness lets us choose whether a touch event is cancelable; on this phone
+Chrome chooses. <b>The A/B is the point:</b> the game attaches its blocking <code>touchmove</code> listener
+<i>during</i> the second finger's <code>touchstart</code>. If Chrome does not honour a listener added mid-sequence,
+every move comes back non-cancelable and the pinch silently never works. Do the same pinch in both modes and
+compare the two boxes.</p>
+
+<div class="row">
+  <button class="go" id="mode">Listener: <b>lazy (like the game)</b></button>
+  <button id="clear">Clear</button>
+</div>
+<div class="row">
+  <button id="pd">preventDefault: <b>on</b></button>
+  <button id="bed">Bed: <b>pan-x pan-y</b></button>
+  <button id="zoom">Zoom: <b>100%</b></button>
+</div>
+
+<div class="stage">
+  <div class="scroller" id="scroller"><div class="grid" id="grid"><div class="strip" id="strip"></div></div></div>
+</div>
+
+<div class="verdict" id="verdict"></div>
+<div class="readout" id="log"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const scroller=$("scroller"), grid=$("grid"), logEl=$("log"), verdictEl=$("verdict"), strip=$("strip");
+
+// ---------- the bed ----------
+const ROWS=5, COLS=40;
+for(let c=0;c<COLS;c++){ const col=document.createElement("div"); col.className="col";
+  for(let r=0;r<ROWS;r++){ const el=document.createElement("div"); el.className="cell";
+    // Planting is wired to mousedown, exactly as the game wires it — that is why the compat question matters.
+    el.addEventListener("mousedown",()=>{ el.classList.toggle("on"); note("mousedown","PLANT r"+r+" c"+c); });
+    col.appendChild(el); }
+  grid.appendChild(col); }
+
+// ---------- log ----------
+const LOG=[]; let t0=0;
+function stamp(){ if(!t0) t0=performance.now(); return (performance.now()-t0).toFixed(0).padStart(5," "); }
+function note(kind,msg){ LOG.push(stamp()+"ms "+kind.padEnd(12," ")+msg);
+  if(LOG.length>500) LOG.shift();
+  logEl.textContent=LOG.join("\n"); logEl.scrollTop=logEl.scrollHeight; }
+
+// ---------- the A/B ----------
+// LAZY  = the game's arrangement: the {passive:false} touchmove is added inside the touchstart that sees
+//         the second finger, so one-finger scrolling never has a blocking listener at all.
+// LOAD  = registered once at startup. Safe for certain, but every one-finger scroll then waits on the
+//         main thread — and this page exists to say whether that cost has to be paid.
+let LAZY=true, PD=true, ZOOM=1;
+const AB={ lazy:blank(), load:blank() };
+function blank(){ return { gestures:0, moves:0, cancelable:0, prevented:0, ignored:0, scrolled:0, firstCancelable:null }; }
+const bucket=()=>LAZY?AB.lazy:AB.load;
+
+$("mode").onclick=()=>{ LAZY=!LAZY;
+  $("mode").innerHTML="Listener: <b>"+(LAZY?"lazy (like the game)":"at load")+"</b>";
+  $("mode").classList.toggle("on",!LAZY);
+  if(LAZY) scroller.removeEventListener("touchmove",onMove,{passive:false});
+  else     scroller.addEventListener("touchmove",onMove,{passive:false});
+  note("config","listener mode = "+(LAZY?"lazy":"load")); };
+$("pd").onclick=()=>{ PD=!PD; $("pd").innerHTML="preventDefault: <b>"+(PD?"on":"off")+"</b>"; $("pd").classList.toggle("on",!PD); };
+$("bed").onclick=()=>{ scroller.classList.toggle("none"); const none=scroller.classList.contains("none");
+  $("bed").innerHTML="Bed: <b>"+(none?"none":"pan-x pan-y")+"</b>"; $("bed").classList.toggle("on",none);
+  note("config","touch-action = "+(none?"none":"pan-x pan-y")); };
+$("zoom").onclick=()=>{ ZOOM = ZOOM===1?0.8 : ZOOM===0.8?0.6 : 1;
+  scroller.style.setProperty("--fz",ZOOM);
+  $("zoom").innerHTML="Zoom: <b>"+Math.round(ZOOM*100)+"%</b>"; $("zoom").classList.toggle("on",ZOOM!==1);
+  const r=scroller.getBoundingClientRect();
+  note("config","zoom="+ZOOM+"  scrollLeft="+scroller.scrollLeft.toFixed(0)
+    +"  offsetW="+scroller.offsetWidth+"  rectW="+r.width.toFixed(1)
+    +"  measured zoom="+(r.width/scroller.offsetWidth).toFixed(3)); };
+$("clear").onclick=()=>{ LOG.length=0; t0=0; logEl.textContent="";
+  AB.lazy=blank(); AB.load=blank(); M.pointerCancels=M.pointerDowns=M.compat=M.real=0;
+  M.scale=new Set(); render(); };
+
+// ---------- gesture state, mirroring the game's own filter ----------
+const M={ pointerDowns:0, pointerCancels:0, compat:0, real:0, scale:new Set() };
+const dist=(a,b)=>Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+const eligible=t=>{ const el=t&&t.target;
+  return !!(el&&el.closest&&!el.closest(".strip")&&el.closest("#scroller")); };
+function pair(e){ const out=[]; for(const t of e.touches) if(eligible(t)) out.push(t);
+  return out.length===2?out:null; }
+let G=null;   // {d0,cx0,cy0,scroll0}
+
+function onMove(e){
+  if(!G) return;
+  const p=pair(e); if(!p) return;
+  const b=bucket(); b.moves++;
+  if(e.cancelable) b.cancelable++;
+  if(b.firstCancelable===null) b.firstCancelable=!!e.cancelable;
+  const d=dist(p[0],p[1]), cx=(p[0].clientX+p[1].clientX)/2, cy=(p[0].clientY+p[1].clientY)/2;
+  const spread=Math.abs(d-G.d0), travel=Math.hypot(cx-G.cx0, cy-G.cy0);
+  const latched = spread>=8 && spread>travel;      // the game's exact decision
+  let tail="";
+  if(latched && PD){
+    if(e.cancelable){ e.preventDefault();
+      if(e.defaultPrevented){ b.prevented++; tail=" PREVENTED"; }
+      else { b.ignored++; tail=" preventDefault IGNORED"; } }
+    else tail=" NOT CANCELABLE <- Chrome owns it";
+  }
+  const moved=scroller.scrollLeft-G.scroll0;
+  if(latched && moved) b.scrolled++;
+  note("touchmove","n="+e.touches.length+" cancel="+(e.cancelable?"Y":"N")
+    +" spread="+spread.toFixed(0)+" travel="+travel.toFixed(0)
+    +" -> "+(latched?"PINCH":"pan ")+" ratio="+(d/G.d0).toFixed(2)
+    +" sL"+(moved>=0?"+":"")+moved.toFixed(0)+tail);
+}
+
+scroller.addEventListener("touchstart",e=>{
+  const p=pair(e);
+  note("touchstart","n="+e.touches.length+" eligible="+(p?2:"<2")+" cancel="+(e.cancelable?"Y":"N")
+    +(p?"  spread="+dist(p[0],p[1]).toFixed(0):""));
+  if(!p){ G=null; return; }
+  G={ d0:dist(p[0],p[1]), cx0:(p[0].clientX+p[1].clientX)/2, cy0:(p[0].clientY+p[1].clientY)/2,
+      scroll0:scroller.scrollLeft };
+  bucket().gestures++;
+  // THE experiment: in lazy mode the blocking listener is born here, mid-sequence, exactly as the game does it.
+  if(LAZY) scroller.addEventListener("touchmove",onMove,{passive:false});
+},{passive:true});
+
+const finish=(why)=>{ if(LAZY) scroller.removeEventListener("touchmove",onMove,{passive:false});
+  G=null; note(why,""); };
+scroller.addEventListener("touchend",e=>{ if(e.touches.length<2 && G) finish("touchend"); },{passive:true});
+scroller.addEventListener("touchcancel",()=>{ if(G) finish("touchcancel"); },{passive:true});
+
+scroller.addEventListener("pointerdown",e=>{ M.pointerDowns++; },{passive:true});
+scroller.addEventListener("pointercancel",e=>{ M.pointerCancels++;
+  note("pointercancel","id="+e.pointerId+"  <- the browser claimed this pointer"); },{passive:true});
+
+// Is a mousedown synthesized from touch? Ask the event, do not guess from timing.
+scroller.addEventListener("mousedown",e=>{
+  const sc=e.sourceCapabilities;
+  const fromTouch = sc ? !!sc.firesTouchEvents : null;
+  if(fromTouch===true){ M.compat++; note("mousedown","synthesized from touch"); }
+  else if(fromTouch===false){ M.real++; note("mousedown","real mouse"); }
+  else note("mousedown","sourceCapabilities unavailable");
+},true);
+
+window.visualViewport && window.visualViewport.addEventListener("resize",()=>{
+  M.scale.add(window.visualViewport.scale.toFixed(2));
+  note("viewport","page scale = "+window.visualViewport.scale.toFixed(2)+"  <- the PAGE zoomed, not the bed"); });
+
+// ---------- verdict ----------
+function box(name,b){
+  if(!b.gestures) return "<b>"+name+"</b><span style='opacity:.6'>no gesture yet</span>";
+  const cls = b.cancelable===b.moves ? "good" : b.cancelable===0 ? "bad" : "";
+  return "<b>"+name+"</b>"
+    +"<span class='"+cls+"'>"+b.cancelable+" of "+b.moves+" moves cancelable</span><br>"
+    +"first move: "+(b.firstCancelable?"<span class='good'>cancelable</span>":"<span class='bad'>NOT cancelable</span>")+"<br>"
+    +"prevented "+b.prevented+(b.ignored?" · <span class='bad'>"+b.ignored+" ignored</span>":"")
+    +(b.scrolled?" · <span class='bad'>scrolled "+b.scrolled+"</span>":"");
+}
+function render(){
+  const yes=s=>"<span class='good'>"+s+"</span>", no=s=>"<span class='bad'>"+s+"</span>";
+  let out="<h2>Can we take the gesture?</h2>";
+  out+="<div class='ab'><div>"+box("lazy — like the game",AB.lazy)+"</div>"
+      +"<div>"+box("at load",AB.load)+"</div></div>";
+  out+="<div style='margin-top:8px'>";
+  out+="<span class='k'>pointers cancelled</span>"+(M.pointerCancels?no(M.pointerCancels+" of "+M.pointerDowns):yes("0 of "+M.pointerDowns))+"<br>";
+  out+="<span class='k'>compat mousedown</span>"+(M.compat?yes(M.compat+" arrived"):"none yet")+(M.real?"  ("+M.real+" real mouse)":"")+"<br>";
+  out+="<span class='k'>page scale changed</span>"+(M.scale.size?no([...M.scale].join(", ")):yes("no"))+"</div>";
+  verdictEl.innerHTML=out;
+}
+setInterval(render,400); render();
+note("ready","Pinch the bed. Switch modes. Pinch again. Then two-finger pan, then tap a square.");
+</script>
+</body>
+</html>
