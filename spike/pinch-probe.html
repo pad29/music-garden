@@ -51,14 +51,15 @@
 </head>
 <body>
 <h1>🤏 Pinch Probe</h1>
-<p class="hint">Disposable. The desktop harness lets us choose whether a touch event is cancelable; on this phone
-Chrome chooses. <b>The A/B is the point:</b> the game attaches its blocking <code>touchmove</code> listener
-<i>during</i> the second finger's <code>touchstart</code>. If Chrome does not honour a listener added mid-sequence,
-every move comes back non-cancelable and the pinch silently never works. Do the same pinch in both modes and
-compare the two boxes.</p>
+<p class="hint">Disposable. <b>Answered 2026-08-20 on a Pixel 10a:</b> a blocking <code>touchmove</code> registered
+mid-sequence is ignored — lazy came back <i>not cancelable</i>, at-load came back cancelable. The game now
+registers at load, and this page keeps the A/B so the finding stays checkable. Second question, still live:
+the <b>claim test</b> below each move — <code>PINCH</code> means we take the gesture and the browser stops
+scrolling it, <code>pan</code> means we keep our hands off. A pan misread as a pinch is a pan that does
+nothing at all.</p>
 
 <div class="row">
-  <button class="go" id="mode">Listener: <b>lazy (like the game)</b></button>
+  <button class="go" id="mode">Listener: <b>at load (like the game)</b></button>
   <button id="clear">Clear</button>
 </div>
 <div class="row">
@@ -95,18 +96,18 @@ function note(kind,msg){ LOG.push(stamp()+"ms "+kind.padEnd(12," ")+msg);
   logEl.textContent=LOG.join("\n"); logEl.scrollTop=logEl.scrollHeight; }
 
 // ---------- the A/B ----------
-// LAZY  = the game's arrangement: the {passive:false} touchmove is added inside the touchstart that sees
-//         the second finger, so one-finger scrolling never has a blocking listener at all.
-// LOAD  = registered once at startup. Safe for certain, but every one-finger scroll then waits on the
-//         main thread — and this page exists to say whether that cost has to be paid.
-let LAZY=true, PD=true, ZOOM=1;
+// LOAD  = the game's arrangement: registered once at startup. Costs every one-finger scroll a wait on
+//         the main thread, and the Pixel run said that cost has to be paid.
+// LAZY  = added inside the touchstart that sees the second finger, so one-finger scrolling would never
+//         have a blocking listener at all. Cheaper, and it does not work — kept here to stay checkable.
+let LAZY=false, PD=true, ZOOM=1;   // at-load is the game's arrangement now; flip to lazy to re-check the finding
 const AB={ lazy:blank(), load:blank() };
 function blank(){ return { gestures:0, moves:0, cancelable:0, prevented:0, ignored:0, scrolled:0, firstCancelable:null }; }
 const bucket=()=>LAZY?AB.lazy:AB.load;
 
 $("mode").onclick=()=>{ LAZY=!LAZY;
-  $("mode").innerHTML="Listener: <b>"+(LAZY?"lazy (like the game)":"at load")+"</b>";
-  $("mode").classList.toggle("on",!LAZY);
+  $("mode").innerHTML="Listener: <b>"+(LAZY?"lazy (mid-sequence)":"at load (like the game)")+"</b>";
+  $("mode").classList.toggle("on",LAZY);
   if(LAZY) scroller.removeEventListener("touchmove",onMove,{passive:false});
   else     scroller.addEventListener("touchmove",onMove,{passive:false});
   note("config","listener mode = "+(LAZY?"lazy":"load")); };
@@ -132,7 +133,13 @@ const eligible=t=>{ const el=t&&t.target;
   return !!(el&&el.closest&&!el.closest(".strip")&&el.closest("#scroller")); };
 function pair(e){ const out=[]; for(const t of e.touches) if(eligible(t)) out.push(t);
   return out.length===2?out:null; }
-let G=null;   // {d0,cx0,cy0,scroll0}
+let G=null;   // {d0,scroll0,s0:[{x,y},{x,y}],ids}
+// Mirrors index.html exactly — if this drifts from the game the page is measuring the wrong thing.
+const PINCH_CLAIM=10;
+function movingTogether(d1,d2){
+  const m1=Math.hypot(d1.x,d1.y), m2=Math.hypot(d2.x,d2.y);
+  if(m1<6||m2<6) return false;
+  return (d1.x*d2.x+d1.y*d2.y)/(m1*m2) > 0.5; }
 
 function onMove(e){
   if(!G) return;
@@ -140,9 +147,12 @@ function onMove(e){
   const b=bucket(); b.moves++;
   if(e.cancelable) b.cancelable++;
   if(b.firstCancelable===null) b.firstCancelable=!!e.cancelable;
-  const d=dist(p[0],p[1]), cx=(p[0].clientX+p[1].clientX)/2, cy=(p[0].clientY+p[1].clientY)/2;
-  const spread=Math.abs(d-G.d0), travel=Math.hypot(cx-G.cx0, cy-G.cy0);
-  const latched = spread>=8 && spread>travel;      // the game's exact decision
+  const q = p[0].identifier===G.ids[0] ? p : [p[1],p[0]];
+  const d1={x:q[0].clientX-G.s0[0].x, y:q[0].clientY-G.s0[0].y};
+  const d2={x:q[1].clientX-G.s0[1].x, y:q[1].clientY-G.s0[1].y};
+  const d=dist(p[0],p[1]), spread=Math.abs(d-G.d0);
+  const together=movingTogether(d1,d2);
+  const latched = spread>=PINCH_CLAIM && !together;   // the game's exact decision
   let tail="";
   if(latched && PD){
     if(e.cancelable){ e.preventDefault();
@@ -152,10 +162,12 @@ function onMove(e){
   }
   const moved=scroller.scrollLeft-G.scroll0;
   if(latched && moved) b.scrolled++;
-  note("touchmove","n="+e.touches.length+" cancel="+(e.cancelable?"Y":"N")
-    +" spread="+spread.toFixed(0)+" travel="+travel.toFixed(0)
+  const fmt=v=>(v>=0?"+":"")+v.toFixed(0);
+  note("touchmove","cancel="+(e.cancelable?"Y":"N")
+    +" f1("+fmt(d1.x)+","+fmt(d1.y)+") f2("+fmt(d2.x)+","+fmt(d2.y)+")"
+    +" spread="+spread.toFixed(0)+(together?" TOGETHER":"")
     +" -> "+(latched?"PINCH":"pan ")+" ratio="+(d/G.d0).toFixed(2)
-    +" sL"+(moved>=0?"+":"")+moved.toFixed(0)+tail);
+    +" sL"+fmt(moved)+tail);
 }
 
 scroller.addEventListener("touchstart",e=>{
@@ -163,8 +175,9 @@ scroller.addEventListener("touchstart",e=>{
   note("touchstart","n="+e.touches.length+" eligible="+(p?2:"<2")+" cancel="+(e.cancelable?"Y":"N")
     +(p?"  spread="+dist(p[0],p[1]).toFixed(0):""));
   if(!p){ G=null; return; }
-  G={ d0:dist(p[0],p[1]), cx0:(p[0].clientX+p[1].clientX)/2, cy0:(p[0].clientY+p[1].clientY)/2,
-      scroll0:scroller.scrollLeft };
+  G={ d0:dist(p[0],p[1]), scroll0:scroller.scrollLeft,
+      ids:[p[0].identifier,p[1].identifier],
+      s0:[{x:p[0].clientX,y:p[0].clientY},{x:p[1].clientX,y:p[1].clientY}] };
   bucket().gestures++;
   // THE experiment: in lazy mode the blocking listener is born here, mid-sequence, exactly as the game does it.
   if(LAZY) scroller.addEventListener("touchmove",onMove,{passive:false});
@@ -205,8 +218,8 @@ function box(name,b){
 function render(){
   const yes=s=>"<span class='good'>"+s+"</span>", no=s=>"<span class='bad'>"+s+"</span>";
   let out="<h2>Can we take the gesture?</h2>";
-  out+="<div class='ab'><div>"+box("lazy — like the game",AB.lazy)+"</div>"
-      +"<div>"+box("at load",AB.load)+"</div></div>";
+  out+="<div class='ab'><div>"+box("lazy — mid-sequence",AB.lazy)+"</div>"
+      +"<div>"+box("at load — like the game",AB.load)+"</div></div>";
   out+="<div style='margin-top:8px'>";
   out+="<span class='k'>pointers cancelled</span>"+(M.pointerCancels?no(M.pointerCancels+" of "+M.pointerDowns):yes("0 of "+M.pointerDowns))+"<br>";
   out+="<span class='k'>compat mousedown</span>"+(M.compat?yes(M.compat+" arrived"):"none yet")+(M.real?"  ("+M.real+" real mouse)":"")+"<br>";
@@ -214,7 +227,9 @@ function render(){
   verdictEl.innerHTML=out;
 }
 setInterval(render,400); render();
-note("ready","Pinch the bed. Switch modes. Pinch again. Then two-finger pan, then tap a square.");
+// at-load is the default, so register it now rather than waiting for the first mode toggle
+scroller.addEventListener("touchmove",onMove,{passive:false});
+note("ready","Two-finger PAN first — every move should say `pan` and sL should change. Then pinch. Then tap.");
 </script>
 </body>
 </html>

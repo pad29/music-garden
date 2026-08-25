@@ -214,3 +214,42 @@ unsatisfiable, two as unreachable). Browser-verified with real `Touch`/`TouchEve
 **Cost:** design review 2.39M input (2.21M cached) / 20k out on Sol, ~18 min. Cross-test 4.94M (4.49M cached)
 / 40k out on Terra — double the previous, because resuming replayed the design-review transcript. Delete
 `.claude/gpt/.thread-id` between tasks.
+
+### 2026-08-20, same task — what the Pixel 10a said
+
+Two device findings, both from the owner's run against deploy-preview-1. No GPT call: these are measurements,
+not opinions, and both fixes follow from them directly.
+
+**1. A blocking `touchmove` registered mid-sequence is IGNORED.** The A/B was unambiguous: lazy
+(added when the second finger lands, which is what shipped) came back **not cancelable**; at load came back
+**cancelable**. GPT's cross-test finding A called this exactly, and it was the one thing neither of us could
+settle by argument — which is why the probe existed. **Registered at load now.** The cost is real and is
+being paid knowingly: one-finger scrolling waits on a main-thread handler whose first line is
+`if(!pinch) return`. That was the property I had been protecting, and the device says it buys nothing
+because the feature does not work without it.
+
+**2. Two-finger panning did nothing at all — neither zoom nor scroll.** I could not reproduce the cause:
+synthesized touch events never drive native scrolling, so a desktop cannot tell whether Chrome declines to
+two-finger-scroll a `pan-x pan-y` bed or whether the old latch was eating it. Both fixed at once:
+
+- The claim test is now **direction**, not spread-versus-midpoint-travel. `movingTogether(d1,d2)` compares
+  the two fingers' own displacement vectors; a pan vetoes outright. The old test could read finger wobble as
+  a pinch on the FIRST touchmove, and preventing the first touchmove is what makes Chrome cancel scrolling
+  for the whole gesture — a pan that does nothing, exactly as reported. A resting finger is exempt from the
+  veto (one anchored finger and one sliding one is a perfectly good pinch).
+- **The garden now pans itself.** Rather than establish whose fault the dead pan was, two fingers travelling
+  as one drag the field 1:1, the way the Scoop's own two-finger pan already does. Verified: 50 viewport px
+  at 0.8 zoom scrolls exactly 63 field px, and continues tracking without a jump.
+
+**This reverses GPT design finding #9 part one** — "claiming every two-finger gesture makes panning a dead
+gesture." Correct as a warning, and the answer turned out to be *own the pan too* rather than *never claim*.
+A gesture that starts as a pan and then spreads still zooms; a pan never spends the one-stop budget.
+
+**Contract change, recorded because it invalidates tests:** the move listener is permanent, so the assertions
+counting listeners were rewritten to prove the listener is INERT between gestures rather than absent. GPT's
+pan test was rewritten from "never claimed" to "claimed and panned, never zooms."
+
+**Result:** suite 59/59. Browser-verified after reload. One scare that was not real: the beat lane appeared to
+stop mirroring the seed lane — it is the known Browser-pane artifact (no compositing means no `scroll` events
+are dispatched at all); dispatching one by hand mirrors correctly.
+

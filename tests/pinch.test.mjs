@@ -79,3 +79,46 @@ test("the pinch thresholds are symmetric enough that neither direction is the ha
   assert.ok(Math.abs(outTravel - g.PINCH_IN) < 0.02,
     `IN needs ${g.PINCH_IN}x, OUT needs ${outTravel.toFixed(3)}x`);
 });
+
+// ---- The claim test: which way are the two fingers going? ----
+// This is what decides whether the browser keeps a gesture or we take it, and getting it wrong is not
+// symmetric. Claiming a pan means preventing its FIRST touchmove, and Chrome cancels scrolling for the
+// whole gesture when you do that — so a wrong claim is not "a stray zoom", it is a pan that does nothing
+// at all. That is exactly what the Pixel 10a reported against the old spread-versus-travel test.
+
+const V = (x, y) => ({ x, y });
+
+test("two fingers sliding the same way are a pan, never a pinch", () => {
+  assert.strictEqual(g.movingTogether(V(-90, 0), V(-94, 0)), true, "straight sideways");
+  assert.strictEqual(g.movingTogether(V(40, 12), V(38, 9)), true, "slightly diagonal, still together");
+  assert.strictEqual(g.movingTogether(V(0, 60), V(0, 55)), true, "vertical");
+});
+
+test("two fingers moving apart or together are a pinch", () => {
+  assert.strictEqual(g.movingTogether(V(-40, 0), V(40, 0)), false, "spreading");
+  assert.strictEqual(g.movingTogether(V(30, 0), V(-30, 0)), false, "closing");
+  assert.strictEqual(g.movingTogether(V(-20, -20), V(20, 20)), false, "diagonal spread");
+});
+
+// A child often anchors one finger and moves the other. That is a pinch, and the direction test must not
+// veto it just because one vector is ~zero and the cosine is meaningless.
+test("one resting finger and one sliding finger is still a pinch", () => {
+  assert.strictEqual(g.movingTogether(V(0, 0), V(60, 0)), false);
+  assert.strictEqual(g.movingTogether(V(2, 1), V(-70, 4)), false, "a resting finger is allowed to tremble");
+});
+
+// Below the noise floor nothing is decided; the spread threshold is what gates the claim there.
+test("the direction test abstains while both fingers are still near where they started", () => {
+  assert.strictEqual(g.movingTogether(V(3, 0), V(4, 0)), false, "same way, but too small to call");
+  assert.strictEqual(g.movingTogether(V(5, 0), V(-5, 0)), false);
+});
+
+test("a pan has to be clearly a pan: perpendicular movement is not vetoed", () => {
+  assert.strictEqual(g.movingTogether(V(0, 40), V(40, 0)), false,
+    "at right angles the fingers are not travelling together");
+});
+
+test("the claim threshold is above ordinary finger wobble but well under a committing pinch", () => {
+  assert.ok(g.PINCH_CLAIM >= 10, "below this, two fingers resting on glass would claim the gesture");
+  assert.ok(g.PINCH_CLAIM < g.PINCH_MIN, "claiming must happen before committing, never after");
+});

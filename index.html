@@ -1361,7 +1361,17 @@ function armZoomTap(el){ if(!el) return;
 // rather than own half of it. And we never preventDefault the touchSTART, which leaves the synthesized
 // mousedown that planting rides on exactly as it was.
 let pinchLost=false;                                 // one telling per session that Chrome kept a pinch
-const PINCH_IN=1.22, PINCH_OUT=0.82, PINCH_MIN=32;   // ratio each way, plus an absolute floor so a narrow grip
+const PINCH_IN=1.22, PINCH_OUT=0.82, PINCH_MIN=32, PINCH_CLAIM=10;
+// Which way are the two fingers going? This is the whole difference between a pinch and a pan, and it is
+// readable within a few pixels — which matters, because preventing the FIRST touchmove is the only moment
+// the gesture can still be taken. Comparing spread against how far the midpoint has moved is not good
+// enough: at the start of a pan the midpoint has barely moved either, so finger wobble reads as a pinch,
+// the first move gets prevented, and Chrome cancels scrolling for the whole gesture. That is a pan that
+// does nothing at all, which is exactly what the Pixel reported.
+function movingTogether(d1, d2){
+  const m1=Math.hypot(d1.x,d1.y), m2=Math.hypot(d2.x,d2.y);
+  if(m1<6 || m2<6) return false;                     // one finger resting while the other slides is a fine pinch
+  return (d1.x*d2.x + d1.y*d2.y)/(m1*m2) > 0.5; }    // both travelling the same way: a PAN, and it stays one   // ratio each way, plus an absolute floor so a narrow grip
                                                      // cannot trip on jitter and a wide one need not travel absurdly
 // Pure, so the arithmetic is testable without a browser (the harness has no touches).
 function nextPinchStop(cur, ratio){                  // which stop a spread ratio selects, or null for "not decisive"
@@ -1381,9 +1391,8 @@ function pinchPair(e){                               // OUR two touches — e.to
   const out=[]; for(const t of e.touches) if(pinchEligible(t)) out.push(t);
   return out.length===2 ? out : null; }
 function pinchDrop(){ if(!pinch) return;             // idempotent: every exit, including the ones with no touchend
-  const moved=!!pinch.done;                          // two fingers that only RESTED changed nothing —
-  if(pinch.el && pinch.move) pinch.el.removeEventListener("touchmove", pinch.move);
-  pinch=null;
+  const moved=!!(pinch.done||pinch.moved);           // two fingers that only RESTED changed nothing —
+  pinch=null;                                        // (the move listener is permanent now, and inert while this is null)
   camReseed();                                       // the anchor moved the box out from under CAM.expect
   if(moved) CAM.yielded=true; }                      // …so only a real zoom takes the camera off the playhead
 function pinchZoom(z2, cx){
@@ -1395,35 +1404,54 @@ function pinchZoom(z2, cx){
   camReseed(); }
 function armPinch(el){ if(!el) return;
   const move=e=>{
-    if(!pinch) return;
+    if(!pinch) return;                               // the cheap exit: this is every one-finger scroll
     const p=pinchPair(e);
     if(!p || !pinch.ids.includes(p[0].identifier) || !pinch.ids.includes(p[1].identifier)){ pinchDrop(); return; }
-    const d=pinchDist(p), cx=(p[0].clientX+p[1].clientX)/2, cy=(p[0].clientY+p[1].clientY)/2;
-    const spread=Math.abs(d-pinch.d0), travel=Math.hypot(cx-pinch.cx0, cy-pinch.cy0);
-    if(spread<8 || spread<=travel) return;           // the centre is moving more than the fingers are: a PAN, and it stays one
+    const q = p[0].identifier===pinch.ids[0] ? p : [p[1],p[0]];   // same order as the start positions
+    const d1={x:q[0].clientX-pinch.s0[0].x, y:q[0].clientY-pinch.s0[0].y};
+    const d2={x:q[1].clientX-pinch.s0[1].x, y:q[1].clientY-pinch.s0[1].y};
+    const d=pinchDist(p), spread=Math.abs(d-pinch.d0);
+    const cx=(q[0].clientX+q[1].clientX)/2;
+    const together=movingTogether(d1,d2);
+    // Two fingers are doing one of two things, and the garden owns BOTH. A phone reported two-finger
+    // panning doing nothing at all — neither zoom nor scroll — and a bed that says `pan-x pan-y` has
+    // already told the browser it may not pinch there, so two fingers can fall between the two and move
+    // nothing. Rather than work out whose fault that is, the garden moves itself, the way the Scoop
+    // already does for its own two-finger pan.
+    if(!together && spread<PINCH_CLAIM) return;      // still ambiguous — nobody owns it yet
     if(!e.cancelable){                               // Chrome got there first; half a gesture is worse than none
-      if(!pinchLost && spread>=PINCH_MIN){ pinchLost=true;   // say it ONCE: a pinch that quietly does nothing
+      if(!pinchLost && spread>=PINCH_MIN){ pinchLost=true;   // say it ONCE: a gesture that quietly does nothing
         setStatus("🔍 That pinch slipped away — the 🔍 in the ☰ menu always works."); }   // is the one failure a child cannot report
       pinchDrop(); return; }
     e.preventDefault();                              // claimed - early enough that no scroll has begun
+    if(together){                                    // travelling as one: drag the garden, 1:1 under the fingers
+      scroller.scrollLeft -= (cx-pinch.lastCx)/zoomOf();   // scrollLeft is FIELD px, the finger is viewport px
+      pinch.lastCx=cx; pinch.moved=true;             // (the beat lane mirrors this scroller on its own)
+      camReseed(); return; }
     if(pinch.done || spread<PINCH_MIN) return;
     const z2=nextPinchStop(fieldZoom, d/pinch.d0);
     if(z2==null) return;
     pinchZoom(z2, cx);
+    pinch.lastCx=cx;                                 // a pinch that becomes a pan must not jump on its first drag
     pinch.done=true; };                              // ONE stop per gesture: two is not reachable one-handed on a phone
+  // Registered at LOAD, and this is a measured decision, not a preference. On a Pixel 10a a blocking
+  // touchmove listener added part-way through a sequence — when the second finger lands — is ignored:
+  // every move of that gesture comes back non-cancelable and the pinch can never take it. Registered up
+  // front it is cancelable. The price is that one-finger scrolling now waits on a main-thread handler
+  // that returns on its first line, and that price buys the feature existing at all.
+  el.addEventListener("touchmove",move,{passive:false});
   el.addEventListener("touchstart",e=>{
     // ANY contact arriving mid-gesture ends it — including one we filter out. #cursorStrip and the grips
-    // live INSIDE #scroller, so a third finger there bubbles here; re-arming on the surviving pair would
-    // hand the gesture a fresh one-stop budget and strand the other bed's listener where nothing can reach it.
+    // live INSIDE #scroller, so a third finger there bubbles here, and re-arming on the surviving pair
+    // would hand the gesture a fresh one-stop budget.
     if(pinch){ pinchDrop(); return; }
     if(trayMode || pull || cursorStripEl._drag===true) return;   // the Scoop, a vine being pulled, and the stake each own their own fingers
     const p=pinchPair(e);
     if(!p) return;                                   // one finger, or a touch off the beds: not ours
-    pinch={ el, move, d0:pinchDist(p), done:false,
-            cx0:(p[0].clientX+p[1].clientX)/2, cy0:(p[0].clientY+p[1].clientY)/2,
-            ids:[p[0].identifier, p[1].identifier] };
-    el.addEventListener("touchmove",move,{passive:false}); },{passive:true});
-  //  ^ the non-passive listener exists only while two fingers are down, so one-finger scrolling never waits on us
+    pinch={ d0:pinchDist(p), done:false, moved:false,
+            lastCx:(p[0].clientX+p[1].clientX)/2,
+            ids:[p[0].identifier, p[1].identifier],
+            s0:[{x:p[0].clientX,y:p[0].clientY},{x:p[1].clientX,y:p[1].clientY}] }; },{passive:true});
   el.addEventListener("touchend",e=>{ if(pinch && !pinchPair(e)) pinchDrop(); },{passive:true});
   el.addEventListener("touchcancel",()=>pinchDrop(),{passive:true}); }
   //  ^ cancellation is TERMINAL. Chrome may still list the pair in e.touches, so a remaining-touch test
