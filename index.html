@@ -1360,7 +1360,6 @@ function armZoomTap(el){ if(!el) return;
 // amount of preventDefault takes a gesture back after that — so when we cannot have it we let go completely
 // rather than own half of it. And we never preventDefault the touchSTART, which leaves the synthesized
 // mousedown that planting rides on exactly as it was.
-let pinchLost=false;                                 // one telling per session that Chrome kept a pinch
 const PINCH_IN=1.22, PINCH_OUT=0.82, PINCH_MIN=32, PINCH_CLAIM=10;
 // Which way are the two fingers going? This is the whole difference between a pinch and a pan, and it is
 // readable within a few pixels — which matters, because preventing the FIRST touchmove is the only moment
@@ -1392,7 +1391,8 @@ function pinchPair(e){                               // OUR two touches — e.to
   return out.length===2 ? out : null; }
 function pinchDrop(){ if(!pinch) return;             // idempotent: every exit, including the ones with no touchend
   const moved=!!(pinch.done||pinch.moved);           // two fingers that only RESTED changed nothing —
-  pinch=null;                                        // (the move listener is permanent now, and inert while this is null)
+  if(pinch.el && pinch.move) pinch.el.removeEventListener("touchmove", pinch.move);
+  pinch=null;
   camReseed();                                       // the anchor moved the box out from under CAM.expect
   if(moved) CAM.yielded=true; }                      // …so only a real zoom takes the camera off the playhead
 function pinchZoom(z2, cx){
@@ -1419,12 +1419,14 @@ function armPinch(el){ if(!el) return;
     // nothing. Rather than work out whose fault that is, the garden moves itself, the way the Scoop
     // already does for its own two-finger pan.
     if(!together && spread<PINCH_CLAIM) return;      // still ambiguous — nobody owns it yet
-    if(!e.cancelable){                               // Chrome got there first; half a gesture is worse than none
-      if(!pinchLost && spread>=PINCH_MIN){ pinchLost=true;   // say it ONCE: a gesture that quietly does nothing
-        setStatus("🔍 That pinch slipped away — the 🔍 in the ☰ menu always works."); }   // is the one failure a child cannot report
-      pinchDrop(); return; }
-    e.preventDefault();                              // claimed - early enough that no scroll has begun
-    if(together){                                    // travelling as one: drag the garden, 1:1 under the fingers
+    // Whether Chrome will still let go of the scroll decides who PANS, and nothing else. Abandoning the
+    // whole gesture here is what made both pinch and two-finger pan do nothing at all on the phone — and a
+    // zoom never needed the browser's permission in the first place. So: take the scroll when it is offered,
+    // and zoom either way.
+    const took=e.cancelable;
+    if(took) e.preventDefault();
+    if(together){
+      if(!took) return;                              // Chrome kept the scroll, so it is already panning: do not double-move
       scroller.scrollLeft -= (cx-pinch.lastCx)/zoomOf();   // scrollLeft is FIELD px, the finger is viewport px
       pinch.lastCx=cx; pinch.moved=true;             // (the beat lane mirrors this scroller on its own)
       camReseed(); return; }
@@ -1434,12 +1436,13 @@ function armPinch(el){ if(!el) return;
     pinchZoom(z2, cx);
     pinch.lastCx=cx;                                 // a pinch that becomes a pan must not jump on its first drag
     pinch.done=true; };                              // ONE stop per gesture: two is not reachable one-handed on a phone
-  // Registered at LOAD, and this is a measured decision, not a preference. On a Pixel 10a a blocking
-  // touchmove listener added part-way through a sequence — when the second finger lands — is ignored:
-  // every move of that gesture comes back non-cancelable and the pinch can never take it. Registered up
-  // front it is cancelable. The price is that one-finger scrolling now waits on a main-thread handler
-  // that returns on its first line, and that price buys the feature existing at all.
-  el.addEventListener("touchmove",move,{passive:false});
+  // The listener is born when the SECOND finger lands, and dies with the gesture. Registering it at load
+  // instead was tried on a Pixel 10a and was strictly worse: a blocking listener present from the first
+  // finger down makes Chrome ask the main thread on the very first move, we decline to prevent it (one
+  // finger is a scroll), Chrome commits to scrolling, and every later move of that sequence is
+  // non-cancelable — so the second finger arrives into a gesture already spoken for. Both pinch and
+  // two-finger pan did nothing at all. Born late, the listener is what makes Chrome reconsider.
+  // One-finger scrolling therefore never has a blocking listener, which is also why it stayed smooth.
   el.addEventListener("touchstart",e=>{
     // ANY contact arriving mid-gesture ends it — including one we filter out. #cursorStrip and the grips
     // live INSIDE #scroller, so a third finger there bubbles here, and re-arming on the surviving pair
@@ -1448,10 +1451,11 @@ function armPinch(el){ if(!el) return;
     if(trayMode || pull || cursorStripEl._drag===true) return;   // the Scoop, a vine being pulled, and the stake each own their own fingers
     const p=pinchPair(e);
     if(!p) return;                                   // one finger, or a touch off the beds: not ours
-    pinch={ d0:pinchDist(p), done:false, moved:false,
+    pinch={ el, move, d0:pinchDist(p), done:false, moved:false,
             lastCx:(p[0].clientX+p[1].clientX)/2,
             ids:[p[0].identifier, p[1].identifier],
-            s0:[{x:p[0].clientX,y:p[0].clientY},{x:p[1].clientX,y:p[1].clientY}] }; },{passive:true});
+            s0:[{x:p[0].clientX,y:p[0].clientY},{x:p[1].clientX,y:p[1].clientY}] };
+    el.addEventListener("touchmove",move,{passive:false}); },{passive:true});
   el.addEventListener("touchend",e=>{ if(pinch && !pinchPair(e)) pinchDrop(); },{passive:true});
   el.addEventListener("touchcancel",()=>pinchDrop(),{passive:true}); }
   //  ^ cancellation is TERMINAL. Chrome may still list the pair in e.touches, so a remaining-touch test

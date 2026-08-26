@@ -178,19 +178,37 @@ test("ordinary arm and explicit drop leave no touchmove listener behind", () => 
 // The two load-bearing branches of `move`, pinned here because the browser run could only reach them
 // with a `cancelable` flag chosen by the test rather than by Chrome.
 
-test("a decisive spread on a NON-cancelable move abandons the whole gesture", () => {
+// REPLACED after the second Pixel round. This used to assert that a non-cancelable move abandoned the
+// whole gesture ("half a gesture is worse than none"). On the device that turned out to mean NO gesture:
+// both pinch and two-finger pan did nothing whatsoever. Whether Chrome will release the scroll decides
+// who PANS and nothing else — a zoom never needed the browser's permission.
+test("a decisive spread still zooms even when Chrome will not release the scroll", () => {
+  const g = loadGame({ fresh: true });
+  const melody = eventTarget("melody");
+  g.armPinch(melody);
+  g.setFieldZoom(g.ZOOM_LOOK);
+  melody.emit("touchstart", touchEvent([touch(1, "scroller", 100, 200), touch(2, "scroller", 200, 200)]));
+
+  // Spread 100 -> 220, fingers moving apart: decisive, and past PINCH_MIN.
+  melody.emit("touchmove", touchEvent([touch(1, "scroller", 40, 200), touch(2, "scroller", 260, 200)],
+    { cancelable: false }));
+
+  assert.strictEqual(g.fieldZoom, g.ZOOM_PLANT, "spreading from the look-only stop still steps in");
+  assert.ok(g.pinch, "and the gesture is still live");
+});
+
+// The pan is the half that DOES depend on it: if Chrome kept the scroll it is already panning, and doing
+// it ourselves as well would move the garden twice as far as the fingers.
+test("a pan is left to the browser when Chrome will not release the scroll", () => {
   const g = loadGame({ fresh: true });
   const melody = eventTarget("melody");
   g.armPinch(melody);
   melody.emit("touchstart", touchEvent([touch(1, "scroller", 100, 200), touch(2, "scroller", 200, 200)]));
-  const before = g.fieldZoom;
 
-  // Spread 100 -> 220 with a stationary centroid: decisive, and past PINCH_MIN.
-  melody.emit("touchmove", touchEvent([touch(1, "scroller", 40, 200), touch(2, "scroller", 260, 200)],
+  melody.emit("touchmove", touchEvent([touch(1, "scroller", 10, 200), touch(2, "scroller", 106, 200)],
     { cancelable: false }));
 
-  assert.strictEqual(g.pinch, null, "half a gesture is worse than none — Chrome already owns it");
-  assert.strictEqual(g.fieldZoom, before, "nothing zoomed on the way out");
+  assert.strictEqual(g.pinch.moved, false, "we did not pan on top of a scroll the browser is already doing");
 });
 
 // UPDATED again after the Pixel run: two-finger panning did nothing at all on the device — neither zoom

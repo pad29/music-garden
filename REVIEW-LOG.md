@@ -253,3 +253,44 @@ pan test was rewritten from "never claimed" to "claimed and panned, never zooms.
 stop mirroring the seed lane — it is the known Browser-pane artifact (no compositing means no `scroll` events
 are dispatched at all); dispatching one by hand mirrors correctly.
 
+### 2026-08-20, third device round — the at-load registration was wrong, and so was my reading of the probe
+
+Owner: one-finger scrolling great; **neither pinch nor two-finger pan does anything.** A regression — pinch
+worked in `243fd1f`. Four observations only fit one story:
+
+| | |
+|---|---|
+| `243fd1f` (lazy) | pinch worked, two-finger pan dead |
+| `e579eeb` (at load) | both dead, one-finger scrolling fine |
+| probe A/B | lazy “not cancelable”, at-load “cancelable” |
+| both builds | identical `!e.cancelable → pinchDrop()` line |
+
+Since `243fd1f` zoomed on the device, its two-finger moves **were** cancelable — with the lazy listener. So
+the probe's A/B did not measure what I read into it (its box leads with *first move*, and the first gesture
+on a fresh page is the one case where nothing has taught Chrome about the handler yet). **I over-trusted a
+summary line over the behaviour of the actual build**, and shipped a change on it.
+
+Mechanism, which fits everything: with a blocking listener present from the FIRST finger down, Chrome asks
+the main thread on the first move; one finger is a scroll so we decline to prevent; Chrome commits to
+scrolling; every later move is non-cancelable; the second finger arrives into a sequence already spoken for,
+and the `!cancelable` branch abandoned it. Born late, the listener is exactly what makes Chrome reconsider.
+
+And `243fd1f`'s dead two-finger pan is explained by the OLD latch: spread-versus-travel claimed the wobble on
+the first move and prevented it, with no pan implemented to take its place. Two independent causes, one
+symptom — which is why the direction latch alone did not fix it.
+
+**Fixes:**
+1. **Back to lazy registration.** One-finger scrolling also goes back to costing nothing, which it did not
+   need to pay for.
+2. **Never abandon on `!e.cancelable`.** That branch turned “we cannot stop the scroll” into “nothing happens
+   at all”. Cancelability decides who PANS and nothing else — a zoom never needed the browser's permission.
+   Non-cancelable now: zoom anyway, and leave the pan to the browser rather than double-moving it.
+3. `pinchLost` and its status line are gone: there is no longer a case where a gesture silently does nothing.
+
+**Result:** 60/60. Verified in-browser both cancelable and not: pan tracks 1:1 both directions and clamps at
+the field edge, pinch steps both ways with the anchor, a non-cancelable pinch still zooms, a non-cancelable
+pan is left alone, third finger still ends the gesture, level seam still clears it, tap and planting unchanged.
+
+**Lesson worth keeping:** the probe answered a narrower question than its headline suggested. When a shipped
+build and an instrument disagree, the build is the evidence — I had both and believed the instrument.
+
