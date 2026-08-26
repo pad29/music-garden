@@ -294,3 +294,38 @@ pan is left alone, third finger still ends the gesture, level seam still clears 
 **Lesson worth keeping:** the probe answered a narrower question than its headline suggested. When a shipped
 build and an instrument disagree, the build is the evidence — I had both and believed the instrument.
 
+---
+
+## 2026-08-20 — the garden sat left while every card centred (branch `field-centering`)
+
+**No GPT call, deliberately.** Three lines of CSS whose only real risk is this file's recurring source-order
+trap, and the evidence that settles it is measured computed geometry at four widths and three zoom stops —
+which a code read cannot produce and a reviewer cannot see. Said here rather than skipped silently.
+
+**The report:** on the phone every box centres except the field and drums, and it looks worst zoomed out.
+
+**Measured, and the reason it is invisible in portrait:** at 390px every box is 18..372, identical — there is
+nothing to see. The defect needs a stacked layout WIDER than the card cap: `.sidebar .card` is capped at
+34rem (544px) and centres itself, while `.fieldcol` is `width:100%`. At **915px — this phone in landscape**
+— the level card sat at 178..722 while the field ran 18..714, and at 60% zoom the field stopped at **464
+with 418px of empty page beside a centred card**. Zooming out shrinks the bed but not its column, so the gap
+grows: exactly the "especially when I zoom out" in the report.
+
+**Fix:** `.stage, .drumstage { width:max-content; max-width:100%; margin-inline:auto; }` inside the existing
+≤1000px query, authored LAST in the stylesheet. Notes for the next reader:
+- The 72px rail is `position:absolute` inside `.stage`, so shrinking the stage carries the rail with it.
+  Centring the scroller alone would have stranded the rail at the page edge.
+- Both beds resolve to the same max-content width (rail + identical column count), so they stay locked to
+  each other under one cursor — verified equal at every stop, not assumed.
+- `max-width:100%` is load-bearing: without it a field wider than the phone overflows the page instead of
+  scrolling inside itself.
+
+**Verified:** centred with equal margins at 915px (84/84, 146/146, 209/209 at the three stops) and both beds
+aligned; unchanged at 390px where the field still fills and scrolls, with no sideways page scroll; desktop
+>1000px untouched. Cell and pad hit-testing correct at all three zooms, planting and beats land on the
+column aimed at, the pinch anchor still holds at 0 field px drift now that `rect.left` has moved, and the
+cursor strip still aims true. 60/60.
+
+**Two scares that were not real:** a cell hit-test failed because the cell had scrolled under the sticky
+transport band, and a plant did nothing because row 0 is locked on that level.
+

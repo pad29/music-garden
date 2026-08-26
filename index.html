@@ -515,6 +515,19 @@
   @keyframes bigrise{ 0%{ transform:translateX(-50%) translateY(80px) scale(.3); opacity:0;}
     35%{ opacity:1;} 75%{ transform:translateX(-50%) translateY(-30px) scale(1.15); opacity:1;}
     100%{ transform:translateX(-50%) translateY(-60px) scale(1.1); opacity:0;} }
+  /* Stacked layouts centre every card — .sidebar .card is capped at 34rem and centres itself — and the
+     garden was the one thing left hard against the page's left edge. Measured at 915px, which is this phone
+     in landscape: the level card sat at 178..722 while the field ran 18..714, and at 60% zoom the field
+     stopped at 464 with 418px of empty page beside a centred card. That gap is why zooming out looked worst.
+     Each bed shrinks to its own content and the auto margins do the rest. The 72px rail is absolutely
+     positioned INSIDE .stage, so it travels with the bed rather than being stranded at the edge — and both
+     beds resolve to the same max-content width, which is what keeps seeds and beat lined up under one cursor.
+     max-width:100% is load-bearing: without it a field wider than the phone would overflow the page instead
+     of scrolling inside itself. Authored last on purpose — a media query adds no specificity, and this file
+     has already lost this argument four times to a later single-class rule. */
+  @media (max-width:1000px){
+    .stage, .drumstage{ width:max-content; max-width:100%; margin-inline:auto; }
+  }
 </style>
 </head>
 <body>
