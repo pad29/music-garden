@@ -579,7 +579,10 @@
         <option value="glockenspiel">Glockenspiel</option>
       </select>
     </label>
-    <label class="ctl">Tempo <input type="range" id="tempo" min="60" max="170" value="108" /></label>
+    <!-- min 40, not 60: FAMOUS_TEMPO.taps is 40 ("Slowly", from the score) and a range input CLAMPS a value
+         set below its own minimum, so Taps had always played at 60 - 500ms a column against its true 750, half
+         again too fast, silently. 40 is the lowest tempo any shipped tune asks for; nothing else leaves the range. -->
+    <label class="ctl">Tempo <input type="range" id="tempo" min="40" max="170" value="108" /></label>
     <!-- Groove moved here from the transport row (2026-08-15): it is a set-once CHOICE like Voice and Tempo,
          not a verb, and at 157px it was over half the pinned band's width on a phone — wrapping the row and
          costing 49px of height that the field needs. Every reference to it is by id, so nothing else moved. -->
@@ -2356,7 +2359,7 @@ const FAMOUS = {
 // Each famous example plays at its OWN tempo (quarter-note BPM) — Taps slow & mournful, the grooves brisk — in BOTH the jukebox and the capstone reward. (Default 108 when unlisted.)
 const FAMOUS_TEMPO={ swinglow:88, taps:40, pachelbel:70, amazinggrace:80, moldau:112, joy:100, mary:150, bigben:84, odetojoy:100, charleston:116, shave:128, bodiddley:130, goinhome:60, igotrhythm:156, bachprelude:126, chopsticks:132 };   // bachprelude cols are 16ths → BPM doubled (sounds like ♩=63)
 function famousRow(m){ for(let r=0;r<ROWS;r++) if(MIDI[r]===m) return r; return -1; }   // grid row for a MIDI pitch in this palette
-function placeFamous(f){ tx("famous",()=>{                                    // ONE journal entry — a 100-note reveal must not evict the player's undo history
+function placeFamous(f, tempo){ tx("famous",()=>{                             // ONE journal entry — a 100-note reveal must not evict the player's undo history
   if(f.cols && f.cols>COLS) addColumns(f.cols-COLS);   // a rhythmic tune (e.g. Amazing Grace) needs room to breathe — held notes ring through the gaps
   wipe();
   (f.chords||[]).forEach(([midis,col])=> midis.forEach(m=>{ const r=famousRow(m); if(r>=0&&col<COLS) setCell(r,col,true); }));  // chords (block triads, MIDI)
@@ -2371,15 +2374,20 @@ function placeFamous(f){ tx("famous",()=>{                                    //
     n.durationTicks=Math.min(len, MAX_VINE, COLS-col)*TICKS_PER_COL; });
   reproject();
   if(f.drums&&f.drums.length){ if(!drumsOn){ drumsOn=true; drumBtn.classList.add("on"); } showDrumArea(true);                   // rhythm examples (footsteps, wind & gaps): plant the beat on the pads
-    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); } });     // the lane just became visible — re-measure the cursor rail
+    wipeDrums(); placeDrums(f.drums.filter(([d,c])=>d<DRUMS.length&&c<COLS)); syncCursor(); }        // the lane just became visible — re-measure the cursor rail
+  // The tune's own tempo belongs INSIDE this transaction. Set after it had closed, it was missing from the
+  // journal's "after" snapshot, so undo restored the player's tempo correctly and redo brought the arrangement
+  // back at that tempo instead of the tune's — Taps replayed at 108. tx() snapshots after fn() returns.
+  if(tempo){ if(tempoOnLoan===null) tempoOnLoan=+tempoEl.value;   // remember the child's before borrowing
+             tempoEl.value=tempo; } });
   renderVines(); }                       // …and draw the stems: setCell's own render ran before the lengths were written
 let famousTimers=[];
 function clearFamousTimers(){ famousTimers.forEach(clearTimeout); famousTimers=[];
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing")); }   // a reveal lights cells outside the transport — litEls doesn't know about those
 function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
   if(playing) stop(); clearFamousTimers();
-  placeFamous(f);                                       // draw the chords + melody on the field (it STAYS — ▶ replays it)
-  if(FAMOUS_TEMPO[id]) tempoEl.value=FAMOUS_TEMPO[id];   // play at the song's OWN tempo (Taps slow, grooves brisk); ▶ replay inherits it
+  placeFamous(f, FAMOUS_TEMPO[id]);                     // draw the chords + melody on the field (it STAYS — ▶ replays it),
+                                                        // at the song's OWN tempo (Taps slow, grooves brisk); ▶ replay inherits it
   setStatus(f.credit);
   initAudio(); actx.resume();
   // This sweep runs entirely outside tick(), so it has never moved the view — and placeFamous widens the field
@@ -4731,6 +4739,12 @@ nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
 
 // ---------- Playback ----------
 const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
+// A famous tune's tempo is a LOAN: it has to play (and ▶ replays the arrangement at it), but it is not
+// something the child chose. saveProgress fires on level completion, a voice change, the mixer, read-aloud —
+// so without this, watching Taps left the game stuck at 40 BPM on every reload. Holds the child's own tempo
+// until they set one themselves; every deliberate route below hands it back.
+let tempoOnLoan=null;
+const playerTempo=()=>tempoOnLoan!==null ? tempoOnLoan : +tempoEl.value;
 // set the melody voice by id — retired ids fall back (synth pluck → its sampled successor the
 // guitar; warm pad → the music box via the missing-option check), sampled ids start fetching
 function setVoice(v){ if(v==="pluck") v="guitar";
@@ -4828,6 +4842,7 @@ const tick2time=tk=>anchorTime+(tk-anchorTick)*anchorSPT;   // would retroactive
 const time2tick=s=>anchorTick+(s-anchorTime)/anchorSPT;     // note already booked — a garble on the tempo drag
 let bookTick=0, bookCol=0, endTime=Infinity;
 const paintQ=[], colGains=[], litEls=[];
+const GC_TAIL=3;      // seconds a sampled voice can still ring PAST its own note (conditionSample's ceiling is ~2.88s)
 // Swing is a PLAYBACK LENS — it never touches note.startTick (§4b). Same branch order as the old tick(),
 // so the jam/levelSwing overlap resolves identically and tools/goldens/playback.json holds by construction.
 function swingTicks(col){
@@ -4875,7 +4890,13 @@ function pump(){
     paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
     bookTick+=TICKS_PER_COL; bookCol++; }
   paintDue(ct);
-  while(colGains.length && colGains[0].when<ct-4){ const e=colGains.shift();
+  // This window must outlive the LONGEST note that can still be sounding: every voice connects through its
+  // column's gains, so disconnecting them severs a note that is still ringing. It used to be a flat 4 seconds
+  // — which happened to be EXACTLY an 8-column vine at 60 BPM, the old tempo floor, so the bug sat on the
+  // boundary and never fired. Dropping that floor to 40 for Taps made the same vine 6s and the cut audible.
+  // Derived now, so the two ceilings can never drift apart again: 8 columns below 60 BPM, 6 below 53.
+  const gcLag=MAX_VINE*stepDur()/1000+GC_TAIL;
+  while(colGains.length && colGains[0].when<ct-gcLag){ const e=colGains.shift();
     e.g.forEach(g=>{ try{ g.disconnect(); }catch(x){} }); }   // or a ten-minute loop grows the graph forever
   if(ct>=endTime){ stop(); return; }
   Transport.timer=setTimeout(pump,wake);
@@ -4965,7 +4986,8 @@ drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
 listenBtn.onclick=()=>playPhrase(curStage().call ? curCall() : echoTarget());
-function applyGrooveTempo(){ tempoEl.value=GROOVES[grooveIdx].bpm;
+function applyGrooveTempo(){ tempoOnLoan=null;   // picking a groove is a choice too
+  tempoEl.value=GROOVES[grooveIdx].bpm;
   Transport.retime(); }
 jamBtn.onclick=()=>{ jamMode=!jamMode; jamBtn.classList.toggle("on",jamMode);
   if(jamMode){ initAudio(); actx.resume(); applyGrooveTempo(); ev.jammed=true;
@@ -4987,7 +5009,7 @@ craftBtn.onclick=()=>{
   if(trayMode && traySel.length){ fusePick(); return; }           // Fuse crafts the Scoop pick
   fuseField();                                                    // no pick: a lone 2–3-seed stack fuses in ONE press; an ambiguous field arms Scoop with a hint
 };
-tempoEl.oninput=()=>Transport.retime();
+tempoEl.oninput=()=>{ tempoOnLoan=null; Transport.retime(); };   // the child set it by hand: the loan is over
 tempoEl.addEventListener("change",saveProgress);
 instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveProgress(); });
 document.getElementById("clear").onclick=()=>{ tx("clear",()=>{ wipe(); if(drumsOn) wipeDrums(); }); checkLevel(); };   // one press = one undo step
@@ -5090,7 +5112,7 @@ function saveProgress(){ if(currentPkg==="studio") return;   // the Studio is a 
   if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
   if(currentPkg==="two-new-colors"){ progress.colors=["F","B"]; }   // persistent: the world has discovered F & B (future sandbox reads this)
   pp.toolbox=toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()}));   // toolbox is now per-package (was global → leaked tools across lessons/palettes)
-  progress.settings={voice:instrEl.value, tempo:+tempoEl.value, mix:mix, speak:speakOn};
+  progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn};
   progress.updatedAt=Date.now();
   Store.set("progress", progress); scheduleCloud(); }
 // Load this package's OWN saved tools (or start empty). The toolbox no longer carries across packages — a fresh

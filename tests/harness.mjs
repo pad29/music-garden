@@ -75,6 +75,39 @@ function makeStorage() {
   };
 }
 
+// The regular DOM proxy intentionally ignores state.  Tempo is the one control whose native
+// range semantics are data-model behaviour: assigning an out-of-range famous/song tempo clamps
+// before stepDur(), snapshots, and saveProgress() can read it.  Keep this deliberately narrow;
+// rendering and the rest of the controls remain outside this harness's remit.
+function tempoRangeFromHtml(html) {
+  const tag = html.match(/<input\b[^>]*\bid=["']tempo["'][^>]*>/i)?.[0];
+  if (!tag) throw new Error("No #tempo input in index.html");
+  const attr = (name, fallback) => {
+    const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))`, "i"));
+    return m ? Number(m[1] ?? m[2] ?? m[3]) : fallback;
+  };
+  return { min: attr("min", 0), max: attr("max", 100), value: attr("value", 50), step: attr("step", 1) };
+}
+
+function makeTempoRange({ min, max, value, step }) {
+  let current = value;
+  const clamp = (next) => {
+    let n = Number(next);
+    if (!Number.isFinite(n)) n = value;
+    n = Math.max(min, Math.min(max, n));
+    if (step > 0) n = min + Math.round((n - min) / step) * step;
+    return Math.max(min, Math.min(max, n));
+  };
+  return {
+    min: String(min), max: String(max), step: String(step),
+    get value() { return String(current); },
+    set value(next) { current = clamp(next); },
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    style: {},
+    addEventListener() {}, removeEventListener() {},
+  };
+}
+
 /**
  * Names of every top-level binding the script declares, so we can hand them back.
  * Handles multi-declarator statements (`let COLS = 16, ROWS = MIDI.length;`) by splitting the
@@ -159,7 +192,11 @@ export function loadGame({ fresh = false } = {}) {
   if (!match) throw new Error("No inline <script> found in index.html");
   const src = match[1];
 
+  const tempoInput = makeTempoRange(tempoRangeFromHtml(html));
   const stubDoc = makeStub("document");
+  Object.defineProperty(stubDoc, "getElementById", {
+    value: (id) => (id === "tempo" ? tempoInput : makeStub(`document#${id}`)),
+  });
   const sandbox = {
     console,
     setTimeout,
