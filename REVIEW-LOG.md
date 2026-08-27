@@ -328,4 +328,51 @@ cursor strip still aims true. 60/60.
 
 **Two scares that were not real:** a cell hit-test failed because the cell had scrolled under the sticky
 transport band, and a plant did nothing because row 0 is locked on that level.
+---
+
+## 2026-08-26/27 — the meter decision: two design reviews, both "replace"
+
+Design-only. Nothing implemented. Outcome is `EDITOR-DESIGN.md` §17.
+
+**Round 1 (gpt-5.6-sol, 18 findings, verdict "replace").** It destroyed the draft's central claim and the
+sentence everything rested on — *"none of this is audible-wrong today; it is named wrong."* Nine citations
+showed four-columns-per-beat is **drawn, narrated and animated** on shipped levels (`beat` tint on pads,
+`beatGuide`, "eight times across the bar", "the first bar (16 steps)", the ＋ tooltip, Off the Path sliding
+2,6,10,14). It audited all 18 `FAMOUS` entries from **note positions rather than comments** and found both
+conventions in frozen content. **Accepted essentially in full.** It also caught that my §6 contradicted a
+standing owner rule in `DESIGN.md` I had not read, that `{beats,unit,group}` cannot express a pickup
+(Moldau's downbeat is at column 1), that `meterMap` already exists as the seam a scalar `time.meter` would
+bypass, and that dance feel ≠ meter because `jamStep` is fixed to a 16-column four-step cycle.
+
+**Round 2 (gpt-5.6-sol, verdict "replace" again).** It killed v2's new mechanism — snap-derived `stepDur`
+plus "declare a level 16th-snap and halve its tempo" — as a self-contradiction (ticks declared canonical,
+then columns held fixed while ticks moved). **I verified the operational half in source and it is worse than
+its finding said: §5(a) has no mechanism at all.** No level sets tempo; it is one global player setting; the
+required values are below the slider's `min="60"`; and `applyGrooveTempo()` overwrites them regardless. Its
+constructive answer — **snap is editor/session state and never touches playback time** — dissolved four
+findings at once, and the fix was a subtraction rather than more design.
+
+**Disagreements.** GPT rated "no sound changes" High; I held Medium and it conceded (the claim was sound for
+meter-as-metadata; the defect was framing). I challenged its `bodiddley` reading as eighth-clave-plus-16th-hats
+and **I was wrong — it is uniform 16ths, the odd kick position 3 forces the fine grid, and its original call
+stood.** It conceded `joy` is indeterminate from repository positions alone, and conceded my §4 over-applied
+the legacy no-bars quarantine to the Jukebox, which has no level to collide with.
+
+**Found in passing, each its own task, neither caused by this design:** `FAMOUS_TEMPO.taps=40` clamps against
+the slider's `min="60"`, so **Taps has never played at its declared tempo**; and `placeFamous` closes its
+`tx()` before the tempo is set, so **redo of a famous reveal replays at the player's tempo, not the tune's**.
+
+**Left deliberately open** in §17: the four-column beat on shipped levels. `swingTicks` carries both
+conventions in adjacent lines — `jamMode` swing is coherent only at eighths, `levelSwing` only at 16ths —
+so the `beatGuide`-only packages can be fixed with words while the `feel:true` ones cannot. Splitting them is
+the answer; declaring one number for the whole game is what both dead drafts tried to do.
+
+**The repeated failure, now twice in this log:** comments and labels treated as stronger evidence than
+behaviour. The widthBand round recorded it first. Draft 1 was built out of code comments.
+
+**Cost:** 5.25M input (5.01M cached) / 35k out, then 3.35M (3.0M cached) / 27k out — both Sol, ~13 and ~11
+min. Owner checked quota before round 2: 96% weekly and 75% of the 5-hour window remaining. Round 2 ran as a
+**fresh thread** because `.thread-id` had been deleted, so GPT could not see its own round-1 findings; the
+prompt was made self-contained instead. Worth knowing: deleting the thread id between rounds of the SAME
+decision loses continuity, while keeping it would have replayed ~5.3M tokens.
 
