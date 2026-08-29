@@ -1,83 +1,796 @@
 {
-  "_README": "Playback goldens captured from the STEP-TIMER engine on 2026-07-27, immediately before the Phase 2 lookahead-scheduler swap. The invariant each run asserts is MUSICAL, not wall-clock: for every step that sounds, WHICH melody rows and WHICH drum lanes fire, and at WHICH ideal step position ('at' — level swing delays the 'ands' by one whole step, so step 2 sounds at 3). 'beforeDriftMs' records how far the old setInterval engine actually landed from that ideal; the lookahead scheduler must keep every 'steps' entry byte-identical and should drive drift toward zero. Re-capture recipe: tools/goldens/README.md.",
-  "_RESULT_2026_07_27": "Lookahead swap VERIFIED against every run: content byte-identical, and drift 13-20ms -> 0.00ms exactly, because column times are now pure arithmetic from a frozen anchor instead of a per-tick clock read. D_jam checked for content only (all 16 steps fire jamStep).",
-  "A_melody_straight": {
-    "tempo": 108, "cols": 16, "swing": 0, "stepDurMs": 277.7778,
-    "beforeDriftMs": { "maxMs": 15.1, "meanMs": 8.9 },
-    "steps": [
-      { "step": 0, "notes": [2], "drums": [], "at": 0 },
-      { "step": 2, "notes": [4], "drums": [], "at": 2 },
-      { "step": 4, "notes": [6], "drums": [], "at": 4 },
-      { "step": 6, "notes": [3], "drums": [], "at": 6 },
-      { "step": 8, "notes": [5], "drums": [], "at": 8 },
-      { "step": 10, "notes": [1], "drums": [], "at": 10 },
-      { "step": 12, "notes": [7], "drums": [], "at": 12 },
-      { "step": 14, "notes": [4], "drums": [], "at": 14 }
-    ]
+ "_README": "Playback goldens captured from the STEP-TIMER engine on 2026-07-27, immediately before the Phase 2 lookahead-scheduler swap. The invariant each run asserts is MUSICAL, not wall-clock: for every step that sounds, WHICH melody rows and WHICH drum lanes fire, and at WHICH ideal step position ('at' — level swing delays the 'ands' by one whole step, so step 2 sounds at 3). 'beforeDriftMs' records how far the old setInterval engine actually landed from that ideal; the lookahead scheduler must keep every 'steps' entry byte-identical and should drive drift toward zero. Re-capture recipe: tools/goldens/README.md.",
+ "_RESULT_2026_07_27": "Lookahead swap VERIFIED against every run: content byte-identical, and drift 13-20ms -> 0.00ms exactly, because column times are now pure arithmetic from a frozen anchor instead of a per-tick clock read. D_jam checked for content only (all 16 steps fire jamStep).",
+ "A_melody_straight": {
+  "tempo": 108,
+  "cols": 16,
+  "swing": 0,
+  "stepDurMs": 277.7778,
+  "beforeDriftMs": {
+   "maxMs": 15.1,
+   "meanMs": 8.9
   },
-  "B_melody_drums": {
-    "tempo": 108, "cols": 16, "swing": 0, "stepDurMs": 277.7778,
-    "beforeDriftMs": { "maxMs": 19.6, "meanMs": 7.2 },
-    "steps": [
-      { "step": 0, "notes": [2], "drums": [0], "at": 0 },
-      { "step": 2, "notes": [4], "drums": [2], "at": 2 },
-      { "step": 4, "notes": [6], "drums": [0, 1], "at": 4 },
-      { "step": 6, "notes": [3], "drums": [2], "at": 6 },
-      { "step": 8, "notes": [5], "drums": [0], "at": 8 },
-      { "step": 10, "notes": [1], "drums": [2], "at": 10 },
-      { "step": 12, "notes": [7], "drums": [0, 1], "at": 12 },
-      { "step": 14, "notes": [4], "drums": [2], "at": 14 }
-    ]
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     2
+    ],
+    "drums": [],
+    "at": 0
+   },
+   {
+    "step": 2,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 2
+   },
+   {
+    "step": 4,
+    "notes": [
+     6
+    ],
+    "drums": [],
+    "at": 4
+   },
+   {
+    "step": 6,
+    "notes": [
+     3
+    ],
+    "drums": [],
+    "at": 6
+   },
+   {
+    "step": 8,
+    "notes": [
+     5
+    ],
+    "drums": [],
+    "at": 8
+   },
+   {
+    "step": 10,
+    "notes": [
+     1
+    ],
+    "drums": [],
+    "at": 10
+   },
+   {
+    "step": 12,
+    "notes": [
+     7
+    ],
+    "drums": [],
+    "at": 12
+   },
+   {
+    "step": 14,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 14
+   }
+  ]
+ },
+ "B_melody_drums": {
+  "tempo": 108,
+  "cols": 16,
+  "swing": 0,
+  "stepDurMs": 277.7778,
+  "beforeDriftMs": {
+   "maxMs": 19.6,
+   "meanMs": 7.2
   },
-  "C_swing": {
-    "tempo": 108, "cols": 16, "swing": 1, "stepDurMs": 277.7778,
-    "beforeDriftMs": { "maxMs": 13.3, "meanMs": 4.5 },
-    "steps": [
-      { "step": 0, "notes": [2], "drums": [0], "at": 0 },
-      { "step": 2, "notes": [4], "drums": [2], "at": 3 },
-      { "step": 4, "notes": [6], "drums": [0, 1], "at": 4 },
-      { "step": 6, "notes": [3], "drums": [2], "at": 7 },
-      { "step": 8, "notes": [5], "drums": [0], "at": 8 },
-      { "step": 10, "notes": [1], "drums": [2], "at": 11 },
-      { "step": 12, "notes": [7], "drums": [0, 1], "at": 12 },
-      { "step": 14, "notes": [4], "drums": [2], "at": 15 }
-    ]
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     2
+    ],
+    "drums": [
+     0
+    ],
+    "at": 0
+   },
+   {
+    "step": 2,
+    "notes": [
+     4
+    ],
+    "drums": [
+     2
+    ],
+    "at": 2
+   },
+   {
+    "step": 4,
+    "notes": [
+     6
+    ],
+    "drums": [
+     0,
+     1
+    ],
+    "at": 4
+   },
+   {
+    "step": 6,
+    "notes": [
+     3
+    ],
+    "drums": [
+     2
+    ],
+    "at": 6
+   },
+   {
+    "step": 8,
+    "notes": [
+     5
+    ],
+    "drums": [
+     0
+    ],
+    "at": 8
+   },
+   {
+    "step": 10,
+    "notes": [
+     1
+    ],
+    "drums": [
+     2
+    ],
+    "at": 10
+   },
+   {
+    "step": 12,
+    "notes": [
+     7
+    ],
+    "drums": [
+     0,
+     1
+    ],
+    "at": 12
+   },
+   {
+    "step": 14,
+    "notes": [
+     4
+    ],
+    "drums": [
+     2
+    ],
+    "at": 14
+   }
+  ]
+ },
+ "C_swing": {
+  "tempo": 108,
+  "cols": 16,
+  "swing": 1,
+  "stepDurMs": 277.7778,
+  "beforeDriftMs": {
+   "maxMs": 13.3,
+   "meanMs": 4.5
   },
-  "D_jam": {
-    "_note": "Jam adds a groove-dependent shuffle to odd steps that 'at' does NOT model, so D's beforeDriftMs is model mismatch, not jitter. Its value is the step CONTENT and the fact that every step fires a jamStep.",
-    "tempo": 120, "cols": 16, "swing": 0, "stepDurMs": 250,
-    "beforeDriftMs": { "maxMs": 30.7, "meanMs": 23 },
-    "steps": [
-      { "step": 0, "notes": [2], "drums": [], "at": 0 },
-      { "step": 1, "notes": [], "drums": [], "at": 1 },
-      { "step": 2, "notes": [4], "drums": [], "at": 2 },
-      { "step": 3, "notes": [], "drums": [], "at": 3 },
-      { "step": 4, "notes": [6], "drums": [], "at": 4 },
-      { "step": 5, "notes": [], "drums": [], "at": 5 },
-      { "step": 6, "notes": [3], "drums": [], "at": 6 },
-      { "step": 7, "notes": [], "drums": [], "at": 7 },
-      { "step": 8, "notes": [5], "drums": [], "at": 8 },
-      { "step": 9, "notes": [], "drums": [], "at": 9 },
-      { "step": 10, "notes": [1], "drums": [], "at": 10 },
-      { "step": 11, "notes": [], "drums": [], "at": 11 },
-      { "step": 12, "notes": [7], "drums": [], "at": 12 },
-      { "step": 13, "notes": [], "drums": [], "at": 13 },
-      { "step": 14, "notes": [4], "drums": [], "at": 14 },
-      { "step": 15, "notes": [], "drums": [], "at": 15 }
-    ]
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     2
+    ],
+    "drums": [
+     0
+    ],
+    "at": 0
+   },
+   {
+    "step": 2,
+    "notes": [
+     4
+    ],
+    "drums": [
+     2
+    ],
+    "at": 3
+   },
+   {
+    "step": 4,
+    "notes": [
+     6
+    ],
+    "drums": [
+     0,
+     1
+    ],
+    "at": 4
+   },
+   {
+    "step": 6,
+    "notes": [
+     3
+    ],
+    "drums": [
+     2
+    ],
+    "at": 7
+   },
+   {
+    "step": 8,
+    "notes": [
+     5
+    ],
+    "drums": [
+     0
+    ],
+    "at": 8
+   },
+   {
+    "step": 10,
+    "notes": [
+     1
+    ],
+    "drums": [
+     2
+    ],
+    "at": 11
+   },
+   {
+    "step": 12,
+    "notes": [
+     7
+    ],
+    "drums": [
+     0,
+     1
+    ],
+    "at": 12
+   },
+   {
+    "step": 14,
+    "notes": [
+     4
+    ],
+    "drums": [
+     2
+    ],
+    "at": 15
+   }
+  ]
+ },
+ "D_jam": {
+  "_note": "Jam adds a groove-dependent shuffle to odd steps that 'at' does NOT model, so D's beforeDriftMs is model mismatch, not jitter. Its value is the step CONTENT and the fact that every step fires a jamStep.",
+  "tempo": 120,
+  "cols": 16,
+  "swing": 0,
+  "stepDurMs": 250,
+  "beforeDriftMs": {
+   "maxMs": 30.7,
+   "meanMs": 23
   },
-  "E_fast_tempo": {
-    "tempo": 160, "cols": 16, "swing": 0, "stepDurMs": 187.5,
-    "beforeDriftMs": { "maxMs": 18, "meanMs": 7.5 },
-    "steps": [
-      { "step": 0, "notes": [2], "drums": [], "at": 0 },
-      { "step": 2, "notes": [4], "drums": [], "at": 2 },
-      { "step": 4, "notes": [6], "drums": [], "at": 4 },
-      { "step": 6, "notes": [3], "drums": [], "at": 6 },
-      { "step": 8, "notes": [5], "drums": [], "at": 8 },
-      { "step": 10, "notes": [1], "drums": [], "at": 10 },
-      { "step": 12, "notes": [7], "drums": [], "at": 12 },
-      { "step": 14, "notes": [4], "drums": [], "at": 14 }
-    ]
-  }
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     2
+    ],
+    "drums": [],
+    "at": 0
+   },
+   {
+    "step": 1,
+    "notes": [],
+    "drums": [],
+    "at": 1
+   },
+   {
+    "step": 2,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 2
+   },
+   {
+    "step": 3,
+    "notes": [],
+    "drums": [],
+    "at": 3
+   },
+   {
+    "step": 4,
+    "notes": [
+     6
+    ],
+    "drums": [],
+    "at": 4
+   },
+   {
+    "step": 5,
+    "notes": [],
+    "drums": [],
+    "at": 5
+   },
+   {
+    "step": 6,
+    "notes": [
+     3
+    ],
+    "drums": [],
+    "at": 6
+   },
+   {
+    "step": 7,
+    "notes": [],
+    "drums": [],
+    "at": 7
+   },
+   {
+    "step": 8,
+    "notes": [
+     5
+    ],
+    "drums": [],
+    "at": 8
+   },
+   {
+    "step": 9,
+    "notes": [],
+    "drums": [],
+    "at": 9
+   },
+   {
+    "step": 10,
+    "notes": [
+     1
+    ],
+    "drums": [],
+    "at": 10
+   },
+   {
+    "step": 11,
+    "notes": [],
+    "drums": [],
+    "at": 11
+   },
+   {
+    "step": 12,
+    "notes": [
+     7
+    ],
+    "drums": [],
+    "at": 12
+   },
+   {
+    "step": 13,
+    "notes": [],
+    "drums": [],
+    "at": 13
+   },
+   {
+    "step": 14,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 14
+   },
+   {
+    "step": 15,
+    "notes": [],
+    "drums": [],
+    "at": 15
+   }
+  ]
+ },
+ "E_fast_tempo": {
+  "tempo": 160,
+  "cols": 16,
+  "swing": 0,
+  "stepDurMs": 187.5,
+  "beforeDriftMs": {
+   "maxMs": 18,
+   "meanMs": 7.5
+  },
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     2
+    ],
+    "drums": [],
+    "at": 0
+   },
+   {
+    "step": 2,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 2
+   },
+   {
+    "step": 4,
+    "notes": [
+     6
+    ],
+    "drums": [],
+    "at": 4
+   },
+   {
+    "step": 6,
+    "notes": [
+     3
+    ],
+    "drums": [],
+    "at": 6
+   },
+   {
+    "step": 8,
+    "notes": [
+     5
+    ],
+    "drums": [],
+    "at": 8
+   },
+   {
+    "step": 10,
+    "notes": [
+     1
+    ],
+    "drums": [],
+    "at": 10
+   },
+   {
+    "step": 12,
+    "notes": [
+     7
+    ],
+    "drums": [],
+    "at": 12
+   },
+   {
+    "step": 14,
+    "notes": [
+     4
+    ],
+    "drums": [],
+    "at": 14
+   }
+  ]
+ },
+ "F_vine_holds": {
+  "_WHY": "Held notes. holdOf() is the ONLY thing that turns a vine into a longer sound, and no golden saw it: the capture wrapper in README.md was `(r,t)=>origPlayRow(r,t)`, a two-arg arrow that silently DROPPED playRow's third argument. A vine captured with that wrapper would have recorded, and played, nothing but staccato. 'hold' here is seconds, = durationTicks*anchorSPT.",
+  "tempo": 108,
+  "cols": 16,
+  "swing": 0,
+  "stepDurMs": 277.7778,
+  "setup": "melody rows/cols/lengths: (0,0,1) (2,2,2) (4,6,4) (7,11,1) (1,14,2); drums off, jam off, straight, loop off",
+  "driftMs": {
+   "maxMs": 0.0,
+   "meanMs": 0.0
+  },
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     0
+    ],
+    "holds": [
+     0
+    ],
+    "drums": [],
+    "at": 0.0
+   },
+   {
+    "step": 2,
+    "notes": [
+     2
+    ],
+    "holds": [
+     0.55556
+    ],
+    "drums": [],
+    "at": 2.0
+   },
+   {
+    "step": 6,
+    "notes": [
+     4
+    ],
+    "holds": [
+     1.11111
+    ],
+    "drums": [],
+    "at": 6.0
+   },
+   {
+    "step": 11,
+    "notes": [
+     7
+    ],
+    "holds": [
+     0
+    ],
+    "drums": [],
+    "at": 11.0
+   },
+   {
+    "step": 14,
+    "notes": [
+     1
+    ],
+    "holds": [
+     0.55556
+    ],
+    "drums": [],
+    "at": 14.0
+   }
+  ],
+  "_ASSERT": "A one-column note holds 0 (the `durationTicks>TICKS_PER_COL` gate keeps every shipped flat note on the old byte-identical path); two columns hold 0.55556s and four hold 1.11111s, i.e. exactly durationTicks/48 * stepDur. If a meter or snap change ever makes a column worth a different number of ticks, these three numbers move and this golden says so."
+ },
+ "G_loop_wrap": {
+  "_WHY": "The loop wrap in pump() — `if(bookCol>=COLS) bookCol=loopStart` — is the exact line a bar loop range has to modify, and nothing pinned it. This records BOOKED COLUMNS rather than sounded notes, because the wrap books every column whether or not anything sounds in it.",
+  "tempo": 108,
+  "cols": 16,
+  "stepDurMs": 277.7778,
+  "setup": "any bed; looping=true, cursorPinned=false; run past the end and read bookColumn(col,tick)",
+  "from_loopStart_0": {
+   "runMs": 10000,
+   "columns": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "_SHAPE": "0..15 then 0..15 then 0..8 — 41 bookings in 10s at 277.78ms/col"
+  },
+  "from_loopStart_8": {
+   "runMs": 8000,
+   "columns": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    8,
+    9
+   ],
+   "_SHAPE": "8..15 repeating — loopStart ALREADY gives a tail loop today; what is missing is loopEnd"
+  },
+  "_ASSERT": "bookTick is MONOTONIC ACROSS THE WRAP and never resets: ticks run 0,48,...,720 and the wrapped column 0 books at 768, not at 0. Verified true for both runs (every step +48). A bar loop range must preserve that — the tick timeline is continuous even when the column jumps backwards, which is what keeps tick2time's anchor arithmetic valid."
+ },
+ "H_short_field": {
+  "_WHY": "A field 12 columns long: not a multiple of 16, and not of 8 either. EDITOR-DESIGN §17(6) says meter may never normalise, pad or round COLS — many famous entries already run 46, 52, 66, 98 — so the engine must treat 12 as a first-class length. Every other golden is 16.",
+  "tempo": 108,
+  "cols": 12,
+  "swing": 0,
+  "stepDurMs": 277.7778,
+  "setup": "modelSetCols(12); melody (0,0,1) (3,3,1) (5,7,2) (2,11,1); drums off, jam off, loop off",
+  "driftMs": {
+   "maxMs": 0.0,
+   "meanMs": 0.0
+  },
+  "steps": [
+   {
+    "step": 0,
+    "notes": [
+     0
+    ],
+    "holds": [
+     0
+    ],
+    "drums": [],
+    "at": 0.0
+   },
+   {
+    "step": 3,
+    "notes": [
+     3
+    ],
+    "holds": [
+     0
+    ],
+    "drums": [],
+    "at": 3.0
+   },
+   {
+    "step": 7,
+    "notes": [
+     5
+    ],
+    "holds": [
+     0.55556
+    ],
+    "drums": [],
+    "at": 7.0
+   },
+   {
+    "step": 11,
+    "notes": [
+     2
+    ],
+    "holds": [
+     0
+    ],
+    "drums": [],
+    "at": 11.0
+   }
+  ],
+  "bookedColumns": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11
+  ],
+  "_ASSERT": "Exactly 12 columns are booked, at ticks 0..528 step 48. Nothing pads to 16."
+ },
+ "I_famous_sweep": {
+  "_WHY": "The famous reveal has its OWN scheduler. playFamous() runs entirely outside pump(), books from stepDur() rather than the Transport's frozen anchorSPT, and sounds through voice() directly rather than playRow — so the wrapper in README.md could not see it at all and no golden covered a single note of it. It is also the one path that WIDENS COLS and OVERWRITES the tempo, which is why EDITOR-DESIGN §17 keeps capstone reveals bar-less.",
+  "song": "swinglow",
+  "tempoBefore": 108,
+  "tempoAfter": 88,
+  "colsAfter": 32,
+  "stepDurMs": 340.9091,
+  "durMs": 9324.55,
+  "setup": "playFamous(\"swinglow\") from the Studio, voice=musicbox; booking is synchronous",
+  "voices": [
+   {
+    "at": 0.0,
+    "freq": 659.26,
+    "hold": 0.68182
+   },
+   {
+    "at": 2.0,
+    "freq": 523.25,
+    "hold": 2.04545
+   },
+   {
+    "at": 8.0,
+    "freq": 659.26,
+    "hold": 0.68182
+   },
+   {
+    "at": 10.0,
+    "freq": 523.25,
+    "hold": 1.02273
+   },
+   {
+    "at": 13.0,
+    "freq": 523.25,
+    "hold": 0.0
+   },
+   {
+    "at": 14.0,
+    "freq": 440.0,
+    "hold": 0.0
+   },
+   {
+    "at": 15.0,
+    "freq": 392.0,
+    "hold": 1.02273
+   },
+   {
+    "at": 18.0,
+    "freq": 523.25,
+    "hold": 0.0
+   },
+   {
+    "at": 19.0,
+    "freq": 523.25,
+    "hold": 0.0
+   },
+   {
+    "at": 20.0,
+    "freq": 523.25,
+    "hold": 0.0
+   },
+   {
+    "at": 21.0,
+    "freq": 523.25,
+    "hold": 0.0
+   },
+   {
+    "at": 22.0,
+    "freq": 659.26,
+    "hold": 0.0
+   },
+   {
+    "at": 23.0,
+    "freq": 659.26,
+    "hold": 0.0
+   },
+   {
+    "at": 24.0,
+    "freq": 783.99,
+    "hold": 0.68182
+   },
+   {
+    "at": 26.0,
+    "freq": 783.99,
+    "hold": 2.04545
+   }
+  ],
+  "_ASSERT": "15 notes, 7 of them held. The holds are 0.68182s (2 columns), 1.02273s (3) and 2.04545s (6) at 340.909ms/column — Swing Low is the first FAMOUS entry authored with real note lengths, so this golden is the only place the length data in frozen, score-validated content is pinned against the engine that plays it."
+ },
+ "_RESULT_2026_08_28": "Four cases added BEFORE any meter/bars code, per EDITOR-DESIGN §17's 'new goldens come first, not after'. They close the four blind spots that section named: held notes, loop boundaries, a field length that is not 16, and the famous sweep. Captured on the CURRENT lookahead engine, so drift is 0.00ms by construction and 'driftMs' is a property of the capture rather than a pass condition. THE CAPTURE WRAPPER ITSELF WAS BROKEN and is fixed in README.md: it dropped playRow's third argument, so it would have neutralised the very holds F exists to pin. Honest limit: all nine cases pin SCHEDULING, never DRAWING — a barline rendered at the wrong column is invisible to every one of them. RE-RUN the same day, after the meter/bars slice rewrote the loop wrap from `bookCol>=COLS` to a two-sided `bookCol<loopA()||bookCol>=loopB()`: F, G and H re-captured CONTENT-IDENTICAL, monotonic bookTick across the wrap included — which is the evidence that with no bar range set the two-sided test reduces exactly to the one it replaced. This is the first time these four caught anything, and what they caught was that nothing had changed, which is precisely what they were added to be able to say."
 }
