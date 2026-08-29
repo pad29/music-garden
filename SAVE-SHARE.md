@@ -43,7 +43,7 @@ The shipped save/share (song format **v2**, `index.html` ~L2208) was a quick pro
   v: 3,
   meta:    { title, created, updated, author? },   // author = Cognito sub when signed in; absent for guests
   palette: "diatonic",                              // authoring palette: edit/visual context + cross-open fallback
-  time:    { cols, tempo, groove, swing? },
+  time:    { cols, tempo, groove, swing?, meter?, origin? },   // meter/origin ONLY when the song has bars
   tracks: [
     { kind:"melody", voice:"pluck",
       notes:[ { p:72, c:0, len:1 }, … ] },          // p = MIDI pitch (absolute), c = start column, len = duration in columns
@@ -86,6 +86,22 @@ The same v3 object serializes three ways; the UI picks by size/scope.
 | **Cloud** `#song=<id>` | complex / long / multi-voice / cross-device / shareable | `songs` API; link carries a short server **id**, resolved via `fetch` | payload cap (§6) |
 
 **Packed URL form:** a deterministic compact encoding (positional arrays + single-letter keys) keeps simple songs linkable. This is purely a wire format for `#s=`; the in-memory object is always the readable v3 above.
+
+The packed array is **positional**: `[3, palette, cols, tempo, groove, voice, notes, hits]`, with meter
+appended as **slot 8** — `[meter, origin]` — and *only when the song is metered*. Three rules, each
+load-bearing (`EDITOR-DESIGN.md` §17):
+
+- **Append, never insert.** A new field goes on the end or every link ever shared decodes wrong.
+- **Omit, never `undefined`.** `a[8] = undefined` serialises as `null`, which lengthens every existing
+  link by five characters against `SHARE_MAX = 1800`. The code `push`es, and a test asserts that an
+  unmetered song still packs to exactly eight slots with no `null` on the wire.
+- **Absence reads as unmetered.** Decoding a missing slot 8 as an explicit 4/4 would give every song
+  written before bars existed a set of barlines it was never composed against.
+
+A share link is untrusted input, so `validMeter()` normalises an unknown preset, a negative, fractional
+or non-finite origin, or an origin at/past the bar's own length to **unmetered** rather than throwing —
+a link we cannot trust is a link with no meter. A *missing* origin still means "no pickup", which is the
+ordinary case; only a present-but-unusable one rejects the meter with it.
 
 ---
 

@@ -284,6 +284,31 @@
      everything else: measured 20 → 16 → 12px before this was moved. */
   #cursorStrip{ height:calc(20px / var(--fz)); }
   #cursorKnob{ font-size:calc(15px / var(--fz)); }
+  /* ---- Bars. Drawn as OVERLAYS, never as a per-cell class: setBeatGuide already owns a per-cell
+     `beatcol` that applyStageDecor must re-apply after every rebuild, and sharing that path would put the
+     meter inside a function seven shipped packages depend on. An overlay shares no state with it. ---- */
+  #barlines, #drumBarlines{ position:absolute; inset:0; pointer-events:none; z-index:2; }
+  #barlines .bl, #drumBarlines .bl{ position:absolute; top:0; bottom:0; width:2px; background:var(--soil); opacity:.42; border-radius:1px; }
+  #barlines .bt, #drumBarlines .bt{ position:absolute; top:0; bottom:0; width:1px; background:var(--soil); opacity:.16; }
+  /* Bar chips live INSIDE the stake's own rail rather than in a new element of their own. #cursorStrip
+     already carries touch-action:none, the inverse-zoom sizing above, armPinch's exclusion, and the only
+     pointer latch camBusy() knows about (`cursorStripEl._drag`). A new node inside .scroller would have
+     inherited NONE of those and silently become pinch-eligible — the same cross-bed leak the pinch work
+     already paid a device round for.
+     One correction to that reasoning, found by testing rather than by reading: the rail carries armPinch's
+     exclusion and camBusy()'s latch, but it did NOT carry armZoomTap's — #cursorStrip is a child of
+     #scroller and does not stopPropagation, so the chip band needed an exclusion written for it.
+     AUTHORED HERE, BELOW the calc() rules, deliberately: see the source-order note just above. A rule that
+     must beat an equal-specificity one has to come after it, and this file has lost that bet four times. */
+  body.metered #cursorStrip{ height:calc(36px / var(--fz)); border-radius:calc(10px / var(--fz)); }
+  body.metered #cursorKnob{ top:calc(13px / var(--fz)); }
+  #barchips{ position:absolute; left:0; right:0; top:0; height:calc(16px / var(--fz)); display:none; }
+  body.metered #barchips{ display:block; }
+  .barseg{ position:absolute; top:0; height:100%; box-sizing:border-box; overflow:hidden;
+    border-left:2px solid var(--bedRing); border-radius:calc(4px / var(--fz)) calc(4px / var(--fz)) 0 0;
+    font-size:calc(10px / var(--fz)); line-height:calc(16px / var(--fz));
+    padding-left:calc(4px / var(--fz)); color:var(--soil); opacity:.7; }
+  .barseg.inloop{ background:rgba(68,163,95,.24); color:var(--leaf-deep); opacity:1; font-weight:700; }
   #cursorCol{ position:absolute; top:10px; bottom:10px; width:34px; border-radius:8px; left:10px;
     border:2px dashed var(--leaf); background:rgba(68,163,95,.08); pointer-events:none; transition:left .12s ease; }
   /* the cursor marks a TIME SLOT in both lanes — same dashed-green language over the pads.
@@ -587,6 +612,23 @@
          not a verb, and at 157px it was over half the pinned band's width on a phone — wrapping the row and
          costing 49px of height that the field needs. Every reference to it is by id, so nothing else moved. -->
     <label class="ctl" id="grooveCtl">Groove <select id="groove" title="Groove style"></select></label>
+    <!-- Bars are STUDIO-ONLY (§17(7)): levels never show a time signature — a child picks a dance feel and
+         the meter follows. Same shape as grooveCtl above: the LABEL is hidden, not the select, or the word
+         is left standing on its own. "Free" is first and is the default because every existing save, share
+         link and Jukebox entry decodes to unmetered, and a default has to match the corpus. -->
+    <label class="ctl" id="meterCtl">Bars <select id="meter" title="How long a bar is, and how it is felt">
+        <option value="">Free (no bars)</option>
+        <option value="4/4">March · 4/4</option>
+        <option value="3/4">Waltz · 3/4</option>
+        <option value="6/8">Jig · 6/8</option>
+        <option value="2/4">Quick march · 2/4</option>
+      </select></label>
+    <label class="ctl" id="pickupCtl">Pick-up <select id="pickup" title="Steps before the first full bar">
+        <option value="0">none</option>
+        <option value="1">1 step</option>
+        <option value="2">2 steps</option>
+        <option value="3">3 steps</option>
+      </select></label>
   </div>
   <div id="world" title="The garden wakes as you play — one emblem per restored level"></div>
   <div id="choiceRow" class="controls" style="display:none"></div>
@@ -622,8 +664,8 @@
             </span>
             <span class="fbgroup" id="moremenu">
               <span class="fbpair">
-                <button id="more" class="secondary" title="Add a whole patch of room — one more bar (16 steps) at the end">＋</button>
-                <button id="less" class="secondary" title="Take back the last patch — one whole bar">－</button>
+                <button id="more" class="secondary" title="Add a whole patch of room — 16 more steps at the end">＋</button>
+                <button id="less" class="secondary" title="Take back the last patch — 16 steps">－</button>
               </span>
               <span class="fbcap">patch</span>
             </span>
@@ -651,6 +693,7 @@
           <div class="scroller" id="scroller">
             <div class="track" id="track">
               <div id="grid" class="grid"></div>
+              <div id="barlines"></div> <!-- bars + beats: a SIBLING like #vines for the same reason, and pointer-events:none so it can never take a plant -->
               <div id="vines"></div>   <!-- a SIBLING of the grid, so buildGrid()'s innerHTML="" never eats it -->
 
               <svg id="contourGhost" class="contourghost" style="display:none"></svg>
@@ -1136,7 +1179,7 @@ function jamStep(step,t){
 const DRUMS=[{name:"Kick",emoji:"🥁",play:t=>kick(t,1.0,drumBus)},
              {name:"Snare",emoji:"👏",play:t=>snare(t,0.7,drumBus)},
              {name:"Hi-hat",emoji:"🎩",play:t=>hat(t,0.4,drumBus)}];
-let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false; let drumCursorEl=null;
+let drumG=DRUMS.map(()=>Array(COLS).fill(false)); const dcells=[]; let drumsOn=false; let drumCursorEl=null, drumBarsEl=null;
 function buildDrums(){ const rows=document.getElementById("drumrows"); rows.innerHTML="";
   const bar=document.getElementById("drumbar"); if(bar) bar.innerHTML="";   // the labels live OUTSIDE the scroller now — one per row, same order, same heights
   DRUMS.forEach((dm,d)=>{ dcells[d]=[];
@@ -1145,11 +1188,13 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
     const row=document.createElement("div"); row.className="drumrow";
     const g=document.createElement("div"); g.className="dcellgrid"; g.style.gridTemplateColumns=`repeat(${COLS},34px)`;
     for(let c=0;c<COLS;c++){ const el=document.createElement("div");
-      el.className="dcell"+(c%4===0?" beat":"")+(drumG[d][c]?" on":"");
+      el.className="dcell"+(beatTintAt(c)?" beat":"")+(drumG[d][c]?" on":"");
       el.addEventListener("mousedown",()=>drumClick(d,c)); g.appendChild(el); dcells[d][c]=el; }
     row.appendChild(g); rows.appendChild(row); });
   drumCursorEl=document.createElement("div"); drumCursorEl.id="drumCursorCol";   // innerHTML="" above ate the old rail — the cursor lives in BOTH lanes, so re-hang it
   rows.appendChild(drumCursorEl);
+  drumBarsEl=document.createElement("div"); drumBarsEl.id="drumBarlines";        // …and so do the bars, for exactly the same reason. The beat lane is where
+  rows.appendChild(drumBarsEl);                                                  // grouping is most directly useful, so it cannot be the lane without bars.
   applySwingVisual();   // a rebuild makes fresh cells — re-mark the swung "and" pads if swing is on
   if(typeof syncCursor==="function") syncCursor();
 }
@@ -1182,6 +1227,65 @@ function freshDoc(){ return { version:1, ppq:TG_PPQ,
 let doc=freshDoc();
 function melTrack(){ return doc.tracks.find(t=>t.role==="melody"); }
 function drumTrack(){ return doc.tracks.find(t=>t.role==="drums"); }
+// ---------- Meter: what a bar is, and how it is FELT (EDITOR-DESIGN §17, owner 2026-08-27) ----------
+// A meter is TWO facts, not one, and that is the whole reason this took two design rounds to settle:
+// 3/4 and 6/8 are the SAME 288 ticks and differ only in GROUPING, so no single "columns per bar" number
+// can express both. beats[] is therefore AUTHORED per preset and never derived (§17(5)) — derivation
+// cannot separate 3/4 from 6/8 and fails outright on 5/8 and 7/8. `pulse` is what a BEAT is for a
+// count-in and for reading a tempo: a jig's felt pulse is a dotted quarter, not an eighth.
+const METERS={
+  "4/4":{ num:4, den:4, beats:[96,96,96,96], pulse:96,  label:"March · 4/4" },
+  "3/4":{ num:3, den:4, beats:[96,96,96],    pulse:96,  label:"Waltz · 3/4" },
+  "6/8":{ num:6, den:8, beats:[144,144],     pulse:144, label:"Jig · 6/8" },
+  "2/4":{ num:2, den:4, beats:[96,96],       pulse:96,  label:"Quick march · 2/4" } };
+const barTicks=P=>P.beats.reduce((a,b)=>a+b,0);   // 384 · 288 · 288 · 192 ticks = 8 · 6 · 6 · 4 columns
+// EVERY lookup goes through here, and it is an OWN-property test on purpose: `METERS[id]` alone accepts
+// "toString", "constructor", "valueOf" and "__proto__", which are inherited, truthy, and have no .beats —
+// so a crafted #s= link reached barTicks(P) and threw. That throw landed INSIDE applySong's tx, after the
+// palette, COLS and both tracks had been written and before reproject/rebuildField, leaving the Studio
+// holding a stranger's notes behind a stale grid. decodeSong's try/catch is upstream and never saw it.
+function meterDef(id){ return (typeof id==="string" && Object.prototype.hasOwnProperty.call(METERS,id)) ? METERS[id] : null; }
+// meterMap [] means UNMETERED — no bars, exactly today's picture on every shipped level. A LIST and not a
+// scalar because §4f reserved meterMap as a map: mid-song meter changes are out of scope by the owner's
+// call rather than nailed shut.
+function meterAt(){ return doc.meterMap.length ? doc.meterMap[0] : null; }
+function meterPreset(){ const m=meterAt(); return m ? meterDef(m.preset) : null; }
+const barCols=()=>{ const P=meterPreset(); return P ? barTicks(P)/TICKS_PER_COL : 16; };   // unmetered: today's 16
+// (cols, meter) -> {segs, marks}. PURE — no DOM, no globals beyond the constants — because NO GOLDEN CAN
+// SEE A BARLINE. All nine playback goldens pin scheduling and are completely blind to drawing, so unit
+// tests over this function are the only place bar positions are ever actually checked.
+//   segs  = the strip's chips, CLIPPED TO COLS. A 16-column waltz's last bar really is 4 columns wide, and
+//           an unclipped chip would push .scroller's scrollable area past the grid, desyncing the camera.
+//   marks = {c,kind} for both overlays AND the drum pad tint, so three renderers cannot disagree.
+function meterLayout(cols, m){
+  const P=m && meterDef(m.preset); if(!P) return {segs:[], marks:[]};
+  const bc=barTicks(P)/TICKS_PER_COL, oc=Math.round(m.originTick/TICKS_PER_COL);
+  const segs=[], marks=[];
+  // The pickup is bar 0 and goes UNNUMBERED: a child counting "one" on the downbeat has to be right, and
+  // a chip labelled "0" teaches the opposite. §17(4) makes originTick mandatory precisely because Moldau's
+  // downbeat is at column 1 and Amazing Grace and Taps open with pickups — without an origin the barlines
+  // are wrong even when the signature is right.
+  if(oc>0) segs.push({n:0, c0:0, cols:Math.min(oc,cols), pickup:true});
+  // Walk from one bar BEFORE the origin so a pickup shows the beats it actually contains, then clip at 0.
+  for(let c0=oc-bc, i=0; c0<cols; c0+=bc, i++){
+    if(c0>=0){ if(i>0) segs.push({n:i, c0, cols:Math.min(bc,cols-c0), partial:c0+bc>cols});
+               marks.push({c:c0, kind:"bar"}); }
+    let t=0;
+    for(let k=0;k<P.beats.length-1;k++){ t+=P.beats[k];        // beat 1 IS the barline; emit 2..n
+      const c=c0+t/TICKS_PER_COL; if(c>=0 && c<cols) marks.push({c, kind:"beat"}); } }
+  return {segs, marks};
+}
+// Which columns carry the pulse. Memoised because buildDrums asks once PER PAD — three lanes × COLS.
+let _tintKey=null, _tintSet=null;
+function beatColSet(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.originTick : "";
+  if(key!==_tintKey){ _tintKey=key; _tintSet = m ? new Set(meterLayout(COLS,m).marks.map(k=>k.c)) : null; }
+  return _tintSet; }
+// The pads have tinted every 4th column since the rhythm packages shipped, and UNMETERED that stays
+// exactly, byte-identically true on every level. Metered, the tint follows the bar's own authored pulse —
+// because the Studio opens with drums ON, so melody beat marks every 2 columns beside a pad tint every 4
+// would put BOTH conventions on one screen, which is precisely what §17's first review round killed a
+// draft for. Only the Studio can set a meter, so no shipped level reaches the metered branch.
+const beatTintAt=c=>{ const s=beatColSet(); return s ? s.has(c) : c%4===0; };
 // row for a pitch in the ACTIVE palette: exact match, else nearest (cross-palette songs snap for display only)
 function projRow(p){ let best=null,bd=Infinity;
   for(let r=0;r<ROWS;r++){ const d=Math.abs(MIDI[r]-p); if(d===0) return r; if(d<bd){ bd=d; best=r; } }
@@ -1204,7 +1308,10 @@ function reproject(){                          // doc → the legacy boolean gri
 const JOURNAL_MAX=100; let journal=[], journalRedo=[];
 // tempo + groove are SONG state (v3 time.tempo/groove) — they snapshot and restore with the notes,
 // which is what makes undoing a famous reveal also return the player's tempo.
-function snapState(){ return JSON.stringify({palette:paletteId, cols:COLS, tempo:+tempoEl.value, groove:grooveIdx, tracks:doc.tracks}); }
+// meter rides along too (§17's own trap note: "meter must join it or undo silently fails to restore a
+// meter change"). Snapshots are in-memory only — nothing persisted reads this shape — so the extra field
+// costs no compatibility.
+function snapState(){ return JSON.stringify({palette:paletteId, cols:COLS, tempo:+tempoEl.value, groove:grooveIdx, meter:doc.meterMap, tracks:doc.tracks}); }
 // scripted placements (level setup, reveals, choices, song loads) journal for undo but must NEVER
 // claim the player's autosave slot — the rescued sprout holds PLAYER work only.
 const SCRIPTED_TX=new Set(["place","famous","choice","load-song","palette"]);
@@ -1223,12 +1330,15 @@ function restoreSnapshot(json){ const s=JSON.parse(json);
   if(s.palette!==paletteId){ const p=PALETTES[s.palette]||PALETTES.pentatonic;
     paletteId=p.id; MIDI=p.MIDI; NAMES=p.NAMES; TONIC_PC=p.tonicPC; ROWS=MIDI.length; }
   COLS=s.cols; doc.tracks=s.tracks;
+  doc.meterMap = Array.isArray(s.meter) ? s.meter : [];
+  clearLoopRange();                          // the bars a loop range pointed at may not exist in this snapshot
   if(typeof s.tempo==="number"){ tempoEl.value=s.tempo; Transport.retime(); }
   if(typeof s.groove==="number"&&GROOVES[s.groove]){ grooveIdx=s.groove; grooveEl.value=s.groove; }
   clearFamousTimers();                       // stale flash timers must not fire on the rebuilt field
   trayPlace=null; clearGhosts();             // an armed copy's geometry is stale against the restored field
   reproject(); rebuildField();               // rebuildField prunes the tray selection to surviving ids
   applyStageDecor();                         // the rebuilt cells need the stage's tints back (phrase split, beat guide, locks…)
+  syncMeterUI();                             // …and the meter CONTROLS, or undo restores the picture while the select still reports the undone meter
   ev.played=false; scheduleAutosave(); syncUndoUI(); checkLevel(); updateGarden(); }
 // re-apply the current stage's per-cell decorations after any mid-stage rebuild (undo, time surgery)
 function applyStageDecor(){ if(typeof LEVELS==="undefined"||!LEVELS||!LEVELS[levelIdx]) return;
@@ -1268,14 +1378,24 @@ function modelSetCols(cols){ tx("resize",()=>{ const lim=cols*TICKS_PER_COL;   /
   melTrack().notes=melTrack().notes.filter(n=>n.startTick<lim);
   drumTrack().notes=drumTrack().notes.filter(n=>n.startTick<lim);
   for(const n of melTrack().notes) n.durationTicks=Math.max(TICKS_PER_COL,Math.min(n.durationTicks,lim-n.startTick));  // a vine can't hang past the field's end
-  COLS=cols; reproject(); }); }
+  COLS=cols; reproject();
+  if(loopEnd>COLS) clearLoopRange(); }); }   // a shrink can leave a loop range pointing past the field
 // time surgery (R4): insert or remove a span of musical time — the WHOLE timeline shifts, drums included
+// Time surgery moves the MUSIC; the meter has to come with it or the barlines detach from the notes on
+// the first ＋/－ room. Only an edit at or before the downbeat moves bar 1 — one made after it leaves bar 1
+// where it is. The modulo matters: an origin is a PICKUP, always a fraction of a bar, so it wraps rather
+// than growing into "bar 1 starts three bars in".
+function shiftMeterOrigin(atTick, delta){
+  const m=meterAt(), P=meterPreset(); if(!m||!P) return;
+  if(atTick>m.originTick) return;
+  const bt=barTicks(P); m.originTick=((m.originTick+delta)%bt+bt)%bt; }
 function modelInsertTime(atTick,ticks){ tx("insert-time",()=>{
   for(const t of doc.tracks) for(const n of t.notes){
     if(n.startTick>=atTick) n.startTick+=ticks;
     else if(t.role==="melody" && n.startTick+n.durationTicks>atTick)                            // ＋room INSIDE a vine stretches it rather than cutting it in half —
       n.durationTicks=Math.min(n.durationTicks+ticks, MAX_VINE*TICKS_PER_COL); }                // but never past the ceiling 🌿 Grow itself refuses to cross
-  COLS+=Math.round(ticks/TICKS_PER_COL); reproject(); }); }
+  shiftMeterOrigin(atTick, ticks);
+  COLS+=Math.round(ticks/TICKS_PER_COL); reproject(); clearLoopRange(); }); }   // the bars just moved: a range in bar coordinates is stale
 function modelRemoveTime(atTick,ticks){ tx("remove-time",()=>{
   ticks=Math.min(ticks, Math.max(0, COLS*TICKS_PER_COL-atTick));   // a span can't overhang the timeline — otherwise notes before it get stranded past the shrunk COLS
   if(ticks<=0) return;
@@ -1285,7 +1405,11 @@ function modelRemoveTime(atTick,ticks){ tx("remove-time",()=>{
       if(n.startTick>=atTick+ticks) n.startTick-=ticks;
       else if(t.role==="melody" && n.startTick+n.durationTicks>atTick)                    // －room INSIDE a vine shortens it,
         n.durationTicks=Math.max(TICKS_PER_COL, n.durationTicks-ticks); } }               // but never below its own onset column
-  COLS=Math.max(16,COLS-Math.round(ticks/TICKS_PER_COL)); reproject(); }); }
+  shiftMeterOrigin(atTick, -ticks);
+  // － room assigns COLS directly, so modelSetCols's guard never runs: a range on the last bar survived
+  // every press and collapsed to loopA()=16 / loopB()=17 — the one-column loop loopB()'s own comment
+  // claims to prevent. Measured from COLS=24 with a range on [16,24) after seven presses.
+  COLS=Math.max(16,COLS-Math.round(ticks/TICKS_PER_COL)); reproject(); clearLoopRange(); }); }
 // R19 write side: a rolling autosave of the working song (the recovery UI lands in Phase 1)
 let autosaveT=null;
 function scheduleAutosave(){ clearTimeout(autosaveT); autosaveT=setTimeout(()=>{ try{
@@ -1379,6 +1503,11 @@ function zoomTapDrop(){ if(!zoomTap) return;
   zoomTap=null; }
 function armZoomTap(el){ if(!el) return;
   el.addEventListener("pointerdown",e=>{
+    // A bar chip is a CONTROL, not garden to tap your way back from. #cursorStrip is a child of #scroller
+    // and its handler calls preventDefault but not stopPropagation, so without this a chip tap at
+    // look-only zoom both set the loop range AND zoomed back in. Only the chip band is excluded: tapping
+    // the stake's rail still returns you to editing size, which is shipped behaviour.
+    if(e.target && e.target.closest && e.target.closest("#barchips")) return;
     if(zoomTap){ zoomTapDrop(); return; }      // a second finger is down: pan or pinch, never a tap
     if(!lookOnly()||trayMode) return;          // (while a pick is armed the Scoop owns the pointer)
     const t={ el, id:e.pointerId, x:e.clientX, y:e.clientY, touch:e.pointerType!=="mouse" };
@@ -1704,9 +1833,18 @@ function growTrim(dir){
             : dir>0 ? GROW_COPY.many(k) : GROW_COPY.manyTrim(k)); } }
 document.getElementById("growBtn").onclick=()=>growTrim(+1);
 document.getElementById("trimBtn").onclick=()=>growTrim(-1);
-function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); camReseed(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps, and the camera re-seeds so a shrinking field's own scroll clamp is not mistaken for the child
+function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); renderBars(); camReseed(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps, and the camera re-seeds so a shrinking field's own scroll clamp is not mistaken for the child
 function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
-function removeColumns(n){ const c2=Math.max(16, COLS-n); if(c2===COLS) return;   // never below one bar
+// The 16-column floor is STRUCTURAL, not a preference, and the reason is not the one the old comment
+// gave: COLS is assigned in five places and NOTHING ever grows it back — resetTransient only ever shrinks
+// (`if(COLS>16) removeColumns(COLS-16)`), so a Studio waltz trimmed to 6 columns would render every level
+// entered afterwards at 6. hintMelody also hardcodes its final tonic at column 14.
+// Metered, removal is ALL-OR-NOTHING: an 18-column waltz minus a 6-column bar would clamp to 16 and take
+// only two, leaving a partial bar — a "－ patch" that removes a third of a patch is a lie. Unmetered keeps
+// today's clamp exactly, because that is shipped behaviour in every package with ＋/－ unlocked.
+function removeColumns(n){
+  if(meterAt()){ if(COLS-n<16) return; modelSetCols(COLS-n); rebuildField(); updateGarden(); return; }
+  const c2=Math.max(16, COLS-n); if(c2===COLS) return;
   modelSetCols(c2); rebuildField(); updateGarden(); }
 function setCell(r,c,on){ modelSetCell(r,c,on); cells[r][c].classList.toggle("on",on); renderVines(); }   // digging up a vined seed must take its stem with it
 function flash(el,r){ el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse");
@@ -2009,7 +2147,16 @@ let cursorCol=0, cursorPinned=false;
 // The loop's return point. A VARIABLE rather than a hardcoded 0 so Phase 2's loop range is this gaining a UI
 // rather than a rewrite. It used to be the cursor, which the owner never wanted ("I never actually needed
 // looping back to the cursor") and which also meant nudging the cursor mid-song silently moved the wrap point.
-let loopStart=0;
+let loopStart=0, loopEnd=0;                 // loopEnd 0 = "to the end of the field" = exactly today
+const rangeOn=()=>loopEnd>0;
+const loopA=()=>Math.max(0,Math.min(COLS-1,loopStart));
+// Exclusive, and never <= loopA: loopStart>=loopEnd would turn the wrap into an infinite tight loop on a
+// single column. Unmetered both reduce to 0 and COLS, so the pump's test below is byte-identical to the
+// `bookCol>=COLS` it replaces.
+const loopB=()=>Math.max(loopA()+1, Math.min(COLS, loopEnd||COLS));
+// A range is a way of LISTENING, not part of the song — like the field zoom, which resetTransient returns
+// to 1.0 and never writes to Store. It is not in snapState, not in currentSong, and never shared.
+function clearLoopRange(){ loopStart=0; loopEnd=0; if(typeof renderBars==="function") renderBars(); }
 const cursorStripEl=document.getElementById("cursorStrip"), cursorKnobEl=document.getElementById("cursorKnob"),
       cursorColEl=document.getElementById("cursorCol");
 function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
@@ -2023,14 +2170,104 @@ function syncCursor(){ cursorCol=Math.max(0,Math.min(COLS-1,cursorCol));
 function setCursor(c){ cursorCol=Math.max(0,Math.min(COLS-1,c)); syncCursor(); }
 function pinCursor(c){ cursorPinned=true; setCursor(c); }    // deliberate: the strip, the arrow keys — ▶ will honour it
 function followCursor(c){ cursorPinned=false; setCursor(c); }  // incidental: your hand just worked here, so the tools should too
-function cursorFromEvent(e){ const b=cursorStripEl.getBoundingClientRect();
-  pinCursor(Math.floor(((e.clientX-b.left)/zoomOf()-10)/38)); }   // putting the stake down by hand IS the deliberate act. Divide BEFORE subtracting the pad — it is a field-pixel quantity
+function stripCol(e){ const b=cursorStripEl.getBoundingClientRect();
+  return Math.floor(((e.clientX-b.left)/zoomOf()-10)/38); }   // divide BEFORE subtracting the pad — it is a field-pixel quantity
+// The chip band is the top 16 field-px of the rail, and exists only when the song has a meter. §17's
+// first slice wants bar numbers and a loop range on this rail, and this rail is also the only place they
+// are SAFE: #cursorStrip already carries touch-action:none, the inverse-zoom sizing, armPinch's own
+// exclusion, and the single pointer latch camBusy() reads. A separate ruler inside .scroller would have
+// inherited none of that and become pinch-eligible on the first two-finger gesture.
+function inChipBand(e){ if(!meterAt()) return false;
+  const b=cursorStripEl.getBoundingClientRect();
+  // VIEWPORT px, deliberately NOT divided by the zoom — the same rule the marquee's tap test and the
+  // vine pull's arming threshold already follow. The band is sized `calc(16px / var(--fz))` INSIDE a
+  // zoomed container, so it is 16 VISUAL px at every stop; dividing here compared a field-px offset
+  // against a visual-px height and, measured at zoom 0.6, dropped the band's bottom 40% through to the
+  // cursor rail — a chip tap at 14px became a cursor move.
+  return (e.clientY-b.top) < 16; }
+function cursorFromEvent(e){ pinCursor(stripCol(e)); }   // putting the stake down by hand IS the deliberate act
+function barSegAt(col){ for(const s of meterLayout(COLS,meterAt()).segs)
+  if(col>=s.c0 && col<s.c0+s.cols) return s;
+  return null; }
+function applyRange(a,b){ loopStart=Math.min(a.c0,b.c0);
+  loopEnd=Math.max(a.c0+a.cols, b.c0+b.cols);
+  // Choosing bars to loop IS asking for them to loop. Without this the pump's `if(!looping)` played the
+  // selection once and stopped, while the chip sat there lit green and named .inloop.
+  if(!looping){ looping=true; loopBtn.classList.add("on"); }
+  renderBars(); }
+let rangeAnchor=null, rangeBefore=null;
+// ONE delegated state machine, and the mode is decided ONCE at pointerdown and held for the whole
+// gesture: a drag that starts on a chip stays a range drag even when the finger wanders down onto the
+// rail, and a cursor drag stays a cursor drag when it wanders up. Deciding per-move is how one drag
+// becomes two half-gestures. Pointer capture retargets moves to the strip, so the chip under the finger
+// is found by COORDINATE rather than by event target.
 cursorStripEl.addEventListener("pointerdown",e=>{ e.preventDefault();
+  if(cursorStripEl._drag) return;      // a SECOND finger must not overwrite the live gesture's mode and anchor
   try{ cursorStripEl.setPointerCapture(e.pointerId); }catch(err){}
-  cursorStripEl._drag=true; cursorFromEvent(e); });
-cursorStripEl.addEventListener("pointermove",e=>{ if(cursorStripEl._drag) cursorFromEvent(e); });
-cursorStripEl.addEventListener("pointerup",()=>{ cursorStripEl._drag=false; });
-cursorStripEl.addEventListener("pointercancel",()=>{ cursorStripEl._drag=false; });
+  cursorStripEl._drag=true; cursorStripEl._moved=false; cursorStripEl._pid=e.pointerId;
+  cursorStripEl._x=e.clientX; cursorStripEl._y=e.clientY;
+  cursorStripEl._mode = inChipBand(e) ? "range" : "cursor";
+  if(cursorStripEl._mode==="cursor"){ cursorFromEvent(e); return; }   // …and KEEPS bubbling: tap-to-return from the rail is shipped behaviour
+  // A chip tap stops here. Excluding it inside armZoomTap by `e.target.closest("#barchips")` was not
+  // enough and the reason is worth keeping: this handler re-renders the chips, so by the time the event
+  // reached #scroller its own target had been REPLACED and `closest` on a detached node returns null.
+  // Measured: the tap set the range and still zoomed. The guard in armZoomTap stays as well — it is
+  // correct whenever the node survives — but the event not arriving at all is what actually settles it.
+  e.stopPropagation();
+  rangeBefore=[loopStart,loopEnd]; rangeAnchor=barSegAt(stripCol(e));
+  if(rangeAnchor) applyRange(rangeAnchor,rangeAnchor); });
+cursorStripEl.addEventListener("pointermove",e=>{
+  if(!cursorStripEl._drag || e.pointerId!==cursorStripEl._pid) return;
+  // 8px of slop, the same figure armZoomTap and the vine pull already use. Without it a single pixel of
+  // finger jitter counted as a drag, and "tap the lit bar again to release the loop" was unreachable on
+  // touch — which is the only place the release gesture is actually needed.
+  if(Math.hypot(e.clientX-cursorStripEl._x, e.clientY-cursorStripEl._y)>8) cursorStripEl._moved=true;
+  if(cursorStripEl._mode==="range"){ const s=rangeAnchor && barSegAt(stripCol(e)); if(s) applyRange(rangeAnchor,s); }
+  else cursorFromEvent(e); });
+function stripUp(e){
+  // Scoped to the finger that STARTED it: with two on the rail, the first release used to drop
+  // camBusy()'s only latch while the second was still dragging, handing the camera back mid-gesture.
+  if(e && e.pointerId!==undefined && cursorStripEl._pid!==null && e.pointerId!==cursorStripEl._pid) return;
+  // Tapping the bar that IS the whole loop releases it — one gesture both ways, so a child never has to
+  // hunt for a second control to stop looping. Only on a TAP: a drag that happens to end where it began
+  // is still a drag, and must not undo itself.
+  if(cursorStripEl._mode==="range" && !cursorStripEl._moved && rangeAnchor && rangeBefore
+     && rangeBefore[0]===rangeAnchor.c0 && rangeBefore[1]===rangeAnchor.c0+rangeAnchor.cols) clearLoopRange();
+  cursorStripEl._drag=false; cursorStripEl._mode=null; cursorStripEl._pid=null;
+  rangeAnchor=null; rangeBefore=null; }
+cursorStripEl.addEventListener("pointerup",stripUp);
+cursorStripEl.addEventListener("pointercancel",stripUp);
+// ---- drawing: chips on the rail, lines over BOTH beds, every one of them from the same layout ----
+// getElementById rather than the module consts, because rebuildField can run during load, before those
+// consts have initialised — a bare reference would be a temporal-dead-zone throw at startup.
+function renderBars(){
+  const m=meterAt(), L=meterLayout(COLS,m);
+  document.body.classList.toggle("metered", !!m);
+  const fill=host=>{ if(!host) return; host.innerHTML="";
+    for(const k of L.marks){ const d=document.createElement("div");
+      d.className = k.kind==="bar" ? "bl" : "bt";
+      d.style.left=(10+k.c*38-1)+"px"; host.appendChild(d); } };
+  fill(document.getElementById("barlines"));
+  fill(drumBarsEl);
+  const strip=document.getElementById("cursorStrip"); if(!strip) return;
+  let chips=document.getElementById("barchips");
+  if(!chips){ chips=document.createElement("div"); chips.id="barchips"; strip.appendChild(chips); }
+  const a=loopStart, b=loopEnd;                       // read once: the chips must agree with each other
+  const lit=d=>{ const c0=+d.dataset.c0, w=+d.dataset.cols;
+    d.classList.toggle("inloop", b>0 && c0>=a && c0+w<=b); };
+  // REBUILD only when the bars themselves changed. A range drag re-renders on every pointermove, and
+  // replacing the chips underneath a live gesture detaches the very node the event is travelling from —
+  // which is what defeated armZoomTap's exclusion above. Retinting in place also stops the whole rail
+  // being rebuilt dozens of times during one drag.
+  const key=L.segs.map(sg=>sg.c0+":"+sg.cols+":"+sg.n).join("|");
+  if(chips.dataset.key!==key){ chips.dataset.key=key; chips.innerHTML="";
+    for(const sg of L.segs){ const d=document.createElement("div"); d.className="barseg";
+      d.dataset.c0=sg.c0; d.dataset.cols=sg.cols;
+      d.style.left=(10+sg.c0*38)+"px"; d.style.width=Math.max(0,sg.cols*38-2)+"px";
+      d.textContent = sg.pickup ? "" : String(sg.n);  // the pickup is bar 0 and stays unnumbered
+      chips.appendChild(d); } }
+  for(const d of chips.children) lit(d);
+}
 // seeds and beat are ONE timeline: two independent scrollers could hold different columns under the same
 // cursor (and playback's auto-scroll only ever moved the seed lane). Mirror them, with a re-entrancy guard.
 // ---- the ☰ menu (world map / mix / save / share / jukebox / read-aloud) ----
@@ -4479,7 +4716,14 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   if(playing) stop();
   jamMode=false; jamBtn.classList.remove("on"); jamStartedPlayback=false;
   activeTool=null; exitTray();
-  cursorCol=0; cursorPinned=false; loopStart=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
+  // §17's quarantine: a Studio meter must NEVER reach a level. Clearing the MODEL is not enough — the
+  // barlines, the bar chips, the 36px rail and the drum pads' tint are all DRAWN state, and nothing else
+  // on this path redraws them. Measured leaking into `stepping-stones` straight from a 4/4 Studio: the
+  // model came back unmetered while the picture stayed in 4/4, bars and all. This is the claim a design
+  // review said resetTransient could not carry on its own, and it was right.
+  if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pad-tint memo is keyed on the meter
+    syncMeterUI(); rebuildField(); }                               // controls + overlays, then the pads, which bake their tint at build time
+  cursorCol=0; cursorPinned=false; loopStart=0; loopEnd=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
   zoomTapDrop(); pinchDrop(); swallowTapUntil=0;   // …with no half-finished gesture and no pending swallow carried across the seam
   if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
@@ -4494,6 +4738,8 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
   jamBtn.style.display=U.has("jam")?"":"none";
   grooveCtlEl.style.display=U.has("jam")?"":"none";   // the LABEL, not the select — groove now lives in the settings row, and hiding only the select would leave the word "Groove" behind
+  songLoadToken++;                                   // any level entry cancels a cloud song still in flight (see the #song= bootstrap)
+  syncMeterUI();                                     // Studio-only meter controls, and the bars that go with them
   craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
   moreMenu.style.display=U.has("more")?"":"none";
   const drumsUnlocked=U.has("drums");
@@ -4512,6 +4758,7 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
       showCongrats(currentPkg, L.power); checkEvolve(); } }
 }
 let finaleQuiet=false;   // suppress the finale power card when jumping to Free Play for a shared song
+let songLoadToken=0;     // bumped by renderLevel — an async cloud song must not land in a level the player walked into
 function renderStage(){   // render the current step (or the whole level if it has no steps)
   const L=LEVELS[levelIdx], st=curStage(), U=unlockedSet(levelIdx);
   resetTransient();
@@ -4906,9 +5153,13 @@ function pump(){
   if(!actx || actx.state!=="running"){ Transport.timer=setTimeout(pump,wake); return; }   // iOS suspend freezes currentTime
   const ct=nowSec(), horizon=ct+look;
   while(endTime===Infinity && tick2time(bookTick)<horizon){
-    if(bookCol>=COLS){
+    // BOTH ends, because a one-sided test cannot enforce a range: pin column 2, select the bar at [8,16),
+    // press ▶, and start() seeds step=2 while begin() books from it — fourteen columns would play, not the
+    // bar. The `< loopA()` half is not redundant either: setting a range mid-playback leaves bookCol
+    // outside it, and this snaps the next booking in rather than running to the end of the field.
+    if(bookCol<loopA() || bookCol>=loopB()){
       if(!looping){ endTime=tick2time(bookTick); break; }     // the phantom column after the last
-      bookCol=Math.max(0,Math.min(COLS-1,loopStart));         // …to the START of the loop, not to the cursor
+      bookCol=loopA();                                        // …to the START of the loop, not to the cursor
       CAM.yielded=false; }                                    // a wrap is a landmark — the camera comes back for it
     bookColumn(bookCol,bookTick);
     paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
@@ -4990,7 +5241,9 @@ function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers();
   // 2d's `if(growPkg() && cursorCol!==0) setCursor(0)` walk-home, which is deleted rather than generalized:
   // that hack had ▶ DRAG the cursor to 0, so planting a seed and pressing 🌿 Grow afterwards grew whatever
   // started at column 0 — the "it grew an old seed" the owner reported. ▶ no longer moves the cursor at all.
-  step=Math.max(0,Math.min(COLS-1, cursorPinned?cursorCol:loopStart));
+  // A deliberately chosen bar range OVERRIDES the cursor pin — you asked to hear those bars, so ▶ starts
+  // at their first column. Unreachable without a meter, so no shipped level's ▶ changes.
+  step = rangeOn() ? loopA() : Math.max(0,Math.min(COLS-1, cursorPinned?cursorCol:loopStart));
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on");
   CAM.yielded=false; camEnsure(step,{instant:true});          // ▶ is a deliberate act: take the wheel back and cut to the start
@@ -5043,8 +5296,43 @@ tempoEl.oninput=()=>{ tempoOnLoan=null; Transport.retime(); };   // the child se
 tempoEl.addEventListener("change",saveProgress);
 instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveProgress(); });
 document.getElementById("clear").onclick=()=>{ tx("clear",()=>{ wipe(); if(drumsOn) wipeDrums(); }); checkLevel(); };   // one press = one undo step
-const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(16);   // extend the timeline by one bar
-const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(16);
+// A patch is a BAR when the song has one, and 16 steps when it does not (today's behaviour, untouched).
+const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(barCols());
+const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(barCols());
+const meterEl=document.getElementById("meter"), meterCtlEl=document.getElementById("meterCtl"),
+      pickupEl=document.getElementById("pickup"), pickupCtlEl=document.getElementById("pickupCtl");
+function setMeter(preset, originCols){
+  tx("meter",()=>{ doc.meterMap = validMeter(preset, originCols); });   // one gate for the picker and for share links alike
+  clearLoopRange(); _tintKey=null;   // the bars a range pointed at may be gone, and the pad-tint memo is keyed on the meter
+  syncMeterUI(); rebuildField(); }   // the pad tint is baked at BUILD time, so the beat lane has to be rebuilt
+// ONE function, and every path that can change the meter goes through it — setMeter, undo, song load,
+// level entry. Without it, undo restores the PICTURE while the select still reports the undone meter.
+function syncMeterUI(){ const m=meterAt(),
+      studio=(typeof currentPkg!=="undefined" && currentPkg==="studio");
+  if(meterCtlEl)  meterCtlEl.style.display = studio ? "" : "none";
+  if(pickupCtlEl) pickupCtlEl.style.display = (studio && m) ? "" : "none";   // a pick-up is meaningless with no bars to come before
+  if(meterEl)  meterEl.value  = m ? m.preset : "";
+  if(pickupEl) pickupEl.value = m ? String(Math.round(m.originTick/TICKS_PER_COL)) : "0";
+  syncJamForMeter(); syncPatchCopy(); renderBars(); }
+if(meterEl)  meterEl.onchange =()=>setMeter(meterEl.value, +pickupEl.value||0);
+if(pickupEl) pickupEl.onchange=()=>setMeter(meterEl.value, +pickupEl.value||0);
+// The band is structurally a 16-column, four-chord cycle (jamStep wraps %16 and picks chords by s/4), so
+// it crosses every barline of a 6-column bar. 4/4 (8 columns) and 2/4 (4) both divide it and keep Jam;
+// waltz and jig lose it until they have grooves of their own. Owner's call 2026-08-28, over my objection
+// that an honest label would do — the label loses, because Jam and Groove both overwrite the status line.
+function jamFitsMeter(){ const m=meterAt(); return !m || m.preset==="4/4" || m.preset==="2/4"; }
+function syncJamForMeter(){ const ok=jamFitsMeter();
+  if(!ok && jamMode){ jamMode=false; jamBtn.classList.remove("on"); }
+  jamBtn.disabled=!ok;
+  jamBtn.title = ok ? "" : "The band still plays in fours — waltz and jig grooves come later 🎻"; }
+// §17's round-1 review found "one more bar (16 steps)" among nine places the four-column beat is asserted
+// in shipped copy. Saying "steps" SIDESTEPS that open question rather than answering it — which is the
+// point: the words-fix for those nine is its own scheduled job, not this slice's to do.
+function syncPatchCopy(){ const m=meterAt(), k=barCols();
+  if(moreBtn) moreBtn.title = m ? `Add one more bar (${k} steps) at the end`
+                               : "Add a whole patch of room — 16 more steps at the end";
+  if(lessBtn) lessBtn.title = m ? `Take back the last bar (${k} steps)`
+                               : "Take back the last patch — 16 steps"; }
 const moreMenu=document.getElementById("moremenu");
 // ONE keyboard handler, a priority ladder — never two listeners fighting over the same key (design-panel rule).
 function overlayUp(){ return ["powoverlay","congratsoverlay","moverlay","homeoverlay","landingoverlay","compoverlay","instroverlay","mixoverlay"]
@@ -5170,10 +5458,14 @@ function currentSong(){
     .map(n=>({lane:n.pitch,c:noteCol(n)}))
     .sort((a,b)=>a.lane-b.lane||a.c-b.c);
   const now=Date.now();
+  const m=meterAt(), time={ cols:COLS, tempo:+tempoEl.value, groove:grooveIdx };
+  // meter/origin appear ONLY when the song has them, so every song written before this slice — every save,
+  // every share link, every Jukebox entry — still serialises byte-identically.
+  if(m){ time.meter=m.preset; time.origin=Math.round(m.originTick/TICKS_PER_COL); }
   return { v:3,
     meta:{ title:null, created:now, updated:now, author:null },   // author filled when cloud storage lands (P3)
     palette:paletteId,
-    time:{ cols:COLS, tempo:+tempoEl.value, groove:grooveIdx },
+    time,
     tracks:[ { kind:"melody", voice:instrEl.value, notes },
              { kind:"drums",  hits } ] };
 }
@@ -5191,7 +5483,12 @@ function applySong(s){
     const t=s.time||{};                                     // tempo/groove are song state — set INSIDE the tx so redo restores them too
     if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
     if(t.tempo) tempoEl.value=t.tempo;
+    // Meter is the FIRST field that is legitimately ABSENT, so it must not copy the conditional pattern
+    // above: loading an unmetered song has to actively CLEAR a meter, not merely decline to set one, or a
+    // stale meter (and its bars) survives over the freshly loaded song.
+    doc.meterMap = validMeter(t.meter, t.origin);
     reproject(); });
+  clearLoopRange(); _tintKey=null; syncMeterUI();
   rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
   if(mel.voice) setVoice(mel.voice);
   updateGarden();
@@ -5199,15 +5496,35 @@ function applySong(s){
 // --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
 // songs exceed SHARE_MAX and must be saved (cloud links arrive in P3). The in-memory object is always the v3 above. ---
 const SHARE_MAX=1800;   // encoded-char ceiling for a shareable link
+// A share link is UNTRUSTED input. An unknown preset, a negative or fractional origin, or an origin at or
+// past a bar's own length all normalise to UNMETERED rather than throwing inside barTicks(METERS[id]) —
+// §17 says absence must read as unmetered, and a link we cannot trust is a link with no meter.
+function validMeter(preset, originCols){
+  const P=meterDef(preset); if(!P) return [];
+  const bc=barTicks(P)/TICKS_PER_COL;
+  // A MISSING origin means "no pickup" and is the ordinary case; a PRESENT but UNUSABLE one (NaN,
+  // Infinity, "abc", negative, or as long as the bar itself) is corruption, and a corrupt origin puts
+  // bar 1 in the wrong place, which is worse than no bars at all. `+x||0` would have quietly turned NaN
+  // into a valid downbeat. Anything that does coerce to a whole in-range column is ACCEPTED, "2" and 1.5
+  // included — they name a real pickup, and rejecting a link over its JSON number type helps nobody.
+  const o = (originCols===undefined||originCols===null||originCols==="") ? 0 : Math.round(Number(originCols));
+  if(!Number.isFinite(o) || o<0 || o>=bc) return [];   // an origin as long as the bar is not a pickup, it is a mislabelled bar
+  return [{tick:0, preset, originTick:o*TICKS_PER_COL}]; }
 function packSong(s){
   const mel=(s.tracks||[]).find(t=>t.kind==="melody")||{notes:[]};
   const dr =(s.tracks||[]).find(t=>t.kind==="drums") ||{hits:[]};
   const notes=(mel.notes||[]).map(n=> n.len===1?[n.p,n.c]:[n.p,n.c,n.len]);   // drop len when default (1)
   const hits =(dr.hits||[]).map(h=>[h.lane,h.c]);
-  return [3, s.palette, s.time.cols, s.time.tempo, s.time.groove, mel.voice||"", notes, hits];
+  const a=[3, s.palette, s.time.cols, s.time.tempo, s.time.groove, mel.voice||"", notes, hits];
+  // Slot 8, PUSHED and never assigned. a[8]=undefined serialises as null, which lengthens EVERY existing
+  // link by five characters against SHARE_MAX and breaks byte-identity. Appended, never inserted (§17).
+  if(s.time.meter) a.push([s.time.meter, s.time.origin||0]);
+  return a;
 }
-function unpackSong(a){ const [,palette,cols,tempo,groove,voice,notes,hits]=a; const now=Date.now();
-  return { v:3, meta:{title:null,created:now,updated:now,author:null}, palette, time:{cols,tempo,groove},
+function unpackSong(a){ const [,palette,cols,tempo,groove,voice,notes,hits,meter]=a; const now=Date.now();
+  const time={cols,tempo,groove};
+  if(Array.isArray(meter) && meter[0]){ time.meter=meter[0]; time.origin=+meter[1]||0; }   // absent = unmetered, so every old link stays bar-less
+  return { v:3, meta:{title:null,created:now,updated:now,author:null}, palette, time,
     tracks:[ {kind:"melody",voice,notes:(notes||[]).map(n=>({p:n[0],c:n[1],len:n[2]||1}))},
              {kind:"drums", hits:(hits||[]).map(h=>({lane:h[0],c:h[1]}))} ] }; }
 const b64url  =str=>btoa(unescape(encodeURIComponent(str))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
@@ -5686,8 +6003,12 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
     openStudioWith(s);
     setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A melody from a friend!"); return; }
   const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]+)/);
-  if(cloud){ openStudio();
+  if(cloud){ openStudio(); const tok=songLoadToken;
     cloudSongGet(decodeURIComponent(cloud[1])).then(res=>{
+      // The player can walk into a package while this request is still in flight, and renderLevel bumps
+      // the token on every entry. Landing a stranger's song — and now its BARS — in the level they chose
+      // to open is worse than dropping it, so drop it. Re-opening the Studio over them would be worse yet.
+      if(tok!==songLoadToken || currentPkg!=="studio") return;
       if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; applySong(res.song); journalClear();   // the async load must not be the first undoable "edit"
         setStatus("🎵 A song from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A song from a friend!"); }
       else toast("⚠️ That song link didn't work — it may have been deleted."); }); }

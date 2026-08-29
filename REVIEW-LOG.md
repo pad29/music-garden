@@ -378,6 +378,198 @@ decision loses continuity, while keeping it would have replayed ~5.3M tokens.
 
 ---
 
+## 2026-08-28 — meter slice 1: design review (branch `meter-bars`)
+
+Design-only so far. `gpt-5.6-sol`, fresh thread, read-only. **Verdict: REPLACE.** I verified its evidence
+against source; the citations hold up.
+
+**The fact table survived, which is the thing I most wanted checked.** The design's §0 listed 24
+load-bearing claims with line numbers precisely so the review could attack them, given that this log
+records twice — widthBand, then meter round 1 — that *comments and labels treated as stronger evidence
+than behaviour* is this project's recurring failure. GPT: *"The fact table is materially accurate. I found
+no false behavioral claim in it."* Five line numbers drift by 1–2; nothing material. **One citation
+OUTSIDE the table was wrong and it caught it:** I attributed "bar numbers + loop range on the cursor
+strip" to §17. That wording is not in §17 — it is at `EDITOR-DESIGN.md:201` and `DESIGN.md:225`. Its
+conclusion is the sharp part: *"The design cites the wrong authority but still violates the actual
+standing architecture."*
+
+**Findings I accepted in full.**
+
+1. *(GPT: High; I rank it Critical, and said so)* **The proposed loop cannot reliably loop the selected
+   bar.** A one-sided `bookCol >= loopEnd` test does not enforce a range: pin column 2, select the bar at
+   `[8,16)`, press play, and `start()` seeds `step=2` (4993) while `Transport.begin()` books from it (4968)
+   — fourteen columns play, not the bar. The range must override the pin and clamp both ends. §17's whole
+   point is *"bars must do something"*, so this is the load-bearing defect, not a High.
+2. **`#barRuler` is the wrong mechanism.** My argument was that a new node has "no existing pointer
+   contract"; that is exactly backwards — `#cursorStrip` has an *explicit* one (four exclusion sites
+   written for it), a new node has an implicit one it fails silently. Concretely: pinch eligibility is
+   `el.closest("#scroller")` minus the strip and grips (1424–1428), **so a ruler inside `.scroller` is
+   pinch-eligible** — the identical cross-bed leak `REVIEW-LOG.md:187` already records; `camBusy()` (1345)
+   knows only `cursorStripEl._drag`; `armZoomTap(scroller)` (5031) receives its bubbled pointerdowns, so at
+   look-only zoom a chip tap both sets a range and zooms; and it inherits neither `touch-action:none` nor
+   the `calc(20px / var(--fz))` inverse sizing (276–286), so its chips shrink to 60% at 0.6. Plus geometry
+   I had not thought about: a 16-column 3/4 song's last bar spans columns 12–15, but a `barCols*38` chip
+   runs to 17 and **absolute overflow can enlarge the scroller's scrollable area beyond the grid**,
+   corrupting camera and drum sync.
+3. **`resetTransient` is not sufficient to protect shipped levels**, which was my claimed guard. The
+   `#song=` bootstrap (5688–5692) opens the Studio, then calls `applySong` when the network returns, with
+   no reset in front of it — so entering a package while that request is in flight injects the song into a
+   shipped level. Pre-existing; my design would have made it carry `doc.meterMap` and draw bars there.
+4. **Drum-lane barlines are a real gap, not a saving** — I asked the question and the answer is gap. The
+   Studio opens with `drums:true` (4412) so `drumsOn` is true (4500); meter through the melody field alone
+   leaves the surface where beat grouping matters most barless. Cheap to fix: one shared mark list, two
+   overlays.
+5. **No meter-control synchronization contract.** Undo can restore the picture while the select still
+   reports the undone meter. Sharper than it looks: `applySong` sets tempo/groove *conditionally*
+   (5191–5192), harmless only because `currentSong()` always emits both — **meter is the first field that
+   is legitimately absent**, so copying that pattern leaks a stale meter across a load.
+6. *(Medium, not High as filed)* **Jam.** My mitigation was a status line; it is worthless — `jamStep`
+   is `%16` with chords by `(s/4)|0` (1117), and the line is overwritten by Jam itself (5025/5027) or by
+   Groove (5035). But GPT's remedy (disable Jam for incompatible meters) is a product decision, not a
+   defect fix, and §17 already accepted that grooves lag meter.
+7. **My reasoning for keeping `removeColumns`'s 16 floor was false** — I found this myself before the
+   review returned. Both cited call sites compute their own `COLS-16` delta (4486, 4539), so neither needs
+   the floor. GPT supplied better reasons (`hintMelody` hardcodes column 14 at 5127; one-step surgery
+   independently refuses below 16 at 2070) **and a defect neither of us had: the floor can silently turn a
+   full-bar removal into a partial one** — an 18-column 3/4 song minus a 6-column bar becomes 16, removing
+   two columns. Patch removal must be all-or-nothing.
+8. **The share extension is correct** — the one part it endorsed. *"Appending only when metered preserves
+   every existing packed link byte-for-byte."* Its addition: validate hostile input, since a crafted `#s=`
+   link with `["9/7",0]` in slot 8 throws in `barTicks(METERS[id])` today.
+9. *(Owner's call)* "Free (no bars)" cannot share a screen with "one more bar (16 steps)". Its neutral
+   wording sidesteps §5 rather than answering it, which my caution had not considered.
+10. Test plan missed the failure modes above, and **`F_vine_holds` could not have been captured with the
+    documented wrapper at all** (see below).
+11. Docs to update: `DESIGN.md`, `EDITOR-DESIGN.md`, `SAVE-SHARE.md`. It confirmed no hard invariant is
+    touched — no new assets, so `netlify.toml` is unaffected.
+12. `barOf()`'s normalized modulo is *"necessary and correct"*; it declined to drop 2/4.
+
+**Three findings GPT did not make, from my own verification.**
+
+- **A.** `COLS` is assigned in exactly five places (836, 1225, 1271, 1288, 5185) and **nothing ever grows
+  it back to 16**: `resetTransient` only shrinks (4486). So lowering the floor is not a preference — a
+  Studio waltz trimmed to 6 columns would render every subsequently entered level at 6.
+- **B. The design claims neutrality on §17's open four-column-beat question, but its rendering answers
+  it.** `stepDur()` is `60000/tempo/2` (4862), so a quarter is **2 columns** — measured, not inferred: at
+  108 BPM a column is 277.78 ms and a quarter is 555.56 ms. `beats:[96,96,96,96]` therefore draws a beat
+  mark every 2 columns, while `setBeatGuide` tints every 4 (2582) and shipped copy calls *that* the beat.
+  §8 says "no `%4` touched" — true of the code, false of the picture. **Same shape as the finding that
+  killed §17 round 1: drawn, not merely named.**
+- **C.** Patch-add with a pickup lands the field mid-bar (origin 48, 4/4 gives bars at columns 1, 9, 17).
+  §17(6) permits ending mid-bar, so not a bug, but "adds one bar" then drawing a partial one is the same
+  small lie the design was trying to avoid.
+
+**Scope.** Both of us landed on two PRs: goldens alone against untouched `d434ece`, then one atomic
+feature PR. GPT: *"Do not split the second PR into 'format first' and 'behavior later.' That would violate
+the settled first-slice requirement."*
+
+**Cost:** in=1,772,734 (1,618,432 cached) / out=24,055, Sol, fresh thread.
+
+### Same day — the goldens PR, and the instrument was broken
+
+Captured F–I on the current engine before touching `index.html`, per §17's *"new goldens come first"*.
+
+**The capture wrapper documented in `tools/goldens/README.md` was itself defective, and it mattered.**
+`window.playRow = (r, t) => { …; return origPlayRow(r, t); }` is a two-arg arrow: it dropped `playRow`'s
+third argument both from the recording **and from the forwarded call**. `F_vine_holds` exists to pin held
+notes, and captured with the documented wrapper it would have recorded — and played — staccato. Fixed,
+along with two additions the new cases needed: `bookColumn` (the loop wrap books columns whether or not
+anything sounds in them, so a note-only recording cannot see it) and `voice` (`playFamous` sounds through
+`voice()` directly, never `playRow`, which is why no golden had ever touched a single note of the reveal).
+
+**What the new goldens found, beyond pinning:**
+
+- `bookTick` is **monotonic across the loop wrap and never resets** — ticks run 0…720, then the wrapped
+  column 0 books at 768. A bar loop range must preserve that; the tick timeline stays continuous while
+  only the column jumps back. Nothing had recorded this.
+- `loopStart=8` **already produces a real 8-column tail loop today** (booked 8..15 repeating). What is
+  missing is only `loopEnd`.
+- Holds land exactly on `durationTicks/48 × stepDur`: 0 for one column (the `>TICKS_PER_COL` gate keeps
+  every shipped flat note on the byte-identical path), 0.55556 s for two, 1.11111 s for four.
+- `I_famous_sweep` pins Swing Low's real note lengths (0.68182 / 1.02273 / 2.04545 s at 88 BPM) — the only
+  place the length data in frozen, score-validated content is pinned against the engine that plays it.
+
+**Honest limit, written into both files:** all nine cases pin *scheduling* and are completely blind to
+*drawing*. A barline at the wrong column is invisible to every one of them.
+
+---
+
+### Same branch, the test round — four real defects, and the pad tint held
+
+`gpt-5.6-terra`, resumed thread, workspace-write. It added one file, `tests/meter-edges.test.mjs`, and
+edited no source (md5-verified). Five of its seven tests kept: one green, four red. **I reproduced every
+finding against source before accepting it, and deleted two tests that asserted a policy rather than a
+defect** — `validMeter("4/4","2")` and `validMeter("4/4",1.5)` both land on a usable pickup, so rejecting
+a link over its JSON number type helps nobody; the comment claiming otherwise was mine and is now honest.
+
+**The thing I most wanted attacked held.** Its quarantine sweep opens the Studio, sets 3/4 with a pickup,
+enters *every level of every package*, and asserts `doc.meterMap` is empty, that `undoEdit()` cannot bring
+it back, and that `beatTintAt(c) === (c%4===0)` for every column. That is the strongest evidence the
+pad-tint switch — the only line in this slice shipped levels execute — is contained.
+
+**HIGH — a crafted `#s=` link crashed song loading and left the Studio half-loaded.** `METERS[preset]`
+accepts `"toString"`, `"constructor"`, `"valueOf"` and `"__proto__"`: inherited, truthy, and with no
+`.beats`, so `barTicks` threw. The severity is in *where*: `decodeSong`'s try/catch is upstream, and the
+throw landed **inside `applySong`'s `tx("load-song")`**, after the palette, `COLS` and both tracks were
+written and before `reproject`/`rebuildField` — the Studio kept a stranger's notes behind a stale grid at
+a `COLS` the DOM did not have. **This falsified my own test named "a hostile or malformed meter in a
+share link normalises to unmetered, never throws".** Every lookup goes through `meterDef()` now, an
+own-property gate, and `setMeter` routes through `validMeter` so the picker and a share link share one
+door. Verified in the browser: all four keys return unmetered, and a crafted slot 8 through `applySong`
+leaves `meterMap` empty with `COLS` and the grid still agreeing.
+
+**MEDIUM-HIGH — `－ room` left a live range as a one-column loop.** `modelSetCols` got the shrink guard;
+`modelRemoveTime` assigns `COLS` directly and got nothing. Its run, from `COLS=24` with a range on
+`[16,24)` after seven presses: `COLS 17 · loopA 16 · loopB 17` — exactly the collapse `loopB()`'s own
+comment claims to prevent. Both surgery ops now clear the range.
+
+**MEDIUM-HIGH — time surgery moved the music but not the meter origin**, so the barlines detached from
+the notes on the first `＋/－ room` in a metered Studio. `shiftMeterOrigin` travels with the edit, moves bar
+1 only when the edit is at or before it, and **wraps modulo the bar** — an origin is a pickup, always a
+fraction of a bar, never "bar 1 starts three bars in". GPT flagged the modulo need itself.
+
+**MEDIUM — the chip tap was not isolated from `armZoomTap`, and my CSS comment said it was.** The comment
+justifying chips-on-the-rail claimed it "already carries armPinch's exclusion, and the only pointer latch
+camBusy() knows" — true for both, **false for `armZoomTap`**, which is armed on `#scroller`, the strip's
+parent. At zoom 0.6 a chip tap set the range *and* zoomed back in: the same leak the design review filed
+against the rejected `#barRuler`. The comment is corrected.
+
+**And the first fix did not work, which is the interesting part.** Excluding `e.target.closest("#barchips")`
+inside `armZoomTap` looked right and measured wrong: **the strip's own handler calls `renderBars()`, which
+rebuilds `#barchips` during dispatch, so by the time the event bubbled to `#scroller` its target was
+detached — and `closest` on a detached node returns null.** Two fixes, both kept: the chip band
+`stopPropagation()`s (the cursor branch still bubbles, so tap-to-return from the rail stays shipped
+behaviour), and `renderBars` now **retints in place and rebuilds only when the bars themselves change**,
+which also stops the whole rail being rebuilt on every pointermove of a range drag.
+
+**MEDIUM — the gesture was not pointer-ID scoped and its tap test had no slop.** `stripUp` took no event
+and cleared `_drag` unconditionally, so with two fingers on the rail the first release dropped
+`camBusy()`'s only latch while the second was still dragging; and `_moved` was set by *any* movement, so
+one pixel of finger jitter defeated "tap the lit bar to release". Both fixed — 8px, the figure
+`armZoomTap` and the vine pull already use. Verified: latch holds through a stranger finger's release,
+and release-on-tap survives 3px of jitter.
+
+**LOW, and a product call I made:** selecting bars did not turn 🔁 Loop on, so the pump's `if(!looping)`
+played the selection once and stopped while the chip sat there lit green with the class `.inloop`.
+Choosing bars to loop *is* asking for them to loop; `applyRange` turns it on.
+
+**Gaps GPT named that neither of us had covered, now closed:** `bookTick` monotonicity across the
+**two-sided** wrap (the goldens pin only the one-sided one) — verified monotonic; a range anchored on the
+pickup bar and on the clipped partial final bar — both sane; `＋/－ patch` with a live range. Still open
+and worth saying: `SHARE_MAX` overflow with a metered song at the boundary, the `songLoadToken` against a
+genuinely slow fetch, and everything real-touch — GPT left a seven-item device checklist for the owner.
+
+**Suite: 102 pass, 0 fail** (65 before this work → 93 with `meter.test.mjs` → 98 with GPT's edges → 102
+with tests for this round's fixes). **Cost:** `in=5,014,972 (cached 4,573,440) / out=46,038`, Terra,
+resumed thread — the resumed design thread is now large enough that it is worth deleting `.thread-id`
+when this ships.
+
+**Process note, not a code finding:** a patch script truncated `index.html` and later `DESIGN.md` to zero
+bytes, because `io.open(p,"w")` truncates the moment it is evaluated and the `.encode()` inside the same
+call raised afterwards. Both files were committed, so nothing was lost. Encode on its own line first.
+
+---
+
 ## 2026-08-27 — two small tempo bugs, and the two more they were hiding (branch `tempo-fixes`)
 
 Both originals were found in passing during the meter design review, neither caused by it.
