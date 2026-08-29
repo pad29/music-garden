@@ -431,3 +431,43 @@ invokes a famous tempo change. **Still unverified, needs ears:** the truncation 
 unrelated transcript or delete it, it was parked as `.thread-id.meter-design-round2` and this ran fresh.
 Cost: 1.47M in (1.26M cached) / 20k out on Terra.
 
+### Same branch, after the owner's device test — the flat 3s trim was seven different lies
+
+**Owner, testing fix 3 on the Studio at 40 BPM with an 8-column vine:** *"Music Box rings all the way till
+the end, while Guitar stopped ringing half way."* Both halves of that sentence were informative.
+
+**The music box ringing all six seconds is the proof fix 3 worked** — before it, the collector severed that
+note at four. The guitar was a different and older limit, and the owner's question (is the 3s cap per
+instrument, or one global number?) was the right one: it is **global**, `Math.min(buf.length, rate*3)`, plus
+a flat `src.stop(now+2.9)`. Measured the true recordings by decoding each payload before conditioning:
+
+| voice | recorded | median | lost to the 3s trim |
+|---|---|---|---|
+| piano | **16.19s** | 13.32 | 13s, on all 9 notes |
+| harp / vibraphone / glockenspiel | ~3.24 | 3.24 | a quarter second |
+| kalimba | 2.93 | 2.76 | nothing |
+| marimba | 2.51 | 2.19 | nothing |
+| guitar | 4.15 | **1.67** | nothing on the median note |
+
+So **the guitar fading halfway through a slow whole note is a guitar being a guitar** — and the design comment
+already said so (*"a long vine simply runs out of recording and is honestly over"*). But the piano doing the
+same thing was us discarding the tape. Each voice keeps its own length now, capped at `VOICE_MAX_SEC=7` — the
+longest note the game can request (MAX_VINE at 40 BPM is 6s) plus release. Loudness is still measured over the
+first 3s so no voice changes level; a note stops at whichever comes first, the note asked for or the end of the
+recording.
+
+**The actual defect was the picture, not the sound.** §2c's rule is that a stem lights for exactly as long as
+it rings, but the timeout was computed from `n.durationTicks*anchorSPT` — the NOTATION — so at 40 BPM a guitar
+stem glowed green for 6000ms over 4.4s of silence. `ringCeiling(instr, pitch)` now bounds it, **per note**
+rather than per voice, because a sample transposed up plays faster and runs out sooner. Guitar 6000→1593ms;
+piano stays 6000 because it can now genuinely hold it; synth voices return `Infinity` and are unaffected.
+
+**The cost, surfaced to the owner rather than absorbed:** 41.5MB of decoded audio with all seven voices
+loaded, of which the piano is 20.9MB (stereo, 3s→7s). The old trim existed for memory, so this is a real
+trade. Voices load on demand, so only a child who tries all seven in one session reaches it. `VOICE_MAX_SEC`
+is the dial if a phone complains.
+
+**Lesson worth keeping: "every voice is trimmed to 3s" read as one honest constraint and was seven.** The
+short instruments were never affected by it and the piano was crippled by it, and nothing in the code said so
+— the only way to find out was to decode the recordings and look.
+
