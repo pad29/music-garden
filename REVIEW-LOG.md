@@ -378,6 +378,60 @@ decision loses continuity, while keeping it would have replayed ~5.3M tokens.
 
 ---
 
+## 2026-08-29 — the tool rail's scrollbar sat on the tools (branch `rail-scrollbar`)
+
+**No GPT call**, and the reasoning matters more than the exemption: this is CSS with no logic, and the
+question it turns on — how many pixels a scrollbar actually takes — is answerable only by measuring in a
+browser, which is strictly better evidence than a paper review. Every number below was measured, and one
+of them overturned my first fix.
+
+**Owner, from a desktop screenshot he could not reproduce on purpose:** *"The vertical bar partially
+covering the buttons doesn't look good. It is fine on the phone since there it is very thin, but on the
+desktop it's thick."* He proposed leaving empty space beside the buttons for the bar to use.
+
+**It was not intermittent — it is both zoom stops in the Studio on a desktop, every time.** `#fieldbar` is
+`max-height:100%; overflow-y:auto`, and its tools need 324px against a stage of 306 at zoom 0.8 and 220 at
+0.6. So the rail scrolls, and a classic 15px scrollbar took its width **out of the tools**: the content box
+went 72 → 57. That is worse than cosmetic, because `.fbpair` is `34+4+34` — the gutter exactly — so at 57
+the pairs no longer fit and the rail grew a **horizontal** scrollbar as well. Both bars are visible in the
+owner's screenshot, which is what identified the mechanism. Phones never showed it: overlay scrollbars take
+no layout width at all, so `clientWidth` stays 72 there.
+
+**The space the owner asked for already existed.** `.grid`'s own 10px padding leaves exactly 10px of dead
+ground between the rail's right edge and the first plot — measured, not assumed. The rail is now 82px
+(72 + 10) with a thin styled bar, so the tools keep their full 72px and the bar parks in the gap. 82 is
+chosen so that when the rail is *not* scrolling, its extra width is transparent overhang that stops
+precisely where the first plot begins: measured `railRight - firstPlotLeft = 0` at zoom 1.
+
+**My first attempt was 80px and it was wrong, for a reason worth recording: `scrollbar-width:thin` is the
+standard property and Chrome honours it OVER `::-webkit-scrollbar{width}`.** I had assumed the webkit rule
+would win and sized for 8px; the measured bar was 10, the content box came back 70, two short, and the
+horizontal bar returned. `overflow-x:clip` is now the belt — a browser whose `thin` is wider than 10 loses
+a pixel off a button's edge instead of growing a second scrollbar across the tools.
+
+**A second, quieter bug in my own fix, caught by looking rather than measuring:** the thumb was `var(--line)`,
+a cream on a cream page, so a scrolling rail became *invisible* — trading an ugly bar for a hidden one,
+when the whole point is that there are tools below the fold. It is `--bedDeep`, the garden bed's own green,
+with `--bedRing` on hover.
+
+**The invariant I had to not break, verified rather than asserted:** the 72px gutter is what aligns the two
+lanes, and `EDITOR-DESIGN` calls it load-bearing. Only the absolutely-positioned rail widened —
+`.scroller`'s `margin-left` and `#drumbar`'s width are untouched — and both lanes' left edges and both
+first-cell positions match to the pixel at zoom 1, 0.8 and 0.6, on desktop **and** on a 375×812 phone,
+where the buttons stay left-aligned at 72 inside the 82px box (`align-items:flex-start`, added for exactly
+that). Hit-tested too: `＋` and the right edge of `Clear` are still the topmost elements at their own
+centres, and column 0's leftmost pixel still hit-tests as a cell at every zoom, so the overhang eats no
+clicks.
+
+**Left alone deliberately:** the rail still scrolls at 0.8 and 0.6, so 🔨 Fuse and undo/redo sit below the
+fold on a short desktop window. That is pre-existing, it is what the zoom work traded for reclaiming the
+lane's height, and gap-tightening cannot fix it — the rail is 104px short at 0.6. Worth its own task if the
+owner finds it annoying in play; the bar being *visible* now at least makes the tools discoverable.
+
+**Suite: 65 pass** (this branch is off `main`, so the meter tests are not on it).
+
+---
+
 ## 2026-08-27 — two small tempo bugs, and the two more they were hiding (branch `tempo-fixes`)
 
 Both originals were found in passing during the meter design review, neither caused by it.

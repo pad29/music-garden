@@ -245,8 +245,32 @@
      rail's own buttons have an intrinsic height (measured 378 plain, up to 324 in a fully-unlocked Studio) —
      as a flex item it held the stage that tall no matter how far the field zoomed out, so zooming reclaimed
      nothing: measured 324px at BOTH 0.8 and 0.6 before this. Now 378 → 302 → 227. At --fz:1 nothing moves. */
-  #fieldbar{ position:absolute; left:0; top:0; width:72px; max-height:100%; overflow-y:auto;
-    display:flex; flex-direction:column; gap:6px; padding-top:10px; }  /* 10px = .grid's padding, so the first tool lines up with the first row of plots */
+  /* 80, not 72, and the extra 8 is a PARKING SPACE FOR THE SCROLLBAR. The rail scrolls whenever its tools
+     are taller than the stage, which on a desktop is both zoom stops in the Studio (measured: needs 324px,
+     has 291 at 0.8 and 220 at 0.6) — and a classic 15px scrollbar was taking its width out of the tools,
+     squeezing the content box 72 -> 57. That matters because .fbpair is 34+4+34 = the gutter EXACTLY, so
+     at 57 the pairs no longer fit and the rail grew a horizontal scrollbar as well. Phones never showed it:
+     overlay scrollbars take no layout width at all.
+     The 10px lands in the 10px of dead space .grid's own padding already leaves between the rail and the
+     first plot (measured, both figures), so the bar sits in the gap instead of on the buttons and the tools
+     keep their full 72px — 34px being the touch floor this project set for itself. 82 = 72 + 10 exactly, so
+     when the rail is NOT scrolling its extra width is transparent overhang that stops precisely where the
+     first plot begins and never eats a click. 10 and not the 8 first tried: `scrollbar-width:thin` is the
+     standard property and Chrome honours it OVER ::-webkit-scrollbar's width, measuring 10 — at 80px wide
+     the content box came back 70, two short, and the pairs grew the horizontal bar all over again.
+     overflow-x:clip is the belt: a browser whose `thin` is wider than 10 loses a pixel or two off a
+     button's edge instead of growing a second scrollbar across the tools.
+     The thumb is the BED's own green, not --line: a rail that scrolls has tools below the fold, and a
+     cream thumb on a cream page hid that fact completely — swapping an ugly bar for an invisible one. */
+  #fieldbar{ position:absolute; left:0; top:0; width:82px; max-height:100%; overflow-y:auto; overflow-x:clip;
+    scrollbar-width:thin; scrollbar-color:var(--bedDeep) transparent;
+    display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding-top:10px; }  /* 10px = .grid's padding, so the first tool lines up with the first row of plots */
+  /* Styled rather than left to the OS: this bar stands inside the garden, beside the tools, so it reads as
+     part of the furniture instead of a browser artifact bolted to the edge. Same 8px the box reserves. */
+  #fieldbar::-webkit-scrollbar{ width:8px; }
+  #fieldbar::-webkit-scrollbar-track{ background:transparent; }
+  #fieldbar::-webkit-scrollbar-thumb{ background:var(--bedDeep); border-radius:999px; }
+  #fieldbar::-webkit-scrollbar-thumb:hover{ background:var(--bedRing); }
   /* Divided by the zoom because this margin lives INSIDE the zoomed element: a flat 72px would itself shrink
      and slide the field under the rail (measured: the field's left edge went 90 → 61 at 0.6). */
   .stage > .scroller{ margin-left:calc(72px / var(--fz)); }
