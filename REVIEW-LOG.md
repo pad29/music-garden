@@ -378,6 +378,99 @@ decision loses continuity, while keeping it would have replayed ~5.3M tokens.
 
 ---
 
+## 2026-08-27 — two small tempo bugs, and the two more they were hiding (branch `tempo-fixes`)
+
+Both originals were found in passing during the meter design review, neither caused by it.
+
+**Fix 1 — Taps had never played at its declared tempo.** `FAMOUS_TEMPO.taps = 40` against
+`<input type="range" min="60">`, and a range input silently clamps a value assigned below its minimum.
+Measured: **500ms per column against its true 750** — half again too fast, on every play since it shipped.
+Floor lowered to 40; it is the only entry that was ever out of range.
+
+**Fix 2 — redo of a famous reveal replayed at the player's tempo.** `playFamous` set the tempo *after*
+`placeFamous`'s `tx()` had closed, and `tx()` snapshots when the callback returns, so the tune's tempo was
+never in the journal entry. Measured before: reveal→undo→redo gave 108/108/108 with the arrangement restored
+at the wrong speed. The tempo is set inside the transaction now.
+
+**Cross-testing (gpt-5.6-terra)** — wrote `tests/tempo-fixes.test.mjs` (5 tests) and, necessarily, a
+stateful `#tempo` stub in `harness.mjs`: without it the DOM proxy swallowed writes, `stepDur()` returned
+`Infinity` and `snapState()` always reported `"tempo":0`, so **neither fix was observable in the harness at
+all**. Confirmed the new tests fail against the pre-fix file. One assertion deleted on review — it asserted
+`min === "40"` literally, a restatement of the attribute the fix changed, replaced with the behavioural
+invariant that every `FAMOUS_TEMPO` value *and* every `GROOVES[].bpm` survives assignment unclamped.
+
+**Fix 3 — GPT found that fix 1 makes a latent bug reachable, and it was right.** `pump()` garbage-collects
+each column's wrapper gains at `colGains[0].when < ct-4`, and every voice connects through them — so the GC
+severs a note that is still ringing. That flat 4 seconds was **exactly an 8-column vine at 60 BPM**: the old
+tempo floor sat precisely on the boundary, which is why it never fired. At 40 BPM the same vine is 6s and 2s
+of it is cut. Verified arithmetic: 8-column vines truncate below 60 BPM, 6-column below 53. The window is
+derived from `MAX_VINE * stepDur() + GC_TAIL` now, so the two ceilings cannot drift apart again.
+**I rated this Medium against GPT's High:** no shipped content triggers it — only `swinglow` has vines at
+all (8 cols at 88 BPM = 2727ms, safe) and Taps has none — so it needs a player to drag to ≤53 and grow a
+near-maximum vine. Fixed regardless, because fix 1 is what opened the door.
+
+**Fix 4 — a famous tune's tempo leaked into the child's saved settings.** Pre-existing, worsened by fix 1
+(60→40) and given a second route in by fix 2 (redo now also leaves the tune's tempo). `saveProgress` fires on
+level completion, a voice change, the mixer, read-aloud — and wrote whatever tempo happened to be live, so
+watching Taps left the game **stuck at 40 BPM on every reload**. A famous tempo is now a *loan*: it plays, ▶
+replays the arrangement at it, and `saveProgress` persists the child's own instead. Every deliberate route —
+moving the slider, picking a groove — hands the loan back. Deliberately scoped to the famous path only, so
+groove and song-load behaviour is untouched.
+
+**Verified:** 65/65 (up from 60). In-browser, all 18 famous entries: correct live tempo, correct undo (the
+player's) and redo (the tune's), and **no leak into the saved setting** on any of them. Taps at 750ms/column
+with a 9s GC window against a 6s longest note. GC window stays ahead of the longest note at 40/53/60/108/170.
+Plain edits, grooves and the two entries with no declared tempo all unchanged. No console errors.
+
+**Goldens not re-captured** — GPT agreed with the reasoning and named what would have made it wrong: the five
+configurations run at 108/120/160, all valid before and after; no hunk touches scheduler logic; no capture
+invokes a famous tempo change. **Still unverified, needs ears:** the truncation itself, and everything at
+750ms/column that Node cannot hear.
+
+**Thread note:** `.thread-id` still held the meter design-review thread (Sol, 3.35M in). Rather than resume an
+unrelated transcript or delete it, it was parked as `.thread-id.meter-design-round2` and this ran fresh.
+Cost: 1.47M in (1.26M cached) / 20k out on Terra.
+
+### Same branch, after the owner's device test — the flat 3s trim was seven different lies
+
+**Owner, testing fix 3 on the Studio at 40 BPM with an 8-column vine:** *"Music Box rings all the way till
+the end, while Guitar stopped ringing half way."* Both halves of that sentence were informative.
+
+**The music box ringing all six seconds is the proof fix 3 worked** — before it, the collector severed that
+note at four. The guitar was a different and older limit, and the owner's question (is the 3s cap per
+instrument, or one global number?) was the right one: it is **global**, `Math.min(buf.length, rate*3)`, plus
+a flat `src.stop(now+2.9)`. Measured the true recordings by decoding each payload before conditioning:
+
+| voice | recorded | median | lost to the 3s trim |
+|---|---|---|---|
+| piano | **16.19s** | 13.32 | 13s, on all 9 notes |
+| harp / vibraphone / glockenspiel | ~3.24 | 3.24 | a quarter second |
+| kalimba | 2.93 | 2.76 | nothing |
+| marimba | 2.51 | 2.19 | nothing |
+| guitar | 4.15 | **1.67** | nothing on the median note |
+
+So **the guitar fading halfway through a slow whole note is a guitar being a guitar** — and the design comment
+already said so (*"a long vine simply runs out of recording and is honestly over"*). But the piano doing the
+same thing was us discarding the tape. Each voice keeps its own length now, capped at `VOICE_MAX_SEC=7` — the
+longest note the game can request (MAX_VINE at 40 BPM is 6s) plus release. Loudness is still measured over the
+first 3s so no voice changes level; a note stops at whichever comes first, the note asked for or the end of the
+recording.
+
+**The actual defect was the picture, not the sound.** §2c's rule is that a stem lights for exactly as long as
+it rings, but the timeout was computed from `n.durationTicks*anchorSPT` — the NOTATION — so at 40 BPM a guitar
+stem glowed green for 6000ms over 4.4s of silence. `ringCeiling(instr, pitch)` now bounds it, **per note**
+rather than per voice, because a sample transposed up plays faster and runs out sooner. Guitar 6000→1593ms;
+piano stays 6000 because it can now genuinely hold it; synth voices return `Infinity` and are unaffected.
+
+**The cost, surfaced to the owner rather than absorbed:** 41.5MB of decoded audio with all seven voices
+loaded, of which the piano is 20.9MB (stereo, 3s→7s). The old trim existed for memory, so this is a real
+trade. Voices load on demand, so only a child who tries all seven in one session reaches it. `VOICE_MAX_SEC`
+is the dial if a phone complains.
+
+**Lesson worth keeping: "every voice is trimmed to 3s" read as one honest constraint and was seven.** The
+short instruments were never affected by it and the piano was crippled by it, and nothing in the code said so
+— the only way to find out was to decode the recordings and look.
+
 ## 2026-08-28 — meter slice 1: design review (branch `meter-bars`)
 
 Design-only so far. `gpt-5.6-sol`, fresh thread, read-only. **Verdict: REPLACE.** I verified its evidence
@@ -569,97 +662,3 @@ bytes, because `io.open(p,"w")` truncates the moment it is evaluated and the `.e
 call raised afterwards. Both files were committed, so nothing was lost. Encode on its own line first.
 
 ---
-
-## 2026-08-27 — two small tempo bugs, and the two more they were hiding (branch `tempo-fixes`)
-
-Both originals were found in passing during the meter design review, neither caused by it.
-
-**Fix 1 — Taps had never played at its declared tempo.** `FAMOUS_TEMPO.taps = 40` against
-`<input type="range" min="60">`, and a range input silently clamps a value assigned below its minimum.
-Measured: **500ms per column against its true 750** — half again too fast, on every play since it shipped.
-Floor lowered to 40; it is the only entry that was ever out of range.
-
-**Fix 2 — redo of a famous reveal replayed at the player's tempo.** `playFamous` set the tempo *after*
-`placeFamous`'s `tx()` had closed, and `tx()` snapshots when the callback returns, so the tune's tempo was
-never in the journal entry. Measured before: reveal→undo→redo gave 108/108/108 with the arrangement restored
-at the wrong speed. The tempo is set inside the transaction now.
-
-**Cross-testing (gpt-5.6-terra)** — wrote `tests/tempo-fixes.test.mjs` (5 tests) and, necessarily, a
-stateful `#tempo` stub in `harness.mjs`: without it the DOM proxy swallowed writes, `stepDur()` returned
-`Infinity` and `snapState()` always reported `"tempo":0`, so **neither fix was observable in the harness at
-all**. Confirmed the new tests fail against the pre-fix file. One assertion deleted on review — it asserted
-`min === "40"` literally, a restatement of the attribute the fix changed, replaced with the behavioural
-invariant that every `FAMOUS_TEMPO` value *and* every `GROOVES[].bpm` survives assignment unclamped.
-
-**Fix 3 — GPT found that fix 1 makes a latent bug reachable, and it was right.** `pump()` garbage-collects
-each column's wrapper gains at `colGains[0].when < ct-4`, and every voice connects through them — so the GC
-severs a note that is still ringing. That flat 4 seconds was **exactly an 8-column vine at 60 BPM**: the old
-tempo floor sat precisely on the boundary, which is why it never fired. At 40 BPM the same vine is 6s and 2s
-of it is cut. Verified arithmetic: 8-column vines truncate below 60 BPM, 6-column below 53. The window is
-derived from `MAX_VINE * stepDur() + GC_TAIL` now, so the two ceilings cannot drift apart again.
-**I rated this Medium against GPT's High:** no shipped content triggers it — only `swinglow` has vines at
-all (8 cols at 88 BPM = 2727ms, safe) and Taps has none — so it needs a player to drag to ≤53 and grow a
-near-maximum vine. Fixed regardless, because fix 1 is what opened the door.
-
-**Fix 4 — a famous tune's tempo leaked into the child's saved settings.** Pre-existing, worsened by fix 1
-(60→40) and given a second route in by fix 2 (redo now also leaves the tune's tempo). `saveProgress` fires on
-level completion, a voice change, the mixer, read-aloud — and wrote whatever tempo happened to be live, so
-watching Taps left the game **stuck at 40 BPM on every reload**. A famous tempo is now a *loan*: it plays, ▶
-replays the arrangement at it, and `saveProgress` persists the child's own instead. Every deliberate route —
-moving the slider, picking a groove — hands the loan back. Deliberately scoped to the famous path only, so
-groove and song-load behaviour is untouched.
-
-**Verified:** 65/65 (up from 60). In-browser, all 18 famous entries: correct live tempo, correct undo (the
-player's) and redo (the tune's), and **no leak into the saved setting** on any of them. Taps at 750ms/column
-with a 9s GC window against a 6s longest note. GC window stays ahead of the longest note at 40/53/60/108/170.
-Plain edits, grooves and the two entries with no declared tempo all unchanged. No console errors.
-
-**Goldens not re-captured** — GPT agreed with the reasoning and named what would have made it wrong: the five
-configurations run at 108/120/160, all valid before and after; no hunk touches scheduler logic; no capture
-invokes a famous tempo change. **Still unverified, needs ears:** the truncation itself, and everything at
-750ms/column that Node cannot hear.
-
-**Thread note:** `.thread-id` still held the meter design-review thread (Sol, 3.35M in). Rather than resume an
-unrelated transcript or delete it, it was parked as `.thread-id.meter-design-round2` and this ran fresh.
-Cost: 1.47M in (1.26M cached) / 20k out on Terra.
-
-### Same branch, after the owner's device test — the flat 3s trim was seven different lies
-
-**Owner, testing fix 3 on the Studio at 40 BPM with an 8-column vine:** *"Music Box rings all the way till
-the end, while Guitar stopped ringing half way."* Both halves of that sentence were informative.
-
-**The music box ringing all six seconds is the proof fix 3 worked** — before it, the collector severed that
-note at four. The guitar was a different and older limit, and the owner's question (is the 3s cap per
-instrument, or one global number?) was the right one: it is **global**, `Math.min(buf.length, rate*3)`, plus
-a flat `src.stop(now+2.9)`. Measured the true recordings by decoding each payload before conditioning:
-
-| voice | recorded | median | lost to the 3s trim |
-|---|---|---|---|
-| piano | **16.19s** | 13.32 | 13s, on all 9 notes |
-| harp / vibraphone / glockenspiel | ~3.24 | 3.24 | a quarter second |
-| kalimba | 2.93 | 2.76 | nothing |
-| marimba | 2.51 | 2.19 | nothing |
-| guitar | 4.15 | **1.67** | nothing on the median note |
-
-So **the guitar fading halfway through a slow whole note is a guitar being a guitar** — and the design comment
-already said so (*"a long vine simply runs out of recording and is honestly over"*). But the piano doing the
-same thing was us discarding the tape. Each voice keeps its own length now, capped at `VOICE_MAX_SEC=7` — the
-longest note the game can request (MAX_VINE at 40 BPM is 6s) plus release. Loudness is still measured over the
-first 3s so no voice changes level; a note stops at whichever comes first, the note asked for or the end of the
-recording.
-
-**The actual defect was the picture, not the sound.** §2c's rule is that a stem lights for exactly as long as
-it rings, but the timeout was computed from `n.durationTicks*anchorSPT` — the NOTATION — so at 40 BPM a guitar
-stem glowed green for 6000ms over 4.4s of silence. `ringCeiling(instr, pitch)` now bounds it, **per note**
-rather than per voice, because a sample transposed up plays faster and runs out sooner. Guitar 6000→1593ms;
-piano stays 6000 because it can now genuinely hold it; synth voices return `Infinity` and are unaffected.
-
-**The cost, surfaced to the owner rather than absorbed:** 41.5MB of decoded audio with all seven voices
-loaded, of which the piano is 20.9MB (stereo, 3s→7s). The old trim existed for memory, so this is a real
-trade. Voices load on demand, so only a child who tries all seven in one session reaches it. `VOICE_MAX_SEC`
-is the dial if a phone complains.
-
-**Lesson worth keeping: "every voice is trimmed to 3s" read as one honest constraint and was seven.** The
-short instruments were never affected by it and the piano was crippled by it, and nothing in the code said so
-— the only way to find out was to decode the recordings and look.
-
