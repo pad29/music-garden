@@ -98,6 +98,13 @@ load-bearing (`EDITOR-DESIGN.md` §17):
 - **Absence reads as unmetered.** Decoding a missing slot 8 as an explicit 4/4 would give every song
   written before bars existed a set of barlines it was never composed against.
 
+**Slot 4, the groove, is an INDEX into `GROOVES`,** so that array is append-only for the same reason: index
+2 has to stay Doo-wop in every link ever shared. Grooves added since carry a `meter` tag saying which
+presets they can play. A song whose saved groove cannot play its saved meter **migrates on load** rather
+than being rejected — songs written between the meter slice and the dance grooves legitimately pair a 3/4
+meter with one of the older grooves, because `currentSong` has always written `grooveIdx` whether or not
+the band could use it. The migration must not overwrite the tempo the song carries.
+
 A share link is untrusted input, so `validMeter()` normalises an unknown preset, a negative, fractional
 or non-finite origin, or an origin at/past the bar's own length to **unmetered** rather than throwing —
 a link we cannot trust is a link with no meter. A *missing* origin still means "no pickup", which is the

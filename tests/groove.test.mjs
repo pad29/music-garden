@@ -21,7 +21,10 @@ const g = loadGame();
 // ---------------------------------------------------------------------------------------------
 function legacyPlan(G, step) {
   const s = ((step % 16) + 16) % 16, c = G.prog[(s / 4) | 0];
-  const P = { s, chordCols: 4, chord: null, bass: [], kick: [], snare: [], hat: [] };
+  // chordHold is stated here as 4 because that is what the shipped renderer did: its sustain was
+  // `stepDur()*4/1000`, hardcoded. The field was named later, when the dances needed a shorter comp
+  // stab than a sustained bed — but for these five it is the same four columns it always was.
+  const P = { s, chordCols: 4, chordHold: 4, chord: null, bass: [], kick: [], snare: [], hat: [] };
   if (s % 4 === 0) P.chord = c.chord;
   if (G.bass === "half") { if (s % 4 === 0) P.bass.push(c.bass); }
   else if (G.bass === "sparse") { if (s % 4 === 0 || s === 6 || s === 14) P.bass.push(c.bass); }

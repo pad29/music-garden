@@ -820,3 +820,55 @@ than trusting the golden harder.
 still declares no `cycle`.
 
 ---
+
+### Same branch — PR 2 of 2: the dances themselves
+
+Every finding from the design review above is answered here; nothing was deferred.
+
+**The content.** `💃 Waltz` (144, C–Am–Dm–G) and `🍀 Jig` (138, C–F–C–G), both `cycle:24` · `bar:6`,
+appended and tagged `meter:["3/4"]` / `["6/8"]`. Measured through the real audio helpers, one bar each:
+
+```
+waltz   bass·kick   —   chord·hat   —   chord·hat   —
+jig     chord·bass·kick·hat   hat   hat   chord·bass·kick·hat   hat   hat
+```
+
+Same six columns, nothing in common — which is §17's two-facts claim audible rather than drawn. **No snare
+anywhere in the waltz**, asserted over the whole cycle, because a backbeat on two is what stops a waltz
+being one. A comp is not a bed: the stab holds 2 columns against the jig pulse's 3 and the shipped
+grooves' 4, so `chordHold` joined the plan and the comp branches REPLACE the legacy bed rather than
+sounding over it — finding 5's point, which would otherwise have put a chord on waltz beat 1.
+
+**The band follows the bars.** `jamStep` measures from `originTick`: the waltz's OOM lands exactly on the
+drawn barline at pick-ups 0, 1 and 2 (band `[1,7,13]` against barlines `[1,7,13]` at pick-up 1). Unmetered
+the offset is zero and the expression is the shipped one.
+
+**Finding 3 confirmed by measurement, and the button left alone.** A bar loop range in the default
+16-column field loops columns 0–11 forever — two whole waltz bars, six kicks, zero snares. My "＋ patch
+must change or a dance can never loop cleanly" was simply false, and GPT's second route needed nothing at
+all. Its completion formula would have been wrong regardless: completion is `(COLS − origin) mod barCols`.
+
+**Finding 4's three holes, all closed and all verified in a browser.** `resetTransient` now normalises the
+groove — Studio Waltz (index 5) → enter `stepping-stones` → groove is Pop, select lists 0–4, and a scripted
+jam reveal there would apply 116 BPM on a 16-column band rather than a six-column one. Only an
+incompatible groove moves, so a player's Ballad still follows them into a level. Loading migrates rather
+than rejects, since `groove:0 + meter:"3/4"` is *normal* saved state for anything written in the last two
+days — and the migration does not call `applyGrooveTempo()`, so a song carrying 96 BPM still loads at 96
+and not at the jig's 138 (asserted). And `normalizeGroove()` runs **inside `setMeter`'s `tx`**, so undo
+restores a coherent meter/groove pair rather than the old meter beside the new groove.
+
+**Finding 6 acted on, in words rather than code.** The jig ships at 138 quarter-BPM — 92 dotted quarters, a
+lilt, not a session jig, which would want 180 against a 170 cap. GPT was right that my reason for not
+raising the cap was empty: the sample ceiling derives from the SLOWEST tempo, so raising the maximum only
+makes notes shorter, and `FAMOUS_TEMPO` tops out at 156. Left as its own decision for the owner rather
+than smuggled into a groove PR, but recorded as free rather than blocked.
+
+**Finding 5's other half:** no "brushed hat" anywhere. The waltz's 2-and-3 ticks are described as what
+`hat` actually is — a 40 ms 8 kHz noise blip, a closed hi-hat — because a label asserting a sound the code
+does not make is this log's most-repeated entry.
+
+**Suite: 129 pass** (113 → 129). The PR 1 oracle still holds unchanged across all five shipped grooves,
+which is the evidence that adding two dances altered none of them; its `chordHold` field was added to the
+legacy transcription as the literal 4 columns the shipped renderer hardcoded.
+
+---

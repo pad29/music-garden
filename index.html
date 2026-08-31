@@ -1178,7 +1178,33 @@ const GROOVES=[                                                  // swing 0 = st
  {name:"🕺 Doo-wop", bpm:104, swing:0.33, drums:"rock", bass:"bounce", prog:[ch(36,[60,64,67]),ch(45,[57,60,64]),ch(41,[53,57,60]),ch(43,[55,59,62])]}, // C  Am F  G
  {name:"🌙 Lo-fi",   bpm:82,  swing:0.25, drums:"lofi", bass:"sparse", prog:[ch(45,[57,60,64]),ch(38,[57,62,65]),ch(43,[55,59,62]),ch(48,[60,64,67])]}, // Am Dm G  C
  {name:"🤠 Folk",    bpm:100, swing:0.12, drums:"soft", bass:"root5",  prog:[ch(36,[60,64,67]),ch(41,[53,57,60]),ch(36,[60,64,67]),ch(43,[55,59,62])]}, // C  F  C  G
+ // --- the dances. APPENDED, never inserted: grooveIdx is song state (time.groove, snapState, packSong
+ // slot 4), so index 2 has to stay Doo-wop forever, the same discipline packSong's slot 8 follows.
+ // `cycle` is the whole repeat in COLUMNS — 24 = four six-column bars — and `bar` is what the patterns
+ // key off, which is how a waltz and a jig can share a bar width and still be different dances.
+ // `meter` says which presets they belong to; an untagged groove is one of the five above.
+ {name:"💃 Waltz",   bpm:144, swing:0,    drums:"waltz", bass:"waltz", comp:"oompah", bar:6, cycle:24, meter:["3/4"],
+  prog:[ch(36,[60,64,67]),ch(45,[57,60,64]),ch(38,[57,62,65]),ch(43,[55,59,62])]},   // C  Am Dm G
+ {name:"🍀 Jig",     bpm:138, swing:0,    drums:"jig",   bass:"jig",   comp:"pulse",  bar:6, cycle:24, meter:["6/8"],
+  prog:[ch(36,[60,64,67]),ch(41,[53,57,60]),ch(36,[60,64,67]),ch(43,[55,59,62])]},   // C  F  C  G
 ];
+// Which grooves can play against a meter. An untagged groove is one of the five that shipped, and its
+// 16-column cycle divides a 4/4 bar (8) and a 2/4 bar (4) exactly — and nothing else, which is why waltz
+// and jig had to bring their own rather than borrow.
+function grooveFits(G, presetId){
+  if(!G) return false;
+  if(G.meter) return G.meter.indexOf(presetId)>=0;
+  return !presetId || presetId==="4/4" || presetId==="2/4"; }
+function grooveChoices(){ const m=(typeof meterAt==="function")?meterAt():null, id=m?m.preset:null;
+  const out=[]; GROOVES.forEach((G,i)=>{ if(grooveFits(G,id)) out.push({G,i}); }); return out; }
+// Move to a groove that can play the current meter, and report whether anything moved. Callers that
+// journal MUST run this inside their own transaction — grooveIdx is part of snapState, so normalising
+// outside one lets undo restore the old meter beside the new groove.
+function normalizeGroove(){
+  const m=(typeof meterAt==="function")?meterAt():null;
+  if(grooveFits(GROOVES[grooveIdx], m?m.preset:null)) return false;
+  const c=grooveChoices(); if(!c.length) return false;
+  grooveIdx=c[0].i; return true; }
 let grooveIdx=0, jamMode=false, jamStartedPlayback=false;
 // ---------- The band as DATA: what a groove plays at a given column ----------
 // PURE — no audio nodes, no clock, nothing but the groove it is handed — and that is the entire point:
@@ -1197,18 +1223,30 @@ let grooveIdx=0, jamMode=false, jamStartedPlayback=false;
 function groovePlan(G, step){
   const cyc=(G&&G.cycle)||16, s=((step%cyc)+cyc)%cyc;
   const chordCols=cyc/G.prog.length, c=G.prog[(s/chordCols)|0];
-  const P={ s, chordCols, chord:null, bass:[], kick:[], snare:[], hat:[] };
-  // sustained chord bed + bass = the parts that give each groove its character
-  if(s%chordCols===0) P.chord=c.chord;
+  const b=G.bar ? s%G.bar : s, barIdx=G.bar ? (s/G.bar)|0 : 0;   // position in the bar, and which bar
+  const P={ s, chordCols, chordHold:chordCols, chord:null, bass:[], kick:[], snare:[], hat:[] };
+  // The chord. A dance COMPS rather than laying a bed, so these branches REPLACE the legacy one rather
+  // than adding to it — leaving the bed underneath would put a chord on waltz beat 1 and contradict the
+  // one thing that makes a waltz a waltz.
+  if(G.comp==="oompah"){ if(b===2||b===4){ P.chord=c.chord; P.chordHold=2; } }        // the pah-pah, a beat each
+  else if(G.comp==="pulse"){ if(b===0||b===3){ P.chord=c.chord; P.chordHold=3; } }    // one per dotted-quarter pulse
+  else if(s%chordCols===0) P.chord=c.chord;                                           // the shipped sustained bed
   // bass — pattern varies per style
-  if(G.bass==="half"){ if(s%4===0) P.bass.push(c.bass); }                            // ballad: one note per chord
+  if(G.bass==="waltz"){ if(b===0) P.bass.push(barIdx%2 ? c.bass+7 : c.bass); }        // waltz: the OOM, root then fifth bar by bar
+  else if(G.bass==="jig"){ if(b===0) P.bass.push(c.bass); else if(b===3) P.bass.push(c.bass+7); }  // jig: one per pulse
+  else if(G.bass==="half"){ if(s%4===0) P.bass.push(c.bass); }                       // ballad: one note per chord
   else if(G.bass==="sparse"){ if(s%4===0||s===6||s===14) P.bass.push(c.bass); }      // lo-fi: laid-back
   else if(G.bass==="bounce"){ if(s%2===0) P.bass.push(s%4===0?c.bass:c.bass+12); }   // doo-wop: octave bounce
   else if(G.bass==="root5"){ if(s%4===0) P.bass.push(c.bass); else if(s%4===2) P.bass.push(c.bass+7); } // folk: root–fifth
   else { if(s%2===0) P.bass.push(c.bass); }                                          // pop: driving
   // drums (distinct per style). Lists rather than single values because "lofi" fires kick from two
   // separate conditions; they happen never to coincide, and a list means nothing depends on that.
-  if(G.drums==="soft"){ if(s%8===0) P.kick.push(0.34); if(s%8===4) P.snare.push(0.26); }   // gentle, no hats
+  // A waltz has NO backbeat — a snare on 2 is what stops it being a waltz. The 2-and-3 ticks are `hat`,
+  // which is a 40ms 8kHz noise blip: a closed hi-hat, not a brush. Calling it a brush would be a label
+  // asserting a sound the code does not make, which is this project's most-repeated mistake.
+  if(G.drums==="waltz"){ if(b===0) P.kick.push(0.34); else if(b===2||b===4) P.hat.push(0.10); }
+  else if(G.drums==="jig"){ if(b===0||b===3) P.kick.push(0.36); P.hat.push(0.11); }        // two pulses over running eighths
+  else if(G.drums==="soft"){ if(s%8===0) P.kick.push(0.34); if(s%8===4) P.snare.push(0.26); }   // gentle, no hats
   else if(G.drums==="lofi"){ if(s%4===0) P.kick.push(0.4); if(s%4===2) P.snare.push(0.28);
                              if(s%2===1) P.hat.push(0.12); if(s%8===6) P.kick.push(0.28); } // laid-back, offbeat hats
   else { if(s%4===0) P.kick.push(0.46); if(s%4===2) P.snare.push(0.3); P.hat.push(0.14); }  // pop/rock, steady hats
@@ -1217,8 +1255,13 @@ function groovePlan(G, step){
 // …and the thin renderer that books it. Every event of one column is scheduled at the SAME `t`, so the
 // order below is immaterial to what is heard — it matches the old function's order anyway.
 function jamStep(step,t){
-  const G=GROOVES[grooveIdx], P=groovePlan(G,step);
-  const seg=stepDur()*P.chordCols/1000;                              // a chord lasts its own region
+  const G=GROOVES[grooveIdx], m=(typeof meterAt==="function")?meterAt():null;
+  // The band follows the BARS the child can see: measuring from the downbeat means a pickup shifts the
+  // band exactly as it shifts the barlines. Unmetered, and for any meter with no pickup, the offset is 0
+  // and this is the expression that shipped.
+  const oc = m ? Math.round(m.originTick/TICKS_PER_COL) : 0;
+  const P=groovePlan(G, step-oc);
+  const seg=stepDur()*P.chordHold/1000;                              // a bed lasts its region; a comp stab is shorter
   if(P.chord) P.chord.forEach(m=>bTone(t,midiToFreq(m),seg*0.95,"triangle",0.16,0.05));
   for(const m of P.bass) bTone(t,midiToFreq(m),0.26,"sawtooth",0.5);
   for(const pk of P.kick)  kick(t,pk);
@@ -4774,6 +4817,10 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   // review said resetTransient could not carry on its own, and it was right.
   if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pad-tint memo is keyed on the meter
     syncMeterUI(); rebuildField(); }                               // controls + overlays, then the pads, which bake their tint at build time
+  // …and the GROOVE, which is session-global and was walking straight through this quarantine: a Studio
+  // waltz stayed selected into a level, where a scripted runReveal({jam:true}) would have played it on a
+  // six-column band. Only an incompatible groove moves, so a player's Ballad still follows them in.
+  if(normalizeGroove()) renderGrooveOptions();
   cursorCol=0; cursorPinned=false; loopStart=0; loopEnd=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
   zoomTapDrop(); pinchDrop(); swallowTapUntil=0;   // …with no half-finished gesture and no pending swallow carried across the seam
   if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
@@ -5353,7 +5400,10 @@ const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns
 const meterEl=document.getElementById("meter"), meterCtlEl=document.getElementById("meterCtl"),
       pickupEl=document.getElementById("pickup"), pickupCtlEl=document.getElementById("pickupCtl");
 function setMeter(preset, originCols){
-  tx("meter",()=>{ doc.meterMap = validMeter(preset, originCols); });   // one gate for the picker and for share links alike
+  // normalizeGroove runs INSIDE the transaction on purpose: grooveIdx is part of snapState, so a fallback
+  // journalled outside it would let undo restore the old meter beside the new groove.
+  tx("meter",()=>{ doc.meterMap = validMeter(preset, originCols);       // one gate for the picker and for share links alike
+    normalizeGroove(); });
   clearLoopRange(); _tintKey=null;   // the bars a range pointed at may be gone, and the pad-tint memo is keyed on the meter
   syncMeterUI(); rebuildField(); }   // the pad tint is baked at BUILD time, so the beat lane has to be rebuilt
 // ONE function, and every path that can change the meter goes through it — setMeter, undo, song load,
@@ -5364,18 +5414,25 @@ function syncMeterUI(){ const m=meterAt(),
   if(pickupCtlEl) pickupCtlEl.style.display = (studio && m) ? "" : "none";   // a pick-up is meaningless with no bars to come before
   if(meterEl)  meterEl.value  = m ? m.preset : "";
   if(pickupEl) pickupEl.value = m ? String(Math.round(m.originTick/TICKS_PER_COL)) : "0";
+  renderGrooveOptions();                   // …and the band, which not every meter can borrow
   syncJamForMeter(); syncPatchCopy(); renderBars(); }
 if(meterEl)  meterEl.onchange =()=>setMeter(meterEl.value, +pickupEl.value||0);
 if(pickupEl) pickupEl.onchange=()=>setMeter(meterEl.value, +pickupEl.value||0);
-// The band is structurally a 16-column, four-chord cycle (jamStep wraps %16 and picks chords by s/4), so
-// it crosses every barline of a 6-column bar. 4/4 (8 columns) and 2/4 (4) both divide it and keep Jam;
-// waltz and jig lose it until they have grooves of their own. Owner's call 2026-08-28, over my objection
-// that an honest label would do — the label loses, because Jam and Groove both overwrite the status line.
-function jamFitsMeter(){ const m=meterAt(); return !m || m.preset==="4/4" || m.preset==="2/4"; }
-function syncJamForMeter(){ const ok=jamFitsMeter();
-  if(!ok && jamMode){ jamMode=false; jamBtn.classList.remove("on"); }
-  jamBtn.disabled=!ok;
-  jamBtn.title = ok ? "" : "The band still plays in fours — waltz and jig grooves come later 🎻"; }
+// Jam was disabled for 3/4 and 6/8 from 2026-08-28 until the dances existed, because the shipped grooves
+// are a 16-column cycle that crosses every barline of a six-column bar. Waltz and Jig now bring their own,
+// so every meter has a band and the button is never dark. What remains is keeping the groove and the meter
+// in step: normalizeGroove moves an incompatible pair, and the select lists only what can actually play.
+function jamFitsMeter(){ return grooveChoices().length>0; }
+function syncJamForMeter(){ jamBtn.disabled=false; jamBtn.title=""; }
+// The <select> was built once at load; it is rebuilt whenever the meter changes. option.value stays the
+// ARRAY INDEX and never the position in the filtered list — that index is what songs save.
+function renderGrooveOptions(){
+  if(!grooveEl) return;
+  normalizeGroove();                       // …or grooveEl.value below would land on "" and show blank
+  grooveEl.innerHTML="";
+  for(const {G,i} of grooveChoices()){
+    const o=document.createElement("option"); o.value=i; o.textContent=G.name; grooveEl.appendChild(o); }
+  grooveEl.value=String(grooveIdx); }
 // §17's round-1 review found "one more bar (16 steps)" among nine places the four-column beat is asserted
 // in shipped copy. Saying "steps" SIDESTEPS that open question rather than answering it — which is the
 // point: the words-fix for those nine is its own scheduled job, not this slice's to do.
@@ -5538,6 +5595,12 @@ function applySong(s){
     // above: loading an unmetered song has to actively CLEAR a meter, not merely decline to set one, or a
     // stale meter (and its bars) survives over the freshly loaded song.
     doc.meterMap = validMeter(t.meter, t.origin);
+    // The groove was assigned above, before the meter existed; normalise now that it does. Note this must
+    // NOT call applyGrooveTempo() — the song carries its own tempo and a fallback must not overwrite it.
+    // Songs saved between the meter slice and the dances legitimately pair a 3/4 meter with one of the old
+    // grooves, because currentSong has always written grooveIdx whether or not Jam could use it; those
+    // MIGRATE to the dance groove here rather than being treated as corrupt.
+    normalizeGroove();
     reproject(); });
   clearLoopRange(); _tintKey=null; syncMeterUI();
   rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
