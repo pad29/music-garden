@@ -5402,10 +5402,14 @@ const meterEl=document.getElementById("meter"), meterCtlEl=document.getElementBy
 function setMeter(preset, originCols){
   // normalizeGroove runs INSIDE the transaction on purpose: grooveIdx is part of snapState, so a fallback
   // journalled outside it would let undo restore the old meter beside the new groove.
+  let swapped=false;
   tx("meter",()=>{ doc.meterMap = validMeter(preset, originCols);       // one gate for the picker and for share links alike
-    normalizeGroove(); });
+    swapped=normalizeGroove(); });
   clearLoopRange(); _tintKey=null;   // the bars a range pointed at may be gone, and the pad-tint memo is keyed on the meter
-  syncMeterUI(); rebuildField(); }   // the pad tint is baked at BUILD time, so the beat lane has to be rebuilt
+  syncMeterUI(); rebuildField();     // the pad tint is baked at BUILD time, so the beat lane has to be rebuilt
+  // Say it out loud. The band changing under you is the most surprising thing a meter change does, and a
+  // silent swap reads as the game LOSING your choice rather than making one.
+  if(swapped) setStatus("💃 The band changed to <b>"+GROOVES[grooveIdx].name+"</b> — that one knows the steps! 🎶"); }
 // ONE function, and every path that can change the meter goes through it — setMeter, undo, song load,
 // level entry. Without it, undo restores the PICTURE while the select still reports the undone meter.
 function syncMeterUI(){ const m=meterAt(),
