@@ -194,3 +194,42 @@ test("the select carries array indices, not positions in the filtered list", () 
   assert.strictEqual(g.GROOVES[choices[0].i], choices[0].G);
   unmeter();
 });
+
+// ---------------------------------------------------------------- the tempo ceiling (2026-08-29)
+
+// The dial is QUARTER-note BPM and a column is an EIGHTH, so a quarter is two columns and the field runs
+// at 2*tempo columns a minute. A jig's felt pulse is a dotted quarter — three columns — so its rate is
+// 2*tempo/3. Worth writing out: the first version of this helper said tempo/3, which is the same slip in
+// the other direction from the one that made the jig a lilt in the first place.
+const dottedQuartersPerMin = bpm => bpm * 2 / 3;
+
+test("the Jig is a real jig, not a lilt", () => {
+  const jigG = g.GROOVES.find(G => G.comp === "pulse");
+  const rate = dottedQuartersPerMin(jigG.bpm);
+  assert.ok(rate >= 110 && rate <= 132,
+    `a session jig is ~120 dotted quarters a minute; this one is ${rate}`);
+  // …and it could not have been, at the old ceiling
+  assert.ok(jigG.bpm > 170, "which is why the dial had to go past 170");
+});
+
+test("the dial can actually reach every tempo the game assigns, including the jig's", () => {
+  const tempo = g.__document.getElementById("tempo");
+  for (const G of g.GROOVES) {
+    tempo.value = G.bpm;
+    assert.strictEqual(+tempo.value, G.bpm, `${G.name}'s ${G.bpm} must not clamp`);
+  }
+});
+
+// This is WHY raising the maximum is free, and it is worth pinning because the reasoning is not obvious:
+// the sampled-voice ceiling is set by the SLOWEST tempo, where an 8-column vine is longest. A faster
+// maximum only ever makes notes shorter. Lowering the MINIMUM is the change that would threaten it.
+test("the voice ceiling is governed by the slowest tempo, not the fastest", () => {
+  const tempo = g.__document.getElementById("tempo");
+  const colMs = bpm => 60000 / bpm / 2;
+  const longestVine = bpm => g.MAX_VINE * colMs(bpm) / 1000;
+  const slowest = +tempo.min, fastest = +tempo.max;
+  assert.ok(longestVine(slowest) > longestVine(fastest), "slower means longer, always");
+  assert.ok(longestVine(slowest) <= g.VOICE_MAX_SEC,
+    `an ${g.MAX_VINE}-column vine at ${slowest} BPM is ${longestVine(slowest)}s and must fit inside VOICE_MAX_SEC=${g.VOICE_MAX_SEC}`);
+  assert.ok(longestVine(fastest) < g.VOICE_MAX_SEC, "…and the fast end has room to spare");
+});

@@ -630,8 +630,18 @@
     </label>
     <!-- min 40, not 60: FAMOUS_TEMPO.taps is 40 ("Slowly", from the score) and a range input CLAMPS a value
          set below its own minimum, so Taps had always played at 60 - 500ms a column against its true 750, half
-         again too fast, silently. 40 is the lowest tempo any shipped tune asks for; nothing else leaves the range. -->
-    <label class="ctl">Tempo <input type="range" id="tempo" min="40" max="170" value="108" /></label>
+         again too fast, silently. 40 is the lowest tempo any shipped tune asks for; nothing else leaves the range.
+         max 180, not 170: this dial is QUARTER-note BPM and a column is an EIGHTH, so a quarter is two
+         columns and a jig's felt pulse - a dotted quarter, three columns - runs at 2*tempo/3. A session jig
+         is ~120 of those a minute, which is exactly 180 here. Being accurate about what this bought: 170
+         already gave 113 a minute, which is a perfectly respectable jig, so the ceiling is the last 6% and
+         NOT the reason the Jig shipped as a lilt - that was choosing 138 (92 a minute) when 170 was already
+         available. The dial was never the constraint it was blamed for. Raising the ceiling is free in
+         both directions that matter: the sampled-voice ceiling (VOICE_MAX_SEC) is derived from the SLOWEST
+         tempo, since that is where an 8-column vine is longest, so a faster maximum only makes notes shorter;
+         and the column-gain GC window is derived from stepDur() rather than fixed. Nothing the game assigns
+         comes near it - FAMOUS_TEMPO tops out at 156 - and tests/tempo-fixes.test.mjs asserts exactly that. -->
+    <label class="ctl">Tempo <input type="range" id="tempo" min="40" max="180" value="108" /></label>
     <!-- Groove moved here from the transport row (2026-08-15): it is a set-once CHOICE like Voice and Tempo,
          not a verb, and at 157px it was over half the pinned band's width on a phone — wrapping the row and
          costing 49px of height that the field needs. Every reference to it is by id, so nothing else moved. -->
@@ -1185,7 +1195,11 @@ const GROOVES=[                                                  // swing 0 = st
  // `meter` says which presets they belong to; an untagged groove is one of the five above.
  {name:"💃 Waltz",   bpm:144, swing:0,    drums:"waltz", bass:"waltz", comp:"oompah", bar:6, cycle:24, meter:["3/4"],
   prog:[ch(36,[60,64,67]),ch(45,[57,60,64]),ch(38,[57,62,65]),ch(43,[55,59,62])]},   // C  Am Dm G
- {name:"🍀 Jig",     bpm:138, swing:0,    drums:"jig",   bass:"jig",   comp:"pulse",  bar:6, cycle:24, meter:["6/8"],
+ // 180 quarter-BPM is 120 dotted quarters a minute - a textbook session jig. It first shipped at 138,
+ // which is 92 a minute and a lilt; I blamed the 170 ceiling for that and was wrong, since 170 gives 113
+ // a minute and would have been a real jig too. The ceiling went up because 120 is the round number a
+ // jig is actually described by, not because 138 was forced on anyone.
+ {name:"🍀 Jig",     bpm:180, swing:0,    drums:"jig",   bass:"jig",   comp:"pulse",  bar:6, cycle:24, meter:["6/8"],
   prog:[ch(36,[60,64,67]),ch(41,[53,57,60]),ch(36,[60,64,67]),ch(43,[55,59,62])]},   // C  F  C  G
 ];
 // Which grooves can play against a meter. An untagged groove is one of the five that shipped, and its

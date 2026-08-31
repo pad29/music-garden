@@ -872,3 +872,38 @@ which is the evidence that adding two dances altered none of them; its `chordHol
 legacy transcription as the literal 4 columns the shipped renderer hardcoded.
 
 ---
+
+## 2026-08-29 — the tempo ceiling, and a jig that can reach its own name (branch `real-jig`)
+
+**No design review.** The question had already been reviewed: finding 6 of the dance-grooves round
+established that raising the cap is free, and the owner asked for it directly. What remained was
+arithmetic and measurement, which is not what a paper review is good at.
+
+`max="170"` → `max="180"`, and the Jig groove 138 → 180. **Measured from the engine, not asserted:** the
+jig's bar is exactly 1000 ms — 60 bars a minute, **120 dotted quarters a minute**, which is a textbook
+session jig — and 180 does not clamp when `applyGrooveTempo` assigns it.
+
+**Why raising the ceiling is free, now pinned by a test rather than left in a comment.** The sampled-voice
+ceiling `VOICE_MAX_SEC` is governed by the SLOWEST tempo, because that is where an 8-column vine is
+longest: 8 columns at 40 BPM is 6 s against a 7 s ceiling. A faster *maximum* only ever makes notes
+shorter. **Lowering the minimum is the change that would threaten it**, and the new test says so in those
+terms so the next person to touch the dial reads the right warning.
+
+**I overstated the case for my own change, and caught it before committing.** The first version of the
+comment said "at 170 the Jig groove could only ever be a lilt". That is false: 170 gives **113** dotted
+quarters a minute, which is a perfectly respectable jig. The ceiling bought the last 6%; **the reason the
+jig shipped as a lilt was choosing 138 when 170 was already available** — I blamed the dial for my own
+number. Both the markup comment and the groove comment now say that plainly, because a comment asserting
+a constraint that does not exist is the same failure this log records against labels.
+
+**And the test caught an arithmetic slip in the test.** My first helper computed the pulse rate as
+`bpm/3`, which reported the finished jig as 60 a minute and failed. The dial is quarter-BPM and a column
+is an EIGHTH, so a quarter is two columns and the field runs at `2*tempo` columns a minute — the rate is
+`2*tempo/3`. Same family of slip as the one that made the jig slow in the first place, in the opposite
+direction, which is why the helper now spells the derivation out.
+
+**Suite: 132 pass** (129 → 132). No hard invariant touched; the pre-existing "every tempo the game assigns
+survives the slider's range unclamped" test now covers 180 against a 180 ceiling, so a future groove that
+overshoots the dial fails loudly.
+
+---
