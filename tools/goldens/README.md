@@ -87,7 +87,22 @@ Each F–I entry records its own `setup` line, so it can be re-captured without 
 do not, and were reconstructed from the code when this note was written; if you re-capture one, record
 its setup the same way.
 
-**What no golden here can do:** they pin *scheduling* — which rows and lanes fire, when, and for how
-long. They are completely blind to *drawing*. A barline rendered at the wrong column, a bar numbered
-wrong, or a beat mark at the wrong density is invisible to all nine. Use unit tests and a browser for
-that, and do not let a green golden run stand in for looking at the field.
+**What no golden here can do.** Two blind spots, and the second was found the hard way.
+
+They pin *scheduling* — which rows and lanes fire, when, and for how long — and are completely blind to
+*drawing*. A barline at the wrong column, a bar numbered wrong, or a beat mark at the wrong density is
+invisible to all nine. Use unit tests and a browser for that, and never let a green golden run stand in
+for looking at the field.
+
+**They are also blind to what the BAND plays** (recorded 2026-08-29). `D_jam` looks like groove coverage
+and is not: the wrapper records only that `jamStep` was called, and a groove's own `kick`/`snare`/`hat`
+go straight onto `jamBus` rather than through `DRUMS[i].play`, which is the only percussion intercepted
+here. That is why every `D_jam` step reads `drums: []` while a drum kit is audibly playing. **A complete
+rewrite of the groove content re-captures `D_jam` byte-identically** — a design review caught a proposed
+refactor that would have quadrupled every groove's chord cycle and offered this golden as the proof it
+was safe. It would have agreed.
+
+What the band plays is pinned instead by `tests/groove.test.mjs`, against `groovePlan` — a pure function
+extracted for exactly that reason, with a verbatim copy of the shipped logic kept in the test as its
+oracle. **The general lesson, which is the same one `meterLayout` taught:** when a golden cannot see a
+thing, the answer is to make that thing a pure function and compare it, not to trust the golden harder.

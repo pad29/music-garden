@@ -716,3 +716,107 @@ owner finds it annoying in play; the bar being *visible* now at least makes the 
 **Suite: 65 pass** (this branch is off `main`, so the meter tests are not on it).
 
 ---
+
+## 2026-08-29 — dance grooves: design review (branch `dance-grooves`)
+
+`gpt-5.6-sol`, fresh thread, read-only. **Verdict: REPLACE**, and it was right on the two that mattered.
+I verified every citation against source before accepting.
+
+**1. [Critical] My central arithmetic claim was false by a factor of four.** The design proposed
+generalising `jamStep` as `bar=G.bar||16`, `cyc=bar*prog`, `seg=cyc/prog`, and asserted in its own comment
+that "for them cyc IS 16". For the shipped grooves `bar*prog` is **64**, and `seg` is **16**. GPT's worked
+cases all check out: at step 4 today's code plays chord 1 and the proposal plays chord 0; at step 16 today
+wraps to chord 0 and the proposal advances to chord 1; lo-fi's hand-placed `s===6` bass never fires at
+step 22 because `s` is 22 rather than 6. It also caught a second half I had missed entirely: **`seg`
+already exists and is a duration in SECONDS** (`stepDur()*4/1000`), fed to the chord bed as its sustain —
+redefining it as a column count would have held every chord for ~15 seconds.
+
+**2. [Critical] The test I offered as proof could not have caught it.** I wrote "`D_jam` must come back
+byte-identical, and that is the test." GPT: *"The capture wrapper logs only that `jamStep(s,t)` was
+called... Consequently, the proposed broken 64-column cycle can re-capture `D_jam` byte-identically. The
+design's principal test is a false oracle."* Verified: the band's `kick`/`snare`/`hat` go straight onto
+`jamBus`, never through `DRUMS[i].play`, which is the only percussion the wrapper intercepts — which is
+why **every `D_jam` step reads `drums: []` while a drum kit is audibly playing**, and why its own `_note`
+concedes its value is "the fact that every step fires a jamStep". This is a re-run of the trap §17 already
+records about goldens, and GPT's remedy — a pure event planner — is the same move `meterLayout` made.
+
+**3. [High] My "prerequisite" was not one.** I argued that because 16 mod 6 = 4 and adding 6 preserves the
+remainder, whole waltz bars are unreachable, so `＋ patch` had to change. **A bar loop range already loops
+`[0,12)` cleanly in a 16-column 3/4 field** — two whole waltz bars, today, with the UI that shipped
+yesterday. GPT also showed my completion formula ignored the pickup: with origin 1 the last bar starts at
+13 and needs 3 columns, not 2, because completion is `(COLS − origin) mod barCols`. The button change is
+dropped. *One correction to GPT's evidence, which I checked rather than passed on:* its suggested `＋ room`
+route does not work as stated — `modelInsertTime` calls `shiftMeterOrigin`, so inserting at column 0 drags
+the origin along and the final bar stays partial. Its second route needed nothing at all and is the one
+that kills the framing.
+
+**4. [High] Two containment holes I had claimed were closed.** `resetTransient` clears Jam and meter but
+**never touches `grooveIdx`**, so a Studio waltz walks into a level and a scripted `runReveal({jam:true})`
+would play on a 6-column band at the waltz's BPM. And filtering the groove list is a **migration, not a
+validation**: since meter shipped, real 3/4 songs have been saving whichever groove was selected anyway,
+because `currentSong` always writes `grooveIdx` — so `groove:0 + meter:"3/4"` is the normal saved state,
+not a hostile link. **My own addition:** `setMeter` calls `syncMeterUI()` *outside* its `tx("meter",…)`
+while `grooveIdx` is part of `snapState`, so any groove fallback there would journal the meter change
+without the groove change and undo would restore a mismatched pair.
+
+**5. [Medium] Two label-over-behaviour errors, the failure this log names twice.** I described a "brushed
+hat" — `hat` is a 40 ms 8 kHz high-pass noise tick, not a brush. And the legacy chord bed fires
+unconditionally at `s%4===0`, so a new `comp` style must be a mutually exclusive branch or the old bed
+sounds underneath it, putting a chord on waltz beat 1 and contradicting "bass alone".
+
+**6. [Medium] My tempo justification was empty.** I claimed raising the 170 cap for a session-speed jig
+would threaten `conditionSample`'s ceiling. It cannot: that ceiling is derived from the SLOWEST tempo, and
+raising the maximum makes notes shorter. `FAMOUS_TEMPO`'s largest value is 156. So the jig being capped
+into a lilt is self-inflicted, not constrained — neither GPT nor my design said so; I add it.
+
+**7. [Critical, process] Eight line numbers in my "verified from source" table were wrong.** `snapState`
+is 1338 not 1207; `time.groove` 5485 not 5176; packed slot 4 is 5542 not 5201; the tempo input 634 not
+585; `stepDur` 5133 not 5142; plus three more. **Cause: I reused numbers from before the meter work added
+~300 lines and shifted the file.** Line numbers are only valid against a stated commit, and mine were from
+`d434ece` while the design claimed `5cf8417`. The table also omitted the one fact that would have
+prevented finding 5's error: `jamStep` has exactly one caller and its argument is the field COLUMN, which
+jumps backwards at a loop wrap — so my appeal to the goldens' monotonic `bookTick` was a red herring,
+since `jamStep` never sees `bookTick`.
+
+**On my own self-assessment:** all four items in the design's "where this is most likely wrong" were real
+and none was the weak point. GPT: *"Section 8 entirely misses this real weak point."* The weak point was
+that **the proof and the test were wrong in the same direction** — the arithmetic offered for checking did
+not hold, and the golden offered to catch that could not have.
+
+**Cost:** in=1,284,813 (cached 1,168,384) / out=19,475, Sol, fresh thread.
+
+### Same day — PR 1 of 2: the jam seam, behaviour-preserving
+
+Split at GPT's seam, which I agree with: a behaviour-preserving refactor first, dance content second.
+
+`groovePlan(G, step)` is now a pure function returning `{s, chordCols, chord, bass[], kick[], snare[],
+hat[]}`, and `jamStep` is a thin renderer that books it. `cycle` defaults to 16 — **the groove's whole
+repeat in columns, deliberately not `bar*prog`**, with the reason written at the call site so the next
+reader cannot make the same mistake. Kick/snare/hat are lists because lo-fi fires kick from two separate
+conditions; they never coincide, and a list means nothing depends on that.
+
+**`tests/groove.test.mjs` holds a VERBATIM copy of the logic as it shipped, as its oracle**, and asserts
+`groovePlan` matches it for all five grooves across steps −32..64 — 485 comparisons. Demonstrated that the
+oracle bites: the rejected `bar*prog` derivation differs at 5 of 7 sampled steps, so the test would have
+failed immediately where `D_jam` passed. Also pinned separately are the details a refactor is most likely
+to smooth away: lo-fi's hand-placed `s===6`/`s===14` bass against its silent modulo twins, doo-wop's
+octave bounce, folk's root–fifth, and that the gentle kit has no hats at all while the steady kit has one
+on every column.
+
+**Verified end to end in a browser, not just in the harness:** intercepting the real `bTone`, `kick` and
+`noiseHit` and replaying every groove over steps −8..40 gives **240 comparisons, zero mismatches** — so
+the renderer wiring is proved, not only the planner. *A probe artifact worth recording:* the first attempt
+intercepted `snare` and `hat` directly and reported 96 false mismatches, because both are `const` arrows
+and are not on `window` — exactly the gotcha the goldens README already documents for `stepDur`. Both
+funnel through `noiseHit`, which is a declaration; distinguishing them by duration (0.16 vs 0.04) makes
+the probe honest. Real playback under the transport still plays the band, at the right ratios.
+
+**Documentation corrected, because it claimed coverage it does not have:** `D_jam`'s `_note` and the
+goldens README now state plainly that no golden here can see what the band plays, with the general lesson
+spelled out — when a golden cannot see a thing, make that thing a pure function and compare it, rather
+than trusting the golden harder.
+
+**Suite: 113 pass** (102 → 113). No groove DATA changed in this PR; a test asserts every shipped groove
+still declares no `cycle`.
+
+---

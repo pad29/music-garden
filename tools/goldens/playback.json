@@ -266,7 +266,7 @@
   ]
  },
  "D_jam": {
-  "_note": "Jam adds a groove-dependent shuffle to odd steps that 'at' does NOT model, so D's beforeDriftMs is model mismatch, not jitter. Its value is the step CONTENT and the fact that every step fires a jamStep.",
+  "_note": "Jam adds a groove-dependent shuffle to odd steps that 'at' does NOT model, so D's beforeDriftMs is model mismatch, not jitter. WHAT THIS CASE DOES NOT COVER, corrected 2026-08-29: it does not see the BAND. The capture wrapper records only that jamStep was called, and the groove's own kick/snare/hat are booked straight onto jamBus rather than through DRUMS[i].play, which is the only percussion it intercepts — which is why every step below reads drums:[] even though the band is playing one. A complete rewrite of what the groove plays would re-capture this case byte-identically. Its real value is narrow and worth stating plainly: that jam fires on every step, and that the melody content is unchanged under jam. What the band PLAYS is pinned by tests/groove.test.mjs, which holds a verbatim copy of the shipped logic as its oracle, because a pure function can be compared and a golden of this shape cannot.",
   "tempo": 120,
   "cols": 16,
   "swing": 0,
