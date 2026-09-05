@@ -1209,14 +1209,27 @@ function grooveFits(G, presetId){
   if(!G) return false;
   if(G.meter) return G.meter.indexOf(presetId)>=0;
   return !presetId || presetId==="4/4" || presetId==="2/4"; }
+// What the picker OFFERS, which is wider than what fits musically. With no meter there is no bar drawn
+// for a dance to contradict and no lesson to confuse, so the Studio offers every groove — the owner's call,
+// 2026-09-05: "I don't see why not."
+// **Gated on the STUDIO and not on the absence of a meter, which is the whole subtlety: every shipped
+// level is unmetered too.** `grooveFits(G, null)` is exactly the test resetTransient uses to decide
+// whether a groove may follow the player out of the Studio, so widening THAT would have put a waltz into
+// a package, where a scripted runReveal({jam:true}) plays its reveal on whatever band is selected. That
+// hole was found by a design review and closed a week ago; this keeps it closed.
+function inStudio(){ return typeof currentPkg!=="undefined" && currentPkg==="studio"; }
+function grooveOffered(G, presetId){
+  return grooveFits(G, presetId) || (!presetId && !!G.meter && inStudio()); }
 function grooveChoices(){ const m=(typeof meterAt==="function")?meterAt():null, id=m?m.preset:null;
-  const out=[]; GROOVES.forEach((G,i)=>{ if(grooveFits(G,id)) out.push({G,i}); }); return out; }
+  const out=[]; GROOVES.forEach((G,i)=>{ if(grooveOffered(G,id)) out.push({G,i}); }); return out; }
 // Move to a groove that can play the current meter, and report whether anything moved. Callers that
 // journal MUST run this inside their own transaction — grooveIdx is part of snapState, so normalising
 // outside one lets undo restore the old meter beside the new groove.
 function normalizeGroove(){
   const m=(typeof meterAt==="function")?meterAt():null;
-  if(grooveFits(GROOVES[grooveIdx], m?m.preset:null)) return false;
+  // OFFERED, not merely fits: a waltz chosen in the free Studio must survive the next redraw, while the
+  // same waltz must still be moved off the moment the player walks into a package.
+  if(grooveOffered(GROOVES[grooveIdx], m?m.preset:null)) return false;
   const c=grooveChoices(); if(!c.length) return false;
   grooveIdx=c[0].i; return true; }
 let grooveIdx=0, jamMode=false, jamStartedPlayback=false;

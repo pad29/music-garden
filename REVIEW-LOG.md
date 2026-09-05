@@ -907,3 +907,31 @@ survives the slider's range unclamped" test now covers 180 against a 180 ceiling
 overshoots the dial fails loudly.
 
 ---
+
+### Same day — the free Studio may have any band (owner, 2026-09-05)
+
+Owner: *"when no meter is selected (the free no bars setting), do you think we should make jig and waltz
+available in the list of grooves? I don't see why not."* Agreed on the instinct — with no bars drawn
+there is nothing for a dance to contradict — **but "unmetered" is the wrong predicate, and the reason is
+one this branch already paid for.**
+
+**Every shipped level is unmetered too.** `grooveFits(G, null)` is precisely the test `resetTransient`
+uses to decide whether a groove may follow the player out of the Studio, so widening it would have put a
+waltz into a package, where a scripted `runReveal({jam:true})` plays its reveal on whatever band is
+selected — reopening the exact containment hole the design review found and this branch closed a week ago.
+
+So the offer is gated on the **Studio**, not on the absence of a meter. `grooveOffered(G, preset)` =
+`grooveFits(...) || (!preset && G.meter && inStudio())`, and `normalizeGroove` consults the same predicate
+so a dance chosen in the free Studio survives a redraw there while still being moved off on the way into a
+package. Verified in a browser: **7 grooves in the free Studio, 5 in `stepping-stones`, 7 again on
+return**, with the level's groove asserted to carry neither `bar` nor `meter` nor a dance tempo.
+
+**One honest wrinkle, measured rather than assumed.** A dance cycle is 24 columns and the default field is
+16, so unmetered a waltz reaches only 3 of its 4 chords and restarts mid-cycle. That is not new — it is
+equally true with a 3/4 meter set — and unmetered `＋ patch` adds 16, so 16 → 32 → **48** gives two whole
+cycles and all four chords. Worth knowing rather than fixing: nothing here should round `COLS` on the
+player's behalf.
+
+**Suite: 137 pass** (132 → 137), the five new ones all about the gate and what it keeps out.
+
+---

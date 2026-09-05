@@ -233,3 +233,72 @@ test("the voice ceiling is governed by the slowest tempo, not the fastest", () =
     `an ${g.MAX_VINE}-column vine at ${slowest} BPM is ${longestVine(slowest)}s and must fit inside VOICE_MAX_SEC=${g.VOICE_MAX_SEC}`);
   assert.ok(longestVine(fastest) < g.VOICE_MAX_SEC, "…and the fast end has room to spare");
 });
+
+// ---------------------------------------------------------------- the free Studio may have any band
+
+// Owner, 2026-09-05: with no meter there is no bar drawn for a dance to contradict, so why shouldn't the
+// Studio offer one? Agreed — but gated on the STUDIO, not on the absence of a meter, because every
+// shipped level is unmetered too and `grooveFits(G, null)` is the guard that keeps a waltz out of them.
+const asStudio = fn => { const was = g.currentPkg; g.currentPkg = "studio"; try { return fn(); } finally { g.currentPkg = was; } };
+const asLevel  = fn => { const was = g.currentPkg; g.currentPkg = "stepping-stones"; try { return fn(); } finally { g.currentPkg = was; } };
+
+test("with no meter, the Studio offers the dances too", () => {
+  unmeter();
+  asStudio(() => {
+    const names = g.grooveChoices().map(x => x.G.name);
+    assert.strictEqual(names.length, g.GROOVES.length, "every band is on the list");
+    assert.ok(names.some(n => /Waltz/.test(n)));
+    assert.ok(names.some(n => /Jig/.test(n)));
+  });
+});
+
+// The whole reason this is gated on the Studio rather than on `!meter`.
+test("a level offers only the shipped five, however free it is", () => {
+  unmeter();
+  asLevel(() => {
+    const choices = g.grooveChoices();
+    assert.strictEqual(choices.length, 5, "a package must never be offered a dance");
+    for (const { G } of choices) assert.ok(!G.meter, `${G.name} is untagged`);
+  });
+});
+
+test("a dance chosen in the free Studio survives a redraw there, and is moved off on the way out", () => {
+  unmeter();
+  const waltzIdx = g.GROOVES.indexOf(waltz);
+  asStudio(() => {
+    g.grooveIdx = waltzIdx;
+    assert.strictEqual(g.normalizeGroove(), false, "it may stay while we are in the Studio");
+    assert.strictEqual(g.grooveIdx, waltzIdx);
+  });
+  // …and now the player walks into a package, which is where resetTransient runs
+  asLevel(() => {
+    assert.strictEqual(g.normalizeGroove(), true, "the waltz cannot come along");
+    assert.ok(g.grooveIdx < 5, "…and lands on one the level can actually use");
+  });
+  g.grooveIdx = 0;
+});
+
+// A scripted reveal applies the selected groove's BPM. This is the concrete harm the gate prevents.
+test("a jam reveal in a package can never inherit a six-column band", () => {
+  unmeter();
+  asStudio(() => { g.grooveIdx = g.GROOVES.indexOf(jig); });
+  asLevel(() => {
+    g.normalizeGroove();
+    const G = g.GROOVES[g.grooveIdx];
+    assert.ok(!G.bar, `${G.name} must not be written in bars — a reveal would play it`);
+    assert.ok(!G.meter, "…and must not be a dance");
+    assert.ok(G.bpm <= 170, "…nor drag a level's reveal to a dance tempo");
+  });
+  g.grooveIdx = 0;
+});
+
+test("with a meter set, the offer is still exactly what can play it", () => {
+  asStudio(() => {
+    meter("3/4");
+    assert.deepEqual(g.grooveChoices().map(x => x.G.comp), ["oompah"], "a waltz meter takes the waltz alone");
+    meter("4/4");
+    assert.strictEqual(g.grooveChoices().length, 5, "…and a march takes the shipped five");
+    for (const { G } of g.grooveChoices()) assert.ok(!G.meter);
+  });
+  unmeter();
+});
