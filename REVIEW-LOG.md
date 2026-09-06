@@ -1142,3 +1142,61 @@ reach a state the game cannot is testing something the game does not do.
 step (c) owns the run store, its transitions, and the completion gates. Quest presentation fails closed
 in the meantime: no companion, no inherited controls, no inherited palette, and `scopeCatalogId()`
 returns null so a quest cannot appear in the dev package selector or the map.
+
+### Same day — C1: proving a pass was heard, not merely started
+
+First of three commits in step (c). GPT authored the design, Claude reviewed it.
+
+**The shipped signal means the opposite of what the requirement needs.** `ev.played` is assigned inside
+`start()` at `index.html:5478`, before a single column has sounded — it means *playback was started from
+column 0*, which is right for a listen-goal and useless for `QUESTS.md` Q6, which needs proof that one
+revision of one version traversed its whole span **at audible time**. Three traps sit between the two:
+
+- the pump books **ahead** of the audio clock by a lookahead window, so the loop wrap at
+  `bookCol=loopA()` happens before the player has heard the end of that pass;
+- `paintDue()` admits entries at `ct+0.02` and coalesces a backlog to the **last** due entry, so it can
+  credit ~20 ms early and can miss a wrap entirely under a delayed drain;
+- `stop()` is called both by the natural end and by the player pressing ■, so it cannot tell a finished
+  pass from an abandoned one.
+
+Claude's first proposal — watch the painted column go backwards — walked into all three. GPT's demolition
+of it is the useful artifact; the replacement rides the audio clock on its own queue, and the reducer
+proves traversal from the **actual booking sequence** rather than trusting a `fullPass` flag handed in by
+the transport. A pass counts only if bookings arrive as `0,1,2…end-1` with no gap, duplicate or reversal.
+
+**Claude raised three objections; the measurement killed the one it called a risk.** The worry was that
+persisting a whole run on every edit transaction would block the scheduler's thread, since the shipped
+autosave is debounced at 1.5 s for that reason. Measured instead of argued: a run holding **two** full
+16-column v3 songs is **2 KB** and writes in **0.01 ms**; the whole 12-run registry at the design's cap
+is 26 KB and 0.04 ms. Three orders of magnitude below a frame. The assumption was that a v3 song is
+bulky; it is about a kilobyte, because the field is small by design. Objection withdrawn, along with the
+"owner decision" that had been invented on top of it.
+
+The two surviving objections were applied as amendments rather than another review round: `questPhaseIndex`
+returns a sentinel instead of throwing, because `curStage()` sits on the paint path and a throw there is a
+crash rather than a wrong answer; and step (d) must surface the selected-range case, since `start()` seeds
+`step = rangeOn() ? loopA() : …` — so with bars 8–16 selected no pass can ever begin at 0, and *Offer*
+would tell a child to play it through when they just did.
+
+**A TDZ crash caught by the suite, not by reading.** Installing the reducer above `pump()` put
+`let completionState` after the load-time `setPlayScope()` call that now cancels sessions — every test
+died with *"Cannot access 'completionState' before initialization"*. Moved above the scope model. Worth
+recording because the failure was total and instant; a lazier wiring would have failed only in quest scope,
+months later.
+
+**Every test paired with the mutation it must catch.** Five mutations, each caught by the test that names
+it: borrowing paintDue's 20 ms allowance; trusting the last column instead of the traversal; coalescing the
+backlog as painting does; letting a mid-span start begin a tracked pass; and treating a retime as a wrap.
+
+**The goldens.** `playback.json` is not read by any test — `meter.test.mjs` only mentions it in a comment —
+so a green suite proves nothing about scheduling. `G_loop_wrap` was re-captured on the current build:
+columns `0..15` then `0,1,2,3`, `tickBeforeWrap` 720, `tickAtWrappedZero` **768**, monotonic across the
+wrap, exactly as its `_ASSERT` records. The other eight were not re-captured, and `_RESULT_2026_09_06`
+says so.
+
+**Browser proof of the whole point, in two numbers:** at 900 ms into a pass the pump had already booked
+past the boundary and **zero** receipts existed; the receipt arrived at `3.061` against a boundary of
+`3.000` — one pump tick after audible time, never before.
+
+**Suite: 178 pass** (166 → 178). No quest entry point ships; `onCompletePass` is a null sink until C2
+gives a receipt somewhere to go.

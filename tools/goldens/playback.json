@@ -474,8 +474,8 @@
   "stepDurMs": 277.7778,
   "setup": "melody rows/cols/lengths: (0,0,1) (2,2,2) (4,6,4) (7,11,1) (1,14,2); drums off, jam off, straight, loop off",
   "driftMs": {
-   "maxMs": 0.0,
-   "meanMs": 0.0
+   "maxMs": 0,
+   "meanMs": 0
   },
   "steps": [
    {
@@ -487,7 +487,7 @@
      0
     ],
     "drums": [],
-    "at": 0.0
+    "at": 0
    },
    {
     "step": 2,
@@ -498,7 +498,7 @@
      0.55556
     ],
     "drums": [],
-    "at": 2.0
+    "at": 2
    },
    {
     "step": 6,
@@ -509,7 +509,7 @@
      1.11111
     ],
     "drums": [],
-    "at": 6.0
+    "at": 6
    },
    {
     "step": 11,
@@ -520,7 +520,7 @@
      0
     ],
     "drums": [],
-    "at": 11.0
+    "at": 11
    },
    {
     "step": 14,
@@ -531,7 +531,7 @@
      0.55556
     ],
     "drums": [],
-    "at": 14.0
+    "at": 14
    }
   ],
   "_ASSERT": "A one-column note holds 0 (the `durationTicks>TICKS_PER_COL` gate keeps every shipped flat note on the old byte-identical path); two columns hold 0.55556s and four hold 1.11111s, i.e. exactly durationTicks/48 * stepDur. If a meter or snap change ever makes a column worth a different number of ticks, these three numbers move and this golden says so."
@@ -639,8 +639,8 @@
   "stepDurMs": 277.7778,
   "setup": "modelSetCols(12); melody (0,0,1) (3,3,1) (5,7,2) (2,11,1); drums off, jam off, loop off",
   "driftMs": {
-   "maxMs": 0.0,
-   "meanMs": 0.0
+   "maxMs": 0,
+   "meanMs": 0
   },
   "steps": [
    {
@@ -652,7 +652,7 @@
      0
     ],
     "drums": [],
-    "at": 0.0
+    "at": 0
    },
    {
     "step": 3,
@@ -663,7 +663,7 @@
      0
     ],
     "drums": [],
-    "at": 3.0
+    "at": 3
    },
    {
     "step": 7,
@@ -674,7 +674,7 @@
      0.55556
     ],
     "drums": [],
-    "at": 7.0
+    "at": 7
    },
    {
     "step": 11,
@@ -685,7 +685,7 @@
      0
     ],
     "drums": [],
-    "at": 11.0
+    "at": 11
    }
   ],
   "bookedColumns": [
@@ -715,82 +715,83 @@
   "setup": "playFamous(\"swinglow\") from the Studio, voice=musicbox; booking is synchronous",
   "voices": [
    {
-    "at": 0.0,
+    "at": 0,
     "freq": 659.26,
     "hold": 0.68182
    },
    {
-    "at": 2.0,
+    "at": 2,
     "freq": 523.25,
     "hold": 2.04545
    },
    {
-    "at": 8.0,
+    "at": 8,
     "freq": 659.26,
     "hold": 0.68182
    },
    {
-    "at": 10.0,
+    "at": 10,
     "freq": 523.25,
     "hold": 1.02273
    },
    {
-    "at": 13.0,
+    "at": 13,
     "freq": 523.25,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 14.0,
-    "freq": 440.0,
-    "hold": 0.0
+    "at": 14,
+    "freq": 440,
+    "hold": 0
    },
    {
-    "at": 15.0,
-    "freq": 392.0,
+    "at": 15,
+    "freq": 392,
     "hold": 1.02273
    },
    {
-    "at": 18.0,
+    "at": 18,
     "freq": 523.25,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 19.0,
+    "at": 19,
     "freq": 523.25,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 20.0,
+    "at": 20,
     "freq": 523.25,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 21.0,
+    "at": 21,
     "freq": 523.25,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 22.0,
+    "at": 22,
     "freq": 659.26,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 23.0,
+    "at": 23,
     "freq": 659.26,
-    "hold": 0.0
+    "hold": 0
    },
    {
-    "at": 24.0,
+    "at": 24,
     "freq": 783.99,
     "hold": 0.68182
    },
    {
-    "at": 26.0,
+    "at": 26,
     "freq": 783.99,
     "hold": 2.04545
    }
   ],
   "_ASSERT": "15 notes, 7 of them held. The holds are 0.68182s (2 columns), 1.02273s (3) and 2.04545s (6) at 340.909ms/column — Swing Low is the first FAMOUS entry authored with real note lengths, so this golden is the only place the length data in frozen, score-validated content is pinned against the engine that plays it."
  },
- "_RESULT_2026_08_28": "Four cases added BEFORE any meter/bars code, per EDITOR-DESIGN §17's 'new goldens come first, not after'. They close the four blind spots that section named: held notes, loop boundaries, a field length that is not 16, and the famous sweep. Captured on the CURRENT lookahead engine, so drift is 0.00ms by construction and 'driftMs' is a property of the capture rather than a pass condition. THE CAPTURE WRAPPER ITSELF WAS BROKEN and is fixed in README.md: it dropped playRow's third argument, so it would have neutralised the very holds F exists to pin. Honest limit: all nine cases pin SCHEDULING, never DRAWING — a barline rendered at the wrong column is invisible to every one of them. RE-RUN the same day, after the meter/bars slice rewrote the loop wrap from `bookCol>=COLS` to a two-sided `bookCol<loopA()||bookCol>=loopB()`: F, G and H re-captured CONTENT-IDENTICAL, monotonic bookTick across the wrap included — which is the evidence that with no bar range set the two-sided test reduces exactly to the one it replaced. This is the first time these four caught anything, and what they caught was that nothing had changed, which is precisely what they were added to be able to say."
+ "_RESULT_2026_08_28": "Four cases added BEFORE any meter/bars code, per EDITOR-DESIGN §17's 'new goldens come first, not after'. They close the four blind spots that section named: held notes, loop boundaries, a field length that is not 16, and the famous sweep. Captured on the CURRENT lookahead engine, so drift is 0.00ms by construction and 'driftMs' is a property of the capture rather than a pass condition. THE CAPTURE WRAPPER ITSELF WAS BROKEN and is fixed in README.md: it dropped playRow's third argument, so it would have neutralised the very holds F exists to pin. Honest limit: all nine cases pin SCHEDULING, never DRAWING — a barline rendered at the wrong column is invisible to every one of them. RE-RUN the same day, after the meter/bars slice rewrote the loop wrap from `bookCol>=COLS` to a two-sided `bookCol<loopA()||bookCol>=loopB()`: F, G and H re-captured CONTENT-IDENTICAL, monotonic bookTick across the wrap included — which is the evidence that with no bar range set the two-sided test reduces exactly to the one it replaced. This is the first time these four caught anything, and what they caught was that nothing had changed, which is precisely what they were added to be able to say.",
+ "_RESULT_2026_09_06": "Quest completion sessions (C1) added three completionDispatch calls inside pump(): a boundary record before the loop-wrap/endTime branch, a book record after bookColumn, and a clock drain before paintDue. None of them touch playRow, jamStep, bookColumn, voice or DRUMS[].play, and none reorder an audio call. G_loop_wrap was re-captured on the current build to prove it: columns 0..15 then 0,1,2,3, tickBeforeWrap 720, tickAtWrappedZero 768, ticks monotonic across the wrap — identical to the assertion recorded here. The other eight cases were NOT re-captured; the change is confined to the wrap and the booking loop, and G is the case that pins both. Re-capture the full nine if the scheduler itself is touched."
 }

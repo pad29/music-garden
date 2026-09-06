@@ -4793,6 +4793,122 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
 PACKAGES.studio = { id:"studio", name:"Studio", region:"first-garden", requires:[], hidden:true,
   levels:[ { name:"Studio", studio:true, loop:true, drums:true, unlock:["jam","fuse","drums","more"], hint:()=>hintMelody() } ] };
 function widestPalette(){ const c=progress.colors||[]; return (c.includes("F")&&c.includes("B"))?"diatonic":"pentatonic"; }
+// ---------- Completion sessions: proving a pass was HEARD, not merely started ----------
+// `ev.played` means "playback was STARTED from column 0" — it is set inside start() before a single
+// column has sounded, which is fine for a listen-goal and useless for QUESTS.md Q6, which needs proof
+// that one revision of one version traversed its whole span at AUDIBLE time. Three traps sit between:
+//   • the pump books AHEAD of the audio clock by a lookahead window, so the loop wrap at
+//     `bookCol=loopA()` happens before the player has heard the end of the pass;
+//   • paintDue() admits entries at ct+0.02 and coalesces a backlog to the LAST due entry, so it can
+//     credit ~20ms early and can miss a wrap entirely under a delayed drain;
+//   • stop() is called both by the natural end and by the player pressing ■, so it cannot tell a
+//     finished pass from an abandoned one.
+// So completion rides the audio clock on its own queue, and the reducer proves traversal from the
+// ACTUAL booking sequence rather than trusting a fullPass flag handed in by the transport.
+const completionInit = () => ({ active:null, queue:[] });
+
+function drainCompletionQueue(S, now){
+  if(!Number.isFinite(now)) return { state:S, effects:[] };
+  const kept=[], effects=[];
+  for(const e of S.queue){
+    if(e.at<=now){                       // no allowance: paintDue's +0.02 is a DISPLAY tolerance, not an audible one
+      if(e.fullPass && S.active && S.active.sessionId===e.sessionId)
+        effects.push({ type:"completePass", runId:S.active.runId, versionId:e.versionId,
+                       editRev:e.editRev, sessionId:e.sessionId, purpose:S.active.purpose });
+    } else kept.push(e);                 // and no coalescing: three overdue wraps emit three receipts
+  }
+  return { state:{ active:S.active, queue:kept }, effects };
+}
+
+// Pure. Reads no globals, no DOM, no transport, no clock — every identity and time arrives in the event.
+function reduceCompletionSession(state, ev){
+  const S = state || completionInit();
+  const none = { state:S, effects:[] };
+  if(!ev || typeof ev!=="object") return none;
+
+  if(ev.type==="start"){
+    const ok = typeof ev.sessionId==="string" && ev.sessionId
+      && typeof ev.runId==="string" && ev.runId
+      && typeof ev.versionId==="string" && ev.versionId
+      && Number.isInteger(ev.editRev) && ev.editRev>=0
+      && (ev.purpose==="play" || ev.purpose==="audition")
+      && ev.span && Number.isInteger(ev.span.start) && Number.isInteger(ev.span.end)
+      && ev.span.start===0 && ev.span.end>ev.span.start;
+    if(!ok) return { state:completionInit(), effects:[] };   // an invalid start leaves NO session: fail closed
+    return { state:{ active:{ sessionId:ev.sessionId, runId:ev.runId, versionId:ev.versionId,
+      editRev:ev.editRev, purpose:ev.purpose, span:{ start:ev.span.start, end:ev.span.end },
+      acceptingBooks:true, pass:{ firstPending:true, tracking:false, nextCol:null } }, queue:[] }, effects:[] };
+  }
+
+  if(ev.type==="cancel"){
+    if(ev.sessionId && (!S.active || S.active.sessionId!==ev.sessionId)) return none;
+    return { state:completionInit(), effects:[] };
+  }
+
+  // Retiming anchors the next unbooked tick at its old scheduled time and leaves booked timestamps
+  // alone, so it cannot make or break a pass. Explicit, and pinned by a test, so nobody "fixes" it.
+  if(ev.type==="retime") return none;
+
+  const A=S.active;
+  if(!A || ev.sessionId!==A.sessionId) return ev.type==="clock" ? drainCompletionQueue(S, ev.now) : none;
+
+  if(ev.type==="book"){
+    if(!A.acceptingBooks || !Number.isInteger(ev.col)) return none;
+    const p=A.pass; let pass;
+    if(p.firstPending){
+      // A pass counts only if it BEGINS at the span's first column: a cursor start or a bar range
+      // beginning anywhere else is a partial listen, however far it then runs.
+      pass = ev.col===A.span.start ? { firstPending:false, tracking:true, nextCol:ev.col+1 }
+                                   : { firstPending:false, tracking:false, nextCol:null };
+    } else if(p.tracking){
+      pass = (ev.col===p.nextCol && ev.col<A.span.end) ? { firstPending:false, tracking:true, nextCol:ev.col+1 }
+                                                       : { firstPending:false, tracking:false, nextCol:null };
+    } else return none;                  // already broken; nothing to do until the next boundary
+    return { state:{ active:Object.assign({},A,{pass}), queue:S.queue }, effects:[] };
+  }
+
+  if(ev.type==="boundary"){
+    if(!Number.isFinite(ev.at)) return none;
+    const fullPass = !!(A.pass.tracking && A.pass.nextCol===A.span.end);
+    const entry={ at:ev.at, sessionId:A.sessionId, versionId:A.versionId, editRev:A.editRev, fullPass };
+    // A loop rearms for another candidate pass; a non-looping boundary is the last one this session sees.
+    const pass = ev.loops ? { firstPending:true, tracking:false, nextCol:null } : A.pass;
+    return { state:{ active:Object.assign({},A,{ acceptingBooks:!!ev.loops, pass }),
+                     queue:S.queue.concat([entry]) }, effects:[] };
+  }
+
+  if(ev.type==="clock") return drainCompletionQueue(S, ev.now);
+  return none;
+}
+
+// ---- the impure shell around it: one state cell, one dispatch, one cancel ----
+let completionState=completionInit(), completionSeq=0;
+let onCompletePass=null;                 // C2 installs the QuestRun sink; until then a receipt has nowhere to go
+function completionDispatch(ev){
+  const r=reduceCompletionSession(completionState, ev);
+  completionState=r.state;
+  for(const fx of r.effects) if(fx.type==="completePass" && onCompletePass) onCompletePass(fx);
+}
+function cancelCompletionSession(reason){ completionDispatch({ type:"cancel", reason:reason||"unspecified" }); }
+// Returns the new session id, or null when evidence must fail closed — which is every package and
+// Studio play, since only a quest has a run to credit.
+function beginCompletionSession(opts){
+  cancelCompletionSession("replace");
+  if(!isQuestScope()) return null;
+  const run=QUEST_RUNS[activeScope.runId];
+  if(!run || run.status!=="active") return null;
+  const versionId=(opts&&opts.versionId)||run.draft;
+  const v=run.versions&&run.versions[versionId];
+  if(!v || !v.span || v.span.start!==0 || v.span.end!==COLS) return null;   // the live span must be the stored one
+  // C2 adds the full live-document/stored-song comparison once the run store is real; the span check
+  // is what C1 can honestly assert with a stub registry.
+  const sessionId="cs"+(++completionSeq)+"."+Date.now();
+  completionDispatch({ type:"start", sessionId, runId:activeScope.runId, versionId,
+    editRev:v.editRev, purpose:(opts&&opts.purpose)||"play", span:{ start:0, end:COLS } });
+  return sessionId;
+}
+const activeCompletionSessionId = () => completionState.active && completionState.active.sessionId;
+
 // ---------- The play scope: one authoritative runtime identity ----------
 // `currentPkg` used to be identity, progress key, toolbox key and control gate at once, and `LEVELS`
 // was a second mutable global that could disagree with it. A quest can be neither: as a package id it
@@ -4802,6 +4918,7 @@ function widestPalette(){ const c=progress.colors||[]; return (c.includes("F")&&
 let activeScope=null;   // initialised below, once levelIdx/lessonStepIdx exist
 
 function setPlayScope(next, position){
+  cancelCompletionSession("navigation");   // evidence never crosses a scope change
   const p=position||{};
   if(!next || typeof next!=="object") throw new Error("setPlayScope: no scope given");
   if(next.kind==="package"){
@@ -4926,7 +5043,7 @@ if(speakBtn) speakBtn.onclick=()=>{ speakOn=!speakOn; renderSpeak();
   saveUserSettings(); };                                     // an explicit toggle: the player chose this
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
-function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
+function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
@@ -5374,6 +5491,7 @@ function bookColumn(col,tk){
   } finally{ voiceBus=V; jamBus=J; drumBus=D; reverb=R; }     // ALWAYS restore: applyMix and every preview read these live
   colGains.push({when:t, g:[gv,gj,gd,gr]});
 }
+
 function pump(){
   clearTimeout(Transport.timer); Transport.timer=null;       // every caller re-arms through here — one chain, never N
   if(!playing) return;
@@ -5385,12 +5503,18 @@ function pump(){
     // bar. The `< loopA()` half is not redundant either: setting a range mid-playback leaves bookCol
     // outside it, and this snaps the next booking in rather than running to the end of the field.
     if(bookCol<loopA() || bookCol>=loopB()){
+      // The boundary is discovered at BOOKING time, which leads audible time by the lookahead — so it
+      // is only recorded here, with the timestamp it will become true at, never credited here.
+      completionDispatch({ type:"boundary", sessionId:activeCompletionSessionId(),
+                           at:tick2time(bookTick), loops:!!looping });
       if(!looping){ endTime=tick2time(bookTick); break; }     // the phantom column after the last
       bookCol=loopA();                                        // …to the START of the loop, not to the cursor
       CAM.yielded=false; }                                    // a wrap is a landmark — the camera comes back for it
     bookColumn(bookCol,bookTick);
+    completionDispatch({ type:"book", sessionId:activeCompletionSessionId(), col:bookCol });
     paintQ.push({col:bookCol, at:tick2time(bookTick)});       // UNSWUNG — today's picture, unchanged
     bookTick+=TICKS_PER_COL; bookCol++; }
+  completionDispatch({ type:"clock", now:ct });   // audible time — and before the stop() below, which cancels
   paintDue(ct);
   // This window must outlive the LONGEST note that can still be sounding: every voice connects through its
   // column's gains, so disconnecting them severs a note that is still ringing. It used to be a flat 4 seconds
@@ -5463,7 +5587,7 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } camStop(); }   // …and drop any camera tween: it cannot advance while hidden
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
-function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
+function start(playOpts){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   // ▶ starts at the cursor only if it was put there DELIBERATELY; otherwise at the loop's start. This replaces
   // 2d's `if(growPkg() && cursorCol!==0) setCursor(0)` walk-home, which is deleted rather than generalized:
   // that hack had ▶ DRAG the cursor to 0, so planting a seed and pressing 🌿 Grow afterwards grew whatever
@@ -5474,6 +5598,7 @@ function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers();
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on");
   CAM.yielded=false; camEnsure(step,{instant:true});          // ▶ is a deliberate act: take the wheel back and cut to the start
+  beginCompletionSession(playOpts);                           // quest scope only; every other scope gets null
   Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
   if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
   checkLevel();
@@ -5481,7 +5606,7 @@ function start(){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers();
   // on purpose would press ▶ and watch a goal simply not tick. Say why. AFTER checkLevel, which can clobber it.
   if(!fromTop && !ev.played && ((curStage().goals||[]).some(g=>g.play)))
     setStatus("▶ from the cursor 🔻 — this one only counts from the very beginning. Drag 🔻 back to the start and press ▶ again."); }
-function stop(){ playing=false; Transport.end();
+function stop(){ cancelCompletionSession("stop"); playing=false; Transport.end();
   playBtn.textContent="▶ Play"; playhead.classList.remove("on");
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
