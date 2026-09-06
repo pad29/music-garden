@@ -1378,35 +1378,64 @@ const barCols=()=>{ const P=meterPreset(); return P ? barTicks(P)/TICKS_PER_COL 
 //   segs  = the strip's chips, CLIPPED TO COLS. A 16-column waltz's last bar really is 4 columns wide, and
 //           an unclipped chip would push .scroller's scrollable area past the grid, desyncing the camera.
 //   marks = {c,kind} for both overlays AND the drum pad tint, so three renderers cannot disagree.
+// EVERY PULSE THE METER PUTS IN A TICK RANGE. Pure, in TICKS rather than columns, defined for NEGATIVE
+// ticks, and phased on the DOWNBEAT rather than on tick 0 — the three properties a count-in needs and
+// meterLayout could not offer, since it clips to `c>=0 && c<cols` and so cannot describe the region
+// before a song starts at all.
+//
+// **Phased on originTick, and that is the whole point.** A first draft of the count-in positioned its
+// clicks relative to transport tick zero while the bars are phased on the origin, which for a one-column
+// pickup counts you in exactly half a beat wrong — a count-in landing you on the wrong beat has no other
+// job to fail at. §17(4) made originTick mandatory for precisely this class of error; bar phase now has
+// ONE owner, and meterLayout below is a projection of it rather than a second opinion.
+function pulsesIn(m, fromTick, toTick){
+  const P=m && meterDef(m.preset); if(!P) return [];
+  const bt=barTicks(P), o=m.originTick||0;
+  const out=[];
+  // start at the bar CONTAINING fromTick — floor, so it is the bar at or before it even when negative
+  for(let i=Math.floor((fromTick-o)/bt); ; i++){
+    const barAt=o+i*bt;
+    if(barAt>=toTick) break;                                  // its beats are later still, so nothing is missed
+    if(barAt>=fromTick) out.push({tick:barAt, kind:"bar", bar:i+1});   // bar 1 starts at the origin
+    let t=0;
+    for(let k=0;k<P.beats.length-1;k++){ t+=P.beats[k];       // beat 1 IS the barline; emit 2..n
+      const at=barAt+t;
+      if(at>=fromTick && at<toTick) out.push({tick:at, kind:"beat", bar:i+1}); } }
+  return out;
+}
 function meterLayout(cols, m){
   const P=m && meterDef(m.preset); if(!P) return {segs:[], marks:[]};
   const bc=barTicks(P)/TICKS_PER_COL, oc=Math.round(m.originTick/TICKS_PER_COL);
-  const segs=[], marks=[];
   // The pickup is bar 0 and goes UNNUMBERED: a child counting "one" on the downbeat has to be right, and
   // a chip labelled "0" teaches the opposite. §17(4) makes originTick mandatory precisely because Moldau's
   // downbeat is at column 1 and Amazing Grace and Taps open with pickups — without an origin the barlines
   // are wrong even when the signature is right.
+  const segs=[];
   if(oc>0) segs.push({n:0, c0:0, cols:Math.min(oc,cols), pickup:true});
-  // Walk from one bar BEFORE the origin so a pickup shows the beats it actually contains, then clip at 0.
-  for(let c0=oc-bc, i=0; c0<cols; c0+=bc, i++){
-    if(c0>=0){ if(i>0) segs.push({n:i, c0, cols:Math.min(bc,cols-c0), partial:c0+bc>cols});
-               marks.push({c:c0, kind:"bar"}); }
-    let t=0;
-    for(let k=0;k<P.beats.length-1;k++){ t+=P.beats[k];        // beat 1 IS the barline; emit 2..n
-      const c=c0+t/TICKS_PER_COL; if(c>=0 && c<cols) marks.push({c, kind:"beat"}); } }
+  for(let c0=oc, i=1; c0<cols; c0+=bc, i++)
+    segs.push({n:i, c0, cols:Math.min(bc,cols-c0), partial:c0+bc>cols});
+  // …and the marks are simply the pulses of the field's own tick span, projected onto columns. Every
+  // preset's bar and beat lengths are whole multiples of TICKS_PER_COL, which is what makes that a
+  // division rather than a rounding — asserted rather than assumed, because 6/16 would break it.
+  const marks=pulsesIn(m, 0, cols*TICKS_PER_COL).map(u=>({c:u.tick/TICKS_PER_COL, kind:u.kind}));
   return {segs, marks};
 }
-// Which columns carry the pulse. Memoised because buildDrums asks once PER PAD — three lanes × COLS.
-let _tintKey=null, _tintSet=null;
-function beatColSet(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.originTick : "";
-  if(key!==_tintKey){ _tintKey=key; _tintSet = m ? new Set(meterLayout(COLS,m).marks.map(k=>k.c)) : null; }
-  return _tintSet; }
+// Which columns carry the pulse, AND which kind. Memoised because buildDrums asks once PER PAD — three
+// lanes × COLS — and a metronome will ask once per column inside the booking loop. A Map rather than a
+// Set because an accent needs to know a barline from a beat; `has` reads the same either way.
+let _tintKey=null, _tintMap=null;
+function beatColMap(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.originTick : "";
+  if(key!==_tintKey){ _tintKey=key;
+    _tintMap = m ? new Map(meterLayout(COLS,m).marks.map(k=>[k.c,k.kind])) : null; }
+  return _tintMap; }
+const beatColSet=beatColMap;                       // the old name, for anything that only asks `has`
+function pulseKindAt(c){ const t=beatColMap(); return t ? (t.get(c)||null) : null; }
 // The pads have tinted every 4th column since the rhythm packages shipped, and UNMETERED that stays
 // exactly, byte-identically true on every level. Metered, the tint follows the bar's own authored pulse —
 // because the Studio opens with drums ON, so melody beat marks every 2 columns beside a pad tint every 4
 // would put BOTH conventions on one screen, which is precisely what §17's first review round killed a
 // draft for. Only the Studio can set a meter, so no shipped level reaches the metered branch.
-const beatTintAt=c=>{ const s=beatColSet(); return s ? s.has(c) : c%4===0; };
+const beatTintAt=c=>{ const t=beatColMap(); return t ? t.has(c) : c%4===0; };
 // row for a pitch in the ACTIVE palette: exact match, else nearest (cross-palette songs snap for display only)
 function projRow(p){ let best=null,bd=Infinity;
   for(let r=0;r<ROWS;r++){ const d=Math.abs(MIDI[r]-p); if(d===0) return r; if(d<bd){ bd=d; best=r; } }
@@ -4842,7 +4871,7 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   // on this path redraws them. Measured leaking into `stepping-stones` straight from a 4/4 Studio: the
   // model came back unmetered while the picture stayed in 4/4, bars and all. This is the claim a design
   // review said resetTransient could not carry on its own, and it was right.
-  if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pad-tint memo is keyed on the meter
+  if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pulse memo is keyed on the meter
     syncMeterUI(); rebuildField(); }                               // controls + overlays, then the pads, which bake their tint at build time
   // …and the GROOVE, which is session-global and was walking straight through this quarantine: a Studio
   // waltz stayed selected into a level, where a scripted runReveal({jam:true}) would have played it on a
