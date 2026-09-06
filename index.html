@@ -2030,7 +2030,7 @@ function craftFromCells(list){                     // list: [{r,c}] — same col
           : stable ? "🏛️ Tower — smooth & open!" : "🌀 Wobbler — tense & clashy!");
   } else setStatus(`That's a <b>${m.name}</b> — already in your toolbox.`);
   bloom(cells[Math.min(...rows)][list[0].c], "💐");   // crafted pair/chord → bouquet
-  checkLevel(); saveProgress();
+  checkLevel(); saveActiveInventory();
 }
 function fusePick(){                               // Fuse pressed with a Scoop pick
   const ns=trayNotes();
@@ -4851,7 +4851,7 @@ function renderSpeak(){ if(!speakBtn) return; speakBtn.classList.toggle("on",spe
   const lb=document.getElementById("speakLabel"); if(lb) lb.textContent="Read aloud: "+(speakOn?"on":"off"); }
 if(speakBtn) speakBtn.onclick=()=>{ speakOn=!speakOn; renderSpeak();
   if(speakOn){ narrateReady=true; narrate(curStage().intro||""); } else stopSpeech();
-  progress.settings=progress.settings||{}; progress.settings.speak=speakOn; saveProgress(); };
+  saveUserSettings(); };                                     // an explicit toggle: the player chose this
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
 function resetTransient(){   // wipe playback/modes/grids/flags so a level or step starts clean
@@ -4898,12 +4898,12 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   showDrumArea(drumsOn); pitchArea.style.display="";
   looping=!!L.rhythm || !!L.loop; loopBtn.classList.toggle("on",looping);
   if(L.unlock && L.unlock.length) toast("🔓 Unlocked: "+L.unlock.map(featName).join(", "));
-  stepIdx=0; renderStage(); saveProgress(); renderWorld();
+  stepIdx=0; renderStage(); if(currentPkg!=="studio") savePackageProgress(); renderWorld();
   companionStageShown=friendStage(); syncCompanion(); greetRegionFriend();   // show this region's friend; greet new ones
   // entering the goal-less finale IS its completion moment (skipped when opening a shared song)
   if(!finaleQuiet && currentPkg!=="studio" && levelIdx===LEVELS.length-1 && !(curStage().goals||[]).length){
     const pp=pkgProg(currentPkg);
-    if((pp.done||0)<LEVELS.length){ pp.done=LEVELS.length; saveProgress(); renderWorld(true);
+    if((pp.done||0)<LEVELS.length){ pp.done=LEVELS.length; savePackageProgress(); renderWorld(true);
       showCongrats(currentPkg, L.power); checkEvolve(); } }
 }
 let finaleQuiet=false;   // suppress the finale power card when jumping to Free Play for a shared song
@@ -4991,8 +4991,9 @@ function stageComplete(){ confetti(); const L=LEVELS[levelIdx];
   checkEvolve();                                      // arc complete? companion evolves (deferred behind the card)
 }
 // "done" = levels COMPLETED in this package (maxLevel = levels reached) — drives the world strip
-function markLevelDone(){ const pp=pkgProg(currentPkg);
-  if((pp.done||0)<levelIdx+1){ pp.done=levelIdx+1; saveProgress(); renderWorld(true); } }
+function markLevelDone(){ if(currentPkg==="studio") return;   // no package to advance; B2 makes this a scope assertion
+  const pp=pkgProg(currentPkg);
+  if((pp.done||0)<levelIdx+1){ pp.done=levelIdx+1; savePackageProgress(); renderWorld(true); } }
 // power card: each completed level awards a named "power" (unlocks re-framed as abilities)
 const powoverlay=document.getElementById("powoverlay");
 function showPower(p){ document.getElementById("powem").textContent=p.em;
@@ -5139,7 +5140,7 @@ function compReact(){ if(!currentFriend()) return; const em=document.getElementB
 // greet a region's signature friend the first time you enter that region
 function greetRegionFriend(){ const reg=regionOf(currentPkg); if(reg==="first-garden"||!currentFriend()) return;
   progress.metRegions=progress.metRegions||[];
-  if(!progress.metRegions.includes(reg)){ progress.metRegions.push(reg); saveProgress();
+  if(!progress.metRegions.includes(reg)){ progress.metRegions.push(reg); commitProgress();
     toast("✨ A new friend joined your garden — "+currentFriend().name+"!"); } }
 function showCompPicker(){ const wrap=document.getElementById("compchoices"); wrap.innerHTML="";
   Object.keys(COMPANIONS).forEach(type=>{ const def=COMPANIONS[type];
@@ -5147,7 +5148,7 @@ function showCompPicker(){ const wrap=document.getElementById("compchoices"); wr
     b.innerHTML=`<div class="ce">${def.stages[0]}</div><div class="cn">${def.name}</div><div class="cevo">${def.stages.join(" → ")}</div>`;
     b.onclick=()=>pickCompanion(type); wrap.appendChild(b); });
   compoverlay.style.display="flex"; }
-function pickCompanion(type){ progress.companion={type}; saveProgress();
+function pickCompanion(type){ progress.companion={type}; commitProgress();
   companionStageShown=friendStage(); compoverlay.style.display="none"; syncCompanion();
   toast(COMPANIONS[type].name+" joined your garden! "+COMPANIONS[type].stages[0]);
   enterPlay(); }   // now that a buddy is chosen, the level is visible — start the narration here
@@ -5160,9 +5161,10 @@ nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
 // ---------- Playback ----------
 const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
 // A famous tune's tempo is a LOAN: it has to play (and ▶ replays the arrangement at it), but it is not
-// something the child chose. saveProgress fires on level completion, a voice change, the mixer, read-aloud —
-// so without this, watching Taps left the game stuck at 40 BPM on every reload. Holds the child's own tempo
-// until they set one themselves; every deliberate route below hands it back.
+// something the child chose. This once had to survive saveProgress firing on level completion and package
+// entry, which would otherwise leave the game stuck at Taps' 40 BPM on every reload; since the persistence
+// split only saveUserSettings() snapshots the dial, and only from an explicit change. The loan still governs
+// LIVE tempo, which is its own job. Holds the child's own tempo until they set one themselves.
 let tempoOnLoan=null;
 const playerTempo=()=>tempoOnLoan!==null ? tempoOnLoan : +tempoEl.value;
 // set the melody voice by id — retired ids fall back (synth pluck → its sampled successor the
@@ -5223,7 +5225,7 @@ function applyRegionInstrument(reg){
   const inst=REGION_INSTR[reg]; if(!inst||!INSTR_INFO[inst]) return;
   if(!instrUnlocked(inst)){
     progress.instruments.push(inst);
-    Store.set("progress",progress); scheduleCloud();          // persist even if no level gets saved this session
+    commitProgress();                                         // persist even if no level gets saved this session
     refreshVoices(); showInstrCard(inst);
   }
   setVoice(inst);
@@ -5442,8 +5444,8 @@ craftBtn.onclick=()=>{
   fuseField();                                                    // no pick: a lone 2–3-seed stack fuses in ONE press; an ambiguous field arms Scoop with a hint
 };
 tempoEl.oninput=()=>{ tempoOnLoan=null; Transport.retime(); };   // the child set it by hand: the loan is over
-tempoEl.addEventListener("change",saveProgress);
-instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveProgress(); });
+tempoEl.addEventListener("change",saveUserSettings);        // "change", not "input": a deliberate set, not a drag
+instrEl.addEventListener("change",()=>{ if(SAMPLED[instrEl.value]) loadSamples(instrEl.value); saveUserSettings(); });
 document.getElementById("clear").onclick=()=>{ tx("clear",()=>{ wipe(); if(drumsOn) wipeDrums(); }); checkLevel(); };   // one press = one undo step
 // A patch is a BAR when the song has one, and 16 steps when it does not (today's behaviour, untouched).
 const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(barCols());
@@ -5584,18 +5586,54 @@ hintBtn.onclick=()=>{ const st=curStage(); if(st.hint){ st.hint(); ev.played=fal
 // ---------- Persistence: one Store seam (localStorage now → cloud/Cognito later) ----------
 const Store={ get(k,def){ try{ const v=localStorage.getItem("mg_"+k); return v==null?def:JSON.parse(v); }catch(e){ return def; } },
   set(k,v){ try{ localStorage.setItem("mg_"+k, JSON.stringify(v)); }catch(e){} } };
-let progress = Object.assign({ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }, Store.get("progress",{}));
+let progress = Object.assign({ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 }, Store.get("progress",{}));
 if(!progress.packages || typeof progress.packages!=="object") progress.packages={};
 function pkgProg(id){ return progress.packages[id] || (progress.packages[id]={ level:0, maxLevel:0, completed:false }); }
-function saveProgress(){ if(currentPkg==="studio") return;   // the Studio is a transient sandbox — never persisted as the current package
-  progress.current=currentPkg; const pp=pkgProg(currentPkg);
-  pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
-  if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
-  if(currentPkg==="two-new-colors"){ progress.colors=["F","B"]; }   // persistent: the world has discovered F & B (future sandbox reads this)
-  pp.toolbox=toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()}));   // toolbox is now per-package (was global → leaked tools across lessons/palettes)
-  progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn};
+// saveProgress() used to do three unrelated jobs in one call: snapshot whatever was sitting in the
+// global controls, advance the current package, and serialise the lot. The snapshot was the dangerous
+// part. A control's live value is often something the GAME set — a package's entry default, a groove's
+// tempo, the Studio's unconditional guitar — not something the child chose, and because saveProgress
+// also fired on package entry and level completion, any of those could be laundered into
+// progress.settings as though they had chosen it. `tempoOnLoan` below is a scar from exactly that:
+// it exists to stop a famous tune's 40 BPM surviving a reload. Split by owner instead.
+//
+// commitProgress() is the ONLY sink, and it never reads a live control — it serialises what is already
+// in `progress`. That is what makes the guarantee structural rather than a rule to remember.
+function commitProgress(){
+  delete progress.toolbox;              // vestigial root bag from the pre-2026-06-20 global design; nothing reads it
   progress.updatedAt=Date.now();
   Store.set("progress", progress); scheduleCloud(); }
+
+// The ONLY function that snapshots the settings controls. Call it from an explicit player action and
+// NOWHERE else — not a render, not a scope entry, not applyRegionInstrument or setVoice, not a groove
+// or a famous-tune tempo loan, not song loading, not a package save.
+function saveUserSettings(){
+  progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn};
+  commitProgress(); }
+
+function savePlayerName(name){ progress.name=name; commitProgress(); }
+
+// B1-only. B2 replaces this with requirePackageId() off the authoritative play scope; until that lands,
+// currentPkg is still the only identity there is. Throws rather than returning quietly: a package-only
+// write reached from the Studio is a bug, and the old early return is what hid it.
+function requireCurrentPackageIdB1(){
+  if(currentPkg==="studio" || !PACKAGES[currentPkg]) throw new Error("package scope required, got: "+currentPkg);
+  return currentPkg; }
+
+// Package advancement. Deliberately does NOT touch progress.settings — that is the whole point of the
+// split, and re-adding a snapshot here would reopen the laundering path.
+function savePackageProgress(){
+  const id=requireCurrentPackageIdB1();
+  progress.current=id; const pp=pkgProg(id);
+  pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
+  if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
+  if(id==="two-new-colors"){ progress.colors=["F","B"]; }    // persistent: the world has discovered F & B
+  pp.toolbox=toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()}));   // per-package, never global
+  commitProgress(); }
+
+// Crafting is not always package advancement. The Studio persists no inventory, exactly as before —
+// the old saveProgress returned early for it. B2 routes a quest tray through here too.
+function saveActiveInventory(){ if(currentPkg==="studio") return; savePackageProgress(); }
 // Load this package's OWN saved tools (or start empty). The toolbox no longer carries across packages — a fresh
 // lesson shouldn't open with another lesson's bag (and old pentatonic tools have the wrong notes in a diatonic package).
 function loadPkgToolbox(){ toolbox.length=0;
@@ -5798,9 +5836,9 @@ function syncMixSliders(){ mixVoice.value=Math.round(mix.voice*100); mixBand.val
   mixDrums.value=Math.round(mix.drums*100); mixLabels(); }
 document.getElementById("mixer").onclick=()=>{ syncMixSliders(); mixoverlay.style.display="flex"; };
 function onMixSlide(){ mix.voice=+mixVoice.value/100; mix.band=+mixBand.value/100; mix.drums=+mixDrums.value/100;
-  initAudio(); applyMix(); mixLabels(); saveProgress(); }
+  initAudio(); applyMix(); mixLabels(); saveUserSettings(); }
 [mixVoice,mixBand,mixDrums].forEach(s=>s.addEventListener("input",onMixSlide));
-document.getElementById("mixReset").onclick=()=>{ mix={voice:1,band:1,drums:1}; syncMixSliders(); applyMix(); saveProgress(); };
+document.getElementById("mixReset").onclick=()=>{ mix={voice:1,band:1,drums:1}; syncMixSliders(); applyMix(); saveUserSettings(); };
 document.getElementById("mixClose").onclick=()=>mixoverlay.style.display="none";
 mixoverlay.onclick=e=>{ if(e.target===mixoverlay) mixoverlay.style.display="none"; };
 
@@ -5810,7 +5848,7 @@ const homeBtn=document.getElementById("home"), homeoverlay=document.getElementBy
 homeBtn.onclick=openHome;
 document.getElementById("homeclose").onclick=()=>homeoverlay.style.display="none";
 homeoverlay.onclick=e=>{ if(e.target===homeoverlay) homeoverlay.style.display="none"; };
-pname.oninput=()=>{ progress.name=pname.value.trim(); saveProgress(); updateTitle(); };
+pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
@@ -6151,7 +6189,7 @@ function updateGarden(){ gardenbed.innerHTML="";
     const f=document.createElement("span"); f.className="flower"; f.textContent=fl; gardenbed.appendChild(f); } }
 
 // restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
-if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, toolbox:[], settings:{}, updatedAt:0 }; }
+if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 }; }
 ensureInstruments();   // derive the unlocked-instrument set for saves that predate the gradual reveal
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
@@ -6192,7 +6230,7 @@ if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   // relock every instrument but keep all progress — entering each region replays its discovery
   // card, so the gradual reveal is testable without wiping a real save (?reset stays the big hammer)
   document.getElementById("devrelock").onclick=()=>{ progress.instruments=["musicbox"];
-    setVoice("musicbox"); refreshVoices(); Store.set("progress",progress); scheduleCloud();
+    setVoice("musicbox"); refreshVoices(); commitProgress();
     toast("🔒 Instruments relocked — enter a region to rediscover its voice"); };
   populateDevJump();                                  // populate both dropdowns (refreshes on package change)
 }

@@ -1031,3 +1031,63 @@ document agrees with `projectTracks(doc.tracks, paletteId, COLS)` on `grid`, `dr
 errors.
 
 **Suite: 147 pass** (137 → 147). No hard invariant touched.
+
+### Same day — B1: the persistence split, and a bug the codebase had already scarred over
+
+Step (b) of the quest sequence, first of two changes. GPT authored the design this round and Claude
+reviewed it — the reverse of the previous rounds. Two blocking findings came back, and the more
+interesting one is why this entry exists.
+
+**The design fixed a real bug and its fix would have shipped a worse one.** `saveProgress()` returned
+early for the Studio, so voice, tempo, mixer and read-aloud never persisted there — change your
+instrument in the Studio and it was gone on reload. The obvious fix is to let the Studio save its
+settings. But `applyRegionInstrument` calls `setVoice(inst)` at **5229, outside** the
+`if(!instrUnlocked(inst))` guard, so it is not a first-visit gift: **every** Studio entry forces the
+voice to guitar. Persist that and one visit to the Studio silently overwrites the player's instrument
+everywhere. The design named the hazard — *"the subsequent Studio render will now persist that
+default"* — and assigned it to browser testing rather than solving it.
+
+**The codebase had already been bitten by the same bug, in a different control, and patched the
+symptom.** The comment above `tempoOnLoan` says it outright: *"saveProgress fires on level completion,
+a voice change, the mixer, read-aloud — so without this, watching Taps left the game stuck at 40 BPM
+on every reload."* A famous tune's tempo is a loan, and a loan mechanism exists because a package save
+would otherwise launder it into `progress.settings`. That is the general bug; the tempo loan is one
+instance of it wearing a bandage.
+
+**The fix is a primitive, not a rule.** `commitProgress()` is the only sink and **never reads a live
+control** — it serialises what is already in `progress`. `saveUserSettings()` is the only function that
+samples the controls, and it is called from exactly four explicit player handlers (read-aloud, tempo
+`change`, instrument `change`, mixer). `savePackageProgress()` advances a package and deliberately does
+not touch settings. So `applyRegionInstrument`'s unconditional `setVoice` still changes the session's
+sound and cannot reach saved state, because nothing on that path samples anything. Claude proposed
+"persist only on explicit change"; GPT's separation of *commit* from *snapshot* is the better shape,
+because it removes the path rather than adding a rule someone has to remember.
+
+**Both halves verified in a browser, live state against stored state:**
+
+```
+fresh after ?reset                live musicbox   stored (unset)
+entered Studio                    live guitar     stored (unset)   ← regression prevented
+player explicitly picked musicbox live musicbox   stored musicbox  ← bug fixed
+re-entered Studio                 live guitar     stored musicbox  ← choice survives
+```
+
+and the laundering path with it: a programmatic tempo change followed by a package save leaves stored
+settings untouched, and the explicit choice survives a reload.
+
+**The second blocking finding was the design contradicting its own principle.** It forbids a second
+mutable package identity — *"there is no second variable with which the scope can disagree"* — then
+specified that a quest's `stepIdx` mirrors the QuestRun phase while the generic stage engine stays free
+to move it. Two writable sources for one fact. The revision resolves it structurally for B2: `stepIdx`
+becomes lesson-only `lessonStepIdx`, `currentStepIndex()` reads the run without mirroring, and lesson
+advancement asserts non-quest scope.
+
+**Suite: 156 pass** (147 → 156). The nine new persistence tests were mutation-tested: re-adding the
+settings snapshot to `savePackageProgress()` fails two of them. All 13 `saveProgress` call sites were
+migrated by intent, and the only surviving `Store.set("progress"` sites are the sink itself, cloud-pull
+installation, and `?reset` — the audit the design asks for. The vestigial root `progress.toolbox` is
+gone from both default literals and is deleted from any legacy profile on load; every
+`progress.packages[id].toolbox` is untouched.
+
+`currentPkg` survives this change on purpose. B2 replaces it, along with the temporary
+`requireCurrentPackageIdB1()` guard that exists only to make wrong calls loud in the meantime.

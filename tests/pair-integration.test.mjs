@@ -147,7 +147,7 @@ test("an unsorted saved pair survives persistence and still describes its real i
   g.levelIdx = 0;
   g.toolbox = [{ id: "temporary", offs: [0, 7], midis: [73, 60] }]; // C♯5/C4, deliberately descending
 
-  g.saveProgress();
+  g.savePackageProgress();   // package advancement owns the bag; settings are a separate owner now
   assert.deepEqual(g.progress.packages["twin-blooms"].toolbox, [{ offs: [0, 7], midis: [73, 60] }]);
 
   g.toolbox = [];
