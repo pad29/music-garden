@@ -975,8 +975,8 @@ function miniSVG(offs){
     +dots+`</svg>`;
 }
 
-let toolbox=[];          // array of {offs, midis} — PER-PACKAGE (reset on entering a different package; see loadPkgToolbox)
-let toolboxPkg=null;     // which package the current toolbox belongs to (cleared on a package switch, NOT between levels)
+let toolbox=[];          // array of {offs, midis} — PER-SCOPE (reloaded when the scope changes; see loadScopeToolbox)
+let toolboxOwner=null;   // scopeKey() of the bag we hold: pkg:<id>, studio, or quest:<runId>. Never global.
 let activeTool=null;     // {offs, midis} currently picked up
 
 // ---------- Audio (unchanged engine) ----------
@@ -1217,7 +1217,7 @@ function grooveFits(G, presetId){
 // whether a groove may follow the player out of the Studio, so widening THAT would have put a waltz into
 // a package, where a scripted runReveal({jam:true}) plays its reveal on whatever band is selected. That
 // hole was found by a design review and closed a week ago; this keeps it closed.
-function inStudio(){ return typeof currentPkg!=="undefined" && currentPkg==="studio"; }
+function inStudio(){ return isStudioScope(); }   // a quest shares the editor but never inherits Studio policy
 function grooveOffered(G, presetId){
   return grooveFits(G, presetId) || (!presetId && !!G.meter && inStudio()); }
 function grooveChoices(){ const m=(typeof meterAt==="function")?meterAt():null, id=m?m.preset:null;
@@ -1479,8 +1479,8 @@ function restoreSnapshot(json){ const s=JSON.parse(json);
   syncMeterUI();                             // …and the meter CONTROLS, or undo restores the picture while the select still reports the undone meter
   ev.played=false; scheduleAutosave(); syncUndoUI(); checkLevel(); updateGarden(); }
 // re-apply the current stage's per-cell decorations after any mid-stage rebuild (undo, time surgery)
-function applyStageDecor(){ if(typeof LEVELS==="undefined"||!LEVELS||!LEVELS[levelIdx]) return;
-  const L=LEVELS[levelIdx], st=curStage();
+function applyStageDecor(){ if(!activeScope||!currentLevel()) return;
+  const L=currentLevel(), st=curStage();
   setBeatGuide(!!st.beatGuide); setPhraseGuide(!!(L.phrase||st.phrase));
   setColorReveal(st.colors||L.colors||null); setMood(st.mood||L.mood||null); setMotifGuide(!!(st.motif||L.motif)); }
 function undoEdit(){ const e=journal.pop(); if(!e) return;
@@ -1553,7 +1553,7 @@ let autosaveT=null;
 function scheduleAutosave(){ clearTimeout(autosaveT); autosaveT=setTimeout(()=>{ try{
   const s=currentSong();
   if(!s.tracks[0].notes.length && !s.tracks[1].hits.length) return;      // nothing worth rescuing
-  Store.set("autosave",{ when:Date.now(), context:(typeof currentPkg!=="undefined"?currentPkg:null), song:s });
+  Store.set("autosave",{ when:Date.now(), context:(activeScope?scopeAutosaveContext():null), song:s });
 }catch(e){} },1500); }
 
 // ---------- Grid ----------
@@ -1862,7 +1862,7 @@ function renderVines(){ if(!vinesEl) return; vinesEl.innerHTML="";
 // held note could contradict. Which package TEACHES duration is parked in §17.
 let pull=null;
 const growPkg=()=>unlockedSet(levelIdx).has("grow");   // a package that TEACHES duration keeps the tool for the rest of itself
-const canGrow=()=>currentPkg==="studio" || growPkg() || !!(curStage()&&curStage().grow);
+const canGrow=()=>scopeFeatures().has("grow") || !!(curStage()&&curStage().grow);
 const growOn=()=>document.body.classList.contains("growing") && !trayMode && !activeTool;
 function vineMax(n){ const c=noteCol(n), r=projRow(n.pitch);
   let stop=Math.min(COLS, c+MAX_VINE);                              // a vine stops when it meets a seed on its OWN row —
@@ -2815,7 +2815,7 @@ function playFamous(id){ const f=id&&FAMOUS[id]; if(!f) return 0;
 // No dedicated button — the arrangement STAYS on the grid, so ▶ Play replays it like any tune.
 let pendingFamous=null;
 function revealFamous(id){ const f=id&&FAMOUS[id]; if(!f) return;
-  if((curStage().famous||LEVELS[levelIdx].famous)!==id) return;                   // navigated away before the reveal fired — skip
+  if((curStage().famous||currentLevel().famous)!==id) return;                   // navigated away before the reveal fired — skip
   const durMs=playFamous(id);                                                     // plant the chords+melody and play it once
   goalHint.innerHTML='🎧 <b>You built the famous one!</b> It\'s planted in your garden now — press <b>▶</b> to hear it again.';
   if(speakOn) famousTimers.push(setTimeout(()=>narrate(f.credit), durMs+900));    // voice the explanation ONCE, just after the song's first play settles
@@ -4793,18 +4793,90 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
 PACKAGES.studio = { id:"studio", name:"Studio", region:"first-garden", requires:[], hidden:true,
   levels:[ { name:"Studio", studio:true, loop:true, drums:true, unlock:["jam","fuse","drums","more"], hint:()=>hintMelody() } ] };
 function widestPalette(){ const c=progress.colors||[]; return (c.includes("F")&&c.includes("B"))?"diatonic":"pentatonic"; }
-let currentPkg="intro", LEVELS=PACKAGES[currentPkg].levels;   // LEVELS = current package's content
+// ---------- The play scope: one authoritative runtime identity ----------
+// `currentPkg` used to be identity, progress key, toolbox key and control gate at once, and `LEVELS`
+// was a second mutable global that could disagree with it. A quest can be neither: as a package id it
+// would write a quest tray into progress.packages and cloud-sync a quest slug; as "studio" nothing
+// would persist at all, killing resume. One frozen descriptor instead, assigned in exactly one place,
+// carrying identity AND stages together so they cannot drift.
+let activeScope=null;   // initialised below, once levelIdx/lessonStepIdx exist
+
+function setPlayScope(next, position){
+  const p=position||{};
+  if(!next || typeof next!=="object") throw new Error("setPlayScope: no scope given");
+  if(next.kind==="package"){
+    const id=next.packageId;
+    if(id==="studio" || !PACKAGES[id]) throw new Error("setPlayScope: not a package: "+id);
+    activeScope=Object.freeze({ kind:"package", packageId:id, stages:PACKAGES[id].levels });
+  } else if(next.kind==="studio"){
+    activeScope=Object.freeze({ kind:"studio", stages:PACKAGES.studio.levels });
+  } else if(next.kind==="quest"){
+    // The quest loader (step d) builds the envelope: ONE level whose steps are the phases, so the
+    // shipped indexed-stage engine is reused rather than duplicated.
+    if(!next.questId || !next.runId || !Array.isArray(next.stages) || !next.stages.length)
+      throw new Error("setPlayScope: incomplete quest identity");
+    activeScope=Object.freeze({ kind:"quest", questId:next.questId, runId:next.runId,
+      stages:next.stages, palette:next.palette||"pentatonic", features:next.features||[] });
+  } else throw new Error("setPlayScope: unknown scope kind: "+next.kind);
+  levelIdx = Math.max(0, Math.min(p.levelIdx||0, activeScope.stages.length-1));
+  lessonStepIdx = isQuestScope() ? 0 : (p.stepIdx||0);   // quests read their phase from the run
+  return activeScope;
+}
+
+const activeStages    = () => activeScope && activeScope.stages;
+const currentLevel    = () => activeStages()[levelIdx];
+const isPackageScope  = () => !!activeScope && activeScope.kind==="package";
+const isStudioScope   = () => !!activeScope && activeScope.kind==="studio";
+const isQuestScope    = () => !!activeScope && activeScope.kind==="quest";
+const activePackageId = () => isPackageScope() ? activeScope.packageId : null;
+function requirePackageId(){ const id=activePackageId();
+  if(!id) throw new Error("package scope required, got: "+(activeScope&&activeScope.kind));
+  return id; }
+// Dev UI and the map still think in catalog terms; nothing else may.
+const scopeCatalogId  = () => isPackageScope() ? activeScope.packageId : (isStudioScope() ? "studio" : null);
+const scopeKey        = () => isPackageScope() ? "pkg:"+activeScope.packageId
+                            : isStudioScope()  ? "studio" : "quest:"+activeScope.runId;
+const scopeToolboxOwner = () => scopeKey();
+// The autosave context keeps its shipped values ("intro", "studio") so existing rescues still match.
+const scopeAutosaveContext = () => isQuestScope() ? "quest:"+activeScope.runId : scopeCatalogId();
+const scopeVisualRegion    = () => isQuestScope() ? "first-garden" : regionOf(scopeCatalogId());
+const scopeCompanionRegion = () => isQuestScope() ? null : regionOf(scopeCatalogId());
+function scopePalette(){
+  if(isStudioScope()) return widestPalette();          // computed, not written into PACKAGES.studio
+  if(isQuestScope())  return activeScope.palette;
+  const L=currentLevel();
+  return PACKAGES[activeScope.packageId].palette || (L&&L.palette) || "pentatonic"; }
+// Controls a scope may show. Packages accumulate them level by level; the Studio has everything;
+// a quest gets only what its workspace granted — never inherited from a prerequisite package.
+function scopeFeatures(){
+  if(isQuestScope()) return new Set(activeScope.features);
+  const s=unlockedSet(levelIdx); if(isStudioScope()) s.add("grow"); return s; }
+
+// Quest phase position belongs to the QuestRun, never to a second mutable index — the same drift this
+// scope exists to prevent. Step (c) owns this store; B2 needs only enough of it to be testable, and
+// ships no quest entry point.
+let QUEST_RUNS=Object.create(null);
+function questPhaseIndex(runId){ const r=QUEST_RUNS[runId]; return r&&r.phase|0 ? r.phase|0 : 0; }
+function currentStepIndex(){ return isQuestScope() ? questPhaseIndex(activeScope.runId) : lessonStepIdx; }
+
+// Both restoration paths (cloud apply and local bootstrap) resume the same way. progress.current is
+// the last PACKAGE to resume — never the Studio, never a quest; a resumable run is offered separately.
+function restoreLastPackage(){
+  const c=progress.current;
+  const id=(c && c!=="studio" && PACKAGES[c]) ? c : "intro";
+  setPlayScope({kind:"package", packageId:id}, {levelIdx:pkgProg(id).level||0}); }
 // unlock is DERIVED from the DAG, never stored. `requires` entries: id = AND; nested [id,id] = OR-group (future).
 const isPkgCompleted = id => !!(progress.packages[id] && progress.packages[id].completed);
 const reqMet = r => Array.isArray(r) ? r.some(isPkgCompleted) : isPkgCompleted(r);
 const isPkgUnlocked = id => ((PACKAGES[id]&&PACKAGES[id].requires)||[]).every(reqMet);
-function unlockedSet(idx){ const s=new Set();
-  for(let i=0;i<=idx && i<LEVELS.length;i++) (LEVELS[i].unlock||[]).forEach(f=>s.add(f)); return s; }
+function unlockedSet(idx){ const s=new Set(); const st=activeStages()||[];
+  for(let i=0;i<=idx && i<st.length;i++) (st[i].unlock||[]).forEach(f=>s.add(f)); return s; }
 function featName(f){ return {jam:"🎸 Jam — call the band",fuse:"🔨 Fuse & 🎒 Toolbox — bind voices",
   drums:"🥁 Drums — the heartbeat",more:"➕ More room — grow the garden",
   grow:"🌿 Grow & ✂ Trim — hold a note longer"}[f]||f; }
-let levelIdx=0, levelDone=false, stepIdx=0, stepDone=false;
-const curStage=()=>{ const L=LEVELS[levelIdx]; return L.steps?L.steps[stepIdx]:L; };   // a level is either single or a list of steps
+let levelIdx=0, levelDone=false, lessonStepIdx=0, stepDone=false;   // lessonStepIdx is package/Studio only
+setPlayScope({kind:"package", packageId:"intro"});                  // the first scope; bootstrap may replace it
+const curStage=()=>{ const L=currentLevel(); return L.steps?L.steps[currentStepIndex()]:L; };   // a level is either single or a list of steps
 const levelTitle=document.getElementById("levelTitle"), levelIntro=document.getElementById("levelIntro"),
   levelTeach=document.getElementById("levelTeach"),
   goalList=document.getElementById("goalList"), goalHint=document.getElementById("goalHint"),
@@ -4880,10 +4952,10 @@ function resetTransient(){   // wipe playback/modes/grids/flags so a level or st
   step=0; playhead.classList.remove("on"); camStop(); scroller.scrollLeft=0; camReseed(); CAM.yielded=false; litEls.length=0;
 }
 function renderLevel(){   // level-wide setup (unlocks, layout), then render its first stage
-  const L=LEVELS[levelIdx], U=unlockedSet(levelIdx);
-  document.body.dataset.region = PACKAGES[currentPkg].region || "first-garden";   // per-region land tint (bed + page edge via CSS vars)
-  setPalette(PACKAGES[currentPkg].palette || L.palette || "pentatonic");   // swap pitch set + rebuild grid (per-package palette)
-  if(currentPkg!==toolboxPkg) loadPkgToolbox();   // fresh toolbox per package — don't inherit another lesson's (or palette's) tools
+  const L=currentLevel(), U=scopeFeatures();
+  document.body.dataset.region = scopeVisualRegion();   // per-region land tint (bed + page edge via CSS vars)
+  setPalette(scopePalette());                          // swap pitch set + rebuild grid (per-scope palette)
+  if(scopeToolboxOwner()!==toolboxOwner) loadScopeToolbox();   // one bag per scope — never inherit another's tools
   carriedDrums=null;   // a fresh level never inherits a carried beat (only step→step within a level does)
   jamBtn.style.display=U.has("jam")?"":"none";
   grooveCtlEl.style.display=U.has("jam")?"":"none";   // the LABEL, not the select — groove now lives in the settings row, and hiding only the select would leave the word "Groove" behind
@@ -4898,22 +4970,22 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   showDrumArea(drumsOn); pitchArea.style.display="";
   looping=!!L.rhythm || !!L.loop; loopBtn.classList.toggle("on",looping);
   if(L.unlock && L.unlock.length) toast("🔓 Unlocked: "+L.unlock.map(featName).join(", "));
-  stepIdx=0; renderStage(); if(currentPkg!=="studio") savePackageProgress(); renderWorld();
+  renderStage(); if(isPackageScope()) savePackageProgress(); renderWorld();   // entry sets the step; render must not reset it, or quest resume dies
   companionStageShown=friendStage(); syncCompanion(); greetRegionFriend();   // show this region's friend; greet new ones
   // entering the goal-less finale IS its completion moment (skipped when opening a shared song)
-  if(!finaleQuiet && currentPkg!=="studio" && levelIdx===LEVELS.length-1 && !(curStage().goals||[]).length){
-    const pp=pkgProg(currentPkg);
-    if((pp.done||0)<LEVELS.length){ pp.done=LEVELS.length; savePackageProgress(); renderWorld(true);
-      showCongrats(currentPkg, L.power); checkEvolve(); } }
+  if(!finaleQuiet && isPackageScope() && levelIdx===activeStages().length-1 && !(curStage().goals||[]).length){
+    const id=requirePackageId(), pp=pkgProg(id), n=activeStages().length;
+    if((pp.done||0)<n){ pp.done=n; savePackageProgress(); renderWorld(true);
+      showCongrats(id, L.power); checkEvolve(); } }
 }
 let finaleQuiet=false;   // suppress the finale power card when jumping to Free Play for a shared song
 let songLoadToken=0;     // bumped by renderLevel — an async cloud song must not land in a level the player walked into
 function renderStage(){   // render the current step (or the whole level if it has no steps)
-  const L=LEVELS[levelIdx], st=curStage(), U=unlockedSet(levelIdx);
+  const L=currentLevel(), st=curStage(), U=scopeFeatures();
   resetTransient();
   levelDone=false; stepDone=false; nextBtn.style.display="none";
-  const tag=L.steps?` &nbsp;(${stepIdx+1}/${L.steps.length})`:"";
-  levelTitle.innerHTML=`Level ${levelIdx+1}/${LEVELS.length}: ${L.name}${tag}`;
+  const tag=L.steps?` &nbsp;(${currentStepIndex()+1}/${L.steps.length})`:"";
+  levelTitle.innerHTML=`Level ${levelIdx+1}/${activeStages().length}: ${L.name}${tag}`;
   levelIntro.textContent=st.intro||"";
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
@@ -4956,9 +5028,10 @@ function populateDevJump(){ const bar=document.getElementById("devbar"); if(!bar
   const pkgSel=document.getElementById("devpkg"), sel=document.getElementById("devjump");
   if(pkgSel && !pkgSel.options.length){ Object.keys(PACKAGES).forEach(id=>{    // package list is static — build once
     const o=document.createElement("option"); o.value=id; o.textContent=PACKAGES[id].name; pkgSel.appendChild(o); }); }
-  if(pkgSel) pkgSel.value=currentPkg;
-  if(devJumpPkg!==currentPkg){ devJumpPkg=currentPkg; sel.innerHTML="";
-    LEVELS.forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); }); }
+  const cat=scopeCatalogId();
+  if(pkgSel) pkgSel.value=cat||"";
+  if(devJumpPkg!==cat){ devJumpPkg=cat; sel.innerHTML="";
+    if(cat) (activeStages()||[]).forEach((L,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${i+1}. ${L.name}`; sel.appendChild(o); }); }
   sel.value=levelIdx;
 }
 function checkLevel(){
@@ -4974,12 +5047,12 @@ function checkLevel(){
   if(goals.length && all && !stepDone){ stepDone=true; stageComplete(); }
   updateGarden(); updateDensityMeter();
 }
-function stageComplete(){ confetti(); const L=LEVELS[levelIdx];
-  if(L.steps && stepIdx<L.steps.length-1){
+function stageComplete(){ confetti(); const L=currentLevel();
+  if(L.steps && !isQuestScope() && lessonStepIdx<L.steps.length-1){
     toast("🎉 Nice — next one!"); nextBtn.textContent="Next ▶"; nextBtn.style.display="";
     goalHint.innerHTML="Great! Press <b>Next ▶</b> to continue."; return; }
-  levelDone=true; markLevelDone();
-  if(levelIdx<LEVELS.length-1){
+  levelDone=true; markPackageLevelDone();
+  if(levelIdx<activeStages().length-1){
     nextBtn.textContent="Next level ▶"; nextBtn.style.display="";
     goalHint.innerHTML="Great work! Press <b>Next level ▶</b> when you're ready."
       +(L.intent?`<br><span class="intent">✨ ${L.intent}</span>`:""); }
@@ -4991,8 +5064,8 @@ function stageComplete(){ confetti(); const L=LEVELS[levelIdx];
   checkEvolve();                                      // arc complete? companion evolves (deferred behind the card)
 }
 // "done" = levels COMPLETED in this package (maxLevel = levels reached) — drives the world strip
-function markLevelDone(){ if(currentPkg==="studio") return;   // no package to advance; B2 makes this a scope assertion
-  const pp=pkgProg(currentPkg);
+function markPackageLevelDone(){ if(!isPackageScope()) return;   // the Studio and quests have no package to advance
+  const pp=pkgProg(requirePackageId());
   if((pp.done||0)<levelIdx+1){ pp.done=levelIdx+1; savePackageProgress(); renderWorld(true); } }
 // power card: each completed level awards a named "power" (unlocks re-framed as abilities)
 const powoverlay=document.getElementById("powoverlay");
@@ -5061,10 +5134,12 @@ function bigRise(em,delay){ setTimeout(()=>{ const d=document.createElement("div
 // world strip: the garden visibly "wakes" — one glowing emblem per completed level (persistent)
 const worldEl=document.getElementById("world");
 function renderWorld(popLast){ worldEl.innerHTML="";
-  if(!LEVELS.some(L=>L.power)){ worldEl.style.display="none"; return; }
+  if(!isPackageScope()){ worldEl.style.display="none"; return; }   // the power strip is a package artefact
+  const stages=PACKAGES[requirePackageId()].levels;
+  if(!stages.some(L=>L.power)){ worldEl.style.display="none"; return; }
   worldEl.style.display="flex";
-  const pp=pkgProg(currentPkg), done=pp.completed?LEVELS.length:(pp.done||0);
-  LEVELS.forEach((L,i)=>{ if(!L.power) return; const s=document.createElement("span");
+  const pp=pkgProg(requirePackageId()), done=pp.completed?stages.length:(pp.done||0);
+  stages.forEach((L,i)=>{ if(!L.power) return; const s=document.createElement("span");
     s.textContent=L.power.em; s.title=L.power.name+" — "+L.name;
     if(i<done){ s.classList.add("lit"); if(popLast&&i===done-1) s.classList.add("pop"); }
     worldEl.appendChild(s); });
@@ -5110,8 +5185,8 @@ function regionStage(reg){ const f=regionFriend(reg); if(!f) return 0; let s;
     s=arcEndsFor(L).filter(e=>done>=e).length; }                                       // intro: grow per arc
   else s=Object.keys(PACKAGES).filter(id=>regionOf(id)===reg && pkgFullyDone(id)).length;   // others: grow per completed package
   return Math.min(s, f.stages.length-1); }
-const currentFriend = () => regionFriend(regionOf(currentPkg));
-const friendStage   = () => regionStage(regionOf(currentPkg));
+const currentFriend = () => { const r=scopeCompanionRegion(); return r?regionFriend(r):null; };
+const friendStage   = () => { const r=scopeCompanionRegion(); return r?regionStage(r):0; };
 let companionStageShown=0, pendingEvolve=false;
 function syncCompanion(){ const card=document.getElementById("compcard"); if(!card) return;
   const f=currentFriend();
@@ -5122,7 +5197,7 @@ function syncCompanion(){ const card=document.getElementById("compcard"); if(!ca
   document.getElementById("compem").textContent=f.stages[stage];
   const dots=document.getElementById("compdots"); dots.innerHTML="";
   for(let i=0;i<f.stages.length;i++){ const d=document.createElement("span"); if(i<=stage) d.className="on"; dots.appendChild(d); }
-  const reg=regionOf(currentPkg);
+  const reg=scopeCompanionRegion(); if(!reg) return;
   document.getElementById("comphint").textContent = stage>=f.stages.length-1 ? f.name+" is fully grown! 🌟"
     : reg==="first-garden" ? "Grows as you complete each arc."
     : "Grows as you complete "+((REGIONS[reg]&&REGIONS[reg].name)||"this region")+" packages.";
@@ -5138,7 +5213,7 @@ function playEvolve(){ const f=currentFriend(); if(!f) return; syncCompanion();
 function compReact(){ if(!currentFriend()) return; const em=document.getElementById("compem"); if(!em) return;
   em.classList.remove("bob"); void em.offsetWidth; em.classList.add("bob"); }
 // greet a region's signature friend the first time you enter that region
-function greetRegionFriend(){ const reg=regionOf(currentPkg); if(reg==="first-garden"||!currentFriend()) return;
+function greetRegionFriend(){ const reg=scopeCompanionRegion(); if(!reg||reg==="first-garden"||!currentFriend()) return;
   progress.metRegions=progress.metRegions||[];
   if(!progress.metRegions.includes(reg)){ progress.metRegions.push(reg); commitProgress();
     toast("✨ A new friend joined your garden — "+currentFriend().name+"!"); } }
@@ -5152,11 +5227,12 @@ function pickCompanion(type){ progress.companion={type}; commitProgress();
   companionStageShown=friendStage(); compoverlay.style.display="none"; syncCompanion();
   toast(COMPANIONS[type].name+" joined your garden! "+COMPANIONS[type].stages[0]);
   enterPlay(); }   // now that a buddy is chosen, the level is visible — start the narration here
-nextBtn.onclick=()=>{ const L=LEVELS[levelIdx];
-  if(!levelDone && L.steps && stepIdx<L.steps.length-1){
-    carriedDrums = L.steps[stepIdx+1].carryDrums ? snapshotDrums() : null;
-    stepIdx++; renderStage(); }
-  else if(levelIdx<LEVELS.length-1){ levelIdx++; renderLevel(); } };
+nextBtn.onclick=()=>{ const L=currentLevel();
+  if(isQuestScope()) return;   // a quest phase advances through its run, never through the lesson engine
+  if(!levelDone && L.steps && lessonStepIdx<L.steps.length-1){
+    carriedDrums = L.steps[lessonStepIdx+1].carryDrums ? snapshotDrums() : null;
+    lessonStepIdx++; renderStage(); }
+  else if(levelIdx<activeStages().length-1){ levelIdx++; lessonStepIdx=0; renderLevel(); } };
 
 // ---------- Playback ----------
 const instrEl=document.getElementById("instr"), tempoEl=document.getElementById("tempo");
@@ -5466,7 +5542,7 @@ function setMeter(preset, originCols){
 // ONE function, and every path that can change the meter goes through it — setMeter, undo, song load,
 // level entry. Without it, undo restores the PICTURE while the select still reports the undone meter.
 function syncMeterUI(){ const m=meterAt(),
-      studio=(typeof currentPkg!=="undefined" && currentPkg==="studio");
+      studio=isStudioScope();
   if(meterCtlEl)  meterCtlEl.style.display = studio ? "" : "none";
   if(pickupCtlEl) pickupCtlEl.style.display = (studio && m) ? "" : "none";   // a pick-up is meaningless with no bars to come before
   if(meterEl)  meterEl.value  = m ? m.preset : "";
@@ -5613,33 +5689,27 @@ function saveUserSettings(){
 
 function savePlayerName(name){ progress.name=name; commitProgress(); }
 
-// B1-only. B2 replaces this with requirePackageId() off the authoritative play scope; until that lands,
-// currentPkg is still the only identity there is. Throws rather than returning quietly: a package-only
-// write reached from the Studio is a bug, and the old early return is what hid it.
-function requireCurrentPackageIdB1(){
-  if(currentPkg==="studio" || !PACKAGES[currentPkg]) throw new Error("package scope required, got: "+currentPkg);
-  return currentPkg; }
-
 // Package advancement. Deliberately does NOT touch progress.settings — that is the whole point of the
 // split, and re-adding a snapshot here would reopen the laundering path.
 function savePackageProgress(){
-  const id=requireCurrentPackageIdB1();
+  const id=requirePackageId();
   progress.current=id; const pp=pkgProg(id);
   pp.level=levelIdx; pp.maxLevel=Math.max(pp.maxLevel||0, levelIdx);
-  if(levelIdx>=LEVELS.length-1) pp.completed=true;           // reached the final level → package complete
+  if(levelIdx>=activeStages().length-1) pp.completed=true;   // reached the final level → package complete
   if(id==="two-new-colors"){ progress.colors=["F","B"]; }    // persistent: the world has discovered F & B
   pp.toolbox=toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()}));   // per-package, never global
   commitProgress(); }
 
 // Crafting is not always package advancement. The Studio persists no inventory, exactly as before —
 // the old saveProgress returned early for it. B2 routes a quest tray through here too.
-function saveActiveInventory(){ if(currentPkg==="studio") return; savePackageProgress(); }
+function saveActiveInventory(){ if(!isPackageScope()) return; savePackageProgress(); }   // B(c) routes a quest tray here
 // Load this package's OWN saved tools (or start empty). The toolbox no longer carries across packages — a fresh
 // lesson shouldn't open with another lesson's bag (and old pentatonic tools have the wrong notes in a diatonic package).
-function loadPkgToolbox(){ toolbox.length=0;
-  const saved = (currentPkg!=="studio" && progress.packages[currentPkg] && progress.packages[currentPkg].toolbox) || [];
+function loadScopeToolbox(){ toolbox.length=0;
+  const id=activePackageId();
+  const saved = (id && progress.packages[id] && progress.packages[id].toolbox) || [];
   if(Array.isArray(saved)) saved.forEach(t=>{ if(t&&t.offs&&t.midis) toolbox.push({offs:t.offs.slice(),midis:t.midis.slice()}); });
-  toolboxPkg=currentPkg; renderBag(); }
+  toolboxOwner=scopeToolboxOwner(); renderBag(); }
 
 // ---------- Save & Share (client-side, P2P links — no backend) ----------
 const saveBtn=document.getElementById("save"), shareBtn=document.getElementById("share"), melodiesBtn=document.getElementById("melodies");
@@ -5852,14 +5922,14 @@ pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
 function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); homeoverlay.style.display="flex"; }
-function openPkg(id,lvl){ currentPkg=id; LEVELS=PACKAGES[id].levels; levelIdx=Math.min(lvl||0,LEVELS.length-1);
+function openPkg(id,lvl){ setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
   homeoverlay.style.display="none";
   applyRegionInstrument(regionOf(id));   // region default voice + first-visit discovery card (before renderLevel so the card's narration wins)
   renderLevel(); }
 // Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
-function openStudio(){ PACKAGES.studio.levels[0].palette = widestPalette();
-  currentPkg="studio"; LEVELS=PACKAGES.studio.levels; levelIdx=0;
+function openStudio(){
+  setPlayScope({kind:"studio"});
   narrateReady=true;   // deliberate entry into the studio
   homeoverlay.style.display="none";
   applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
@@ -6007,7 +6077,7 @@ function renderPkgs(){ pkglist.innerHTML="";
       const fill=unlocked ? mixhex(reg.color,"#FFFFFF", done?.10:.28+(i%3)*.13)
                           : mixhex(mixhex(reg.color,"#8C8880",.58),"#FFFFFF",.34);
       const [cx,cy]=glyphSpot(poly,lblocks);              // fully inside its territory, clear of the label + friend
-      cells+=`<path d="${pathD(poly)}" class="mcell${unlocked?"":" mlocked"}${id===currentPkg?" mcur":""}" data-pkg="${id}" fill="${fill}" stroke="${mixhex(reg.color,"#3E3A39",.35)}"/>`;
+      cells+=`<path d="${pathD(poly)}" class="mcell${unlocked?"":" mlocked"}${id===activePackageId()?" mcur":""}" data-pkg="${id}" fill="${fill}" stroke="${mixhex(reg.color,"#3E3A39",.35)}"/>`;
       // ONE status glyph per territory — lock WINS over a stale completed flag (dev-jump saves can hold both):
       // 🔒 locked · ✓ complete · ▶ open to play
       if(!unlocked) marks+=`<text x="${cx.toFixed(1)}" y="${(cy+5).toFixed(1)}" class="memoji">🔒</text>`;
@@ -6130,9 +6200,8 @@ function applyProgress(){   // re-apply the progress object to the running game
   if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
-  toolbox.length=0; toolboxPkg=null;   // force a per-package toolbox reload on the renderLevel below
-  currentPkg=(progress.current&&PACKAGES[progress.current])?progress.current:"intro"; LEVELS=PACKAGES[currentPkg].levels;
-  levelIdx=Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
+  toolbox.length=0; toolboxOwner=null;   // force a per-scope toolbox reload on the renderLevel below
+  restoreLastPackage();
   renderBag(); renderLevel(); updateTitle(); }   // renderLevel now syncs the region companion
 // uploadLocal=true on sign-UP (push guest progress up); false on sign-IN/reload (pull cloud down).
 async function onSignedIn(uploadLocal){ const t=await freshToken(); if(!t){ cloudOn=false; renderAuth(); return; } cloudOn=true;
@@ -6195,10 +6264,8 @@ if(progress.settings && progress.settings.voice) setVoice(progress.settings.voic
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
-toolboxPkg=null;   // toolbox is per-package now; the renderLevel below loads the resumed package's own tools
-currentPkg = (progress.current && PACKAGES[progress.current]) ? progress.current : "intro";
-LEVELS = PACKAGES[currentPkg].levels;
-levelIdx = Math.min(pkgProg(currentPkg).level||0, LEVELS.length-1);
+toolboxOwner=null;   // per-scope now; the renderLevel below loads the resumed package's own tools
+restoreLastPackage();
 
 renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs the region companion
 
@@ -6215,7 +6282,7 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
       // The player can walk into a package while this request is still in flight, and renderLevel bumps
       // the token on every entry. Landing a stranger's song — and now its BARS — in the level they chose
       // to open is worse than dropping it, so drop it. Re-opening the Studio over them would be worse yet.
-      if(tok!==songLoadToken || currentPkg!=="studio") return;
+      if(tok!==songLoadToken || !isStudioScope()) return;
       if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; applySong(res.song); journalClear();   // the async load must not be the first undoable "edit"
         setStatus("🎵 A song from a friend — press <b>▶ Play</b> to listen, then remix it!"); toast("🎵 A song from a friend!"); }
       else toast("⚠️ That song link didn't work — it may have been deleted."); }); }
@@ -6225,7 +6292,7 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
 if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   document.getElementById("devbar").style.display="";
   // package selector jumps to any package's first level (ignores lock state — dev only)
-  document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==currentPkg) openPkg(e.target.value,0); };
+  document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==scopeCatalogId()) openPkg(e.target.value,0); };
   document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
   // relock every instrument but keep all progress — entering each region replays its discovery
   // card, so the gradual reveal is testable without wiping a real save (?reset stays the big hammer)

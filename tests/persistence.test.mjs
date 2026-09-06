@@ -67,27 +67,29 @@ test("a package save and a settings save touch disjoint parts of progress", () =
 
 test("package-only writes are refused outside a package, loudly", () => {
   const g = loadGame({ fresh: true });
-  g.currentPkg = "studio";
+  g.setPlayScope({ kind: "studio" });
 
   assert.throws(() => g.savePackageProgress(), /package scope required/,
-    "the old early return hid wrong calls; B1 makes them fail");
-  assert.throws(() => g.savePackageProgress.call(null), /package scope required/);
+    "the old early return hid wrong calls; these must fail instead");
 
-  g.currentPkg = "not-a-real-package";
-  assert.throws(() => g.savePackageProgress(), /package scope required/);
+  // And an invalid identity cannot even be entered — the setter is the only door.
+  assert.throws(() => g.setPlayScope({ kind: "package", packageId: "not-a-real-package" }), /not a package/);
+  assert.throws(() => g.setPlayScope({ kind: "package", packageId: "studio" }), /not a package/,
+    "the Studio must never masquerade as a package");
 });
 
 test("the Studio persists no inventory, and a package does", () => {
   const g = loadGame({ fresh: true });
-  const pkg = g.currentPkg;
+  const pkg = g.activePackageId();
   g.toolbox = [{ offs: [0, 4], midis: [60, 64] }];
 
-  g.currentPkg = "studio";
+  g.setPlayScope({ kind: "studio" });
   g.saveActiveInventory();
   assert.strictEqual(g.progress.packages.studio, undefined,
     "the Studio must never appear in progress.packages");
 
-  g.currentPkg = pkg;
+  g.setPlayScope({ kind: "package", packageId: pkg });
+  g.toolbox = [{ offs: [0, 4], midis: [60, 64] }];
   g.saveActiveInventory();
   assert.deepEqual(g.progress.packages[pkg].toolbox, [{ offs: [0, 4], midis: [60, 64] }]);
 });

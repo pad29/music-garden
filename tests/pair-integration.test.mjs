@@ -143,7 +143,7 @@ test("Twin Blooms goals recognize crafted and placed raw-width pairs", () => {
 
 test("an unsorted saved pair survives persistence and still describes its real interval", () => {
   const g = readyGame();
-  g.currentPkg = "twin-blooms";
+  g.setPlayScope({ kind: "package", packageId: "twin-blooms" });
   g.levelIdx = 0;
   g.toolbox = [{ id: "temporary", offs: [0, 7], midis: [73, 60] }]; // C♯5/C4, deliberately descending
 
@@ -151,7 +151,7 @@ test("an unsorted saved pair survives persistence and still describes its real i
   assert.deepEqual(g.progress.packages["twin-blooms"].toolbox, [{ offs: [0, 7], midis: [73, 60] }]);
 
   g.toolbox = [];
-  g.loadPkgToolbox();
+  g.loadScopeToolbox();   // one bag per scope now, not per package
   assert.deepEqual(g.toolbox, [{ offs: [0, 7], midis: [73, 60] }]);
   assert.strictEqual(g.pairKind(g.toolbox[0].midis), "open");
   assert.strictEqual(g.toolMeta(g.toolbox[0].offs, g.toolbox[0].midis).name, "Open pair");

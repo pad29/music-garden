@@ -239,8 +239,16 @@ test("the voice ceiling is governed by the slowest tempo, not the fastest", () =
 // Owner, 2026-09-05: with no meter there is no bar drawn for a dance to contradict, so why shouldn't the
 // Studio offer one? Agreed — but gated on the STUDIO, not on the absence of a meter, because every
 // shipped level is unmetered too and `grooveFits(G, null)` is the guard that keeps a waltz out of them.
-const asStudio = fn => { const was = g.currentPkg; g.currentPkg = "studio"; try { return fn(); } finally { g.currentPkg = was; } };
-const asLevel  = fn => { const was = g.currentPkg; g.currentPkg = "stepping-stones"; try { return fn(); } finally { g.currentPkg = was; } };
+// Scope is set through the one setter now — production code has no writable currentPkg, so a test
+// must not keep a back door to one.
+const inScope = (scope, fn) => {
+  const was = g.scopeCatalogId();
+  g.setPlayScope(scope);
+  try { return fn(); }
+  finally { g.setPlayScope(was === "studio" ? { kind: "studio" } : { kind: "package", packageId: was || "intro" }); }
+};
+const asStudio = fn => inScope({ kind: "studio" }, fn);
+const asLevel  = fn => inScope({ kind: "package", packageId: "stepping-stones" }, fn);
 
 test("with no meter, the Studio offers the dances too", () => {
   unmeter();

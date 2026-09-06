@@ -353,7 +353,7 @@ into the tray; copying must never establish shared mutable inventory.
 The first quest needs no crafted stamps but must use this workspace scope, so later cross-package
 quests need no architectural rewrite.
 
-**Reason:** The shipped toolbox is an owner-keyed scope (`toolboxPkg`, `loadPkgToolbox` at
+**Reason:** The shipped toolbox is an owner-keyed scope (`toolboxOwner`, `loadScopeToolbox` at
 `index.html:5577`), not a technical wall — Studio already proves a non-package scope exists. A quest
 becomes another scope key.
 

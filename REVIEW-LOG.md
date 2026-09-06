@@ -1091,3 +1091,54 @@ gone from both default literals and is deleted from any legacy profile on load; 
 
 `currentPkg` survives this change on purpose. B2 replaces it, along with the temporary
 `requireCurrentPackageIdB1()` guard that exists only to make wrong calls loud in the meantime.
+
+### Same day — B2: one authoritative play scope
+
+`currentPkg` and `LEVELS` are gone. Not aliased, not deprecated — removed, with 34 and 26 reads
+migrated to a single frozen descriptor assigned in exactly one place.
+
+**Why an additive scope would not have done.** The first draft kept `currentPkg` beside a new scope
+object, and the review's objection was that two mutable identities guarantee eventual drift. It is
+right, and the concrete damage was already visible: as `currentPkg="firefly-crossing"` a quest would
+write its tray into `progress.packages["firefly-crossing"].toolbox` and cloud-sync a quest slug — the
+per-package toolbox invariant breached through the back door — while as `"studio"` nothing would
+persist at all, killing resume. Neither default was safe, so the identity had to stop being a package
+id at all.
+
+**The same argument then caught the design contradicting itself.** It specified a quest's `stepIdx`
+as mirroring the QuestRun phase while leaving the generic stage engine free to move it — two writable
+sources for one fact, the very thing it forbade for `currentPkg`. Resolved structurally rather than by
+convention: `stepIdx` is now `lessonStepIdx` and is package/Studio only; `currentStepIndex()` READS
+the run in quest scope and never mirrors it back; the next-button path returns early for a quest, so
+the lesson engine cannot advance a phase. A test pins the asymmetry — moving `lessonStepIdx` in quest
+scope changes nothing, moving the run's phase changes `curStage()`, and the run is never written back.
+
+**The quest envelope reuses shipped machinery instead of duplicating it.** A quest is ONE level whose
+`steps` are its phases, so `levelIdx` is always 0 and the indexed-stage engine that already renders
+"Calm Reply, Bold Reply" renders phases too. No second renderer.
+
+**Two shipped defects fell out of the migration rather than being hunted.** `openStudio()` was
+mutating the shipped catalog — `PACKAGES.studio.levels[0].palette = widestPalette()` — to smuggle a
+value into a per-package lookup; `scopePalette()` computes it and the catalog entry stays clean. And
+`renderLevel()` reset the step index unconditionally, which would have erased a resumed quest phase
+the instant it drew; entry sets the step now, render does not.
+
+**Verified in a browser, all 21 shipped packages plus the Studio through the real entry path:** every
+one renders with the correct region tint, palette, row count, stage count and title, and no console
+errors. Toolbox isolation holds across A → B → Studio → A with no leak and no `progress.packages.studio`.
+The groove policy is untouched — **7 grooves in the Studio, 5 in a package**, the same numbers the
+`real-jig` entry above recorded, which is the cheapest possible proof that this migration did not
+quietly widen it.
+
+**Suite: 166 pass** (156 → 166), including a differential oracle that walks every entry in `PACKAGES`
+and asserts stages, first-level identity, region, companion region, palette, catalog id, toolbox owner
+and level-0 features against the shipped definitions.
+
+**The tests had a back door production code no longer has.** Three files assigned `g.currentPkg`
+directly; they now go through `setPlayScope()`. That is worth more than the tidiness — a test that can
+reach a state the game cannot is testing something the game does not do.
+
+**No quest entry point ships here.** `QUEST_RUNS` exists only so quest scope is a tested contract;
+step (c) owns the run store, its transitions, and the completion gates. Quest presentation fails closed
+in the meantime: no companion, no inherited controls, no inherited palette, and `scopeCatalogId()`
+returns null so a quest cannot appear in the dev package selector or the map.
