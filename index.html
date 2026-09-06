@@ -1460,7 +1460,19 @@ function tx(label,fn){
   if(_txDepth===0){ const after=snapState();
     if(after!==_txBefore){ journal.push({label:_txLabel,before:_txBefore,after});
       if(journal.length>JOURNAL_MAX) journal.shift();
-      journalRedo=[]; if(!SCRIPTED_TX.has(_txLabel)) scheduleAutosave(); syncUndoUI(); } }
+      journalRedo=[]; if(!SCRIPTED_TX.has(_txLabel)) noteEdit(_txLabel); syncUndoUI(); } }
+}
+// A player edit. Outside a quest this is the shipped rolling autosave. Inside one, the run is the
+// record instead: the completion session is forfeited (a pass booked from the old revision must not
+// credit the new one) and the version's editRev advances, which is what makes the Q6 gate false again.
+function noteEdit(label){
+  if(!isQuestScope()){ scheduleAutosave(); return; }
+  cancelCompletionSession("edit");
+  const run=QUEST_RUNS[activeScope.runId]; if(!run || run.status!=="active") return;
+  const v=run.versions[run.draft]; if(!v) return;
+  const song=currentSong();
+  transactQuestRun(activeScope.runId, [{ type:"edit", target:"song", versionId:run.draft,
+    baseRev:v.editRev, song, span:{start:0,end:song.time.cols}, at:Date.now() }]);
 }
 // undo/redo: restore a full snapshot (palette vars + COLS + tracks), reproject, rebuild, recheck.
 // Never runs through tx() — an undo must not journal itself.
@@ -4883,7 +4895,13 @@ function reduceCompletionSession(state, ev){
 
 // ---- the impure shell around it: one state cell, one dispatch, one cancel ----
 let completionState=completionInit(), completionSeq=0;
-let onCompletePass=null;                 // C2 installs the QuestRun sink; until then a receipt has nowhere to go
+// C2's sink: a receipt becomes evidence only if a persisted transaction accepts it. An audition
+// records both facts in ONE transaction, so a half-credited audition cannot exist.
+let onCompletePass=fx=>{
+  const ops=[{ type:"completePass", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at:Date.now() }];
+  if(fx.purpose==="audition") ops.push({ type:"audition", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at:Date.now() });
+  transactQuestRun(fx.runId, ops);
+};
 function completionDispatch(ev){
   const r=reduceCompletionSession(completionState, ev);
   completionState=r.state;
@@ -4908,6 +4926,175 @@ function beginCompletionSession(opts){
   return sessionId;
 }
 const activeCompletionSessionId = () => completionState.active && completionState.active.sessionId;
+
+// ---------- QuestRun: the durable owner of a quest's versions, phase and tray ----------
+// A completion receipt from the reducer above is only a claim about what was heard. Nothing becomes
+// quest evidence until it survives a persisted transaction here — so a lost write can never leave the
+// game believing a pass happened. Runs live at their own Store key and NEVER inside `progress`:
+// cloudPush() PUTs the whole progress object, and a run holds two full songs.
+const QUEST_RUN_MAX=12, QUEST_RUN_CHARS=1500000;
+const jclone = v => JSON.parse(JSON.stringify(v));
+// A song's identity for "did this actually change?", ignoring the timestamps every serialise rewrites.
+function songIdentity(song){ if(!song) return "";
+  const c=jclone(song); if(c.meta){ delete c.meta.created; delete c.meta.updated; } return JSON.stringify(c); }
+
+function newQuestRun(o){
+  const at=(o&&o.at)||0;
+  return { v:1, runId:o.runId, questId:o.questId, definitionVersion:o.definitionVersion|0,
+    status:"active", phase:0, draft:"A", selection:null,
+    versions:{ A:{ song:jclone(o.song), span:jclone(o.span), editRev:0,
+      lastCompletePlayRev:null, lastCompletePlaySessionId:null,
+      auditionedRev:null, auditionedSessionId:null, forkedFrom:null } },
+    comparison:null, tray:[], evidence:{}, pendingOffer:null, artifact:null,
+    createdAt:at, updatedAt:at, abandonedAt:null };
+}
+
+// Pure. Reads no globals, never writes Store, and on failure returns the ORIGINAL run reference so a
+// rejected op cannot half-mutate anything.
+function reduceQuestRun(run, op){
+  const no = code => ({ ok:false, run, effects:[], code });
+  if(!run || !op || typeof op!=="object") return no("bad-input");
+  const active = run.status==="active";
+  const V = id => run.versions && run.versions[id];
+  const touch = next => { next.updatedAt = Number.isFinite(op.at) ? op.at : run.updatedAt; return next; };
+
+  if(op.type==="edit" && op.target==="tray"){
+    if(!active) return no("not-active");
+    if(!Array.isArray(op.tray)) return no("bad-tray");
+    // A tray change is NOT a song change: crafting a stamp must not invalidate playback of an
+    // unchanged song, or a child would have to replay after opening their own toolbox.
+    return { ok:true, run:touch(Object.assign({}, run, { tray:jclone(op.tray) })), effects:[] };
+  }
+
+  if(op.type==="edit"){
+    if(!active) return no("not-active");
+    const v=V(op.versionId); if(!v) return no("no-version");
+    if(op.versionId!==run.draft) return no("not-draft");
+    if(op.baseRev!==v.editRev) return no("stale-base");
+    if(!op.song || !op.span || op.span.start!==0 || op.span.end!==(op.song.time&&op.song.time.cols)) return no("bad-span");
+    if(songIdentity(op.song)===songIdentity(v.song) && v.span.end===op.span.end) return no("no-change");
+    const nv=Object.assign({}, v, { song:jclone(op.song), span:jclone(op.span), editRev:v.editRev+1 });
+    // lastCompletePlayRev/auditionedRev are deliberately KEPT: they simply stop being equal to editRev,
+    // which is the whole gate. Clearing them would lose the audit trail for no gain.
+    return { ok:true, run:touch(Object.assign({}, run, { versions:Object.assign({}, run.versions, {[op.versionId]:nv}) })), effects:[] };
+  }
+
+  if(op.type==="completePass"){
+    if(!active) return no("not-active");
+    const v=V(op.versionId); if(!v) return no("no-version");
+    if(typeof op.sessionId!=="string" || !op.sessionId) return no("no-session");
+    if(op.editRev!==v.editRev) return no("stale-rev");     // second defence: even if cancellation wiring failed
+    const empty = !v.song || !v.song.tracks || !v.song.tracks.some(t => (t.notes&&t.notes.length) || (t.hits&&t.hits.length));
+    if(empty) return no("empty-song");
+    const nv=Object.assign({}, v, { lastCompletePlayRev:op.editRev, lastCompletePlaySessionId:op.sessionId });
+    return { ok:true, run:touch(Object.assign({}, run, { versions:Object.assign({}, run.versions, {[op.versionId]:nv}) })), effects:[] };
+  }
+
+  if(op.type==="audition"){
+    if(!active) return no("not-active");
+    const v=V(op.versionId); if(!v) return no("no-version");
+    if(v.lastCompletePlayRev!==op.editRev || v.lastCompletePlaySessionId!==op.sessionId) return no("not-heard");
+    const nv=Object.assign({}, v, { auditionedRev:op.editRev, auditionedSessionId:op.sessionId });
+    return { ok:true, run:touch(Object.assign({}, run, { versions:Object.assign({}, run.versions, {[op.versionId]:nv}) })), effects:[] };
+  }
+
+  if(op.type==="forkFrom"){
+    if(!active) return no("not-active");
+    const src=V(op.sourceVersionId); if(!src) return no("no-source");
+    if(op.sourceRev!==src.editRev) return no("stale-source");
+    if(!op.newVersionId || V(op.newVersionId)) return no("bad-new-id");
+    const nv={ song:jclone(src.song), span:jclone(src.span), editRev:0,
+      lastCompletePlayRev:null, lastCompletePlaySessionId:null, auditionedRev:null, auditionedSessionId:null,
+      forkedFrom:{ versionId:op.sourceVersionId, editRev:op.sourceRev } };
+    return { ok:true, run:touch(Object.assign({}, run, {
+      versions:Object.assign({}, run.versions, {[op.newVersionId]:nv}),
+      draft:op.newVersionId, selection:null, comparison:null })), effects:[] };
+  }
+
+  if(op.type==="compare"){
+    if(!active) return no("not-active");
+    const l=V(op.leftVersionId), r=V(op.rightVersionId);
+    if(!l || !r || op.leftVersionId===op.rightVersionId) return no("bad-pair");
+    if(l.auditionedRev!==l.editRev || r.auditionedRev!==r.editRev) return no("not-auditioned");
+    const comparison={ versionIds:[op.leftVersionId, op.rightVersionId],
+      revs:{ [op.leftVersionId]:l.editRev, [op.rightVersionId]:r.editRev }, comparedAt:op.at };
+    return { ok:true, run:touch(Object.assign({}, run, { comparison })), effects:[] };
+  }
+
+  if(op.type==="choose"){
+    if(!active) return no("not-active");
+    const c=run.comparison; if(!c || c.versionIds.indexOf(op.versionId)<0) return no("not-compared");
+    for(const id of c.versionIds){ const v=V(id); if(!v || v.editRev!==c.revs[id]) return no("stale-comparison"); }
+    return { ok:true, run:touch(Object.assign({}, run, { selection:op.versionId, draft:op.versionId })), effects:[] };
+  }
+
+  if(op.type==="abandon"){
+    if(!active) return no("not-active");
+    return { ok:true, run:touch(Object.assign({}, run, { status:"abandoned", abandonedAt:op.at })), effects:[] };
+  }
+
+  return no("unknown-op");
+}
+
+// All-or-nothing: a candidate is built up and thrown away whole if any op fails.
+function reduceQuestTransaction(run, ops){
+  let cand=run; const effects=[];
+  for(const op of (ops||[])){
+    const r=reduceQuestRun(cand, op);
+    if(!r.ok) return { ok:false, run, effects:[], code:r.code, failedOp:op.type };
+    cand=r.run; effects.push(...r.effects);
+  }
+  return { ok:true, run:cand, effects };
+}
+
+// ---- persistence: own key, capped, pruned, published only after the write lands ----
+function questRunEnvelope(runs){ return { v:1, runs }; }
+function pruneQuestRuns(runs, keepId){
+  let out=Object.assign({}, runs);
+  const terminal = st => st==="abandoned" || st==="completed";
+  const order = () => Object.keys(out).filter(id=>id!==keepId && terminal(out[id].status))
+    .sort((a,b)=>({abandoned:0,completed:1})[out[a].status]-({abandoned:0,completed:1})[out[b].status]
+              || (out[a].updatedAt||0)-(out[b].updatedAt||0));
+  const tooMany = () => Object.keys(out).length>QUEST_RUN_MAX;
+  const tooBig  = () => JSON.stringify(questRunEnvelope(out)).length>QUEST_RUN_CHARS;
+  while(tooMany() || tooBig()){
+    const victims=order(); if(!victims.length) break;      // never prune an active or offering run
+    delete out[victims[0]];
+  }
+  return out;
+}
+// Returns false rather than throwing: a full disk must surface as a failed transaction, not a silent loss.
+function saveQuestRuns(runs){
+  const pruned=pruneQuestRuns(runs, null);
+  if(JSON.stringify(questRunEnvelope(pruned)).length>QUEST_RUN_CHARS) return false;
+  return Store.set("questRuns", questRunEnvelope(pruned)) ? pruned : false;
+}
+function hydrateQuestRuns(){
+  const env=Store.get("questRuns", null);
+  const out=Object.create(null);
+  if(env && env.v===1 && env.runs && typeof env.runs==="object"){
+    for(const id of Object.keys(env.runs)){ const r=env.runs[id];
+      // A malformed run is ignored, never repaired into plausible state — a wrong phase is worse than none.
+      if(r && r.runId===id && r.versions && Number.isInteger(r.phase) && r.phase>=0 && typeof r.status==="string")
+        out[id]=r; }
+  }
+  QUEST_RUNS=out; return out;
+}
+
+// The one door for every persistent run change: reduce a candidate, persist it, and only then publish
+// it and deliver effects. A failed reduction or a failed write leaves the visible run untouched.
+function transactQuestRun(runId, ops){
+  const cur=QUEST_RUNS[runId];
+  if(!cur) return { ok:false, code:"no-run" };
+  const r=reduceQuestTransaction(cur, ops);
+  if(!r.ok) return r;
+  const cand=Object.assign({}, QUEST_RUNS); cand[runId]=r.run;
+  const saved=saveQuestRuns(cand);
+  if(!saved) return { ok:false, code:"store-failed" };
+  QUEST_RUNS=saved;
+  return { ok:true, run:QUEST_RUNS[runId], effects:r.effects };
+}
+
 
 // ---------- The play scope: one authoritative runtime identity ----------
 // `currentPkg` used to be identity, progress key, toolbox key and control gate at once, and `LEVELS`
@@ -5786,7 +5973,9 @@ hintBtn.onclick=()=>{ const st=curStage(); if(st.hint){ st.hint(); ev.played=fal
   setStatus("💡 Here's an example — now try it yourself!"); } };
 // ---------- Persistence: one Store seam (localStorage now → cloud/Cognito later) ----------
 const Store={ get(k,def){ try{ const v=localStorage.getItem("mg_"+k); return v==null?def:JSON.parse(v); }catch(e){ return def; } },
-  set(k,v){ try{ localStorage.setItem("mg_"+k, JSON.stringify(v)); }catch(e){} } };
+  // returns false on quota/serialisation failure: a quest transaction must be able to fail closed
+  // rather than believe a write landed. Existing callers ignore the value and behave as before.
+  set(k,v){ try{ localStorage.setItem("mg_"+k, JSON.stringify(v)); return true; }catch(e){ return false; } } };
 let progress = Object.assign({ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 }, Store.get("progress",{}));
 if(!progress.packages || typeof progress.packages!=="object") progress.packages={};
 function pkgProg(id){ return progress.packages[id] || (progress.packages[id]={ level:0, maxLevel:0, completed:false }); }
@@ -5827,12 +6016,19 @@ function savePackageProgress(){
 
 // Crafting is not always package advancement. The Studio persists no inventory, exactly as before —
 // the old saveProgress returned early for it. B2 routes a quest tray through here too.
-function saveActiveInventory(){ if(!isPackageScope()) return; savePackageProgress(); }   // B(c) routes a quest tray here
+function saveActiveInventory(){
+  if(isPackageScope()) return void savePackageProgress();
+  if(isQuestScope()) transactQuestRun(activeScope.runId,
+    [{ type:"edit", target:"tray", tray:toolbox.map(t=>({offs:t.offs.slice(),midis:t.midis.slice()})), at:Date.now() }]);
+  // the Studio keeps persisting nothing, exactly as before
+}
 // Load this package's OWN saved tools (or start empty). The toolbox no longer carries across packages — a fresh
 // lesson shouldn't open with another lesson's bag (and old pentatonic tools have the wrong notes in a diatonic package).
 function loadScopeToolbox(){ toolbox.length=0;
   const id=activePackageId();
-  const saved = (id && progress.packages[id] && progress.packages[id].toolbox) || [];
+  const qrun = isQuestScope() && QUEST_RUNS[activeScope.runId];
+  const saved = qrun ? (qrun.tray||[])
+              : (id && progress.packages[id] && progress.packages[id].toolbox) || [];
   if(Array.isArray(saved)) saved.forEach(t=>{ if(t&&t.offs&&t.midis) toolbox.push({offs:t.offs.slice(),midis:t.midis.slice()}); });
   toolboxOwner=scopeToolboxOwner(); renderBag(); }
 
@@ -6383,12 +6579,14 @@ function updateGarden(){ gardenbed.innerHTML="";
     const f=document.createElement("span"); f.className="flower"; f.textContent=fl; gardenbed.appendChild(f); } }
 
 // restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
-if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 }; }
+if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 };
+  Store.set("questRuns",null); QUEST_RUNS=Object.create(null); }   // a reset wipes quest drafts too, or a run outlives the progress it belongs to
 ensureInstruments();   // derive the unlocked-instrument set for saves that predate the gradual reveal
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
+hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at
 toolboxOwner=null;   // per-scope now; the renderLevel below loads the resumed package's own tools
 restoreLastPackage();
 

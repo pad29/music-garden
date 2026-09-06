@@ -1200,3 +1200,46 @@ past the boundary and **zero** receipts existed; the receipt arrived at `3.061` 
 
 **Suite: 178 pass** (166 → 178). No quest entry point ships; `onCompletePass` is a null sink until C2
 gives a receipt somewhere to go.
+
+### Same day — C2: a receipt is a claim; only a persisted transaction is evidence
+
+Second of three commits in step (c). C1 could prove a pass was heard; nothing could remember it.
+
+**The rule this commit exists to enforce:** a completion receipt from the scheduler is only a claim
+about what was heard, and becomes quest evidence only if a persisted transaction accepts it. So a lost
+write can never leave the game believing a pass happened. `transactQuestRun()` reduces a candidate,
+persists it, and publishes it **only after the write lands** — and `Store.set()` now returns a boolean
+instead of swallowing quota failures, which is what lets a transaction fail closed at all.
+
+**Two independent defences against a stale credit, deliberately.** An edit cancels the completion
+session, so a boundary booked from the old revision is never dispatched; and `completePass` refuses a
+receipt whose `editRev` no longer matches, so even a wiring failure cannot credit the wrong revision.
+Either alone would look sufficient. A mutation test removes each separately and a different test fails.
+
+**A tray change is not a song change.** Crafting a stamp writes `tray` and leaves every `editRev`
+alone — otherwise opening your own toolbox would make you replay the piece you had just finished
+playing. That distinction is a reducer branch, and a mutation that bumps the revision on a tray edit
+is caught.
+
+**Quest state never enters `progress`.** `cloudPush()` PUTs the whole progress object and a run holds
+two full songs, so runs live at their own `mg_questRuns` key, capped at 12 and pruned abandoned-before-
+completed, never pruning an active run. Verified in a browser: after a real edit and a real crafted
+tool, `mg_progress` contains no trace of the run and `progress.packages` is untouched.
+
+**Hydration drops a malformed run rather than repairing it.** A run whose `runId` disagrees with its
+key, or whose phase is missing or negative, is ignored — because a wrong phase is worse than no run:
+it would render a quest at the wrong step and look like progress.
+
+**The whole chain, measured in a browser:** a real edit through `modelSetCell` moved `editRev` 0 → 1
+and forfeited the live session; a real playback then produced an audible-time receipt that a persisted
+transaction accepted, leaving `lastCompletePlayRev === editRev` **on disk**, not merely in memory; and
+after a reload the run hydrated with its revision, its evidence and its tray intact while boot restored
+the last *package*, since no quest entry point ships yet.
+
+**Seven mutations, seven catches:** accepting a stale receipt; keeping the ops a failed transaction had
+already applied; sharing the song object on a fork instead of copying it; publishing a candidate whose
+write failed; burning a revision on a no-op edit; bumping the song revision on a tray change; and
+hydrating a phaseless run as phase 0.
+
+**Suite: 192 pass** (178 → 192). `EDITOR-DESIGN.md`'s claim that the rolling autosave "fires on every
+transaction" is now false in quest scope and says so.
