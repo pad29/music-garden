@@ -1031,3 +1031,54 @@ or Set on one has to normalise it. The assertion now states the real claim (`Num
 **Suite: 145 pass** (137 → 145). No sound, no UI, no groove or meter data changed.
 
 ---
+
+### Same branch — PR 2 of 2: the click itself
+
+Every finding from the design review is answered; nothing deferred except what §17 already defers.
+
+**The count is phased on the downbeat**, by asking `pulsesIn` rather than counting back from the song's
+first column. Measured live at 120 BPM: 4/4 four clicks 500 ms apart, 3/4 three, **6/8 two clicks 750 ms
+apart** — a jig counted in its dotted-quarter pulse — first accented, and the song's first note exactly one
+beat after the last click. **The nastier half, verified at all four pickups: a TWO-column pickup shifts by
+a whole beat, so the click TIMES coincide with the naive version and only the ACCENT moves** (to the second
+click at pickups 2 and 3). A naive count-in sounds almost right there while being wrong about where "one"
+is, which is the harder bug to notice. The unit test asserts the accent, not the tick list, for that reason.
+
+**Persistence, the finding I would rank hardest.** `saveSettings()` is its own writer, because
+`saveProgress()` returns immediately in the Studio — the only place the control appears. The test drives
+the control's real `onchange` and reads `Store`, never `progress.settings`. **This required extending the
+harness:** its generic DOM stub swallows `value` writes and always reads `""`, so the handler could not be
+exercised at all — the same gap that once made both tempo bugs invisible. `makeSelect` joins `makeTempoRange`
+as a narrow, purposeful stub, documented in `tests/README.md`.
+
+**Count-in intent is passed, never inferred** — `start(opts)`, and only ▶ asks. Jam, the scripted reveal and
+the Jukebox all call `start()` and none of them counts anyone in.
+
+**The visual is in, and it was my own finding that put it there.** At the 40 BPM floor a bar is six seconds,
+and the playhead has exactly one writer inside `paintCol`, so it sat lit wherever the last run stopped. It
+is parked at the start column now and the count appears on screen. The same finding killed my "two bars when
+one gives fewer than three clicks" rule — which made 6/8 nine seconds — in favour of **one bar exactly**,
+removing the number from the rule rather than tuning it.
+
+**Tempo mid-count re-lays the count.** Measured: 500 ms gaps re-laid as 1000 ms on a change to 60 BPM. GPT
+was right that *"'Measure later' is not a design"*; the failure is a policy hole and it is a **lie about
+tempo**, which is worse than a glitch for a feature whose whole job is to state one.
+
+**The metronome books at the unswung tick**, verified with a swinging groove playing: the music leans, the
+clicks stay exactly 500 ms apart. It also surfaced a **pre-existing Jam phase bug** rather than causing one
+— with a one-column pickup every 4/4 beat is on an odd column, exactly where jam swing lives — recorded and
+asserted rather than hidden by swinging the click.
+
+**Routing** is a quiet `clickBus` of its own under `master`; `clickBus` joins `bookColumn`'s per-column swap
+so ■ cuts the metronome, while the count-in uses one gain of its own rather than the `colGains` ledger whose
+FIFO order an early-`when` entry would break.
+
+**Verified beyond the suite:** golden A re-captured **byte-identical with the preference set to "both"**,
+since unmetered can have no pulse; a level never clicks whatever the preference says; ■ during a count
+releases the gain; the metronome lands on the drawn beat marks with a pickup (columns 1,3,5,7 against marks
+1,3,5,7).
+
+**Suite: 156 pass** (145 → 156). No hard invariant touched: no assets, no narration, no `FAMOUS` content, no
+stable IDs, no `netlify.toml`.
+
+---

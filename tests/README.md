@@ -55,6 +55,14 @@ contour. Use it instead of poking `g.grid` directly.
 - **Detector signatures are inconsistent by design.** Contour detectors take a `seq`
   (`isRising(seq)`); motion detectors read the grid themselves (`isStepwise()`). Check the
   source before assuming.
+- **The DOM stub swallows `value` writes** and always reads back `""`. Two controls have real stubs
+  because their behaviour is data-model behaviour: `#tempo` models a range input's clamping, and
+  `#click` models a `<select>` that remembers what it was set to. Without the second, a control's own
+  change handler cannot be exercised at all — and a test that pokes the module variable instead is a
+  false oracle. That is exactly how the click preference's persistence bug hid: it is written from the
+  Studio, where `saveProgress()` returns immediately, so only driving the real handler and then reading
+  `Store` can tell you whether it works. Wire another control in `makeSelect` when you need to test ITS
+  handler, not by default.
 - **`fetch`/`XMLHttpRequest` are deliberately absent from the harness.** `index.html` must never
   use them for local assets (AGENTS.md hard invariant). If a test dies on a missing `fetch`,
   that is a real bug in the game, not a missing stub.
