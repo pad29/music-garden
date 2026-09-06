@@ -4,7 +4,7 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 **Live:** https://tunegarden.game/ (Netlify, auto-deploys from this repo on every push to `main`)
 
-> Status: working single-file game, in active development. **19 packages built** across 7 regions (the 13-level intro + 15 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
+> Status: working single-file game, in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
 ---
 
@@ -18,10 +18,15 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
   # then open http://localhost:8377
   ```
   (A `.claude/launch.json` is included so the Claude Code preview tool serves it on :8377.)
-- **Syntax-check the inline script** (no test suite yet — this is the smoke test we run after every edit):
+- **Syntax-check the inline script** (the fastest check — run after every edit):
   ```bash
   node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('syntax OK')"
   ```
+- **Run the tests** (zero dependencies — Node's built-in runner, nothing to install):
+  ```bash
+  node --test "tests/*.test.mjs"
+  ```
+  A young suite: it covers detectors and pure logic by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
 - **Dev URL flags:** append `?dev` to reveal a level-jump dropdown + a "🔒 Relock instruments" button (replays the region discovery cards without touching progress); `?reset` wipes local progress.
 - **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`). Cloud APIs (https) are exempt.
 
@@ -38,6 +43,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 | **`PACKAGES-DETAILED.md`** | Level-by-level as-built specs for every shipped expansion package, plus the **difficulty-ramp doctrine** every package follows. |
 | **`EDITOR-DESIGN.md`** | The **long-term editor design**: notes-as-objects + lens architecture, the chromatic lattice with lighting-as-tonality (draggable HOME + mode switch), duration/dynamics/multi-voice/sections plans, and the build phases that unblock the remaining package waves. |
 | **`SAVE-SHARE.md`** | The save/share system spec (pitch-based v3 song format, Studio, cloud songs) — **implemented** (P1–P3). |
+| **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **A plan — nothing built yet.** |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
 | **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS). |
@@ -109,13 +115,13 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 ## Current status & what's next
 
-**Built & shipped (19 packages / 7 regions):**
+**Built & shipped (20 packages / 7 regions):**
 
 | Region | Packages |
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
 | 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
-| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) |
+| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) · `two-kinds-of-walking` (note duration, R3) — region complete |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) · `shifting-shadows` (inversions/voicing, diatonic) · `soft-wobble-strong-wobble` (graded tension, diatonic) — region complete |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
 | 🌦️ Weather of Wanting | `ways-home` (cadence strength) · `river-turns` (progressions, I-IV-V-vi) · `pull-of-the-moon` (dominant pull) · `false-doors` (deceptive cadence) |
@@ -124,8 +130,9 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 **Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (15 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben, Goin' Home, I Got Rhythm, Bach's Prelude in C, Chopsticks); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually, one per region**, each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
-1. Last Wave A/C package: `two-kinds-of-walking` (needs a meter change — the heaviest remaining pre-system item)
-2. Bigger systems: bars & plots duration editor (R3), multi-voice (Region 6), sections (Region 7), Styles/Eras
+1. `march-and-waltz` (PW-5) — the parked meter material; needs triple groupings beyond fixed 4/4
+2. Quests — see `QUESTS.md`; Kind 1 (*The Firefly Crossing*) is specced and unbuilt
+3. Bigger systems: multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).
 

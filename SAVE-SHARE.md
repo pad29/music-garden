@@ -3,6 +3,7 @@
 *Durable, pitch-based song format + dedicated Studio + cloud song storage.*
 Status: **IMPLEMENTED — P1+P2+P3 all shipped (2026-06-19/20)**; P4 (public gallery + `private`) deferred pending moderation. Spec locked 2026-06-19; supersedes the prototype save/share described in DESIGN §10/§12. This doc remains the format's source of truth — read §3 before touching `currentSong`/`applySong`.
 Owner decisions baked in: **full forward-compatible container** (sparse fill), **cloud storage in scope**, spec lives here with a pointer from DESIGN §11.
+Quests reuse the v3 container for their musical payloads only; `QuestDefinition` and `QuestRun` are **parallel** containers, never embedded in a song — see `QUESTS.md` Q8.
 
 ---
 

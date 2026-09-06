@@ -130,7 +130,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 4. Region map (player-facing)
 
-| # | Region | Cluster focus | Palette | Status (2026-07-05) |
+| # | Region | Cluster focus | Palette | Status (2026-09-06) |
 |---|---|---|---|---|
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |

@@ -16,7 +16,8 @@ you disagree, **the disagreement is the product** — surface it, don't resolve 
 4. Invoke `gpt-tester`, telling it exactly what you already tested and what you couldn't reach.
 5. Fix what it found. Re-run.
 6. Append a summary to `REVIEW-LOG.md`: what GPT flagged, what you did.
-7. Report to the owner **before committing**. Every push to `main` deploys to production.
+7. Review the docs — see **§ Docs**. The capability isn't done until they describe it.
+8. Report to the owner **before committing**. Every push to `main` deploys to production.
 
 Trivial changes — typos, comments, formatting — skip this. **When in doubt, run the loop.**
 
@@ -39,6 +40,28 @@ impossible.
 
 `main` is the deploy branch: every push to it goes to production. Merge to `main` when the owner
 says the work is done, not when the code compiles.
+
+## Docs
+
+**A capability isn't merged until the docs describe it.** When work lands, review every doc it
+touches — not only the one you happened to be writing in:
+
+- The doc that owns the feature records what shipped.
+- A **new** doc earns three things: a pointer in `AGENTS.md` § Where to find things, a row in
+  `README.md`'s repository map, and a place in `AGENTS.md` § What "done" means.
+- `README.md` § Current status is the record of what actually ships — reconcile its counts and
+  its "next up" list against `PACKAGES.md`.
+- Sibling docs describing adjacent systems get a cross-reference.
+- Anything the change made false is corrected in the **same commit**.
+
+Adding `QUESTS.md` (2026-09-06) is the worked example: it needed the `AGENTS.md` pointer, a
+`README.md` repo-map row, and cross-references from `DESIGN.md`, `PACKAGES.md` and
+`SAVE-SHARE.md` — none of which the new document itself would have prompted.
+
+Drift is silent, and the cost lands on whoever comes next. `README.md` spent weeks saying "no test
+suite yet" with eleven test files on disk, and a package count that README and PACKAGES.md
+disagreed about sent a design review down the wrong path — the reviewer had to refuse the numbers
+it was handed before the work could proceed.
 
 ## Rules
 
