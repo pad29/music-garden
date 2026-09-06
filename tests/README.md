@@ -63,5 +63,6 @@ contour. Use it instead of poking `g.grid` directly.
 
 ## Scope
 
-This suite is young. It covers detectors today. It is not a substitute for playing the game —
+This suite is young. It covers the detectors, and the pure seams under the quest work — the
+projection (`projectTracks`) and the pulse helpers' explicit-grid forms. It is not a substitute for playing the game —
 it catches silent logic regressions, which are the ones runtime inspection is worst at finding.

@@ -935,3 +935,99 @@ player's behalf.
 **Suite: 137 pass** (132 → 137), the five new ones all about the gate and what it keeps out.
 
 ---
+
+## 2026-09-06 — quests get a document, and the first seams under it (branch `quests`)
+
+**Two design-review rounds before a line of code.** GPT's round 1 returned **11 blocking findings** on a
+design I had already written; round 2 returned **9 more**, several of the form "only appears fixed." The
+verdict both times was to replace rather than patch. Nothing was implemented until round 2, and what
+landed is only the first of four sequenced steps GPT proposed when it judged the slice still too large.
+
+**The findings that mattered most were all labels asserting behaviour the code does not have** — this
+log's most-repeated entry, committed again by someone who had just read it.
+
+- I named a primitive `pulse.evenWalk` and wired it to `hat8ths`. The even walk is eight **kicks**
+  (lane 0, `index.html:3522`); `hat8ths` is the hi-hat shimmer (lane 2). Two of three routes were one
+  idea twice. Worse than the review said: the even walk had **no named helper at all**, so the design's
+  central claim — "reuse the shipped detector rather than a copy" — never covered it.
+- I gated on `playedSinceEdit`. `ev.played` is set inside `start()` at **5376**, meaning *playback was
+  started from column 0*, not *heard to the end*. `QUESTS.md` Q7 had already named the primitive
+  `playback.completeSinceLastEdit`; shortening it to a bare string is where the semantics were lost.
+- My anti-checklist rule compared a `family` string. With one family per analyzer over seven
+  primitives, "different family" is true for any two different IDs — the rule collapsed into the
+  duplicate check and added nothing. Round 2 found the replacement (`strategyId`) was the same stamp
+  under a new name, with a clean counterexample: `contour.anyOf(["rise"])` versus
+  `contour.anyOf(["rise","fall"])` over the same kicks — normalized params differ, yet every artifact
+  satisfying the first satisfies the second.
+
+**Three of GPT's positions I rejected, and it retracted or conceded all three:** that deferring the
+renderer violated Q9 (Q9 scopes the first implementation, not commit 1 — *"I retract the claim"*); that
+quest drafts needed identity namespacing (`progress` and `autosave` are already device-wide keys, so
+this is pre-existing, not introduced); and that the pulse helpers wanted pure-first signatures plus
+wrappers (that churns ~15 shipped `chk` closures for nothing a caller can observe). The transitive bug
+inside that last one was real and is fixed: `kickClean(dg)` now calls `kickOn4(dg)`, because defaulting
+only the outer function leaves the inner one reading the global while the whole thing looks pure.
+
+### What actually shipped in this commit
+
+Three behaviour-preserving seams, no quest logic: the six pulse helpers take an optional grid;
+`kickWalk8` is extracted from the inline closure and the Footsteps goal now calls it; and
+`projectTracks(tracks, palId, span)` is split out of `reproject()`, with `projRowIn(p, midi)` split out
+of `projRow`. The projection takes its palette **by name** because a saved song carries its own — and a
+quest must analyse an A/B snapshot without `applySong()` rewriting the live document, which would
+destroy the player's work.
+
+### The tests were the interesting part
+
+GPT authored `tests/quest-seams.test.mjs` independently while I wrote the implementation; all 8 passed
+first run, which is the point of splitting them.
+
+**Then `gpt-tester` found the one I could not have found myself:** the `reproject()` agreement test
+computes its expectation with `projectTracks()` and checks a wrapper that calls `projectTracks()`. It
+proves assignment, not equivalence with the algorithm that shipped. `tests/quest-oracle.test.mjs` now
+transcribes the old algorithm verbatim and diffs the two across both palettes, four spans, ties,
+fractional and negative onsets, duplicate cells and out-of-range pitches — asserting `gridNote` **object
+identity**, not just shape, since it feeds duration lookup and the vine hit test.
+
+**Every test here was mutation-tested, because two of them were false proofs before that.** Reintroducing
+the transitive bug fails the explicit-grid test while the "defaults agree" test still passes — so the
+weaker one cannot substitute for it. Flipping the nearest-match tie-break from `<` to `<=` fails the
+oracle and **nothing else**: 146 of 147 tests pass with a broken projection. That is the whole
+justification for the oracle existing. Writing it also exposed that my first "nearest-match ties" case
+contained no tie — 70 and 66 both have a strict nearest — so it was pinning nothing until the pitches
+became 73 and 63, which are genuinely equidistant.
+
+**One deliberate deviation, pinned rather than hidden.** The old `reproject()` called
+`tracks.find(...).notes` unguarded and threw on a document missing a track; `projectTracks()` treats a
+missing track as empty, because it also analyses saved songs, which may legitimately carry one. GPT
+rated it Low and unreachable from the live path. A test asserts both the new tolerance and that the old
+algorithm threw, so the deviation stays a decision.
+
+### The preview server serves the wrong repository in a worktree
+
+**`preview_list` says it plainly: `"cwd": "C:\\Claude\\MusicTheory"`.** The preview tool spawns servers
+with cwd pinned to the session's LAUNCH directory, and `EnterWorktree` does not move it — so `"."` in
+`.claude/launch.json` resolves to the main checkout, which here held the *other* session's uncommitted
+`count-in` work. Cache-busting, `file://`, and a second named config all failed (one server per session,
+reused regardless of the name passed). Editing `runtimeArgs` to an absolute worktree path failed too, and
+the startup banner said why: **`Starting up http-server, serving .`** — the edited argument never reached
+the process even on a genuinely fresh server.
+
+**Measured, not assumed:** 545,418 chars served with no `projectTracks`, against 536,707 on disk with it.
+Without that byte comparison the next step would have been loading someone else's code, seeing a working
+garden, and reporting a verification that never happened. **A screenshot is not evidence unless you know
+which file produced it.**
+
+Worked around by serving the worktree on a spare port and pointing the pane at that URL. The underlying
+tooling gap is unfixed and will bite every worktree session in every project.
+
+### Verified in a real browser
+
+Against the worktree's own bytes (fetched and compared to disk first — `identical: true`): the live
+document agrees with `projectTracks(doc.tracks, paletteId, COLS)` on `grid`, `drumG`, and `gridNote`
+**object identity**; a planted arc renders with model and DOM lit-cell coordinates matching exactly;
+`contourSeq()` reads `[2,3,4,3,2]` and `isArch` is true; `kickWalk8()` returns true on the even walk while
+`kickClean()` correctly returns false beside it; playback starts with no thrown error and no console
+errors.
+
+**Suite: 147 pass** (137 → 147). No hard invariant touched.

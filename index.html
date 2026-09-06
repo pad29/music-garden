@@ -1407,22 +1407,39 @@ function beatColSet(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.origin
 // would put BOTH conventions on one screen, which is precisely what §17's first review round killed a
 // draft for. Only the Studio can set a meter, so no shipped level reaches the metered branch.
 const beatTintAt=c=>{ const s=beatColSet(); return s ? s.has(c) : c%4===0; };
-// row for a pitch in the ACTIVE palette: exact match, else nearest (cross-palette songs snap for display only)
-function projRow(p){ let best=null,bd=Infinity;
-  for(let r=0;r<ROWS;r++){ const d=Math.abs(MIDI[r]-p); if(d===0) return r; if(d<bd){ bd=d; best=r; } }
+// row for a pitch in a GIVEN palette's pitch set: exact match, else nearest.
+// Pure: the caller supplies the ladder, so a saved song can be projected under the palette it was
+// written in rather than whichever one happens to be loaded.
+function projRowIn(p, midi){ let best=null,bd=Infinity;
+  for(let r=0;r<midi.length;r++){ const d=Math.abs(midi[r]-p); if(d===0) return r; if(d<bd){ bd=d; best=r; } }
   return best; }
+// row for a pitch in the ACTIVE palette: exact match, else nearest (cross-palette songs snap for display only)
+function projRow(p){ return projRowIn(p, MIDI); }
 function noteCol(n){ return Math.round(n.startTick/TICKS_PER_COL); }
-function reproject(){                          // doc → the legacy boolean grids (the detector adapter, §15)
-  grid=Array.from({length:ROWS},()=>Array(COLS).fill(false));
-  gridNote=Array.from({length:ROWS},()=>Array(COLS).fill(null));
-  drumG=DRUMS.map(()=>Array(COLS).fill(false));
+// doc tracks → the legacy boolean grids, under a NAMED palette and column span, reading nothing global.
+// This is the seam that lets a quest analyse a saved A/B snapshot: applySong() would rewrite the live
+// document to inspect it, destroying the player's current work, so analysis must never go through it.
+// The palette is a parameter because a v3 song carries its own — projecting one song's notes under
+// another's ladder snaps pitches to different rows and silently changes what the detectors see.
+function projectTracks(tracks, palId, span){
+  const pal=PALETTES[palId]; if(!pal) throw new Error("projectTracks: unknown palette "+palId);
+  const midi=pal.MIDI, rows=midi.length;
+  const grid=Array.from({length:rows},()=>Array(span).fill(false));
+  const gridNote=Array.from({length:rows},()=>Array(span).fill(null));
+  const drumG=DRUMS.map(()=>Array(span).fill(false));
+  const mel=tracks.find(t=>t.role==="melody"), dr=tracks.find(t=>t.role==="drums");
   // ONSET-ONLY, and it must stay that way: a vine changes note-OFF, never note-ON, so every shipped
   // detector keeps reading exactly what it reads today. gridNote rides along in the same sweep as the
   // note behind each lit cell — the duration lookup at play time, and the vine layer's hit test.
-  for(const n of melTrack().notes){ const r=projRow(n.pitch), c=noteCol(n);
-    if(r!=null&&c>=0&&c<COLS){ grid[r][c]=true; gridNote[r][c]=n; } }
-  for(const n of drumTrack().notes){ const c=noteCol(n);
-    if(n.pitch>=0&&n.pitch<DRUMS.length&&c>=0&&c<COLS) drumG[n.pitch][c]=true; }
+  if(mel) for(const n of mel.notes){ const r=projRowIn(n.pitch, midi), c=noteCol(n);
+    if(r!=null&&c>=0&&c<span){ grid[r][c]=true; gridNote[r][c]=n; } }
+  if(dr) for(const n of dr.notes){ const c=noteCol(n);
+    if(n.pitch>=0&&n.pitch<DRUMS.length&&c>=0&&c<span) drumG[n.pitch][c]=true; }
+  return { grid, gridNote, drumG, rows, span, palette:palId };
+}
+function reproject(){                          // doc → the legacy boolean grids (the detector adapter, §15)
+  const p=projectTracks(doc.tracks, paletteId, COLS);
+  grid=p.grid; gridNote=p.gridNote; drumG=p.drumG;
 }
 // Every mutation is a transaction: a snapshot journal feeds undo/redo + autosave. Snapshots carry
 // palette + COLS too, so undoing a resize (or any op near one) restores the whole editing surface.
@@ -2930,11 +2947,18 @@ function pickChoice(i){ if(!choiceOpts) return;
 // count melody seeds that land on the strong-beat columns (0,4,8,12,…)
 function gridNotesOnBeats(){ let n=0; for(let c=0;c<COLS;c+=4) for(let r=0;r<ROWS;r++) if(grid[r][c]) n++; return n; }
 // drum-pattern checks (lane 0=kick, 1=snare, 2=hat); "clean" = on the right spots AND nothing off-beat
-const kickOn4 = () => [0,4,8,12].every(i=>drumG[0][i]);
-const kickClean = () => kickOn4() && drumG[0].every((on,i)=>!on||i%4===0);
-const snareBackbeat = () => drumG[1][4]&&drumG[1][12];
-const snareBackbeatClean = () => snareBackbeat() && drumG[1].every((on,i)=>!on||i===4||i===12);
-const hat8ths = () => [0,2,4,6,8,10,12,14].every(i=>drumG[2][i]);
+// Each takes an OPTIONAL grid, defaulting to the live one, so the same shipped rule can judge a saved
+// song without loading it into the editor. `dg` must be forwarded through every nested call: defaulting
+// only the outer function leaves the inner one reading the global, so the "pure" form silently consults
+// live state while looking correct. Every shipped caller passes nothing and is unaffected.
+const kickOn4 = (dg=drumG) => [0,4,8,12].every(i=>dg[0][i]);
+const kickClean = (dg=drumG) => kickOn4(dg) && dg[0].every((on,i)=>!on||i%4===0);
+// the even walk — eight KICKS, one every other step. Lane 0, not the hi-hat shimmer below: they are
+// different lanes and different lessons, and conflating them cost a design round.
+const kickWalk8 = (dg=drumG) => [0,2,4,6,8,10,12,14].every(i=>dg[0][i]);
+const snareBackbeat = (dg=drumG) => dg[1][4]&&dg[1][12];
+const snareBackbeatClean = (dg=drumG) => snareBackbeat(dg) && dg[1].every((on,i)=>!on||i===4||i===12);
+const hat8ths = (dg=drumG) => [0,2,4,6,8,10,12,14].every(i=>dg[2][i]);
 // tint the beat columns on the field so the player can land a melody "on the beat"
 function setBeatGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c])
   cells[r][c].classList.toggle("beatcol", !!on && c%4===0); }
@@ -3519,7 +3543,7 @@ const PACKAGES={ intro:{ id:"intro", name:"🌱 Garden Basics", topic:"basics", 
    {drumSetup:()=>placeDrums([[0,0],[0,4],[0,8],[0,12]]),
     hint:()=>placeDrums([[0,2],[0,6],[0,10],[0,14]]),
     intro:"Now take it further — make it WALK. Add a kick in BETWEEN each beat too, so it steps evenly eight times across the bar.",
-    goals:[{id:"k8",label:"Kick on all 8 even steps (a steady walk)",chk:()=>[0,2,4,6,8,10,12,14].every(i=>drumG[0][i])},
+    goals:[{id:"k8",label:"Kick on all 8 even steps (a steady walk)",chk:()=>kickWalk8()},
            {id:"pl",label:"Press ▶ to take a walk",play:true}]},
  ]},
  {name:"Find the Backbeat", rhythm:true, power:{em:"👏",name:"Backbeat",line:"You can shape the snare three different ways."},
