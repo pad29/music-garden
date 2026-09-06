@@ -69,6 +69,7 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - As-built level specs + the difficulty-ramp doctrine every package follows → `PACKAGES-DETAILED.md`
 - Song save/share format (pitch-based v3) and the Studio → `SAVE-SHARE.md`
 - Where the editor is headed (notes-as-objects, lenses, chromatic lattice) → `EDITOR-DESIGN.md`
+- How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - Audio-scheduler playback goldens and the console-capture procedure → `tools/goldens/README.md`
 
@@ -111,5 +112,5 @@ scheduling code.
 Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior verified in a real
 browser (and on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text
 changed → the design docs
-(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`) updated to record what landed → reported to
+(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed → reported to
 the owner. Committing and pushing happen only on the owner's explicit request.
