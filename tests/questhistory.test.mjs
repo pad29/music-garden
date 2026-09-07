@@ -11,7 +11,7 @@ import { loadGame } from "./harness.mjs";
 
 const SPAN = { start: 0, end: 16 };
 const song = () => ({ v: 3, meta: {}, time: { cols: 16, tempo: 108, groove: 0 },
-  tracks: [{ role: "melody", notes: [{ p: 60, c: 0, len: 1 }] }, { role: "drums", hits: [{ lane: 0, c: 0 }] }] });
+  tracks: [{ kind: "melody", notes: [{ p: 60, c: 0, len: 1 }] }, { kind: "drums", hits: [{ lane: 0, c: 0 }] }] });
 
 /** Drive one quest all the way to a saved artifact. */
 function completeAQuest(g, runId = "r1", questId = "firefly-crossing") {

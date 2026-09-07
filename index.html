@@ -4902,9 +4902,31 @@ function reduceCompletionSession(state, ev){
 let completionState=completionInit(), completionSeq=0;
 // C2's sink: a receipt becomes evidence only if a persisted transaction accepts it. An audition
 // records both facts in ONE transaction, so a half-credited audition cannot exist.
+// The description of what was heard rides in the SAME transaction as the credit, so a child can never
+// read a sentence about a pass the game did not record — nor lose the sentence for one it did. Returns
+// [] when there is nothing to say; a missing description must never cost the player their credit.
+function questObservationOps(run, fx, at){
+  const def=run && QUEST_DEFINITIONS[run.questId];
+  if(!def || def.v!==run.definitionVersion) return [];
+  const p=def.phases[run.phase];
+  if(!p || !p.challenge || p.versionId!==fx.versionId) return [];
+  const versions={};
+  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);
+  // The run has not been credited yet, and it does not need to be: only the MUSICAL half of the
+  // evaluation is read here, and no part of that depends on the playback gate.
+  const e=evaluateQuest(def, { versions }, run);
+  if(!e.ok) return [];
+  return [{ type:"recordObservation", phaseId:p.id, versionId:fx.versionId, editRev:fx.editRev,
+    sessionId:fx.sessionId, matchedRouteIds:e.musical.matchedRouteIds,
+    descriptorTokens:e.musical.descriptorTokens.map(t=>t.slots?{ id:t.descriptorId, slots:t.slots }:{ id:t.descriptorId }),
+    at }];
+}
 let onCompletePass=fx=>{
-  const ops=[{ type:"completePass", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at:Date.now() }];
-  if(fx.purpose==="audition") ops.push({ type:"audition", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at:Date.now() });
+  const at=Date.now();
+  const ops=[{ type:"completePass", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at }];
+  if(fx.purpose==="audition") ops.push({ type:"audition", versionId:fx.versionId, editRev:fx.editRev, sessionId:fx.sessionId, at });
+  const run=QUEST_RUNS[fx.runId];
+  for(const op of questObservationOps(run, fx, at)) ops.push(op);
   transactQuestRun(fx.runId, ops);
 };
 function completionDispatch(ev){
@@ -5135,18 +5157,28 @@ function questCrossRefs(def, errs){
 const QUEST_CONTOUR_FAMILIES=Object.freeze(["rise","fall","hover","arc"]);
 const QUEST_PULSE_FAMILIES=Object.freeze(["main-beat-kicks","even-kick-walk","hat-shimmer"]);
 
+// Is there anything here a player would actually HEAR? Counting note-list entries is not the same
+// question: a v3 document may carry a note at column 16 of a 16-column song, which applySong drops and
+// nobody ever hears. Two places used to answer this differently, so a version could hold the playback
+// gate open while analysing as silent. Found by GPT's tester.
+const songIsAudible = song => { const e=songEvidence(song); return e.valid===true && e.nonempty===true; };
+
 // Pure. It NEVER calls applySong(): applySong rewrites the live document to inspect it, which would
 // destroy the player's current work just to answer a question about a snapshot.
 function songEvidence(song){
   const no=code=>({ valid:false, code });
   if(!song || typeof song!=="object" || song.v!==3) return no("not-v3");
-  const palId=song.palette;
-  if(typeof palId!=="string" || !Object.prototype.hasOwnProperty.call(PALETTES,palId)) return no("unknown-palette");
-  const t=song.time;
-  // 256 is a resource bound at this seam — the projection allocates rows x span — not a claim about
-  // what the editor can open. A quest workspace is capped at 64 columns anyway.
-  if(!t || typeof t!=="object" || !Number.isInteger(t.cols) || t.cols<1 || t.cols>256) return no("bad-cols");
   if(!Array.isArray(song.tracks)) return no("bad-tracks");
+  const t=(song.time && typeof song.time==="object") ? song.time : {};
+  // 256 is a resource bound at this seam — the projection allocates rows x span. It is the one limit
+  // applySong does not share, because applySong never allocates anything this analysis has to.
+  if(Number.isInteger(t.cols) && t.cols>256) return no("too-many-columns");
+  // setPalette falls back to pentatonic for a missing or unknown id, and applySong widens any column
+  // count to the editor's floor of 16. Refusing here what the game opens without complaint would judge
+  // a song "empty" that a player just heard — so the fallbacks are copied, and REPORTED rather than
+  // hidden, since authored content has no business relying on them.
+  const declared=typeof song.palette==="string" ? song.palette : null;
+  const palId=(declared && Object.prototype.hasOwnProperty.call(PALETTES,declared)) ? declared : "pentatonic";
   const mel=song.tracks.find(x=>x&&x.kind==="melody"), dr=song.tracks.find(x=>x&&x.kind==="drums");
   const notes=mel?mel.notes:[], hits=dr?dr.hits:[];
   if(!Array.isArray(notes) || !Array.isArray(hits)) return no("bad-track-shape");
@@ -5155,7 +5187,7 @@ function songEvidence(song){
   // column 12; applySong widens it to the editor's 16-column floor and those events come back. Reading
   // the declared width instead would make evidence describe a song the player never sees — a rise over
   // clean main-beat kicks would analyse as no contour and no pulse at all.
-  const span=Math.max(16, t.cols), docNotes=[], docHits=[];
+  const span=Math.max(16, (Number.isInteger(t.cols) && t.cols>0) ? t.cols : 16), docNotes=[], docHits=[];
   // A malformed EVENT is a refusal, but an out-of-span one is dropped — exactly what applySong's own
   // filter does, so evidence sees the same song the editor would have loaded.
   for(const n of notes){
@@ -5184,7 +5216,8 @@ function songEvidence(song){
   let melodyOnsetCount=0, drumOnsetCount=0;
   for(let r=0;r<projected.rows;r++) for(let c=0;c<span;c++) if(projected.grid[r][c]) melodyOnsetCount++;
   for(let d=0;d<dg.length;d++) for(let c=0;c<span;c++) if(dg[d][c]) drumOnsetCount++;
-  return { valid:true, paletteId:palId, columns:span, nonempty:melodyOnsetCount>0||drumOnsetCount>0,
+  return { valid:true, paletteId:palId, paletteFallback:palId!==declared, columns:span,
+    nonempty:melodyOnsetCount>0||drumOnsetCount>0,
     melodyOnsetCount, projected, contourFamilies, steadyPulseFamilies };
 }
 
@@ -5275,52 +5308,112 @@ function questRelate(leftId, leftParams, rightId, rightParams){
 // One space, two kinds, because Q5 rule 6 says a procedural fact may never be dressed up as a musical
 // one. Keeping them apart in separate maps would make that rule true by accident; keeping them together
 // with a `kind` makes it a check that can actually fail.
+// ---- what the engine is allowed to SAY ----
+// Slot values are enum ids resolved to labels here, never authored strings: a definition cannot smuggle
+// wording into a sentence the engine speaks. Descriptions come from the FACTS, not from which analyzer
+// happened to ask — so a "differs from the snapshot" clause that did NOT match still says the lights
+// kept their shape, which is what was true, rather than a negation of the question.
+const QUEST_ENUM_LABELS=Object.freeze({
+  rise:"Rise", fall:"Fall", hover:"Hover", arc:"Arc",
+  "main-beat-kicks":"main-beat kicks", "even-kick-walk":"even eight-step kick walk",
+  "hat-shimmer":"hi-hat shimmer",
+});
+// Canonical order, not alphabetical accident: when a song lands on more than one family, the sentence
+// has to name ONE of them, and it must name the same one every time it is rendered.
+const questFirstOf=(order,set)=>{ for(const f of order) if(set.indexOf(f)>=0) return f; return null; };
+const questTok=(id,slots)=>slots?{ id, slots }:{ id };
+
+// The closed set of things each analyzer is able to report. Declared, not inferred: the receipt
+// reducer refuses any token a phase's own analyzers could not have produced, and a test walks every
+// family combination to prove describe() never leaves this list.
+const QUEST_HEARD_CONTOUR=["heard-contour-rise","heard-contour-fall","heard-contour-hover",
+  "heard-contour-arc","heard-contour-unnamed"];
+const QUEST_HEARD_CONTOUR_PAIR=QUEST_HEARD_CONTOUR.concat(["heard-contour-kept","heard-contour-changed"]);
+const QUEST_HEARD_PULSE=["heard-pulse-main-kicks","heard-pulse-even-kicks","heard-pulse-hat-shimmer",
+  "heard-pulse-none"];
+const QUEST_HEARD_PULSE_PAIR=QUEST_HEARD_PULSE.concat(["heard-pulse-kept","heard-pulse-changed"]);
+
+const QUEST_CONTOUR_TOKEN={ rise:"heard-contour-rise", fall:"heard-contour-fall",
+  hover:"heard-contour-hover", arc:"heard-contour-arc" };
+const QUEST_PULSE_TOKEN={ "main-beat-kicks":"heard-pulse-main-kicks",
+  "even-kick-walk":"heard-pulse-even-kicks", "hat-shimmer":"heard-pulse-hat-shimmer" };
+
+const describeContour=fams=> fams.length ? fams.map(f=>questTok(QUEST_CONTOUR_TOKEN[f])) : [questTok("heard-contour-unnamed")];
+const describePulse  =fams=> fams.length ? fams.map(f=>questTok(QUEST_PULSE_TOKEN[f]))   : [questTok("heard-pulse-none")];
+function describeContourPair(cur, snap){
+  if(!cur.length) return [questTok("heard-contour-unnamed")];
+  if(!snap.length) return describeContour(cur);                       // nothing named to compare against
+  const shared=questFirstOf(QUEST_CONTOUR_FAMILIES, cur.filter(f=>snap.indexOf(f)>=0));
+  if(shared) return [questTok("heard-contour-kept",{ contour:shared })];
+  return [questTok("heard-contour-changed",{ oldContour:questFirstOf(QUEST_CONTOUR_FAMILIES,snap),
+                                        newContour:questFirstOf(QUEST_CONTOUR_FAMILIES,cur) })];
+}
+function describePulsePair(cur, snap){
+  if(!cur.length) return [questTok("heard-pulse-none")];
+  if(!snap.length) return describePulse(cur);
+  const shared=questFirstOf(QUEST_PULSE_FAMILIES, cur.filter(f=>snap.indexOf(f)>=0));
+  if(shared) return [questTok("heard-pulse-kept",{ pulse:shared })];
+  return [questTok("heard-pulse-changed",{ oldPulse:questFirstOf(QUEST_PULSE_FAMILIES,snap),
+                                      newPulse:questFirstOf(QUEST_PULSE_FAMILIES,cur) })];
+}
+
 const questShare=(a,b)=>a.some(x=>b.indexOf(x)>=0);          // the two family sets intersect
 const questBothNamed=(a,b)=>a.length>0 && b.length>0;        // both songs landed on a family we can name
 const QUEST_PRIMITIVES=deepFreezeQuest({
   // --- musical: they read evidence and nothing else ---
   "contour.any-of":{ kind:"musical", capabilityId:"melodic-contour", subject:"current",
     allowedPhaseTypes:["compose"], parameterSchema:QP.enumSet("families",QUEST_CONTOUR_FAMILIES,1,4),
-    allowedDescriptorIds:["way-contour-any"],
-    evaluate:(cur,snap,p)=>({ ok:questShare(cur.contourFamilies,p.families), facts:{ families:cur.contourFamilies } }) },
+    allowedDescriptorIds:["way-contour-any"], heardDescriptorIds:QUEST_HEARD_CONTOUR,
+    evaluate:(cur,snap,p)=>({ ok:questShare(cur.contourFamilies,p.families), facts:{ families:cur.contourFamilies } }),
+    describe:f=>describeContour(f.families) },
   "contour.same-family-as-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
     allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
-    allowedDescriptorIds:["way-contour-kept"],
+    allowedDescriptorIds:["way-contour-kept"], heardDescriptorIds:QUEST_HEARD_CONTOUR_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && questShare(cur.contourFamilies,snap.contourFamilies),
-      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }) },
+      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }),
+    describe:f=>describeContourPair(f.families, f.snapshotFamilies) },
   "contour.differs-from-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
     allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
-    allowedDescriptorIds:["way-contour-changed"],
+    allowedDescriptorIds:["way-contour-changed"], heardDescriptorIds:QUEST_HEARD_CONTOUR_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && !questShare(cur.contourFamilies,snap.contourFamilies),
-      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }) },
+      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }),
+    describe:f=>describeContourPair(f.families, f.snapshotFamilies) },
   // Each reads its own NAMED family off the evidence. The even walk is eight kicks in lane 0; the
   // shimmer is lane 2. Conflating those two cost a design round, so they never share a code path.
   "pulse.kick-on-main-beats":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
     allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
-    allowedDescriptorIds:["way-pulse-main-kicks"],
-    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("main-beat-kicks")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+    allowedDescriptorIds:["way-pulse-main-kicks"], heardDescriptorIds:QUEST_HEARD_PULSE,
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("main-beat-kicks")>=0, facts:{ families:cur.steadyPulseFamilies } }),
+    describe:f=>describePulse(f.families) },
   "pulse.even-walk":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
     allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
-    allowedDescriptorIds:["way-pulse-even-kicks"],
-    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("even-kick-walk")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+    allowedDescriptorIds:["way-pulse-even-kicks"], heardDescriptorIds:QUEST_HEARD_PULSE,
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("even-kick-walk")>=0, facts:{ families:cur.steadyPulseFamilies } }),
+    describe:f=>describePulse(f.families) },
   "pulse.hat-shimmer":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
     allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
-    allowedDescriptorIds:["way-pulse-hat-shimmer"],
-    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("hat-shimmer")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+    allowedDescriptorIds:["way-pulse-hat-shimmer"], heardDescriptorIds:QUEST_HEARD_PULSE,
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("hat-shimmer")>=0, facts:{ families:cur.steadyPulseFamilies } }),
+    describe:f=>describePulse(f.families) },
   "pulse.same-steady-family-as-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
     allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
-    allowedDescriptorIds:["way-pulse-kept"],
+    allowedDescriptorIds:["way-pulse-kept"], heardDescriptorIds:QUEST_HEARD_PULSE_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
-      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }) },
+      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }),
+    describe:f=>describePulsePair(f.families, f.snapshotFamilies) },
   "pulse.differs-steady-family-from-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
     allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
-    allowedDescriptorIds:["way-pulse-changed"],
+    allowedDescriptorIds:["way-pulse-changed"], heardDescriptorIds:QUEST_HEARD_PULSE_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && !questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
-      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }) },
+      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }),
+    describe:f=>describePulsePair(f.families, f.snapshotFamilies) },
   "phrase.minimum-onsets":{ kind:"musical", capabilityId:"melody-making", subject:"current",
     allowedPhaseTypes:["compose","transform"], parameterSchema:QP.minimum("minimum",1,64),
-    allowedDescriptorIds:["way-enough-notes"],
-    evaluate:(cur,snap,p)=>({ ok:cur.melodyOnsetCount>=p.minimum, facts:{ onsets:cur.melodyOnsetCount } }) },
+    allowedDescriptorIds:["way-enough-notes"], heardDescriptorIds:[],
+    evaluate:(cur,snap,p)=>({ ok:cur.melodyOnsetCount>=p.minimum, facts:{ onsets:cur.melodyOnsetCount } }),
+    // No heard-* descriptor ships for onset counting, so it contributes nothing to what the garden says.
+    // An empty list is the honest answer; inventing wording here would be the engine editorialising.
+    describe:()=>[] },
 
   // --- procedural: they read the RUN, never the music, and are legal only in phase.procedure ---
   "playback.complete-since-last-edit":{ kind:"procedural",
@@ -5369,7 +5462,7 @@ const QUEST_DESCRIPTORS=deepFreezeQuest({
   "heard-contour-changed":{ kind:"heard", text:"The second path changed from {oldContour} to {newContour}.", slots:["oldContour","newContour"] },
   "heard-contour-kept":{ kind:"heard", text:"The lights kept their {contour} shape.", slots:["contour"] },
   "heard-pulse-changed":{ kind:"heard", text:"The roots changed from {oldPulse} to {newPulse}.", slots:["oldPulse","newPulse"] },
-  "heard-pulse-kept":{ kind:"heard", text:"The roots kept the {pulse} heartbeat.", slots:["pulse"] },
+  "heard-pulse-kept":{ kind:"heard", text:"The roots kept their {pulse}.", slots:["pulse"] },
 });
 
 // ---- evaluating one observation against a pair of songs ----
@@ -5408,6 +5501,7 @@ function questSemantics(def, errs){
     for(const vid of Object.keys(w.songs)){
       const ev=songEvidence(w.songs[vid]);
       if(!ev.valid){ err("witness-song-invalid",path,w.id+"."+vid+":"+ev.code); good=false; continue; }
+      if(ev.paletteFallback){ err("witness-palette-unusable",path,w.id+"."+vid); good=false; continue; }
       byVersion[vid]=ev; }
     if(good && !byVersion[w.currentVersionId]){ err("witness-missing-current",path,w.id); good=false; }
     return (evidenceCache[w.id]= good ? { byVersion, currentVersionId:w.currentVersionId } : null); };
@@ -5495,6 +5589,116 @@ function questSemantics(def, errs){
           err("no-distinguishing-witness",at,A.id+" without "+B.id); } }
   });
   return ok;
+}
+
+// ---------- What the garden says back ----------
+// Tokens are stored as an id plus enum slots and rendered fresh every time, so a later copy edit reaches
+// runs that were saved before it. The rendered text is a plain string built by concatenation — never
+// markup — and an unresolvable token yields null rather than a sentence with a hole in it.
+function questTokenText(t){
+  const d=t && QUEST_DESCRIPTORS[t.id];
+  if(!d || d.kind!=="heard") return null;
+  if(!d.slots || !d.slots.length) return d.text;
+  let out=d.text;
+  for(const name of d.slots){
+    const v=t.slots && t.slots[name];
+    const label=QUEST_ENUM_LABELS[v];
+    if(!label) return null;                      // a slot we cannot fill is a sentence we do not say
+    out=out.split("{"+name+"}").join(label); }
+  return out;
+}
+// Keyed on the slots the descriptor actually declares, so a token carrying an extra key the wording
+// never reads is the SAME fact, not a second one. Keying on the raw slots object said "The lights
+// climbed." twice. Found by GPT's tester.
+function questTokenKey(t){
+  const d=QUEST_DESCRIPTORS[t.id];
+  if(!d) return t.id+"|?";
+  return t.id+"|"+(d.slots||[]).map(n=>String(t.slots && t.slots[n])).join(",");
+}
+function questRenderTokens(list){
+  const seen=Object.create(null), out=[];
+  for(const t of list){                          // each distinct musical fact ONCE, however many routes named it
+    const k=questTokenKey(t); if(seen[k]) continue; seen[k]=1;
+    const text=questTokenText(t);
+    if(text) out.push({ descriptorId:t.id, slots:t.slots||null, text }); }
+  return out;
+}
+// "Ways this could work": one entry per route, its descriptors in the order the author wrote them.
+// The engine supplies the phrases; joining them into a sentence is the shell's business.
+function questWays(def, phaseId){
+  const p=def && def.phases && def.phases.find(x=>x.id===phaseId);
+  if(!p || !p.challenge) return [];
+  return p.challenge.routes.map(r=>({ routeId:r.id,
+    phrases:r.observations.map(o=>{ const d=QUEST_DESCRIPTORS[o.descriptorId];
+      return d && d.kind==="way" ? d.text : null; }).filter(Boolean) }));
+}
+
+// The evaluator. It reads NOTHING live: no DOM, grid, audio, clock, Store, progress or active scope.
+// Everything it needs arrives as the definition, pre-extracted evidence, and the run.
+function evaluateQuest(def, evidence, run){
+  const no=(code,extra)=>({ ok:false, code, extra });
+  if(!def || !run || !evidence || !evidence.versions) return no("bad-input");
+  if(run.questId!==def.id) return no("wrong-quest", run.questId);
+  if(run.definitionVersion!==def.v) return no("wrong-definition-version", run.definitionVersion);
+  const p=def.phases[run.phase];
+  if(!Number.isInteger(run.phase) || !p) return no("no-phase", run.phase);
+
+  const current = p.type==="compare-offer" ? (run.selection || run.draft) : p.versionId;
+  const need=[current].concat(p.type==="transform" ? [p.sourceVersionId]
+                            : p.type==="compare-offer" ? p.versionIds : []);
+  for(const vid of need){
+    const ev=evidence.versions[vid];
+    if(!ev || !ev.valid) return no("no-evidence", vid); }
+
+  const ctx={ byVersion:evidence.versions, currentVersionId:current };
+  const routes=[], matchedRouteIds=[], allTokens=[];
+  if(p.challenge) for(const r of p.challenge.routes){
+    const observations=r.observations.map(o=>{
+      const prim=QUEST_PRIMITIVES[o.analyzerId];
+      const res=questEvaluateObservation(o, ctx);
+      const facts=res.facts||null;
+      const toks=(facts && prim && prim.describe) ? prim.describe(facts) : [];
+      for(const t of toks) allTokens.push(t);
+      return { analyzerId:o.analyzerId, matched:res.ok===true, descriptorTokens:questRenderTokens(toks) }; });
+    const matched=observations.every(o=>o.matched);
+    if(matched) matchedRouteIds.push(r.id);
+    routes.push({ routeId:r.id, matched, observations }); }
+
+  // Procedural facts, every one of them read off the run. "nonempty" is REPORTED, not gated on:
+  // completePass already refuses an empty song and an edit that empties one bumps editRev, so gating
+  // it here would be a condition that cannot be false whenever the playback gate is open.
+  const gate=(id,vid)=>{ const g=QUEST_PRIMITIVES[id];
+    if(!g || g.kind!=="procedural") return false;
+    try{ return g.gate(run, vid)===true; }catch(e){ return false; } };   // a throwing gate is a closed gate
+  const c=run.comparison;
+  const blockers=[];
+  for(const id of p.procedure.gateIds) if(!gate(id, current)) blockers.push(id);
+  const gatesOpen = blockers.length===0;
+  const procedural={
+    nonempty: evidence.versions[current].nonempty===true,
+    completeSinceLastEdit: playbackCompleteSinceLastEdit(run, current),
+    editedAfterFork: gate("edit.after-fork", current),
+    auditionedBoth: gate("comparison.auditioned-both", current),
+    comparedCurrentRevisions: !!c && c.versionIds.every(id=>{ const v=run.versions[id];
+      return !!v && v.editRev===c.revs[id]; }),
+    chosen: gate("comparison.chosen", current),
+    canAdvance: p.type!=="compare-offer" && gatesOpen,
+    canOffer:  p.type==="compare-offer" && gatesOpen,
+    blockers,
+  };
+  return { ok:true, questId:def.id, definitionVersion:def.v, phaseId:p.id, currentVersionId:current,
+    musical:{ routes, matchedRouteIds, descriptorTokens:questRenderTokens(allTokens) },
+    procedural };
+}
+
+// The persisted observation, rendered. A resumed run shows what it last heard until a newer completed
+// playback replaces it — so the description a child left the garden with is the one they come back to.
+function questObservationFor(run, phaseId){
+  const o=run && run.evidence && run.evidence.observations && run.evidence.observations[phaseId];
+  if(!o) return null;
+  return { versionId:o.versionId, editRev:o.editRev, at:o.at,
+    matchedRouteIds:(o.matchedRouteIds||[]).slice(),
+    descriptorTokens:questRenderTokens(o.descriptorTokens||[]) };
 }
 
 function deepFreezeQuest(v){
@@ -5598,8 +5802,7 @@ function reduceQuestRun(run, op){
     const v=V(op.versionId); if(!v) return no("no-version");
     if(typeof op.sessionId!=="string" || !op.sessionId) return no("no-session");
     if(op.editRev!==v.editRev) return no("stale-rev");     // second defence: even if cancellation wiring failed
-    const empty = !v.song || !v.song.tracks || !v.song.tracks.some(t => (t.notes&&t.notes.length) || (t.hits&&t.hits.length));
-    if(empty) return no("empty-song");
+    if(!songIsAudible(v.song)) return no("empty-song");
     const nv=Object.assign({}, v, { lastCompletePlayRev:op.editRev, lastCompletePlaySessionId:op.sessionId });
     return { ok:true, run:touch(Object.assign({}, run, { versions:Object.assign({}, run.versions, {[op.versionId]:nv}) })), effects:[] };
   }
@@ -5610,6 +5813,53 @@ function reduceQuestRun(run, op){
     if(v.lastCompletePlayRev!==op.editRev || v.lastCompletePlaySessionId!==op.sessionId) return no("not-heard");
     const nv=Object.assign({}, v, { auditionedRev:op.editRev, auditionedSessionId:op.sessionId });
     return { ok:true, run:touch(Object.assign({}, run, { versions:Object.assign({}, run.versions, {[op.versionId]:nv}) })), effects:[] };
+  }
+
+  // The observation rides in the SAME transaction as the playback credit that earned it, so the
+  // description a child reads always belongs to the revision and session that produced it. If the
+  // write fails, neither the credit nor the description publishes.
+  if(op.type==="recordObservation"){
+    if(!active) return no("not-active");
+    const v=V(op.versionId); if(!v) return no("no-version");
+    if(op.editRev!==v.editRev) return no("stale-rev");
+    if(v.lastCompletePlayRev!==op.editRev || v.lastCompletePlaySessionId!==op.sessionId) return no("not-heard");
+    // The frozen catalog, looked up by the id the run already carries. This is immutable engine data,
+    // not live state: a description may only name routes and descriptors its own definition declares.
+    const def=QUEST_DEFINITIONS[run.questId];
+    if(!def || def.v!==run.definitionVersion) return no("no-definition");
+    // The receipt is for the phase the run is ON, and for that phase's own version. A phase-1 pass
+    // could otherwise write a phase-3 observation before B exists — a description of something that
+    // has not happened. Found by GPT's tester.
+    const ph=def.phases[run.phase];
+    if(!ph || ph.id!==op.phaseId) return no("wrong-phase");
+    if(!ph.challenge) return no("no-challenge");            // nothing musical is judged in a compare phase
+    if(op.versionId!==ph.versionId) return no("wrong-version");
+    const ids=(op.matchedRouteIds||[]), toks=(op.descriptorTokens||[]);
+    if(!Array.isArray(ids) || ids.length>4 || !Array.isArray(toks) || toks.length>8) return no("bad-payload");
+    const known=ph.challenge.routes.map(r=>r.id);
+    for(const id of ids) if(known.indexOf(id)<0) return no("unknown-route");
+    // Only what THIS phase's analyzers could have said. A compose phase has no snapshot, so a forged
+    // "the second path changed" receipt has no way in.
+    const sayable=Object.create(null);
+    for(const r of ph.challenge.routes) for(const o of r.observations){
+      const prim=QUEST_PRIMITIVES[o.analyzerId];
+      for(const d of (prim && prim.heardDescriptorIds) || []) sayable[d]=1; }
+    const clean=[];
+    for(const t of toks){
+      if(!t || typeof t!=="object" || !QUEST_DESCRIPTORS[t.id] || QUEST_DESCRIPTORS[t.id].kind!=="heard") return no("unknown-descriptor");
+      if(!sayable[t.id]) return no("descriptor-unreachable");
+      if(t.slots!==undefined && (!t.slots || typeof t.slots!=="object" || Array.isArray(t.slots))) return no("bad-slots");
+      const declared=QUEST_DESCRIPTORS[t.id].slots||[];
+      for(const k of Object.keys(t.slots||{})){
+        if(declared.indexOf(k)<0) return no("unknown-slot");    // a key the wording never reads
+        if(!QUEST_ENUM_LABELS[t.slots[k]]) return no("bad-slot-value"); }
+      for(const k of declared) if(!(t.slots && t.slots[k])) return no("missing-slot");
+      clean.push(t.slots ? { id:t.id, slots:Object.assign({}, t.slots) } : { id:t.id }); }
+    const entry={ versionId:op.versionId, editRev:op.editRev, sessionId:op.sessionId,
+      matchedRouteIds:ids.slice(), descriptorTokens:clean, at:op.at };
+    const evidence=Object.assign({}, run.evidence);
+    evidence.observations=Object.assign({}, evidence.observations, { [op.phaseId]:entry });
+    return { ok:true, run:touch(Object.assign({}, run, { evidence })), effects:[] };
   }
 
   if(op.type==="forkFrom"){
@@ -5648,8 +5898,7 @@ function reduceQuestRun(run, op){
     const v=V(id); if(!v) return no("no-version");
     // NO route match is consulted, and there is no input here that could carry one. That is what
     // structurally preserves Q6's "offer anyway": the only bars are a real artifact and a real listen.
-    const empty = !v.song || !v.song.tracks || !v.song.tracks.some(t => (t.notes&&t.notes.length) || (t.hits&&t.hits.length));
-    if(empty) return no("empty-song");
+    if(!songIsAudible(v.song)) return no("empty-song");
     if(v.lastCompletePlayRev!==v.editRev) return no("not-heard");
     return { ok:true, run:touch(Object.assign({}, run, { status:"offering",
       pendingOffer:{ artifactId:"quest-run:"+run.runId, versionId:id, editRev:v.editRev,

@@ -1400,3 +1400,78 @@ all. `QUESTS.md` had the primitive whitelist written in camelCase, which the shi
 rejects, and a stale `index.html:4944` line reference; both corrected. Browser-verified: the catalog
 boots with zero errors, `questSemantics` passes the shipped quest over real songs, and "Make the melody
 climb" still passes a climb and rejects a descent through its own `chk` closure.
+
+### D3 — the evaluator, and what the garden says back
+
+**`evaluateQuest(def, evidence, run)`** turns a definition, pre-extracted evidence and a run into an
+answer, reading nothing live — no DOM, grid, audio, clock, Store, progress or scope. Its output carries
+no score, grade, confidence or "closest route", and a test asserts none of those words appear anywhere
+in it.
+
+**Descriptions follow the facts, not the question.** A `contour.differs-from-snapshot` clause that did
+NOT match still reports *"The lights kept their Rise shape."* — what was true — rather than a negation
+of what was asked. That falls out of hanging `describe` on the facts instead of on the asking analyzer,
+and it means the same music narrates identically whichever route inspected it. Slot values are enum ids
+resolved to engine labels; a definition can choose which descriptors a route names but never the words.
+When a song lands on two families — C-D-E-D-C is genuinely both a hover and an arc — the sentence names
+the first in the ENGINE's canonical order, so the same music never renders two different ways.
+
+**Observations persist as ids and slots, never rendered text**, so a later rewording reaches runs saved
+before it. They ride in the SAME transaction as the playback credit that earned them.
+
+**One copy change, found by reading the browser rather than a test.** The design's *"The roots kept the
+{pulse} heartbeat."* rendered as *"The roots kept the main-beat kicks heartbeat."* — not a sentence to
+read to a six-year-old. Now *"The roots kept their main-beat kicks."*, which works with all three labels.
+
+**I argued `nonempty` should be reported rather than gated** — `completePass` already refuses an empty
+song, and emptying a credited one bumps `editRev` and shuts the playback gate, so gating on it would be
+a condition that cannot be false. I pinned that reasoning as a test rather than leaving it an argument.
+
+#### GPT found four defects, and all four were real
+
+1. **The receipt never recorded anything.** `onCompletePass` submitted `[completePass, (audition)]` and
+   nothing else — the op existed, the sink never used it, so in real play no observation would ever have
+   been written. D3 was incomplete and the unit tests could not see it, because they called the reducer
+   directly.
+2. **A phase-1 receipt could write a phase-3 observation**, and could carry any `heard-*` descriptor —
+   including a forged *"the second path changed"* that no phase-1 analyzer can produce, since phase 1
+   has no snapshot. Now the receipt must name the phase the run is ON, that phase's own version, and
+   only descriptors its own analyzers declare they can say.
+3. **The dedupe was not semantic.** Keyed on the raw slots object, `{id}` and `{id, slots:{ignored}}`
+   were two facts, and *"The lights climbed."* was said twice. Now keyed on the slots the descriptor
+   actually declares, and a slot key the wording never reads is refused outright.
+4. **"Empty" meant two different things.** A note at column 16 of a 16-column song is dropped by
+   `applySong` and heard by nobody, but `completePass` counted the array entry and handed out a playback
+   credit for silence. This is the same bug class as GPT's D2 finding, one seam over.
+
+That last one forced the rule to be stated properly rather than patched: **the evidence seam normalises
+exactly as `applySong` does.** `setPalette` falls back to pentatonic for a missing or unknown id and
+`applySong` widens any width to 16, so `songEvidence` now does both — refusing there what the game opens
+without complaint would judge "empty" a song the player just heard, and a share link carrying a stale
+palette would cost them a credit they earned. The fallback is reported, never hidden, and **authored
+content is held to the higher standard the runtime cannot be**: a witness that leans on the palette
+fallback is a catalog error, because a witness silently reinterpreted under a different ladder proves
+the wrong thing about the route it exists to prove.
+
+Fixing that exposed three test files whose v3 fixtures used `role:` where the format uses `kind:` — they
+had been passing incidentally, against a shape the game never produces. Corrected.
+
+Two of GPT's "is this fine?" answers were also useful: `evaluateQuest`'s whole helper chain is clean of
+live reads, and `run.selection || run.draft` names the right version in every reachable phase-3 state.
+
+**Two guards I added that no test could reach until I wrote one.** The receipt sink declines to describe
+rather than declining to credit — a refusal inside a one-transaction receipt would take the playback
+credit down with it, so auditioning A during phase 2, a pass in the compare phase, and a run whose
+snapshot no longer analyses all credit the pass and say nothing. And a test now walks every family
+combination of every analyzer to prove `describe()` can never emit a token outside its declared
+`heardDescriptorIds` — otherwise that refusal would turn on the player and reject a real observation.
+
+**Suite: 288 pass** (277 → 288). Thirty-four mutations, thirty-four catches. GPT's five adversarial
+tests are kept as it wrote them, in `tests/quest-adversarial.test.mjs` — the value of an adversary's
+test is that the person who wrote the code did not write it. Browser-verified: a full quest narrated
+through the real receipt sink, phase 1's description still remembered at phase 2, the stored form
+carrying ids and slots with no frozen wording, and the silent song refused a credit.
+
+`README.md` still said quests were "A plan — nothing built yet" and that Firefly was "specced and
+unbuilt"; both had been false since D1 and neither the new code nor the new document would have prompted
+the fix, because they live in README's own status prose.

@@ -95,9 +95,8 @@ test("a malformed event is refused; an out-of-span one is dropped", () => {
     [song([[C4, 0]], []), s => { s.tracks[0].notes[0].c = 1.5; }, "bad-note"],
     [song([], [[0, 0]]), s => { s.tracks[1].hits[0].lane = 99; }, "bad-hit"],
     [song([[C4, 0]], []), s => { s.v = 2; }, "not-v3"],
-    [song([[C4, 0]], []), s => { s.palette = "nope"; }, "unknown-palette"],
-    [song([[C4, 0]], []), s => { s.time.cols = 0; }, "bad-cols"],
     [song([[C4, 0]], []), s => { s.tracks = null; }, "bad-tracks"],
+    [song([[C4, 0]], []), s => { s.time.cols = 900; }, "too-many-columns"],
   ];
   for (const [s, mutate, code] of bad) {
     mutate(s);
@@ -109,6 +108,34 @@ test("a malformed event is refused; an out-of-span one is dropped", () => {
   const ok = g.songEvidence(song([[C4, 0], [D4, 99]], [[0, 0], [0, 40]]));
   assert.strictEqual(ok.valid, true);
   assert.strictEqual(ok.melodyOnsetCount, 1);
+});
+
+test("evidence falls back exactly where applySong does, and says that it did", () => {
+  // MUTATION: refuse a missing or unknown palette, or a column count below the editor's floor.
+  // setPalette falls back to pentatonic and applySong widens any width to 16, so refusing here would
+  // judge "empty" a song the game opens without complaint — and a share link with a stale palette
+  // would cost a player the playback credit they just earned.
+  for (const mutate of [s => { s.palette = "nope"; }, s => { delete s.palette; }]) {
+    const s = song(RISE, MAIN); mutate(s);
+    const ev = g.songEvidence(s);
+    assert.strictEqual(ev.valid, true);
+    assert.strictEqual(ev.paletteId, "pentatonic");
+    assert.strictEqual(ev.paletteFallback, true, "a fallback is reported, never hidden");
+    assert.deepEqual(ev.contourFamilies, ["rise"]);
+  }
+  const narrow = g.songEvidence(song(RISE, MAIN, { time: { cols: 0, tempo: 108, groove: 0 } }));
+  assert.strictEqual(narrow.valid, true);
+  assert.strictEqual(narrow.columns, 16);
+  assert.strictEqual(g.songEvidence(song(RISE, MAIN)).paletteFallback, false);
+});
+
+test("an authored witness may not lean on a fallback the runtime allows", () => {
+  // MUTATION: let questSemantics accept whatever songEvidence accepts.
+  // The runtime is forgiving because the loader is. Authored content is not: a witness reinterpreted
+  // under a different ladder proves the wrong thing about the route it exists to prove.
+  const g2 = load(d => { d.witnesses[0].songs.A.palette = "nope"; });
+  assert.strictEqual(codes(g2).includes("witness-palette-unusable"), true);
+  assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), []);
 });
 
 test("evidence reads the song at the width the editor would open it at", () => {

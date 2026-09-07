@@ -13,10 +13,10 @@ const g = loadGame();
 const SPAN = { start: 0, end: 16 };
 const song = (cols = 16, notes = [{ p: 60, c: 0, len: 1 }]) => ({
   v: 3, meta: { created: 1, updated: 1 }, time: { cols, tempo: 108, groove: 0 },
-  tracks: [{ role: "melody", notes }, { role: "drums", hits: [{ lane: 0, c: 0 }] }],
+  tracks: [{ kind: "melody", notes }, { kind: "drums", hits: [{ lane: 0, c: 0 }] }],
 });
 const emptySong = () => ({ v: 3, meta: {}, time: { cols: 16, tempo: 108, groove: 0 },
-  tracks: [{ role: "melody", notes: [] }, { role: "drums", hits: [] }] });
+  tracks: [{ kind: "melody", notes: [] }, { kind: "drums", hits: [] }] });
 
 const fresh = (over = {}) => g.newQuestRun({ runId: "r1", questId: "firefly-crossing",
   definitionVersion: 1, song: song(), span: SPAN, at: 100, ...over });

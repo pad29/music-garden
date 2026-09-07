@@ -11,7 +11,7 @@ import { loadGame } from "./harness.mjs";
 const SPAN = { start: 0, end: 16 };
 const song = (notes = [{ p: 60, c: 0, len: 1 }]) => ({
   v: 3, meta: { created: 1, updated: 1 }, time: { cols: 16, tempo: 108, groove: 0 },
-  tracks: [{ role: "melody", notes }, { role: "drums", hits: [{ lane: 0, c: 0 }] }],
+  tracks: [{ kind: "melody", notes }, { kind: "drums", hits: [{ lane: 0, c: 0 }] }],
 });
 
 /** A game in quest scope with one heard version, ready to advance or offer. */

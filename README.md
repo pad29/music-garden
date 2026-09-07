@@ -43,7 +43,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 | **`PACKAGES-DETAILED.md`** | Level-by-level as-built specs for every shipped expansion package, plus the **difficulty-ramp doctrine** every package follows. |
 | **`EDITOR-DESIGN.md`** | The **long-term editor design**: notes-as-objects + lens architecture, the chromatic lattice with lighting-as-tonality (draggable HOME + mode switch), duration/dynamics/multi-voice/sections plans, and the build phases that unblock the remaining package waves. |
 | **`SAVE-SHARE.md`** | The save/share system spec (pitch-based v3 song format, Studio, cloud songs) — **implemented** (P1–P3). |
-| **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **A plan — nothing built yet.** |
+| **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. The **engine** is built and tested (catalog, registries, evaluator, run, phases); **nothing is player-visible yet** — no shell and no entry point. |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
 | **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS). |
@@ -80,6 +80,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
+- **Quests** (declarative, data-not-code): `loadQuestCatalog()` → the plain-JSON gate + closed v1 grammar + `questSemantics()`; `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`; `songEvidence()` → `evaluateQuest()`; `reduceQuestRun()` and `transactQuestRun()`. See `QUESTS.md`.
 - **Contour** (melody shape): `contourSeqFromGrid()` (pure) with `contourSeq()` as its live-grid wrapper, `isRising/isFalling/isHovering/isArch/isTwoArcs/isJourney`, `extrema()` (prominence-based peak counting), the `#contourGhost` SVG target-path overlay.
 - **Motion**: `motionsOf()` + `isStepwise/isOneJump/isGentle/isBold/isStaircase/isLandSoftly` (steps vs. leaps).
 - **Pulse/rhythm**: the drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `placeDrums`), `gridNotesOnBeats()`, `setBeatGuide()`, density detectors (`drumHits/isBreathing/isSyncopated`) + the `#densityMeter`.
@@ -131,7 +132,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
 1. `march-and-waltz` (PW-5) — the parked meter material; needs triple groupings beyond fixed 4/4
-2. Quests — see `QUESTS.md`; Kind 1 (*The Firefly Crossing*) is specced and unbuilt
+2. Quests — see `QUESTS.md`. The engine for Kind 1 (*The Firefly Crossing*) ships: the sealed catalog, the analyzer and descriptor registries, `songEvidence`, the semantic validator, `evaluateQuest` and the QuestRun. What remains is the quest shell and the way in — until those land, no player can reach a quest.
 3. Bigger systems: multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).
