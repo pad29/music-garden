@@ -5078,7 +5078,16 @@ function reduceQuestTransaction(run, ops){
 }
 
 // ---- persistence: own key, capped, pruned, published only after the write lands ----
-function questRunEnvelope(runs){ return { v:1, runs }; }
+// Runs are capped and pruned; a COMPLETION is not. Finishing a quest and then starting twelve more
+// would otherwise erase the record that you ever finished it — the run carrying the evidence is the
+// same object the cap throws away. One small record per quest, outside the cap, in the same write.
+let QUEST_HISTORY=Object.create(null);
+function questRunEnvelope(runs, hist){ return { v:2, runs, completed:hist||QUEST_HISTORY }; }
+function questHistoryEntry(run){
+  return { questId:run.questId, definitionVersion:run.definitionVersion,
+           lastRunId:run.runId, artifactId:run.artifact&&run.artifact.artifactId,
+           completedAt:(run.artifact&&run.artifact.savedAt)||run.updatedAt }; }
+const questCompleted = questId => !!QUEST_HISTORY[questId];
 function pruneQuestRuns(runs, keepId){
   let out=Object.assign({}, runs);
   const terminal = st => st==="abandoned" || st==="completed";
@@ -5094,21 +5103,30 @@ function pruneQuestRuns(runs, keepId){
   return out;
 }
 // Returns false rather than throwing: a full disk must surface as a failed transaction, not a silent loss.
-function saveQuestRuns(runs){
+function saveQuestRuns(runs, hist){
   const pruned=pruneQuestRuns(runs, null);
-  if(JSON.stringify(questRunEnvelope(pruned)).length>QUEST_RUN_CHARS) return false;
-  return Store.set("questRuns", questRunEnvelope(pruned)) ? pruned : false;
+  const env=questRunEnvelope(pruned, hist);
+  if(JSON.stringify(env).length>QUEST_RUN_CHARS) return false;
+  return Store.set("questRuns", env) ? pruned : false;
 }
 function hydrateQuestRuns(){
   const env=Store.get("questRuns", null);
-  const out=Object.create(null);
-  if(env && env.v===1 && env.runs && typeof env.runs==="object"){
+  const out=Object.create(null), hist=Object.create(null);
+  // v1 profiles carry no completion map, so derive one from whatever completed runs survived the cap.
+  // Migration is in-memory: the next ordinary quest write saves v2 rather than forcing one now.
+  if(env && (env.v===1 || env.v===2) && env.runs && typeof env.runs==="object"){
     for(const id of Object.keys(env.runs)){ const r=env.runs[id];
       // A malformed run is ignored, never repaired into plausible state — a wrong phase is worse than none.
       if(r && r.runId===id && r.versions && Number.isInteger(r.phase) && r.phase>=0 && typeof r.status==="string")
         out[id]=r; }
+    if(env.v===2 && env.completed && typeof env.completed==="object"){
+      for(const q of Object.keys(env.completed)){ const c=env.completed[q];
+        if(c && c.questId===q && typeof c.lastRunId==="string") hist[q]=c; }
+    } else {
+      for(const id of Object.keys(out)) if(out[id].status==="completed") hist[out[id].questId]=questHistoryEntry(out[id]);
+    }
   }
-  QUEST_RUNS=out; return out;
+  QUEST_RUNS=out; QUEST_HISTORY=hist; return out;
 }
 
 
@@ -5179,9 +5197,14 @@ function transactQuestRun(runId, ops){
   const r=reduceQuestTransaction(cur, ops);
   if(!r.ok) return r;
   const cand=Object.assign({}, QUEST_RUNS); cand[runId]=r.run;
-  const saved=saveQuestRuns(cand);
+  // A run that just completed writes its history record in the same Store.set, so the record can
+  // never be lost to a crash between the two — and can never be pruned with the run either.
+  let hist=QUEST_HISTORY;
+  if(r.run.status==="completed" && cur.status!=="completed"){
+    hist=Object.assign({}, QUEST_HISTORY); hist[r.run.questId]=questHistoryEntry(r.run); }
+  const saved=saveQuestRuns(cand, hist);
   if(!saved) return { ok:false, code:"store-failed" };
-  QUEST_RUNS=saved;
+  QUEST_RUNS=saved; QUEST_HISTORY=hist;
   return { ok:true, run:QUEST_RUNS[runId], effects:r.effects };
 }
 
@@ -6680,7 +6703,7 @@ function updateGarden(){ gardenbed.innerHTML="";
 
 // restore saved progress (Phase A: local; later synced to the account). ?reset wipes it for testing.
 if(/[?&]reset\b/i.test(location.search)){ Store.set("progress",null); progress={ v:1, name:"", current:"intro", packages:{}, settings:{}, updatedAt:0 };
-  Store.set("questRuns",null); QUEST_RUNS=Object.create(null); }   // a reset wipes quest drafts too, or a run outlives the progress it belongs to
+  Store.set("questRuns",null); QUEST_RUNS=Object.create(null); QUEST_HISTORY=Object.create(null); }   // a reset wipes quest drafts and history too
 ensureInstruments();   // derive the unlocked-instrument set for saves that predate the gradual reveal
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
