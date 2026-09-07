@@ -1547,3 +1547,70 @@ Firefly Crossing* — and then GPT's undo case, which now survives leave and res
 
 `README.md` now says plainly that `startQuestRun("firefly-crossing")` from the console is the only door
 and that the panel beside the field still shows whatever was there before. The shell is D5.
+
+### D5 — the quest shell
+
+**The DOM a child actually sees.** A separate `#questCard`, not a re-dressed `#levelCard` — goals, the
+hint and "Next level" are package ideas, and blanking each one every render is how they come back.
+`renderStage()` gains one quest branch as its first line. `questShellModel(run, def, view)` is pure and
+takes the live-only facts as an argument, so what a child is TOLD is testable without a browser; the
+renderer is deliberately dumb and writes textContent only.
+
+**Q5 rule 7, made structural.** One intention, a collapsed "Ways this could work", neutral observations
+after a completed playback, a saved line only once the write lands. A test asserts the model contains
+none of *score, percent, grade, matched, correct, wrong, best, closest* — anywhere in its JSON.
+
+**§8.8's selected-range trap**, in the design's exact words, shown the moment Play starts under a
+partial selection AND repeated when a shut gate is pressed, with a one-tap **Play the whole song**.
+`questRefusalText()` is split from the display so the choice of words is testable, and a test asserts
+the phrase "play it through" never appears — a loop over part of a song can never complete, so advice
+implying another lap will help is advice that cannot work.
+
+#### Three defects the browser found that the pure tests could not
+
+1. **`resetTransient()` wipes the field and truncates to 16 columns THROUGH `tx()`.** Painting a quest
+   therefore rewrote the draft as an empty song and shut the playback gate on the way in. Hence
+   `questPainting`, and one `questPaintField()` that resets and re-applies as a single deaf operation.
+2. **The workspace was declared and never applied.** A quest opened with the drum bed shut — and the
+   Firefly asks for a heartbeat in its first phase. `enterQuestRun` now calls `renderLevel()`, which is
+   what turns a feature set into a screen, and the envelope carries the two flags it reads off a level.
+3. **The one-tap fix shipped DISABLED.** The renderer disables any action that does not say `enabled`,
+   and the notice's action did not say it. The pure test had checked the action existed, not that it
+   could be pressed. There is now a test asserting every action the model emits declares a boolean
+   `enabled` and a non-empty label, so the next action added cannot repeat it.
+
+**And one the mutation pass found.** A guard I wrote as an optimisation — only record the comparison the
+first time both paths are heard — turned out to be a dead end. A comparison stores the REVISIONS it
+compared, so adding one more seed to the path they had just chosen left it stale, shut both comparison
+gates, and nothing refreshed it: **offering became permanently impossible, and replaying did not help.**
+The comparison is now re-recorded on every receipt and the reducer decides whether it is allowed.
+
+#### GPT found two more, and a third in its answers
+
+1. **The audition lock was too late.** `noteEdit` refused to persist, but `tx()` had already changed
+   what the child could see and journaled it. The refusal belongs where the finger lands: `cellClick`
+   and `drumClick` now decline first, and say why.
+2. **Tempo, groove and voice never reached the run**, though `currentSong()` serialises all three — so
+   the offered artifact could carry a different tempo from the one the child heard, with the playback
+   gate still open. They commit on "change", not "input": a slider fires "input" per pixel of a drag,
+   and one run transaction per pixel is not a revision history. Deliberately quest-only; a test pins
+   that a Studio tempo change still schedules no autosave, because making packages start doing that is
+   a different change from this one.
+3. In its design answers: **"finished" wrongly included `offering`.** That is the state a failed
+   artifact write leaves behind — nothing was saved — and the child was told the garden had carried
+   their song away, with only "Leave for now" to press. It now says what is true and offers **Try
+   saving it again**, the same recovery the next load runs by itself.
+
+**Two guards removed for being untestable duplicates**, per the standing rule: the `every(...)`
+precondition on the comparison (the reducer already refuses unless both are heard) and the status check
+before a retry (`finalizeQuestOffering` already refuses anything not mid-offering).
+
+`questLastRendered` is new: the model the shell last painted. The DOM is only inspectable in a browser,
+so without it the repaints themselves are invisible to the suite — which is exactly how the completion
+moment shipped silent.
+
+**Suite: 335 pass** (326 → 335). Twenty-nine mutations, twenty-nine caught. Browser-verified end to end
+through the shell's own buttons with real audio: a real playback credited and described, the fork,
+phase 2's *"The second path changed from Rise to Fall. The roots kept their main-beat kicks."*, both
+auditions putting the right song on the grid and recording the comparison unasked, the range notice with
+its working one-tap fix, and one song saved as *Night Bridge* with the completion line beneath it.

@@ -80,7 +80,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
-- **Quests** (declarative, data-not-code): `loadQuestCatalog()` → the plain-JSON gate + closed v1 grammar + `questSemantics()`; `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`; `songEvidence()` → `evaluateQuest()`; `reduceQuestRun()` and `transactQuestRun()`; `enterQuestRun()` and `performQuestAction()` for the phase controller. **No player-facing way in yet** — `startQuestRun("firefly-crossing")` from the console is the only door (D6 adds the Home card). See `QUESTS.md`.
+- **Quests** (declarative, data-not-code): `loadQuestCatalog()` → the plain-JSON gate + closed v1 grammar + `questSemantics()`; `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`; `songEvidence()` → `evaluateQuest()`; `reduceQuestRun()` and `transactQuestRun()`; `enterQuestRun()` / `performQuestAction()` for the phase controller; `questShellModel()` (pure) + `renderQuestShell()` for the `#questCard` panel. **No player-facing way in yet** — `startQuestRun("firefly-crossing")` from the console is the only door (the Home card comes next). See `QUESTS.md`.
 - **Contour** (melody shape): `contourSeqFromGrid()` (pure) with `contourSeq()` as its live-grid wrapper, `isRising/isFalling/isHovering/isArch/isTwoArcs/isJourney`, `extrema()` (prominence-based peak counting), the `#contourGhost` SVG target-path overlay.
 - **Motion**: `motionsOf()` + `isStepwise/isOneJump/isGentle/isBold/isStaircase/isLandSoftly` (steps vs. leaps).
 - **Pulse/rhythm**: the drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `placeDrums`), `gridNotesOnBeats()`, `setBeatGuide()`, density detectors (`drumHits/isBreathing/isSyncopated`) + the `#densityMeter`.
@@ -132,7 +132,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
 1. `march-and-waltz` (PW-5) — the parked meter material; needs triple groupings beyond fixed 4/4
-2. Quests — see `QUESTS.md`. Kind 1 (*The Firefly Crossing*) is playable end to end **from the console**: the sealed catalog, the analyzer and descriptor registries, `songEvidence`, the semantic validator, `evaluateQuest`, the QuestRun and the phase controller all ship. What remains is the quest shell (the DOM a child sees) and the Home card that lets them reach it. Until those land, `startQuestRun("firefly-crossing")` is the only entry, and the panel beside the field still shows whatever was there before.
+2. Quests — see `QUESTS.md`. Kind 1 (*The Firefly Crossing*) is **fully playable**: the sealed catalog, the registries, `songEvidence`, the semantic validator, `evaluateQuest`, the QuestRun, the phase controller and the shell a child sees all ship. What remains is the **way in** — a Home card and the eligibility rules behind it. Until that lands, `startQuestRun("firefly-crossing")` from the console is the only entry.
 3. Bigger systems: multi-voice (Region 6), sections (Region 7), Styles/Eras
 
 The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection view, remix/social, style worlds).
