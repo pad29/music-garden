@@ -4959,7 +4959,7 @@ function reduceQuestRun(run, op){
   const touch = next => { next.updatedAt = Number.isFinite(op.at) ? op.at : run.updatedAt; return next; };
 
   if(op.type==="edit" && op.target==="tray"){
-    if(!active) return no("not-active");
+    if(!active) return no("not-active");   // an offering run is frozen until finalisation succeeds
     if(!Array.isArray(op.tray)) return no("bad-tray");
     // A tray change is NOT a song change: crafting a stamp must not invalidate playback of an
     // unchanged song, or a child would have to replay after opening their own toolbox.
@@ -5028,6 +5028,36 @@ function reduceQuestRun(run, op){
     return { ok:true, run:touch(Object.assign({}, run, { selection:op.versionId, draft:op.versionId })), effects:[] };
   }
 
+  if(op.type==="offer"){
+    if(!active) return no("not-active");
+    const id=run.selection; if(!id) return no("no-selection");
+    const v=V(id); if(!v) return no("no-version");
+    // NO route match is consulted, and there is no input here that could carry one. That is what
+    // structurally preserves Q6's "offer anyway": the only bars are a real artifact and a real listen.
+    const empty = !v.song || !v.song.tracks || !v.song.tracks.some(t => (t.notes&&t.notes.length) || (t.hits&&t.hits.length));
+    if(empty) return no("empty-song");
+    if(v.lastCompletePlayRev!==v.editRev) return no("not-heard");
+    return { ok:true, run:touch(Object.assign({}, run, { status:"offering",
+      pendingOffer:{ artifactId:"quest-run:"+run.runId, versionId:id, editRev:v.editRev,
+                     title:op.title||"", offeredAt:op.at } })), effects:[] };
+  }
+
+  if(op.type==="saveAs"){
+    if(run.status!=="offering" || !run.pendingOffer) return no("not-offering");
+    if(op.artifactId!==run.pendingOffer.artifactId) return no("wrong-artifact");
+    const p=run.pendingOffer;
+    return { ok:true, run:touch(Object.assign({}, run, { status:"completed", pendingOffer:null,
+      artifact:{ artifactId:p.artifactId, versionId:p.versionId, editRev:p.editRev,
+                 title:p.title, savedAt:op.savedAt } })), effects:[] };
+  }
+
+  // Private: only advanceQuestPhase() may submit this, which is what makes it the sole phase writer.
+  if(op.type==="_phase"){
+    if(!active) return no("not-active");
+    if(!Number.isInteger(op.to) || op.to!==run.phase+1) return no("bad-phase-step");
+    return { ok:true, run:touch(Object.assign({}, run, { phase:op.to })), effects:[] };
+  }
+
   if(op.type==="abandon"){
     if(!active) return no("not-active");
     return { ok:true, run:touch(Object.assign({}, run, { status:"abandoned", abandonedAt:op.at })), effects:[] };
@@ -5079,6 +5109,66 @@ function hydrateQuestRuns(){
         out[id]=r; }
   }
   QUEST_RUNS=out; return out;
+}
+
+
+// ---------- The gate, the phase, and the offering ----------
+// The whole of QUESTS.md Q6's "played completely since its latest edit" is this equality. It reads no
+// live document, no paint state, no clock and no transport session — only two numbers the QuestRun
+// already owns, which is why it can be trusted after a reload.
+function playbackCompleteSinceLastEdit(run, versionId){
+  const v = run && run.versions && run.versions[versionId];
+  return !!v && v.lastCompletePlayRev===v.editRev; }
+
+// The ONLY post-construction writer of run.phase. Everything else — the lesson engine, the next
+// button, stageComplete — is structurally unable to move a quest on, which is the anti-drift rule
+// the scope migration established applied to the phase.
+function advanceQuestPhase(o){
+  const fail = code => ({ ok:false, code });
+  if(!o || !isQuestScope() || activeScope.runId!==o.runId) return fail("wrong-scope");
+  if(levelIdx!==0) return fail("bad-level");                       // a quest is ONE level; its steps are the phases
+  const run=QUEST_RUNS[o.runId];
+  if(!run || run.status!=="active") return fail("no-run");
+  if(run.phase!==o.expectedPhase) return fail("stale-phase");
+  const steps=(currentLevel()&&currentLevel().steps)||[];
+  if(!steps[o.expectedPhase+1]) return fail("no-next-phase");
+  if(typeof o.gate!=="function") return fail("no-gate");
+  let open=false;
+  try{ open = o.gate(run)===true; }catch(e){ return fail("gate-threw"); }   // a throwing gate is a closed gate
+  if(!open) return fail("gate-closed");
+  // The preparatory ops and the phase step land in ONE persisted transaction: a fork that succeeded
+  // while the phase move failed would leave the run with a version nothing points at.
+  const r=transactQuestRun(o.runId, (o.ops||[]).concat([{ type:"_phase", to:o.expectedPhase+1, at:Date.now() }]));
+  return r.ok ? { ok:true, phase:QUEST_RUNS[o.runId].phase } : fail(r.code||"transaction-failed");
+}
+
+// ---- offering: three ordered steps, replayable from any interruption ----
+// localStorage cannot write two keys atomically, so finalisation is ordered so that every crash point
+// is recoverable and a COMPLETED run can never exist without its artifact having been written first.
+function questArtifactUpsert(run){
+  const p=run.pendingOffer; if(!p) return false;
+  const v=run.versions[p.versionId]; if(!v) return false;
+  const song=jclone(v.song);
+  song.meta=Object.assign({}, song.meta, { localId:p.artifactId, title:p.title,
+    source:{ kind:"quest", runId:run.runId, questId:run.questId, definitionVersion:run.definitionVersion } });
+  const saves=getSaves();
+  const at=saves.findIndex(x=>x&&x.meta&&x.meta.localId===p.artifactId);
+  if(at>=0) saves[at]=song; else saves.unshift(song);              // upsert, so a retry cannot duplicate
+  return setSaves(saves);          // false on a full disk — finalisation stops here and the run stays offering
+}
+function finalizeQuestOffering(runId){
+  const run=QUEST_RUNS[runId];
+  if(!run || run.status!=="offering" || !run.pendingOffer) return { ok:false, code:"not-offering" };
+  if(!questArtifactUpsert(run)) return { ok:false, code:"artifact-failed" };
+  const r=transactQuestRun(runId, [{ type:"saveAs", artifactId:run.pendingOffer.artifactId, savedAt:Date.now() }]);
+  return r.ok ? { ok:true, artifactId:run.artifact&&run.artifact.artifactId } : { ok:false, code:r.code };
+}
+// Any run left mid-offering by a crash or a failed write finishes on the next load. Idempotent: the
+// artifact upsert replaces by id, and saveAs on an already-completed run is simply refused.
+function recoverQuestOfferings(){
+  const out=[];
+  for(const id of Object.keys(QUEST_RUNS)) if(QUEST_RUNS[id].status==="offering") out.push([id, finalizeQuestOffering(id)]);
+  return out;
 }
 
 // The one door for every persistent run change: reduce a candidate, persist it, and only then publish
@@ -5160,8 +5250,18 @@ function scopeFeatures(){
 // scope exists to prevent. Step (c) owns this store; B2 needs only enough of it to be testable, and
 // ships no quest entry point.
 let QUEST_RUNS=Object.create(null);
-function questPhaseIndex(runId){ const r=QUEST_RUNS[runId]; return r&&r.phase|0 ? r.phase|0 : 0; }
-function currentStepIndex(){ return isQuestScope() ? questPhaseIndex(activeScope.runId) : lessonStepIdx; }
+// Returns -1 rather than throwing when a run is missing or unusable: curStage() sits on the paint
+// path, so a throw here would be a crash rather than a wrong answer. Exactly one caller — the quest
+// entry/resume path — treats -1 as "decline to enter quest scope"; rendering falls back to phase 0.
+const QUEST_PHASE_INVALID=-1;
+function questPhaseIndex(runId){
+  const r=QUEST_RUNS[runId];
+  if(!r || (r.status!=="active" && r.status!=="offering")) return QUEST_PHASE_INVALID;
+  return (Number.isInteger(r.phase) && r.phase>=0) ? r.phase : QUEST_PHASE_INVALID; }
+function currentStepIndex(){
+  if(!isQuestScope()) return lessonStepIdx;
+  const p=questPhaseIndex(activeScope.runId);
+  return p===QUEST_PHASE_INVALID ? 0 : p; }   // render something rather than throw; entry refuses the bad run
 
 // Both restoration paths (cloud apply and local bootstrap) resume the same way. progress.current is
 // the last PACKAGE to resume — never the Studio, never a quest; a resumable run is offered separately.
@@ -6149,7 +6249,7 @@ async function shareSong(s){
 }
 shareBtn.onclick=()=>shareSong(currentSong());
 function getSaves(){ return Store.get("saves",[]).filter(x=>x&&x.v===3); }   // clean break: ignore any v2 saves
-function setSaves(a){ Store.set("saves",a); }
+function setSaves(a){ return Store.set("saves",a); }   // the return matters: a quest offering must not complete on a failed artifact write
 saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim(); if(!n) return;
   const s=currentSong(); s.meta.title=n;
   const a=getSaves(); a.unshift(s); setSaves(a); toast("💾 Saved to My Melodies!"); };
@@ -6587,6 +6687,7 @@ if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
 hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at
+recoverQuestOfferings();   // a crash mid-offering finishes here: the artifact is written before the run completes
 toolboxOwner=null;   // per-scope now; the renderLevel below loads the resumed package's own tools
 restoreLastPackage();
 

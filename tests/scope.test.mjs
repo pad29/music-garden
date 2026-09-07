@@ -58,7 +58,7 @@ test("package identity is unavailable outside a package", () => {
 
 test("a quest reads its phase from the run, never from the lesson index", () => {
   const g = loadGame({ fresh: true });
-  g.QUEST_RUNS = { "run-1": { phase: 0 } };
+  g.QUEST_RUNS = { "run-1": { status: "active", phase: 0 } };
   g.setPlayScope(questScope("run-1"));
 
   assert.strictEqual(g.curStage().name, "phase 1");
@@ -77,7 +77,7 @@ test("a quest reads its phase from the run, never from the lesson index", () => 
 
 test("entering a quest scope does not carry a lesson step in", () => {
   const g = loadGame({ fresh: true });
-  g.QUEST_RUNS = { "run-2": { phase: 1 } };
+  g.QUEST_RUNS = { "run-2": { status: "active", phase: 1 } };
 
   g.setPlayScope({ kind: "package", packageId: "footsteps" }, { stepIdx: 3 });
   assert.strictEqual(g.lessonStepIdx, 3);
@@ -98,7 +98,7 @@ test("the Studio's palette is computed, not written into the catalog", () => {
 
 test("a quest inherits no controls, palette or companion from a package", () => {
   const g = loadGame({ fresh: true });
-  g.QUEST_RUNS = { "run-3": { phase: 0 } };
+  g.QUEST_RUNS = { "run-3": { status: "active", phase: 0 } };
 
   g.setPlayScope({ kind: "package", packageId: "two-kinds-of-walking" });
   const pkgFeatures = [...g.scopeFeatures()];
@@ -116,7 +116,7 @@ test("a quest inherits no controls, palette or companion from a package", () => 
 
 test("each scope owns a distinct toolbox key", () => {
   const g = loadGame({ fresh: true });
-  g.QUEST_RUNS = { "run-4": { phase: 0 } };
+  g.QUEST_RUNS = { "run-4": { status: "active", phase: 0 } };
 
   g.setPlayScope({ kind: "package", packageId: "twin-blooms" });
   const a = g.scopeToolboxOwner();
@@ -131,7 +131,7 @@ test("each scope owns a distinct toolbox key", () => {
 
 test("the autosave context keeps its shipped values so old rescues still match", () => {
   const g = loadGame({ fresh: true });
-  g.QUEST_RUNS = { "run-5": { phase: 0 } };
+  g.QUEST_RUNS = { "run-5": { status: "active", phase: 0 } };
 
   g.setPlayScope({ kind: "package", packageId: "intro" });
   assert.strictEqual(g.scopeAutosaveContext(), "intro");

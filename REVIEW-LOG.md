@@ -1243,3 +1243,50 @@ hydrating a phaseless run as phase 0.
 
 **Suite: 192 pass** (178 → 192). `EDITOR-DESIGN.md`'s claim that the rolling autosave "fires on every
 transaction" is now false in quest scope and says so.
+
+### Same day — C3: one writer for the phase, and an offering that cannot strand itself
+
+Last of three commits in step (c). Step (b) established that a second mutable identity guarantees
+drift; C3 applies that rule to the phase. `advanceQuestPhase()` is the only post-construction writer
+of `run.phase`, and the reducer's phase step is private to it — the lesson engine, the next button and
+`stageComplete()` are all structurally unable to move a quest on.
+
+**The whole of Q6's "played completely since its latest edit" is two numbers:**
+`v.lastCompletePlayRev === v.editRev`. No live document, no paint state, no clock, no transport
+session — which is exactly why it can still be trusted after a reload.
+
+**A gate that throws is a closed gate, not a crash**, and only the literal `true` opens one. Both are
+mutation-tested, because "truthy" would let a gate returning a descriptive string wave a quest through.
+
+**Ordering IS the recovery guarantee.** localStorage cannot write two keys atomically, so finalisation
+runs artifact-first, then `saveAs`. A completed run can therefore never exist without its artifact, and
+any run left mid-offering finishes on the next load.
+
+**Two of my own tests were false proofs, and the mutation pass caught them.** The ordering test
+asserted the end state — both the artifact and the completed run existed — which is true whichever
+order they happen in. The upsert test never ran a second upsert at all, because the run had already
+completed by the time the retry came round. Rewritten to test the property rather than the outcome:
+one makes only the `saves` write fail and asserts the run stays `offering`; the other calls the upsert
+three times directly and asserts one song.
+
+**The rewritten ordering test then failed against the shipping code, which is the point of writing it
+that way.** `questArtifactUpsert()` called `setSaves()`, which called `Store.set` and **discarded the
+return value** — so on a full disk the artifact write failed silently and finalisation completed the
+run anyway, stranding it exactly as the ordering exists to prevent. `setSaves()` now returns the store
+result and the upsert propagates it. A real defect in shipped code, found by a test written to catch a
+mutation rather than to demonstrate a feature.
+
+**My own amendment to the design, applied here:** `questPhaseIndex()` returns a `-1` sentinel rather
+than throwing for a missing or terminal run. `curStage()` sits on the paint path, so a throw there is a
+crash rather than a wrong answer; exactly one caller — the entry/resume path — treats `-1` as "decline
+to enter", and rendering degrades to phase 0. A mutation that defaults an unusable run to 0 is caught,
+because a wrong phase renders as progress and is worse than no run at all.
+
+**The full lifecycle, in a browser through real code paths:** advance before hearing → `gate-closed`;
+a full pass → gate open; advance with a fork → phase 1, draft B, `curStage()` renders "phase 2"; edit
+B → revision 1 and the gate shut again; play → open; offer → `offering`; finalise → `completed` with
+exactly one saved artifact titled *The Firefly Crossing*.
+
+**Suite: 205 pass** (192 → 205). Eight mutations, eight catches. `SAVE-SHARE.md` records the two `meta`
+fields a quest artifact carries. Still no quest entry point and no renderer — step (d) consumes three
+stable doors: `advanceQuestPhase()`, `start({versionId, purpose})` and `transactQuestRun()`.
