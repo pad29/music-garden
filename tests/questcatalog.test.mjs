@@ -80,6 +80,16 @@ test("authored prose that could become markup or a URL is rejected", () => {
     assert.strictEqual(g2.QUEST_CATALOG_ERRORS.length > 0, true, JSON.stringify(bad));
     assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), [], JSON.stringify(bad));
   }
+
+  // The Home card's line is authored text too, and it reaches a different screen from the rest — so it
+  // goes through the same guard, and is held to a card's length rather than a paragraph's.
+  loadInto(g2, catalog(d => { d.presentation.cardText = "<b>look</b>"; }));
+  assert.strictEqual(codes(g2).includes("unsafe-text"), true);
+  loadInto(g2, catalog(d => { d.presentation.cardText = "x".repeat(61); }));
+  assert.strictEqual(codes(g2).includes("text-length"), true);
+  loadInto(g2, catalog(d => { delete d.presentation.cardText; }));
+  assert.strictEqual(codes(g2).includes("missing-key"), true,
+    "every quest owes the map a line of its own");
 });
 
 test("slugs and engine primitive ids use different grammars", () => {

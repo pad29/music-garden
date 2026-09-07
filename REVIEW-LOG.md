@@ -1614,3 +1614,96 @@ through the shell's own buttons with real audio: a real playback credited and de
 phase 2's *"The second path changed from Rise to Fall. The roots kept their main-beat kicks."*, both
 auditions putting the right song on the grid and recording the comparison unasked, the range notice with
 its working one-tap fix, and one song saved as *Night Bridge* with the completion line beneath it.
+
+### D6 — the way in
+
+**A child can now reach a quest by clicking.** `questEligibility` is an AND over package completion and
+nothing else — capabilities are never read from progress, and a quest gates no package, palette,
+instrument, tool or Studio control. It is a door, not a fence.
+
+**`surfaceQuest` returns at most one thing, and always the same thing.** A song stuck mid-save outranks
+everything, because it was never written; then the most recently updated live run; then the
+lowest-priority eligible quest never completed; then nothing. Ties break on quest id and then run id, so
+two identical profiles surface identically whatever order the keys happen to be in.
+
+**Q22's calm, tested.** One card below the map, outside the SVG. A test asserts the model contains no
+"!" and none of *badge, new!, unread, reminder, expires, today, streak, don't miss*. A finished quest
+leaves the map entirely and lives only in the trail, as **Start a new version** — and replay goes
+through `startQuestRun`, so it gets a new run id and therefore a new artifact id. The first offered song
+is never written over; there is a test that finishes the quest twice and checks both songs survive.
+
+**The trail lists the OTHERS.** The quest already on the card is not repeated below it — one invitation
+at a time is the whole of Q22, and a list that echoes the card is a second invitation wearing a
+different hat. With nothing else to show it says so, and says which kind of nothing it is.
+
+#### GPT found two defects, and two product points I acted on
+
+1. **A run built against a definition version this build no longer has was advertised as Continue** —
+   a button whose only possible outcome is `enterQuestRun` refusing it with `definition-changed`. The
+   eligibility scan now asks the same question the door asks.
+2. **The cloud pull replaced the whole profile without redrawing the card.** A signed-in child can sit
+   on Home while the pull lands, and package completion is exactly what eligibility reads — so the card
+   could be describing the profile they no longer have. `applyProgress()` now redraws it.
+
+That second one is the answer to a question I had asked GPT directly ("is there a state change that
+should refresh the card while Home is open?"), and it found one I had not.
+
+It also raised two things that were product choices rather than bugs, and it was right about both.
+
+**The card's subtitle was borrowing `brief.intentionText`** — a string written to be read INSIDE the
+quest: an 88-character instruction, phase by phase, in the wrong register for an invitation. I had
+argued a derived subtitle would be the engine editorialising; GPT's answer was better — *a separately
+authored card blurb when the schema can support it*, and the schema is mine to extend. `presentation`
+now carries a required `cardText`, validated by the same guard as every other authored string and held
+to a card's length. The Firefly's is the design's own example: **"A crossing for two powers."**
+
+**And I had the trail listing locked quests**, greyed, naming their prerequisites. GPT agreed that
+escalates nothing, but noted it exceeds §9.4's "other eligible or completed quests" — a departure from
+what the owner approved. It is reverted: every row in the trail is one that can be pressed, and an empty
+trail now says which kind of empty it is ("No quests are open yet — they arrive as the garden grows"
+versus "Every quest you can reach is on the map right now"). **This is a product choice, not a technical
+one, and it is the owner's to make** — listing what a child could work towards is arguably kinder than
+hiding it, and reinstating it is a two-line change.
+
+**Suite: 352 pass** (350 → 352). Twenty mutations, twenty caught. Browser-verified: with the
+prerequisites unfinished nothing is surfaced; finishing them shows the card; a real click on **Begin
+quest** closed Home, entered quest scope, created the run, opened the workspace with the drum bed on and
+painted Phase 1 of 3; leaving showed **Continue The Firefly Crossing / Phase 1 of 3 · saved on this
+device**; finishing the quest emptied the map and left the trail offering a new version; a stale-version
+run was stepped over; and the cloud pull redrew the card under an open Home.
+
+`QUESTS.md`'s banner said "This is a plan, not current state. No quest exists in `index.html` today" —
+the one line in it that was about state rather than intent, and the whole slice had made it false.
+`README.md` now carries quests in its status blurb, its repo map, its engine map and a **Quests
+shipped** paragraph, and the "next up" list points at kinds 2–9 rather than at the engine.
+
+---
+
+## The quest slice, in one place (D1–D6, 2026-09-06/07)
+
+Six commits, each design-reviewed, mutation-tested and browser-verified. **352 tests** where the branch
+started with 192. **150 mutations run across the six steps, all either caught or shown to be
+equivalent** — and the pass earned its keep three times over, finding a dead end that made offering
+permanently impossible, a `setSaves` return value that was silently discarded, and three of my own
+guards that were masking each other.
+
+**The independent reviewer found a real defect in four rounds of five**, every one of them something the
+tests could not see:
+
+| Round | What GPT found |
+|---|---|
+| D2 | `songEvidence` read `time.cols` where `applySong` widens to 16 — a rise over clean kicks analysed as no shape and no pulse |
+| D3 | the completion receipt never recorded an observation at all; a phase-1 receipt could forge a phase-3 one; the dedupe keyed on the raw slots object; "empty" meant two different things |
+| D4 | undo inside a quest scheduled the autosave quests do not use, so undoing a note changed only what you could see |
+| D5 | the audition lock refused the write but not the interaction; tempo, groove and voice never reached the run; `offering` was wrongly treated as finished |
+| D6 | a run from a replaced definition was advertised as Continue; the cloud pull left a stale card up |
+
+Twice I took the finding and rejected the remedy, and said so in the code: the evidence seam must not be
+stricter than the loader that feeds it, and undo is not a stop-listening button. Both disagreements are
+recorded where the next reader will meet them.
+
+**The browser found three things no pure test could**, all in D5: painting a quest went through the
+ordinary edit path and emptied the song it was opening; the workspace was declared and never applied,
+so the first phase asked for a heartbeat with the drums shut; and the one-tap fix for a partial
+selection shipped disabled, because the test had checked the action existed rather than that it could
+be pressed.

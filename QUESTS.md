@@ -1,10 +1,16 @@
 # Tune Garden — Quests
 
-*Requirements for the quest play mode. Last updated: 2026-09-06.*
+*Requirements for the quest play mode. Last updated: 2026-09-07.*
 
-> **This is a plan, not current state.** No quest exists in `index.html` today. Like
-> `EDITOR-DESIGN.md`, this document states intent; `README.md` § Current status remains the
-> record of what actually ships.
+> **Kind 1 ships. Kinds 2–9 are still intent.** *The Firefly Crossing* is playable from the world
+> map: the sealed catalog, the analyzer and descriptor registries, the semantic validator, the
+> evaluator, the QuestRun, the phase controller, the shell and the Home card all exist in
+> `index.html`. Everything below about the later kinds states intent, the way `EDITOR-DESIGN.md`
+> does; `README.md` § Current status remains the record of what actually ships.
+>
+> The engine was built in six steps (D1–D6) against this document, each one design-reviewed,
+> mutation-tested and browser-verified — `REVIEW-LOG.md` records what each round found, including
+> the four rounds where the independent reviewer found a defect the tests had not.
 
 ---
 
