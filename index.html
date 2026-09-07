@@ -1462,12 +1462,19 @@ function tx(label,fn){
       if(journal.length>JOURNAL_MAX) journal.shift();
       journalRedo=[]; if(!SCRIPTED_TX.has(_txLabel)) noteEdit(_txLabel); syncUndoUI(); } }
 }
+// Set while the player is listening to a version that is NOT the draft — the comparison phase applies
+// A and B in turn to hear them. Declared here, immediately above its only reader, because an edit is
+// the one thing that must never happen through it: writing the applied song back would persist A over
+// draft B. The shell locks the grid on top of this; this is the floor underneath that lock.
+let questAuditionVersionId=null;
+
 // A player edit. Outside a quest this is the shipped rolling autosave. Inside one, the run is the
 // record instead: the completion session is forfeited (a pass booked from the old revision must not
 // credit the new one) and the version's editRev advances, which is what makes the Q6 gate false again.
 function noteEdit(label){
   if(!isQuestScope()){ scheduleAutosave(); return; }
   cancelCompletionSession("edit");
+  if(questAuditionVersionId) return;      // a listen is not an edit, whatever the grid was poked into
   const run=QUEST_RUNS[activeScope.runId]; if(!run || run.status!=="active") return;
   const v=run.versions[run.draft]; if(!v) return;
   const song=currentSong();
@@ -1489,16 +1496,22 @@ function restoreSnapshot(json){ const s=JSON.parse(json);
   reproject(); rebuildField();               // rebuildField prunes the tray selection to surviving ids
   applyStageDecor();                         // the rebuilt cells need the stage's tints back (phrase split, beat guide, locks…)
   syncMeterUI();                             // …and the meter CONTROLS, or undo restores the picture while the select still reports the undone meter
-  ev.played=false; scheduleAutosave(); syncUndoUI(); checkLevel(); updateGarden(); }
+  ev.played=false; noteEdit("undo"); syncUndoUI(); checkLevel(); updateGarden(); }
 // re-apply the current stage's per-cell decorations after any mid-stage rebuild (undo, time surgery)
 function applyStageDecor(){ if(!activeScope||!currentLevel()) return;
   const L=currentLevel(), st=curStage();
   setBeatGuide(!!st.beatGuide); setPhraseGuide(!!(L.phrase||st.phrase));
   setColorReveal(st.colors||L.colors||null); setMood(st.mood||L.mood||null); setMotifGuide(!!(st.motif||L.motif)); }
-function undoEdit(){ const e=journal.pop(); if(!e) return;
+function undoEdit(){ if(questAuditionVersionId) return;   // listening is not a step to take back
+  const e=journal.pop(); if(!e) return;
   if(playing) stop();                        // also unwinds a running reveal's restore hook safely
   journalRedo.push(e); restoreSnapshot(e.before); setStatus("↶ Undone — the garden stepped back 🌱"); }
-function redoEdit(){ const e=journalRedo.pop(); if(!e) return;
+// The same guard, which today cannot fire: tx() empties journalRedo on every commit, and applying the
+// audition's song IS a commit, so the redo stack is always empty while a lock is held. Kept because it
+// costs nothing and the day that stops being true is not a day anyone will remember to check — but no
+// test asserts it, because no test could tell it from its absence.
+function redoEdit(){ if(questAuditionVersionId) return;
+  const e=journalRedo.pop(); if(!e) return;
   if(playing) stop();
   journal.push(e); restoreSnapshot(e.after); setStatus("↷ Redone 🌱"); }
 function journalClear(){ journal.length=0; journalRedo.length=0; syncUndoUI();
@@ -5123,6 +5136,7 @@ function questCrossRefs(def, errs){
     if(id==="studio" || !Object.prototype.hasOwnProperty.call(PACKAGES,id)) err("no-such-package","$.prerequisites",id);
     else if(PACKAGES[id].hidden) err("hidden-package","$.prerequisites",id); }
   if(!Object.prototype.hasOwnProperty.call(PALETTES,def.workspace.paletteId)) err("no-such-palette","$.workspace",def.workspace.paletteId);
+  if(!Object.prototype.hasOwnProperty.call(QUEST_GROOVES,def.workspace.grooveId)) err("no-such-groove","$.workspace",def.workspace.grooveId);
   const phaseIds=new Set(), routeIds=new Set(), witnessIds=new Set();
   for(const w of def.witnesses){ if(witnessIds.has(w.id)) err("duplicate-witness","$.witnesses",w.id); witnessIds.add(w.id); }
   def.phases.forEach((p,i)=>{
@@ -5431,6 +5445,11 @@ const QUEST_PRIMITIVES=deepFreezeQuest({
       return c.versionIds.every(id=>{ const v=run.versions[id]; return !!v && v.editRev===c.revs[id]; }); } },
 });
 
+// GROOVES is an array whose indices are song state forever, so a definition names a FEEL and the
+// engine resolves it. Unknown ids are a catalog error rather than a silent fall back to index 0: a
+// quest that asked for a shuffle and got a straight eighth would teach the wrong thing.
+const QUEST_GROOVES=Object.freeze({ straight:0 });
+
 const QUEST_CAPABILITIES=deepFreezeQuest({
   "melodic-contour":{ earnedByPackageIds:["follow-the-fireflies"] },
   "steady-pulse":{ earnedByPackageIds:["footsteps"] },
@@ -5490,6 +5509,13 @@ function questSemantics(def, errs){
   const err=(code,path,extra)=>{ errs.push({code,path,extra}); ok=false; };
   for(const cap of def.capabilityIds)
     if(!Object.prototype.hasOwnProperty.call(QUEST_CAPABILITIES,cap)) err("no-such-capability","$.capabilityIds",cap);
+
+  if(def.starterSong!==undefined){
+    const ev=songEvidence(def.starterSong);
+    if(!ev.valid) err("starter-song-invalid","$.starterSong",ev.code);
+    else if(ev.paletteFallback) err("starter-palette-unusable","$.starterSong",def.starterSong.palette);
+    else if(def.starterSong.palette!==def.workspace.paletteId) err("starter-palette-mismatch","$.starterSong",def.starterSong.palette);
+    else if(((def.starterSong.time||{}).cols)!==def.workspace.columns) err("starter-columns-mismatch","$.starterSong",(def.starterSong.time||{}).cols); }
 
   const byWitnessId=Object.create(null);
   for(const w of def.witnesses) byWitnessId[w.id]=w;
@@ -6044,6 +6070,166 @@ function finalizeQuestOffering(runId){
   const r=transactQuestRun(runId, [{ type:"saveAs", artifactId:run.pendingOffer.artifactId, savedAt:Date.now() }]);
   return r.ok ? { ok:true, artifactId:run.artifact&&run.artifact.artifactId } : { ok:false, code:r.code };
 }
+// ---------- Entering a quest, and moving through it ----------
+// ONE level whose steps are the phases, so the shipped indexed-stage engine is reused rather than
+// duplicated. Deliberately NO `goals` on a step: checkLevel() cannot call stageComplete() on an empty
+// goal list, which is what structurally stops the lesson engine from moving a quest on. Only
+// advanceQuestPhase() may do that.
+function questEnvelope(def){
+  return [Object.freeze({ id:def.id, name:def.title, quest:true,
+    steps:def.phases.map(p=>Object.freeze({ id:p.id, name:p.name, title:p.name, quest:true, phase:p })) })];
+}
+
+// The gate for a phase is the AND of the gate ids IT declares — no phase-specific branch anywhere, so
+// a new phase type is data rather than code. A gate that throws is a closed gate: advanceQuestPhase
+// catches it and reports gate-threw.
+function questPhaseGate(def, phaseIdx, versionId){
+  const p=def.phases[phaseIdx];
+  return run=>{
+    for(const id of p.procedure.gateIds){
+      const g=QUEST_PRIMITIVES[id];
+      if(!g || g.kind!=="procedural") return false;
+      if(g.gate(run, versionId)!==true) return false; }
+    return true; };
+}
+// What a transition has to do BESIDES moving the phase, named by the definition rather than by a
+// switch on the phase number.
+function questTransitionOps(def, run, at){
+  const p=def.phases[run.phase], next=def.phases[run.phase+1];
+  if(p.procedure.transitionId==="fork-version"){
+    if(!next || !next.versionId) return null;                 // a fork with nowhere to fork TO
+    const v=run.versions[p.versionId]; if(!v) return null;
+    return [{ type:"forkFrom", sourceVersionId:p.versionId, sourceRev:v.editRev,
+              newVersionId:next.versionId, at }]; }
+  if(p.procedure.transitionId==="advance") return [];
+  return null;
+}
+
+const QUEST_DEFAULT_TEMPO=108;
+function emptyQuestSong(def){
+  const now=Date.now();
+  return { v:3, meta:{ title:null, created:now, updated:now, author:null },
+    palette:def.workspace.paletteId,
+    time:{ cols:def.workspace.columns, tempo:QUEST_DEFAULT_TEMPO,
+           groove:QUEST_GROOVES[def.workspace.grooveId] },
+    tracks:[{ kind:"melody", voice:"musicbox", notes:[] }, { kind:"drums", hits:[] }] };
+}
+
+// Resume. It resolves the run's OWN definition version and refuses rather than guessing: a run made
+// against a definition the game no longer ships is not a run this build knows how to render.
+function enterQuestRun(runId){
+  const fail=code=>({ ok:false, code });
+  const run=QUEST_RUNS[runId];
+  if(!run) return fail("no-run");
+  const phase=questPhaseIndex(runId);
+  if(phase===QUEST_PHASE_INVALID) return fail("unusable-run");   // the -1 sentinel's one real caller
+  const def=QUEST_DEFINITIONS[run.questId];
+  if(!def) return fail("no-definition");
+  if(def.v!==run.definitionVersion) return fail("definition-changed");
+  if(!def.phases[phase]) return fail("no-phase");
+  const v=run.versions[run.draft];
+  if(!v || !v.song) return fail("no-draft");
+  // The workspace palette is fixed by the definition, and a definition change is already refused
+  // above — so a draft in another ladder is a corrupt run, not a legitimate one.
+  if(v.song.palette!==def.workspace.paletteId) return fail("palette-mismatch");
+  questAuditionVersionId=null;
+  setPlayScope({ kind:"quest", questId:run.questId, runId, stages:questEnvelope(def),
+    palette:def.workspace.paletteId, features:def.workspace.controlIds });
+  applySong(v.song);        // "load-song" is a SCRIPTED transaction: entering a quest is not an edit
+  journalClear();           // …and resuming is not an undoable one either
+  return { ok:true, runId, questId:run.questId, phase, versionId:run.draft };
+}
+
+// Every button the quest shell will own, behind one door. The shell decides what to SHOW; what may
+// happen, and in what order, is decided here and by the reducer beneath it.
+function performQuestAction(actionId, opts){
+  const fail=code=>({ ok:false, code });
+  if(!isQuestScope()) return fail("wrong-scope");
+  const runId=activeScope.runId, run=QUEST_RUNS[runId];
+  if(!run) return fail("no-run");
+  const def=QUEST_DEFINITIONS[run.questId];
+  if(!def || def.v!==run.definitionVersion) return fail("no-definition");
+  const p=def.phases[run.phase];
+  if(!p) return fail("no-phase");
+  const o=opts||{}, at=Date.now();
+
+  if(actionId==="continue"){
+    const ops=questTransitionOps(def, run, at);
+    if(!ops) return fail("not-a-transition");             // the compare phase offers; it does not advance
+    return advanceQuestPhase({ runId, expectedPhase:run.phase,
+      gate:questPhaseGate(def, run.phase, p.versionId), ops });
+  }
+
+  if(actionId==="audition"){
+    if(p.type!=="compare-offer" || p.versionIds.indexOf(o.versionId)<0) return fail("bad-version");
+    const v=run.versions[o.versionId]; if(!v) return fail("no-version");
+    questAuditionVersionId=o.versionId;                   // the grid is now a speaker, not a page
+    applySong(v.song);
+    // NOT journalClear() here. The lock already refuses undo and redo while a version that is not the
+    // draft is on the grid, and choosing clears the journal on the way out — so clearing here as well
+    // would be a third guard that makes the other two untestable. Belt and braces are only worth it
+    // when a mutation can still tell them apart.
+    start({ versionId:o.versionId, purpose:"audition" });
+    return { ok:true, versionId:o.versionId };
+  }
+
+  if(actionId==="compare"){
+    if(p.type!=="compare-offer") return fail("wrong-phase");
+    return transactQuestRun(runId, [{ type:"compare", leftVersionId:p.versionIds[0],
+      rightVersionId:p.versionIds[1], at }]);
+  }
+
+  if(actionId==="choose"){
+    if(p.type!=="compare-offer" || p.versionIds.indexOf(o.versionId)<0) return fail("bad-version");
+    const r=transactQuestRun(runId, [{ type:"choose", versionId:o.versionId, at }]);
+    if(!r.ok) return r;
+    questAuditionVersionId=null;                          // the choice is the draft again; editing is live
+    applySong(QUEST_RUNS[runId].versions[o.versionId].song);
+    journalClear();                                       // undo starts fresh from the path they chose
+    return r;
+  }
+
+  if(actionId==="offer"){
+    if(p.procedure.transitionId!=="offer") return fail("not-offerable");
+    // The SAME version the offer reducer will use. `run.selection || run.draft` also worked, because
+    // choose() sets both — but two expressions that happen to agree are one refactor away from not
+    // agreeing, and the gate must be asked about the song that is actually going to be saved.
+    if(!questPhaseGate(def, run.phase, run.selection)(run)) return fail("gate-closed");
+    const r=transactQuestRun(runId, [{ type:"offer",
+      title:(o.title||"").trim() || def.completion.defaultTitle, at }]);
+    if(!r.ok) return r;
+    return finalizeQuestOffering(runId);                  // artifact first, then the run: ordering IS the recovery
+  }
+
+  if(actionId==="abandon") return transactQuestRun(runId, [{ type:"abandon", at }]);
+  if(actionId==="leave"){ leaveQuest(); return { ok:true }; }
+  return fail("unknown-action");
+}
+
+// Leaving is not abandoning, and it loses nothing: every musical edit was already persisted by the
+// transaction that made it, so there is no quest autosave to flush on the way out.
+function leaveQuest(){
+  if(playing) stop(); else cancelCompletionSession("navigation");
+  questAuditionVersionId=null;
+  if(typeof openHome==="function") openHome();
+}
+
+// The way in, until Home has a card for it (D6). A fresh run starts from the definition's starter song
+// when it has one, and otherwise from an empty field the size its workspace asked for.
+function startQuestRun(questId){
+  const def=QUEST_DEFINITIONS[questId];
+  if(!def) return { ok:false, code:"no-quest" };
+  const song=def.starterSong ? jclone(def.starterSong) : emptyQuestSong(def);
+  const runId="qr."+Date.now().toString(36)+"."+Math.floor(Math.random()*1679616).toString(36);
+  const run=newQuestRun({ runId, questId, definitionVersion:def.v, song,
+    span:{ start:0, end:song.time.cols }, at:Date.now() });
+  const cand=Object.assign({}, QUEST_RUNS); cand[runId]=run;
+  const saved=saveQuestRuns(cand, QUEST_HISTORY);
+  if(!saved) return { ok:false, code:"store-failed" };    // a full disk must not produce a run nothing saved
+  QUEST_RUNS=saved;
+  return enterQuestRun(runId);
+}
+
 // Any run left mid-offering by a crash or a failed write finishes on the next load. Idempotent: the
 // artifact upsert replaces by id, and saveAs on an already-completed run is simply refused.
 function recoverQuestOfferings(){
@@ -6082,6 +6268,7 @@ let activeScope=null;   // initialised below, once levelIdx/lessonStepIdx exist
 
 function setPlayScope(next, position){
   cancelCompletionSession("navigation");   // evidence never crosses a scope change
+  questAuditionVersionId=null;             // …and neither does a listening lock: it belongs to one comparison
   const p=position||{};
   if(!next || typeof next!=="object") throw new Error("setPlayScope: no scope given");
   if(next.kind==="package"){

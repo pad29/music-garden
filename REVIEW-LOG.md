@@ -1475,3 +1475,75 @@ carrying ids and slots with no frozen wording, and the silent song refused a cre
 `README.md` still said quests were "A plan — nothing built yet" and that Firefly was "specced and
 unbuilt"; both had been false since D1 and neither the new code nor the new document would have prompted
 the fix, because they live in README's own status prose.
+
+### D4 — the phase controller
+
+**The first code a player could move through.** `enterQuestRun` resolves the run's own definition
+version and refuses rather than guessing; `performQuestAction` is the single door for continue,
+audition, compare, choose, offer, abandon and leave.
+
+**It branches on data, never on phase number.** A phase's gate is the AND of the gate ids THAT PHASE
+declares; what a transition does besides moving the phase is named by its `transitionId`. Mutations
+that hardcode phase 1's gate, fork on every transition, or let the compare phase advance are all caught.
+
+**A quest step carries no `goals` on purpose.** `checkLevel()` only calls `stageComplete()` when a goal
+list is non-empty, so that absence is what structurally stops the lesson engine from moving a quest on.
+
+**The audition lock.** The comparison applies A and B in turn, so the grid holds a version that is not
+the draft; without a guard the next edit persists A over draft B. I checked the claim instead of
+assuming it: there are exactly two producers of a run `edit` op, and the other writes the tray, which
+the reducer keeps separate from the song.
+
+**Two defects I found by attacking my own work.** A `starterSong` was unvalidated, and one narrower
+than the workspace would give the run a span that never matches the field `applySong` builds — so
+`beginCompletionSession` would refuse forever and the quest would open, look right, and never credit a
+single playback, with nothing to say why. Four catalog checks now, all mutation-tested. And a listening
+lock could outlive its comparison; it is cleared in `setPlayScope`, for the same reason a completion
+session is.
+
+#### GPT found two more, and the second one I fixed differently than it asked
+
+1. **Undo lost quest work.** `restoreSnapshot()` called `scheduleAutosave()` — which is not the quest
+   write door at all. An undo therefore changed only the live document: leave, come back, and the
+   undone note was still there. It now calls `noteEdit()`, which is what already means "the document
+   changed" in both scopes, so there is one door again rather than two, one of which quietly did
+   nothing.
+2. **Undo during an audition stranded the lock**, leaving the grid and the run out of step. GPT
+   expected undo to release the lock and hand the draft back. **I disagreed:** undo is not a "stop
+   listening" button anywhere else in this game, and during a comparison there is nothing of the
+   player's to take back — only songs the game applied for them to hear. Instead: applies that are not
+   player work no longer enter the journal (the rule `openStudioWith()` and the cloud load already
+   follow), and undo refuses outright while a lock is held. The way back to the draft is choosing,
+   which is the act that means "I have heard enough".
+
+**Three of my own guards turned out to mask each other.** `journalClear()` after the audition apply,
+`journalClear()` after choosing, and the undo lock guard each fixed the same case, so no mutation could
+distinguish any of them. Belt and braces are only worth it when a mutation can still tell them apart:
+the audition clear is gone, and the other two are now separately proven — one by asserting after EVERY
+undo press rather than the last (keep pressing and the journal runs out back into a state that is also
+B, so checking only the end proved nothing), one by pressing undo more times than there is history for.
+
+**One guard is kept without a test, and said so out loud.** The matching guard in `redoEdit` cannot fire
+today — `tx()` empties the redo stack on every commit, and applying the audition's song is a commit — so
+a test would pass whether the guard were there or not. That is a false proof, and this project has
+caught five. The reasoning lives beside the guard instead.
+
+**Two mutations escaped, and both are equivalent rather than uncaught.** `gate(...) !== true` → `!gate(...)`
+agrees under every shipped gate, so it is pinned from the other side by a test that each answers with a
+real boolean; and `run.selection` → `run.draft` at offer time agrees because `choose()` sets both — I
+changed the code to use `run.selection` alone anyway, matching the offer reducer, so there is one
+expression rather than two that happen to.
+
+**A test-hygiene bug worth remembering before D5.** The first mutation run HUNG. A test that calls
+`start()` leaves the transport running, and when the assertion after it fails the test never reaches
+its `stop()` — so a red test became a hung suite instead of a report. Every playing test now stops
+through `t.after`, which runs on failure too.
+
+**Suite: 310 pass** (306 → 310). Thirty-two mutations, twenty-nine caught, two equivalent, one kept
+deliberately untested. Browser-verified twice: a full Firefly played end to end through
+`performQuestAction` alone — gates shutting and opening at each phase, the draft surviving a stray poke
+during both auditions, `gate-closed` until a version was chosen, one ordinary v3 song saved as *The
+Firefly Crossing* — and then GPT's undo case, which now survives leave and resume.
+
+`README.md` now says plainly that `startQuestRun("firefly-crossing")` from the console is the only door
+and that the panel beside the field still shows whatever was there before. The shell is D5.

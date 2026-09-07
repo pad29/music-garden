@@ -153,6 +153,12 @@ test("cross-references that D1 can resolve are checked, and only those", () => {
   loadInto(g2, catalog(d => { d.workspace.paletteId = "nope"; }));
   assert.strictEqual(codes(g2).includes("no-such-palette"), true);
 
+  // GROOVES is an array whose indices are song state forever, so a definition names a feel and the
+  // engine resolves it. A quest that asked for a shuffle and silently got straight eighths would
+  // teach the wrong thing, so an unresolvable id is a catalog error rather than a fall back to 0.
+  loadInto(g2, catalog(d => { d.workspace.grooveId = "shuffle"; }));
+  assert.strictEqual(codes(g2).includes("no-such-groove"), true);
+
   loadInto(g2, catalog(d => { d.phases[0].challenge.routes[0].witnessIds = ["ghost"]; }));
   assert.strictEqual(codes(g2).includes("no-such-witness"), true);
 
