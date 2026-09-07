@@ -1336,3 +1336,67 @@ review note. So is "at least two routes": one alternative is a hidden single ans
 **Suite: 227 pass** (205 → 227). Sixteen mutations, sixteen catches — the last needed a second attempt,
 because my *mutation* was wrong rather than the test: a `SyntaxError` from `JSON.parse` carries no
 `.code`, so the rethrow I wrote never fired. Retried unconditionally: caught by 26 tests.
+
+### D2 — the registries, and routes proved apart by songs
+
+**Quest data names primitives; engine code decides what they mean.** `QUEST_PRIMITIVES` holds nine
+musical analyzers and four procedural gates, `QUEST_CAPABILITIES` and `QUEST_DESCRIPTORS` the rest.
+`songEvidence(song)` is pure and never calls `applySong` — loading a snapshot to inspect it would
+destroy the player's current work to answer a question about a different song. `contourSeq()` is now a
+three-argument wrapper around `contourSeqFromGrid`, so the 24 shipped levels and a quest read one rule.
+
+**Analyzers and gates share ONE id space, distinguished by a `kind` field.** Separate maps would make
+Q5's rule 6 — "procedural facts are separate" — true by accident. Together, a gate id inside a route is
+`procedural-in-route` and an analyzer id in `procedure.gateIds` is `musical-as-gate`: two checks that
+can actually fail, and both are mutation-tested.
+
+**There are no author-written `implies[]` anywhere in the grammar**, because a definition that could
+assert its own two routes were different would make the alternatives check decorative. Enum-set and
+numeric-threshold implication are derived from the engine parameter schemas; cross-analyzer relations
+are a declared table; anything undeclared is `unknown`, which rejects rather than shrugs.
+
+**Rule 5 is enforced twice, by different means.** Derived implication rejects semantic containment —
+`contour.any-of(["rise"])` really does imply `contour.any-of(["rise","fall"])` over the same kicks, and
+the JSON looks nothing alike. Executable witnesses then prove each route reachable and observably
+distinct: for every ordered pair, a witness **referenced by A** must match A and fail B. The mutation
+that accepts a distinguishing witness in either direction is caught; so is the one that lets a route
+borrow any witness in the definition.
+
+**`kickClean` being strict is what makes phase 2 true.** The even walk lands on 0/4/8/12 as well, so a
+permissive `kickOn4` would put both families on one song and "you changed the heartbeat" would silently
+stop being a real observation. Mutation-tested.
+
+**GPT's tester found a real defect, and I took the finding but not the remedy.** A v3 document may
+declare `time.cols: 1` and still carry events out at column 12; `applySong` widens it to the editor's
+16-column floor and every one of them comes back. Reading the declared width made a clear rise over
+clean main-beat kicks analyse as **no contour and no pulse at all** — a quest would have refused a song
+that visibly satisfied it. GPT proposed rejecting sub-16-column songs as malformed. I disagreed: the
+evidence seam must not be stricter than the song loader, or a snapshot taken from ordinary saved or
+shared v3 data would fail analysis the game is perfectly happy to open. `songEvidence` now uses
+`Math.max(16, cols)` — the same span `applySong` computes — and the test asserts the two agree.
+GPT also caught a flaky test of mine that compared two `currentSong()` JSON strings whose `meta.updated`
+timestamps could differ by a millisecond; it now compares the music.
+
+Everything else GPT was asked to attack, it cleared: per-capability implication is sound under rule 4;
+ordered-pair witnesses are correct; canonicalisation is sufficient for the current schemas; differing
+snapshot ids should stay `unknown`; and `songEvidence` reads no live grid or palette. It agreed
+`unknown` is unreachable for valid v1 content and is a fail-closed guard for a future analyzer added to
+an existing capability — which is the honest answer, and it is recorded in the test file rather than
+papered over with a test that cannot fail.
+
+**Two defects I found in my own code by reading it while GPT ran.** `questSemantics` threw a TypeError
+on a definition whose analyzer params failed their schema — it fed un-normalized params to the relation
+algebra. It failed *safe* only because the loader's catch happened to keep the errors already
+collected; every check after the throw was skipped, and any caller outside that catch got a crash
+instead of a report. And a snapshot clause could name the phase's own version, asking whether a song
+differs from itself — never true, a route no player could finish, dressed as a real alternative. Now
+`snapshot-not-source`. The registries are deep-frozen for the same reason quest definitions are: a
+shallow freeze leaves every entry writable, so one assignment could redefine `pulse.even-walk` for
+every quest at once, including one in progress.
+
+**Suite: 258 pass** (227 → 258). Thirty-two mutations, thirty-two catches — one of them, deep-freezing
+the registries, escaped until I wrote the test that names it, which is the point of running the pass at
+all. `QUESTS.md` had the primitive whitelist written in camelCase, which the shipped ID grammar
+rejects, and a stale `index.html:4944` line reference; both corrected. Browser-verified: the catalog
+boots with zero errors, `questSemantics` passes the shipped quest over real songs, and "Make the melody
+climb" still passes a climb and rejects a descent through its own `chk` closure.

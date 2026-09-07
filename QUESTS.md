@@ -273,14 +273,20 @@ A definition must **not** contain `chk` functions or any executable callback; ar
 HTML, CSS, URLs or asset paths; direct reads of DOM, Web Audio, global progress or package-local
 mutable state; or behaviour selected by checking a particular quest ID.
 
-The engine owns a whitelist of stable primitives — `phrase.minimumOnsets`, `contour.anyOf`,
-`contour.differsFromSnapshot`, `pulse.kickOnMainBeats`, `pulse.evenWalk`,
-`playback.completeSinceLastEdit`, `comparison.auditionedBoth`. Each declares a player-facing name,
+The engine owns a whitelist of stable primitives — `phrase.minimum-onsets`, `contour.any-of`,
+`contour.differs-from-snapshot`, `pulse.kick-on-main-beats`, `pulse.even-walk`,
+`playback.complete-since-last-edit`, `comparison.auditioned-both`. Each declares a player-facing name,
 explanation, parameter bounds, capability tags, compatibility rules and strategy family. A future
 authoring UI exposes this same vocabulary.
 
+The IDs above are all-lowercase because that is what the grammar admits (`QUEST_PRIMITIVE_ID`). This
+paragraph, and the design document it came from, both first wrote them in camelCase — and the shipped
+validator rejected its own example. They live in ONE id space with musical analyzers and procedural
+gates distinguished by a `kind` field, which is what lets rule 6 below be a check that can fail rather
+than one that is true by accident.
+
 **Reason:** Bespoke JavaScript per quest is a dead end for player authoring — shipped levels are
-**247 `chk:` closures** invoked at `index.html:4944`, and an authoring UI cannot emit JS. The first
+**247 `chk:` closures** invoked by `checkLevel()`, and an authoring UI cannot emit JS. The first
 implementation must establish the safe vocabulary and execution boundary even though no design area
 ships yet. Note every package already carries `version:1, author:"official"` and **nothing reads
 either field**; quest `author` and `v` must actually participate in validation and loading.

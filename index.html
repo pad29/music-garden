@@ -2837,7 +2837,12 @@ function revealFamous(id){ const f=id&&FAMOUS[id]; if(!f) return;
 
 // ---------- Follow the Fireflies: melodic contour (package PS-1) ----------
 // contour = a melody's shape over time; read the TOP note per occupied column as a height (0=low … ROWS-1=high)
-function contourSeq(){ const seq=[]; for(let c=0;c<COLS;c++){ for(let r=0;r<ROWS;r++){ if(grid[r][c]){ seq.push((ROWS-1)-r); break; } } } return seq; }
+// Pure: the caller supplies the grid, so a quest can read the shape of a SAVED song without loading it
+// into the editor. The live reader is now a wrapper — one contour rule, two callers, and every shipped
+// level keeps reading exactly what it read before.
+function contourSeqFromGrid(g, rows, span){ const seq=[];
+  for(let c=0;c<span;c++){ for(let r=0;r<rows;r++){ if(g[r][c]){ seq.push((rows-1)-r); break; } } } return seq; }
+function contourSeq(){ return contourSeqFromGrid(grid, ROWS, COLS); }
 const netRise = seq => seq.length<2?0:seq[seq.length-1]-seq[0];
 function dirSteps(seq){ let up=0,down=0; for(let i=1;i<seq.length;i++){ if(seq[i]>seq[i-1])up++; else if(seq[i]<seq[i-1])down++; } return {up,down}; }
 function maxDrop(seq){ let m=0; for(let i=1;i<seq.length;i++) m=Math.max(m,seq[i-1]-seq[i]); return m; }
@@ -5086,8 +5091,9 @@ QUEST_SCHEMA_VALIDATORS[1]=function(def, errs){
   return ok;
 };
 
-// Cross-references that D1 can actually resolve. Analyzer, descriptor and capability registries are
-// D2's; referencing them here would be a check that always passes, which is worse than no check.
+// Structural cross-references — ids that point at other parts of the SAME definition, plus packages and
+// palettes. Everything that needs the engine registries (analyzers, descriptors, capabilities, gates)
+// lives in questSemantics() below, which runs after this one.
 function questCrossRefs(def, errs){
   let ok=true;
   const err=(code,path,extra)=>{ errs.push({code,path,extra}); ok=false; };
@@ -5113,6 +5119,381 @@ function questCrossRefs(def, errs){
       const ids=p.reflection.choices.map(c=>c.id).sort().join(",");
       if(ids!==[...p.versionIds].sort().join(",")) err("reflection-mismatch","$.phases["+i+"].reflection",ids); } });
   for(const w of def.witnesses) if(!phaseIds.has(w.phaseId)) err("no-such-phase","$.witnesses."+w.id,w.phaseId);
+  return ok;
+}
+
+
+// ---------- What the engine knows how to look for ----------
+// Quest data names primitives; this is where the primitives live. The split is the whole point of the
+// declarative format: a definition may reference `pulse.even-walk`, but only engine code decides what
+// an even walk IS. A Questmaker can therefore be given the registry as a palette without ever being
+// given the power to define a new musical rule.
+
+// The four shipped contour detectors and the three shipped steady pulses, as SETS rather than an
+// invented "primary" label — one melody can legitimately be both a hover and an arc, and picking a
+// winner between them would be an engine opinion the player never agreed to.
+const QUEST_CONTOUR_FAMILIES=Object.freeze(["rise","fall","hover","arc"]);
+const QUEST_PULSE_FAMILIES=Object.freeze(["main-beat-kicks","even-kick-walk","hat-shimmer"]);
+
+// Pure. It NEVER calls applySong(): applySong rewrites the live document to inspect it, which would
+// destroy the player's current work just to answer a question about a snapshot.
+function songEvidence(song){
+  const no=code=>({ valid:false, code });
+  if(!song || typeof song!=="object" || song.v!==3) return no("not-v3");
+  const palId=song.palette;
+  if(typeof palId!=="string" || !Object.prototype.hasOwnProperty.call(PALETTES,palId)) return no("unknown-palette");
+  const t=song.time;
+  // 256 is a resource bound at this seam — the projection allocates rows x span — not a claim about
+  // what the editor can open. A quest workspace is capped at 64 columns anyway.
+  if(!t || typeof t!=="object" || !Number.isInteger(t.cols) || t.cols<1 || t.cols>256) return no("bad-cols");
+  if(!Array.isArray(song.tracks)) return no("bad-tracks");
+  const mel=song.tracks.find(x=>x&&x.kind==="melody"), dr=song.tracks.find(x=>x&&x.kind==="drums");
+  const notes=mel?mel.notes:[], hits=dr?dr.hits:[];
+  if(!Array.isArray(notes) || !Array.isArray(hits)) return no("bad-track-shape");
+  if(notes.length>1024 || hits.length>1024) return no("too-many-events");
+  // The SAME span applySong would use. A v3 document may declare cols:1 while carrying events out at
+  // column 12; applySong widens it to the editor's 16-column floor and those events come back. Reading
+  // the declared width instead would make evidence describe a song the player never sees — a rise over
+  // clean main-beat kicks would analyse as no contour and no pulse at all.
+  const span=Math.max(16, t.cols), docNotes=[], docHits=[];
+  // A malformed EVENT is a refusal, but an out-of-span one is dropped — exactly what applySong's own
+  // filter does, so evidence sees the same song the editor would have loaded.
+  for(const n of notes){
+    if(!n || typeof n!=="object" || !Number.isInteger(n.p) || !Number.isInteger(n.c) || n.p<0 || n.p>127) return no("bad-note");
+    if(n.c<0 || n.c>=span) continue;
+    docNotes.push({ pitch:n.p, startTick:n.c*TICKS_PER_COL, durationTicks:TICKS_PER_COL, velocity:1 }); }
+  for(const h of hits){
+    if(!h || typeof h!=="object" || !Number.isInteger(h.lane) || !Number.isInteger(h.c) || h.lane<0 || h.lane>=DRUMS.length) return no("bad-hit");
+    if(h.c<0 || h.c>=span) continue;
+    docHits.push({ pitch:h.lane, startTick:h.c*TICKS_PER_COL, durationTicks:TICKS_PER_COL, velocity:1 }); }
+  let projected;
+  try{ projected=projectTracks([{role:"melody",notes:docNotes},{role:"drums",notes:docHits}], palId, span); }
+  catch(e){ return no("projection-failed"); }
+  const seq=contourSeqFromGrid(projected.grid, projected.rows, projected.span);
+  const contourFamilies=[];
+  if(isRising(seq))   contourFamilies.push("rise");
+  if(isFalling(seq))  contourFamilies.push("fall");
+  if(isHovering(seq)) contourFamilies.push("hover");
+  if(isArch(seq))     contourFamilies.push("arc");
+  const dg=projected.drumG, steadyPulseFamilies=[];
+  if(kickClean(dg))  steadyPulseFamilies.push("main-beat-kicks");
+  if(kickWalk8(dg))  steadyPulseFamilies.push("even-kick-walk");
+  if(hat8ths(dg))    steadyPulseFamilies.push("hat-shimmer");
+  // Onsets are counted off the PROJECTION, not the note list: two notes that snap to one cell are one
+  // thing the player hears, and every other analyzer reads the projection too.
+  let melodyOnsetCount=0, drumOnsetCount=0;
+  for(let r=0;r<projected.rows;r++) for(let c=0;c<span;c++) if(projected.grid[r][c]) melodyOnsetCount++;
+  for(let d=0;d<dg.length;d++) for(let c=0;c<span;c++) if(dg[d][c]) drumOnsetCount++;
+  return { valid:true, paletteId:palId, columns:span, nonempty:melodyOnsetCount>0||drumOnsetCount>0,
+    melodyOnsetCount, projected, contourFamilies, steadyPulseFamilies };
+}
+
+// ---- parameter schemas: the engine owns implication, not the author ----
+// There are no author-written "implies" declarations anywhere in the grammar. A definition that could
+// assert its own two routes were different would make the alternatives check decorative.
+const QP={ none:()=>({k:"none"}),
+  enumSet:(field,values,min,max)=>({k:"enum-set",field,values,min,max}),
+  snapshot:()=>({k:"snapshot"}),
+  minimum:(field,min,max)=>({k:"minimum",field,min,max}) };
+
+function questNormalizeParams(schema, params){
+  const no=code=>({ ok:false, code });
+  if(!params || typeof params!=="object" || Array.isArray(params)) return no("params-not-object");
+  const keys=Object.keys(params);
+  switch(schema.k){
+    case "none":
+      return keys.length ? no("params-unexpected") : { ok:true, value:Object.freeze({}) };
+    case "enum-set": {
+      if(keys.length!==1 || keys[0]!==schema.field) return no("params-shape");
+      const v=params[schema.field];
+      if(!Array.isArray(v) || v.length<schema.min || v.length>schema.max) return no("params-set-size");
+      if(new Set(v).size!==v.length) return no("params-set-duplicate");
+      for(const x of v) if(schema.values.indexOf(x)<0) return no("params-unknown-value");
+      // sorted, so two authors who typed the same set in different orders produce the same canonical route
+      return { ok:true, value:Object.freeze({ [schema.field]:Object.freeze([...v].sort()) }) }; }
+    case "snapshot": {
+      if(keys.length!==1 || keys[0]!=="snapshotVersionId") return no("params-shape");
+      const v=params.snapshotVersionId;
+      if(v!=="A" && v!=="B") return no("params-bad-version");
+      return { ok:true, value:Object.freeze({ snapshotVersionId:v }) }; }
+    case "minimum": {
+      if(keys.length!==1 || keys[0]!==schema.field) return no("params-shape");
+      const v=params[schema.field];
+      if(!Number.isInteger(v) || v<schema.min || v>schema.max) return no("params-range");
+      return { ok:true, value:Object.freeze({ [schema.field]:v }) }; }
+  }
+  return no("params-unknown-schema");
+}
+
+// The six relations. `unknown` is not a shrug — it REJECTS the definition when two analyzers meet in
+// the same capability slot of competing routes, because a relation nobody declared is a relation the
+// alternatives check cannot make.
+const QREL={ EQ:"equivalent", LR:"left-implies-right", RL:"right-implies-left",
+  DISJOINT:"disjoint", OVERLAP:"overlap", UNKNOWN:"unknown" };
+const questFlipRel=r=> r===QREL.LR?QREL.RL : r===QREL.RL?QREL.LR : r;
+
+function questRelateParams(schema, a, b){
+  switch(schema.k){
+    case "none": return QREL.EQ;
+    case "snapshot": return a.snapshotVersionId===b.snapshotVersionId ? QREL.EQ : QREL.UNKNOWN;
+    case "enum-set": {
+      const A=new Set(a[schema.field]), B=new Set(b[schema.field]);
+      const aInB=[...A].every(x=>B.has(x)), bInA=[...B].every(x=>A.has(x));
+      if(aInB && bInA) return QREL.EQ;
+      if(aInB) return QREL.LR;            // asking for LESS is the stronger demand: it implies the wider one
+      if(bInA) return QREL.RL;
+      return [...A].some(x=>B.has(x)) ? QREL.OVERLAP : QREL.DISJOINT; }
+    case "minimum": {
+      const x=a[schema.field], y=b[schema.field];
+      // a higher floor is the stronger demand: "at least 8" implies "at least 4"
+      return x===y ? QREL.EQ : (x>y ? QREL.LR : QREL.RL); }
+  }
+  return QREL.UNKNOWN;
+}
+
+// Cross-analyzer relations are ENGINE knowledge, declared once. Anything absent is `unknown`.
+const QUEST_CROSS_RELATIONS=Object.freeze({
+  "contour.same-family-as-snapshot|contour.differs-from-snapshot":QREL.DISJOINT,
+  "pulse.same-steady-family-as-snapshot|pulse.differs-steady-family-from-snapshot":QREL.DISJOINT,
+  // different lanes cannot both be the kick pattern, but a kick pattern and a hi-hat shimmer coexist
+  "pulse.kick-on-main-beats|pulse.even-walk":QREL.DISJOINT,
+  "pulse.kick-on-main-beats|pulse.hat-shimmer":QREL.OVERLAP,
+  "pulse.even-walk|pulse.hat-shimmer":QREL.OVERLAP,
+});
+
+function questRelate(leftId, leftParams, rightId, rightParams){
+  const L=QUEST_PRIMITIVES[leftId], R=QUEST_PRIMITIVES[rightId];
+  if(!L || !R) return QREL.UNKNOWN;
+  if(leftId===rightId) return questRelateParams(L.parameterSchema, leftParams, rightParams);
+  const fwd=QUEST_CROSS_RELATIONS[leftId+"|"+rightId];
+  if(fwd) return fwd;
+  const rev=QUEST_CROSS_RELATIONS[rightId+"|"+leftId];
+  return rev ? questFlipRel(rev) : QREL.UNKNOWN;
+}
+
+// ---- the primitives: musical analyzers and procedural gates in ONE id space ----
+// One space, two kinds, because Q5 rule 6 says a procedural fact may never be dressed up as a musical
+// one. Keeping them apart in separate maps would make that rule true by accident; keeping them together
+// with a `kind` makes it a check that can actually fail.
+const questShare=(a,b)=>a.some(x=>b.indexOf(x)>=0);          // the two family sets intersect
+const questBothNamed=(a,b)=>a.length>0 && b.length>0;        // both songs landed on a family we can name
+const QUEST_PRIMITIVES=deepFreezeQuest({
+  // --- musical: they read evidence and nothing else ---
+  "contour.any-of":{ kind:"musical", capabilityId:"melodic-contour", subject:"current",
+    allowedPhaseTypes:["compose"], parameterSchema:QP.enumSet("families",QUEST_CONTOUR_FAMILIES,1,4),
+    allowedDescriptorIds:["way-contour-any"],
+    evaluate:(cur,snap,p)=>({ ok:questShare(cur.contourFamilies,p.families), facts:{ families:cur.contourFamilies } }) },
+  "contour.same-family-as-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
+    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    allowedDescriptorIds:["way-contour-kept"],
+    evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && questShare(cur.contourFamilies,snap.contourFamilies),
+      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }) },
+  "contour.differs-from-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
+    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    allowedDescriptorIds:["way-contour-changed"],
+    evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && !questShare(cur.contourFamilies,snap.contourFamilies),
+      facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }) },
+  // Each reads its own NAMED family off the evidence. The even walk is eight kicks in lane 0; the
+  // shimmer is lane 2. Conflating those two cost a design round, so they never share a code path.
+  "pulse.kick-on-main-beats":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
+    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    allowedDescriptorIds:["way-pulse-main-kicks"],
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("main-beat-kicks")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+  "pulse.even-walk":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
+    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    allowedDescriptorIds:["way-pulse-even-kicks"],
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("even-kick-walk")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+  "pulse.hat-shimmer":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
+    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    allowedDescriptorIds:["way-pulse-hat-shimmer"],
+    evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("hat-shimmer")>=0, facts:{ families:cur.steadyPulseFamilies } }) },
+  "pulse.same-steady-family-as-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
+    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    allowedDescriptorIds:["way-pulse-kept"],
+    evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
+      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }) },
+  "pulse.differs-steady-family-from-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
+    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    allowedDescriptorIds:["way-pulse-changed"],
+    evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && !questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
+      facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }) },
+  "phrase.minimum-onsets":{ kind:"musical", capabilityId:"melody-making", subject:"current",
+    allowedPhaseTypes:["compose","transform"], parameterSchema:QP.minimum("minimum",1,64),
+    allowedDescriptorIds:["way-enough-notes"],
+    evaluate:(cur,snap,p)=>({ ok:cur.melodyOnsetCount>=p.minimum, facts:{ onsets:cur.melodyOnsetCount } }) },
+
+  // --- procedural: they read the RUN, never the music, and are legal only in phase.procedure ---
+  "playback.complete-since-last-edit":{ kind:"procedural",
+    gate:(run,versionId)=>playbackCompleteSinceLastEdit(run,versionId) },
+  "edit.after-fork":{ kind:"procedural",
+    gate:(run,versionId)=>{ const v=run&&run.versions&&run.versions[versionId];
+      return !!v && !!v.forkedFrom && v.editRev>0; } },
+  "comparison.auditioned-both":{ kind:"procedural",
+    gate:run=>{ const c=run&&run.comparison; if(!c) return false;
+      return c.versionIds.every(id=>{ const v=run.versions[id];
+        return !!v && v.editRev===c.revs[id] && v.auditionedRev===v.editRev; }); } },
+  "comparison.chosen":{ kind:"procedural",
+    gate:run=>{ const c=run&&run.comparison; if(!c || !run.selection) return false;
+      if(c.versionIds.indexOf(run.selection)<0) return false;
+      return c.versionIds.every(id=>{ const v=run.versions[id]; return !!v && v.editRev===c.revs[id]; }); } },
+});
+
+const QUEST_CAPABILITIES=deepFreezeQuest({
+  "melodic-contour":{ earnedByPackageIds:["follow-the-fireflies"] },
+  "steady-pulse":{ earnedByPackageIds:["footsteps"] },
+  "melody-making":{ earnedByPackageIds:["intro"] },
+});
+
+// Descriptors return TEXT, never markup. The braces are slots the shell fills from analyzer facts, and
+// they are engine strings — they never pass through the authored-text guard, which bans braces exactly
+// so that no authored string can pretend to be one of these.
+const QUEST_DESCRIPTORS=deepFreezeQuest({
+  "way-contour-any":{ kind:"way", text:"a Rise, Fall, Hover, or Arc path" },
+  "way-pulse-main-kicks":{ kind:"way", text:"clean kicks on the four main beats" },
+  "way-pulse-even-kicks":{ kind:"way", text:"the even eight-step kick walk" },
+  "way-pulse-hat-shimmer":{ kind:"way", text:"the steady hi-hat shimmer" },
+  "way-contour-changed":{ kind:"way", text:"a different recognized light shape" },
+  "way-contour-kept":{ kind:"way", text:"the same recognized light shape" },
+  "way-pulse-kept":{ kind:"way", text:"the same steady heartbeat" },
+  "way-pulse-changed":{ kind:"way", text:"a different steady heartbeat" },
+  "way-enough-notes":{ kind:"way", text:"enough notes to make a phrase" },
+  "heard-contour-rise":{ kind:"heard", text:"The lights climbed." },
+  "heard-contour-fall":{ kind:"heard", text:"The lights came down." },
+  "heard-contour-hover":{ kind:"heard", text:"The lights hovered." },
+  "heard-contour-arc":{ kind:"heard", text:"The lights arched across." },
+  "heard-contour-unnamed":{ kind:"heard", text:"The lights made a path the garden has not named yet." },
+  "heard-pulse-main-kicks":{ kind:"heard", text:"The roots stepped on the four main beats." },
+  "heard-pulse-even-kicks":{ kind:"heard", text:"The roots took the even eight-step walk." },
+  "heard-pulse-hat-shimmer":{ kind:"heard", text:"A steady hi-hat shimmer lit the roots." },
+  "heard-pulse-none":{ kind:"heard", text:"The roots did not catch one of the steady heartbeats yet." },
+  "heard-contour-changed":{ kind:"heard", text:"The second path changed from {oldContour} to {newContour}.", slots:["oldContour","newContour"] },
+  "heard-contour-kept":{ kind:"heard", text:"The lights kept their {contour} shape.", slots:["contour"] },
+  "heard-pulse-changed":{ kind:"heard", text:"The roots changed from {oldPulse} to {newPulse}.", slots:["oldPulse","newPulse"] },
+  "heard-pulse-kept":{ kind:"heard", text:"The roots kept the {pulse} heartbeat.", slots:["pulse"] },
+});
+
+// ---- evaluating one observation against a pair of songs ----
+// The context is TWO evidences and which one is "current", so the same code judges a witness at load
+// time and a player's real A/B at play time. Nothing here reads live state.
+function questEvaluateObservation(obs, ctx){
+  const a=QUEST_PRIMITIVES[obs.analyzerId];
+  if(!a || a.kind!=="musical") return { ok:false, code:"no-such-analyzer" };
+  const p=questNormalizeParams(a.parameterSchema, obs.params);
+  if(!p.ok) return { ok:false, code:p.code };
+  const cur=ctx.byVersion[ctx.currentVersionId];
+  if(!cur || !cur.valid) return { ok:false, code:"no-current-evidence" };
+  let snap=null;
+  if(a.subject==="snapshot-pair"){
+    snap=ctx.byVersion[p.value.snapshotVersionId];
+    if(!snap || !snap.valid) return { ok:false, code:"no-snapshot-evidence" }; }
+  const r=a.evaluate(cur, snap, p.value);
+  return { ok:r.ok===true, facts:r.facts };
+}
+const questRouteMatches=(route, ctx)=>route.observations.every(o=>questEvaluateObservation(o, ctx).ok);
+
+// ---- the semantic validator: Q5's rules, checked against the registries and against real songs ----
+function questSemantics(def, errs){
+  let ok=true;
+  const err=(code,path,extra)=>{ errs.push({code,path,extra}); ok=false; };
+  for(const cap of def.capabilityIds)
+    if(!Object.prototype.hasOwnProperty.call(QUEST_CAPABILITIES,cap)) err("no-such-capability","$.capabilityIds",cap);
+
+  const byWitnessId=Object.create(null);
+  for(const w of def.witnesses) byWitnessId[w.id]=w;
+  const evidenceCache=Object.create(null);
+  const witnessCtx=(w,path)=>{
+    if(Object.prototype.hasOwnProperty.call(evidenceCache,w.id)) return evidenceCache[w.id];
+    const byVersion=Object.create(null);
+    let good=true;
+    for(const vid of Object.keys(w.songs)){
+      const ev=songEvidence(w.songs[vid]);
+      if(!ev.valid){ err("witness-song-invalid",path,w.id+"."+vid+":"+ev.code); good=false; continue; }
+      byVersion[vid]=ev; }
+    if(good && !byVersion[w.currentVersionId]){ err("witness-missing-current",path,w.id); good=false; }
+    return (evidenceCache[w.id]= good ? { byVersion, currentVersionId:w.currentVersionId } : null); };
+
+  def.phases.forEach((p,i)=>{
+    const at="$.phases["+i+"]";
+    // Rule 6: a procedural fact may never masquerade as a musical one, in either direction.
+    for(const g of p.procedure.gateIds){
+      const prim=QUEST_PRIMITIVES[g];
+      if(!prim) err("no-such-gate",at+".procedure",g);
+      else if(prim.kind!=="procedural") err("musical-as-gate",at+".procedure",g); }
+    const ch=p.challenge;
+    if(!ch) return;
+
+    const canon=[];
+    ch.routes.forEach((r,ri)=>{
+      const rat=at+".routes["+ri+"]";
+      const caps=[], parts=[];
+      for(const obs of r.observations){
+        const prim=QUEST_PRIMITIVES[obs.analyzerId];
+        if(!prim){ err("no-such-analyzer",rat,obs.analyzerId); continue; }
+        if(prim.kind!=="musical"){ err("procedural-in-route",rat,obs.analyzerId); continue; }
+        if(prim.allowedPhaseTypes.indexOf(p.type)<0) err("analyzer-wrong-phase",rat,obs.analyzerId+" in "+p.type);
+        if(ch.capabilityIds.indexOf(prim.capabilityId)<0) err("analyzer-capability-not-claimed",rat,prim.capabilityId);
+        caps.push(prim.capabilityId);
+        const np=questNormalizeParams(prim.parameterSchema, obs.params);
+        if(!np.ok){ err(np.code,rat+".params",obs.analyzerId); continue; }
+        // A snapshot clause must look at what the phase FORKED FROM. Pointed at the phase's own
+        // version it asks whether a song differs from itself — never true, or trivially true, and
+        // either way a question no player could act on.
+        if(prim.subject==="snapshot-pair" && np.value.snapshotVersionId!==p.sourceVersionId)
+          err("snapshot-not-source",rat,np.value.snapshotVersionId+" vs "+p.sourceVersionId);
+        const d=QUEST_DESCRIPTORS[obs.descriptorId];
+        if(!d) err("no-such-descriptor",rat,obs.descriptorId);
+        else if(d.kind!=="way") err("descriptor-wrong-kind",rat,obs.descriptorId);
+        else if(prim.allowedDescriptorIds.indexOf(obs.descriptorId)<0) err("descriptor-not-allowed",rat,obs.descriptorId);
+        parts.push(obs.analyzerId+"("+JSON.stringify(np.value, Object.keys(np.value).sort())+")"); }
+      // Rule 4: exactly one observation per claimed capability, and every claimed capability covered.
+      if(caps.length!==r.observations.length || new Set(caps).size!==caps.length
+         || [...caps].sort().join(",")!==[...ch.capabilityIds].sort().join(","))
+        err("route-capability-span",rat,caps.join(","));
+      canon.push(parts.sort().join(" & ")); });
+
+    // Rule 2: duplicates are decided by the canonical form, not by author ids or key order.
+    for(let a=0;a<canon.length;a++) for(let b=a+1;b<canon.length;b++)
+      if(canon[a] && canon[a]===canon[b]) err("duplicate-route-observations",at,ch.routes[a].id+"="+ch.routes[b].id);
+
+    // Rule 5, part one: no route may imply another. Implication means an A-without-B song cannot exist,
+    // so the two were never alternatives however different their ids looked.
+    const clauseOf=(r,cap)=>r.observations.find(o=>{ const q=QUEST_PRIMITIVES[o.analyzerId];
+      return q && q.kind==="musical" && q.capabilityId===cap; });
+    // Params that failed their schema above have already been reported. They are skipped here rather
+    // than fed to the relation algebra: comparing a clause nobody could evaluate would be an answer
+    // invented about a definition that is already refused, and it once threw a TypeError instead.
+    const normOf=o=>{ const q=QUEST_PRIMITIVES[o.analyzerId];
+      const n=q ? questNormalizeParams(q.parameterSchema, o.params) : { ok:false };
+      return n.ok ? n.value : null; };
+    for(const A of ch.routes) for(const B of ch.routes){
+      if(A===B) continue;
+      let implies=true;
+      for(const cap of ch.capabilityIds){
+        const x=clauseOf(A,cap), y=clauseOf(B,cap);
+        if(!x || !y){ implies=false; continue; }
+        const px=normOf(x), py=normOf(y);
+        if(!px || !py){ implies=false; continue; }
+        const rel=questRelate(x.analyzerId, px, y.analyzerId, py);
+        if(rel===QREL.UNKNOWN){ err("relation-unknown",at,x.analyzerId+" vs "+y.analyzerId); implies=false; continue; }
+        if(rel!==QREL.EQ && rel!==QREL.LR) implies=false; }
+      if(implies) err("route-implies-route",at,A.id+" implies "+B.id); }
+
+    // Rule 5, part two: EXECUTED songs. Derived implication proves containment; witnesses prove that
+    // each route is reachable and observably distinct under the real detectors.
+    const ctxOf=r=>r.witnessIds.map(wid=>{
+      const w=byWitnessId[wid];
+      if(!w) return null;                                       // D1 already reported the dangling id
+      if(w.phaseId!==p.id){ err("witness-wrong-phase",at,wid); return null; }
+      return witnessCtx(w,at); }).filter(Boolean);
+    const ctxs=new Map();
+    for(const r of ch.routes) ctxs.set(r, ctxOf(r));
+    for(const A of ch.routes){
+      if(!ctxs.get(A).some(c=>questRouteMatches(A,c))){ err("route-unsatisfiable",at,A.id); continue; }
+      for(const B of ch.routes){
+        if(A===B) continue;
+        if(!ctxs.get(A).some(c=>questRouteMatches(A,c) && !questRouteMatches(B,c)))
+          err("no-distinguishing-witness",at,A.id+" without "+B.id); } }
+  });
   return ok;
 }
 
@@ -5142,6 +5523,7 @@ function loadQuestCatalog(jsonText){
       if(!validate){ errs.push({code:"unsupported-schema-version", path:"$", extra:def&&def.v}); continue; }
       if(!validate(def, errs)) continue;
       if(!questCrossRefs(def, errs)) continue;
+      if(!questSemantics(def, errs)) continue;
       if(out[def.id]){ errs.push({code:"duplicate-quest-id", path:"$", extra:def.id}); continue; }
       out[def.id]=deepFreezeQuest(def); }
     if(errs.length) throw new QuestLoadError("invalid-catalog","$");

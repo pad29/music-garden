@@ -61,8 +61,18 @@ contour. Use it instead of poking `g.grid` directly.
 - **If the harness throws on load** because the game touched a browser API that isn't stubbed,
   add the stub to `harness.mjs`. Do not weaken `index.html` to satisfy the harness.
 
+## Every test names the bug it catches
+
+The standard this suite holds itself to: **a test that passes against the correct code AND against the
+bug it claims to catch is a false proof.** Write the mutation into a comment above the test, then
+actually apply it and watch the test fail. Doing that has caught four false proofs and one real shipped
+defect (`setSaves` discarding `Store.set`'s return, so an artifact write could fail in silence).
+
 ## Scope
 
-This suite is young. It covers the detectors, and the pure seams under the quest work — the
-projection (`projectTracks`) and the pulse helpers' explicit-grid forms. It is not a substitute for playing the game —
-it catches silent logic regressions, which are the ones runtime inspection is worst at finding.
+This suite is young. It covers the detectors; the pure seams under the quest work — the projection
+(`projectTracks`), the pulse helpers' explicit-grid forms and `contourSeqFromGrid`; and the quest
+engine itself — the play scope, persistence, the completion session, the QuestRun reducer, phases and
+history, the sealed catalog, and the analyzer registries and semantic validator. It is not a substitute
+for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
+worst at finding.
