@@ -4927,6 +4927,238 @@ function beginCompletionSession(opts){
 }
 const activeCompletionSessionId = () => completionState.active && completionState.active.sessionId;
 
+
+// ---------- The sealed quest catalog ----------
+// Quest definitions are DATA, never code: the level format is 247 chk closures and an authoring UI
+// cannot emit JavaScript, so a player-facing Questmaker is only reachable if official quests travel
+// the same declarative path from the start. Everything below is that path's front door.
+//
+// Loading is an inline JSON string parsed at boot. Not fetch — AGENTS.md forbids it for local assets
+// and the game must survive being double-clicked; not a new folder — that would need adding to the
+// netlify.toml copy or it 404s silently in production.
+const QUEST_TEXT_MAX=240, QUEST_JSON_MAX=262144, QUEST_DEPTH_MAX=12, QUEST_NODES_MAX=10000;
+const QUEST_NUM_MAX=1000000000;
+const QUEST_SLUG=/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const QUEST_PRIMITIVE_ID=/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/;
+const QUEST_DANGEROUS_KEY=new Set(["__proto__","prototype","constructor"]);
+// Authored prose never becomes markup. The renderer must use textContent — this is the lexical belt
+// beside that brace, not a substitute for it. levelTitle.innerHTML (see renderStage) is exactly the
+// path a quest title would otherwise reach.
+const QUEST_TEXT_BANNED=/[<>{}\\\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]|javascript:|data:|file:|https?:|www\.|url\(|@import|\.\.?\//i;
+const QUEST_ASSET_SUFFIX=/\.(?:mp3|wav|ogg|png|jpe?g|svg|webp|gif|css|js|json|html?)\b/i;
+
+// The gate. JSON.parse output cannot carry a function, getter, symbol or cycle — but it CAN carry an
+// own "__proto__" key, and it can be arbitrarily deep or large. The descriptor walk also means the
+// same gate works unchanged when a future import hands it something that was not parsed.
+function assertPlainJsonTree(root){
+  let nodes=0;
+  const walk=(v, depth, path)=>{
+    if(++nodes>QUEST_NODES_MAX) throw new QuestLoadError("too-many-values", path);
+    if(depth>QUEST_DEPTH_MAX) throw new QuestLoadError("too-deep", path);
+    if(v===null || typeof v==="boolean") return;
+    if(typeof v==="number"){
+      if(!Number.isFinite(v)) throw new QuestLoadError("non-finite-number", path);
+      if(Math.abs(v)>QUEST_NUM_MAX) throw new QuestLoadError("number-out-of-range", path);
+      return; }
+    if(typeof v==="string") return;
+    if(typeof v!=="object") throw new QuestLoadError("not-plain-json", path);   // function, symbol, bigint, undefined
+    const proto=Object.getPrototypeOf(v);
+    if(Array.isArray(v)){
+      if(proto!==Array.prototype) throw new QuestLoadError("bad-prototype", path);
+      for(let i=0;i<v.length;i++){
+        if(!Object.prototype.hasOwnProperty.call(v,i)) throw new QuestLoadError("array-hole", path+"["+i+"]");
+        walk(v[i], depth+1, path+"["+i+"]"); }
+      return; }
+    if(proto!==Object.prototype && proto!==null) throw new QuestLoadError("bad-prototype", path);
+    if(Object.getOwnPropertySymbols(v).length) throw new QuestLoadError("symbol-key", path);
+    const descs=Object.getOwnPropertyDescriptors(v);
+    for(const k of Object.keys(descs)){
+      if(QUEST_DANGEROUS_KEY.has(k)) throw new QuestLoadError("dangerous-key", path+"."+k);
+      const d=descs[k];
+      if(d.get || d.set) throw new QuestLoadError("accessor", path+"."+k);   // never evaluated to find out
+      walk(d.value, depth+1, path+"."+k); }
+  };
+  walk(root, 0, "$");
+  return root;
+}
+function QuestLoadError(code, path){ this.code=code; this.path=path;
+  this.message=code+" at "+path; }
+QuestLoadError.prototype=Object.create(Error.prototype);
+QuestLoadError.prototype.constructor=QuestLoadError;
+
+// ---- the closed grammar, as a spec the checker walks: unknown keys reject for free ----
+const QT={
+  lit:(...vals)=>({k:"lit",vals}),
+  text:(min,max)=>({k:"text",min,max:max||QUEST_TEXT_MAX}),
+  slug:()=>({k:"slug"}),
+  primitiveId:()=>({k:"primitiveId"}),
+  int:(min,max)=>({k:"int",min,max}),
+  arr:(of,min,max,unique)=>({k:"arr",of,min,max,unique:!!unique}),
+  obj:(shape,optional)=>({k:"obj",shape,optional:optional||[]}),
+  opaque:()=>({k:"opaque"}),         // analyzer params + witness songs: shape is D2's registry to judge
+};
+function questCheck(v, spec, path, errs){
+  const bad=(code,extra)=>{ errs.push({code, path, extra}); return false; };
+  switch(spec.k){
+    case "lit": return spec.vals.includes(v) || bad("not-allowed-value", spec.vals.join("|"));
+    case "text": {
+      if(typeof v!=="string") return bad("not-text");
+      const t=v.normalize("NFC");
+      if(t.length<(spec.min||1) || t.length>spec.max) return bad("text-length");
+      if(QUEST_TEXT_BANNED.test(t)) return bad("unsafe-text");
+      if(QUEST_ASSET_SUFFIX.test(t)) return bad("asset-looking-text");
+      return true; }
+    case "slug": return (typeof v==="string" && v.length<=64 && QUEST_SLUG.test(v)) || bad("not-slug");
+    case "primitiveId": return (typeof v==="string" && v.length<=64 && QUEST_PRIMITIVE_ID.test(v)) || bad("not-primitive-id");
+    case "int": return (Number.isInteger(v) && v>=spec.min && v<=spec.max) || bad("int-range", spec.min+".."+spec.max);
+    case "opaque": return true;
+    case "arr": {
+      if(!Array.isArray(v)) return bad("not-array");
+      if(v.length<spec.min || v.length>spec.max) return bad("array-length", spec.min+".."+spec.max);
+      let ok=true;
+      v.forEach((item,i)=>{ if(!questCheck(item, spec.of, path+"["+i+"]", errs)) ok=false; });
+      if(spec.unique && new Set(v.map(x=>typeof x==="string"?x:JSON.stringify(x))).size!==v.length) { bad("not-unique"); ok=false; }
+      return ok; }
+    case "obj": {
+      if(!v || typeof v!=="object" || Array.isArray(v)) return bad("not-object");
+      let ok=true;
+      for(const key of Object.keys(v)) if(!(key in spec.shape)) { errs.push({code:"unknown-key", path:path+"."+key}); ok=false; }
+      for(const key of Object.keys(spec.shape)){
+        if(!(key in v)){ if(spec.optional.indexOf(key)<0){ errs.push({code:"missing-key", path:path+"."+key}); ok=false; } continue; }
+        if(!questCheck(v[key], spec.shape[key], path+"."+key, errs)) ok=false; }
+      return ok; }
+  }
+  return bad("unknown-spec");
+}
+
+const QUEST_OBSERVATION=QT.obj({ analyzerId:QT.primitiveId(), params:QT.opaque(), descriptorId:QT.slug() });
+const QUEST_CHALLENGE=QT.obj({ id:QT.slug(), capabilityIds:QT.arr(QT.slug(),2,2,true),
+  routes:QT.arr(QT.obj({ id:QT.slug(), observations:QT.arr(QUEST_OBSERVATION,1,2),
+                         witnessIds:QT.arr(QT.slug(),1,8,true) }),2,4) });
+const QUEST_PROCEDURE=QT.obj({ gateIds:QT.arr(QT.primitiveId(),1,4,true), transitionId:QT.slug(),
+  buttonLabel:QT.text(1,60) }, ["buttonLabel"]);
+const QUEST_PHASE_COMMON={ id:QT.slug(), name:QT.text(1,60), worldText:QT.text(1,240),
+  intentionText:QT.text(1,160), procedure:QUEST_PROCEDURE };
+
+const QUEST_SCHEMA_V1=QT.obj({
+  v:QT.lit(1), id:QT.slug(),
+  author:QT.obj({ kind:QT.lit("official","player"), id:QT.slug() }),
+  kind:QT.lit("guided-commission"),
+  title:QT.text(1,80),
+  brief:QT.obj({ worldText:QT.text(1,240), intentionText:QT.text(1,160) }),
+  prerequisites:QT.obj({ earnedByPackageIds:QT.arr(QT.slug(),1,8,true) }),
+  capabilityIds:QT.arr(QT.slug(),2,2,true),
+  workspace:QT.obj({ paletteId:QT.slug(), columns:QT.int(16,64), grooveId:QT.slug(),
+    controlIds:QT.arr(QT.slug(),1,16,true),
+    toolGrants:QT.arr(QT.obj({ toolId:QT.primitiveId(), capabilityId:QT.slug() }),0,16) }),
+  phases:QT.arr(QT.opaque(),3,3),        // per-type shapes checked below, since they differ
+  completion:QT.obj({ actionId:QT.slug(), payoffId:QT.slug(), label:QT.text(1,60),
+    defaultTitle:QT.text(1,80), completionText:QT.text(1,240) }),
+  presentation:QT.obj({ themeId:QT.slug(), iconId:QT.slug(), regionId:QT.slug(),
+    estimateMinutes:QT.int(1,60), priority:QT.int(0,999) }),
+  witnesses:QT.arr(QT.obj({ id:QT.slug(), phaseId:QT.slug(), currentVersionId:QT.lit("A","B"),
+    songs:QT.obj({ A:QT.opaque(), B:QT.opaque() }, ["B"]) }),2,24),
+  starterSong:QT.opaque(),
+}, ["starterSong"]);
+
+const QUEST_PHASE_SHAPES={
+  compose:QT.obj(Object.assign({}, QUEST_PHASE_COMMON, { type:QT.lit("compose"),
+    versionId:QT.lit("A"), challenge:QUEST_CHALLENGE })),
+  transform:QT.obj(Object.assign({}, QUEST_PHASE_COMMON, { type:QT.lit("transform"),
+    sourceVersionId:QT.lit("A"), versionId:QT.lit("B"), challenge:QUEST_CHALLENGE })),
+  "compare-offer":QT.obj(Object.assign({}, QUEST_PHASE_COMMON, { type:QT.lit("compare-offer"),
+    versionIds:QT.arr(QT.lit("A","B"),2,2,true),
+    reflection:QT.obj({ promptText:QT.text(1,160),
+      choices:QT.arr(QT.obj({ id:QT.lit("A","B"), label:QT.text(1,40) }),2,2) }) })),
+};
+
+// Version dispatch is an own-property lookup: an unknown version is REFUSED, never quietly treated as
+// the newest one we happen to understand.
+const QUEST_SCHEMA_VALIDATORS=Object.create(null);
+QUEST_SCHEMA_VALIDATORS[1]=function(def, errs){
+  if(!questCheck(def, QUEST_SCHEMA_V1, "$", errs)) return false;
+  let ok=true;
+  const order=["compose","transform","compare-offer"];
+  def.phases.forEach((p,i)=>{
+    const want=order[i];
+    if(!p || p.type!==want){ errs.push({code:"phase-order", path:"$.phases["+i+"]", extra:want}); ok=false; return; }
+    if(!questCheck(p, QUEST_PHASE_SHAPES[want], "$.phases["+i+"]", errs)) ok=false; });
+  return ok;
+};
+
+// Cross-references that D1 can actually resolve. Analyzer, descriptor and capability registries are
+// D2's; referencing them here would be a check that always passes, which is worse than no check.
+function questCrossRefs(def, errs){
+  let ok=true;
+  const err=(code,path,extra)=>{ errs.push({code,path,extra}); ok=false; };
+  for(const id of def.prerequisites.earnedByPackageIds){
+    if(id==="studio" || !Object.prototype.hasOwnProperty.call(PACKAGES,id)) err("no-such-package","$.prerequisites",id);
+    else if(PACKAGES[id].hidden) err("hidden-package","$.prerequisites",id); }
+  if(!Object.prototype.hasOwnProperty.call(PALETTES,def.workspace.paletteId)) err("no-such-palette","$.workspace",def.workspace.paletteId);
+  const phaseIds=new Set(), routeIds=new Set(), witnessIds=new Set();
+  for(const w of def.witnesses){ if(witnessIds.has(w.id)) err("duplicate-witness","$.witnesses",w.id); witnessIds.add(w.id); }
+  def.phases.forEach((p,i)=>{
+    if(phaseIds.has(p.id)) err("duplicate-phase","$.phases["+i+"]",p.id);
+    phaseIds.add(p.id);
+    if(p.challenge){
+      // Rule 4's shape, as far as D1 can see it: the challenge must claim exactly what the quest does.
+      const a=[...def.capabilityIds].sort().join(","), b=[...p.challenge.capabilityIds].sort().join(",");
+      if(a!==b) err("challenge-capabilities","$.phases["+i+"].challenge",b);
+      for(const r of p.challenge.routes){
+        if(routeIds.has(r.id)) err("duplicate-route","$.phases["+i+"]",r.id);
+        routeIds.add(r.id);
+        for(const wid of r.witnessIds){
+          if(!witnessIds.has(wid)) err("no-such-witness","$.phases["+i+"].routes."+r.id,wid); } } }
+    if(p.type==="compare-offer"){
+      const ids=p.reflection.choices.map(c=>c.id).sort().join(",");
+      if(ids!==[...p.versionIds].sort().join(",")) err("reflection-mismatch","$.phases["+i+"].reflection",ids); } });
+  for(const w of def.witnesses) if(!phaseIds.has(w.phaseId)) err("no-such-phase","$.witnesses."+w.id,w.phaseId);
+  return ok;
+}
+
+function deepFreezeQuest(v){
+  if(v && typeof v==="object" && !Object.isFrozen(v)){
+    Object.freeze(v);
+    for(const k of Object.keys(v)) deepFreezeQuest(v[k]); }
+  return v; }
+
+// All-or-nothing: one malformed definition publishes an EMPTY registry rather than a partial catalog,
+// because a half-installed quest is a quest that can strand a child mid-way.
+let QUEST_DEFINITIONS=Object.freeze(Object.create(null));
+let QUEST_CATALOG_ERRORS=Object.freeze([]);
+function loadQuestCatalog(jsonText){
+  const errs=[];
+  try{
+    if(typeof jsonText!=="string") throw new QuestLoadError("not-a-string","$");
+    if(jsonText.length>QUEST_JSON_MAX) throw new QuestLoadError("source-too-large","$");
+    const env=assertPlainJsonTree(JSON.parse(jsonText));
+    if(!env || env.v!==1 || !Array.isArray(env.definitions) || !env.definitions.length || env.definitions.length>32)
+      throw new QuestLoadError("bad-envelope","$");
+    for(const k of Object.keys(env)) if(k!=="v" && k!=="definitions") throw new QuestLoadError("unknown-envelope-key","$."+k);
+    const out=Object.create(null);
+    for(const def of env.definitions){
+      const validate=Object.prototype.hasOwnProperty.call(QUEST_SCHEMA_VALIDATORS, def && def.v)
+        && QUEST_SCHEMA_VALIDATORS[def.v];
+      if(!validate){ errs.push({code:"unsupported-schema-version", path:"$", extra:def&&def.v}); continue; }
+      if(!validate(def, errs)) continue;
+      if(!questCrossRefs(def, errs)) continue;
+      if(out[def.id]){ errs.push({code:"duplicate-quest-id", path:"$", extra:def.id}); continue; }
+      out[def.id]=deepFreezeQuest(def); }
+    if(errs.length) throw new QuestLoadError("invalid-catalog","$");
+    QUEST_DEFINITIONS=Object.freeze(out); QUEST_CATALOG_ERRORS=Object.freeze([]);
+    return QUEST_DEFINITIONS;
+  }catch(e){
+    QUEST_DEFINITIONS=Object.freeze(Object.create(null));
+    QUEST_CATALOG_ERRORS=Object.freeze(errs.length?errs:[{code:e.code||"parse-failed", path:e.path||"$"}]);
+    return QUEST_DEFINITIONS; }
+}
+
+// The built-in catalog, as JSON rather than object literals: the parse is the boundary a future
+// Questmaker import crosses too, so official content must not get a shorter path to trust than a
+// player's would. A backtick template is safe here — JSON.stringify escapes any backslash or
+// backtick, and the plain-JSON gate re-checks everything the parse produces.
+const BUILTIN_QUEST_CATALOG_JSON = "{\n \"v\": 1,\n \"definitions\": [\n  {\n   \"v\": 1,\n   \"id\": \"firefly-crossing\",\n   \"author\": {\n    \"kind\": \"official\",\n    \"id\": \"tune-garden\"\n   },\n   \"kind\": \"guided-commission\",\n   \"title\": \"The Firefly Crossing\",\n   \"brief\": {\n    \"worldText\": \"Flutter's lights can see the crossing, but Hopper's roots need a heartbeat.\",\n    \"intentionText\": \"Shape a path over a steady pulse, then make another version and choose the one to offer.\"\n   },\n   \"prerequisites\": {\n    \"earnedByPackageIds\": [\n     \"follow-the-fireflies\",\n     \"footsteps\"\n    ]\n   },\n   \"capabilityIds\": [\n    \"melodic-contour\",\n    \"steady-pulse\"\n   ],\n   \"workspace\": {\n    \"paletteId\": \"pentatonic\",\n    \"columns\": 16,\n    \"grooveId\": \"straight\",\n    \"controlIds\": [\n     \"melody\",\n     \"drums\",\n     \"playback\",\n     \"loop\",\n     \"voice\",\n     \"tempo\",\n     \"mixer\",\n     \"undo\",\n     \"redo\",\n     \"room\"\n    ],\n    \"toolGrants\": []\n   },\n   \"phases\": [\n    {\n     \"id\": \"light-first-path\",\n     \"name\": \"Light the first path\",\n     \"type\": \"compose\",\n     \"versionId\": \"A\",\n     \"worldText\": \"Give Flutter's lights a clear way across, and let Hopper's roots feel the beat.\",\n     \"intentionText\": \"Give the lights a clear path and the roots a heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"fork-version\",\n      \"buttonLabel\": \"Keep this path\"\n     },\n     \"challenge\": {\n      \"id\": \"shape-over-pulse\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"main-beat-crossing\",\n        \"witnessIds\": [\n         \"first-main-rise\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.kick-on-main-beats\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-main-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"even-walk-crossing\",\n        \"witnessIds\": [\n         \"first-even-fall\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.even-walk\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-even-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"shimmer-crossing\",\n        \"witnessIds\": [\n         \"first-shimmer-arc\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.hat-shimmer\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-hat-shimmer\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"another-way-across\",\n     \"name\": \"Another way across\",\n     \"type\": \"transform\",\n     \"sourceVersionId\": \"A\",\n     \"versionId\": \"B\",\n     \"worldText\": \"The lights know this path now. Show them another way across.\",\n     \"intentionText\": \"Change the shape and keep the heartbeat, or keep the shape and change the heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"edit.after-fork\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"advance\",\n      \"buttonLabel\": \"Compare both paths\"\n     },\n     \"challenge\": {\n      \"id\": \"retain-and-change\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"new-shape-same-heartbeat\",\n        \"witnessIds\": [\n         \"second-fall-same-main\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.differs-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-changed\"\n         },\n         {\n          \"analyzerId\": \"pulse.same-steady-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-kept\"\n         }\n        ]\n       },\n       {\n        \"id\": \"same-shape-new-heartbeat\",\n        \"witnessIds\": [\n         \"second-rise-even-walk\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.same-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-kept\"\n         },\n         {\n          \"analyzerId\": \"pulse.differs-steady-family-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-changed\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"choose-crossing\",\n     \"name\": \"Choose the crossing\",\n     \"type\": \"compare-offer\",\n     \"versionIds\": [\n      \"A\",\n      \"B\"\n     ],\n     \"worldText\": \"Both crossings are glowing. Listen to each one, then choose the path that feels like your journey.\",\n     \"intentionText\": \"Hear both versions, choose one, and play the final version all the way through before offering it.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"comparison.auditioned-both\",\n       \"comparison.chosen\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"offer\"\n     },\n     \"reflection\": {\n      \"promptText\": \"Which path feels more like the journey you wanted?\",\n      \"choices\": [\n       {\n        \"id\": \"A\",\n        \"label\": \"Path A\"\n       },\n       {\n        \"id\": \"B\",\n        \"label\": \"Path B\"\n       }\n      ]\n     }\n    }\n   ],\n   \"completion\": {\n    \"actionId\": \"offer-song\",\n    \"payoffId\": \"saved-song\",\n    \"label\": \"Offer this crossing\",\n    \"defaultTitle\": \"The Firefly Crossing\",\n    \"completionText\": \"Flutter's lights and Hopper's roots carry your crossing into the garden.\"\n   },\n   \"presentation\": {\n    \"themeId\": \"night-meadow\",\n    \"iconId\": \"fireflies\",\n    \"regionId\": \"paths-of-song\",\n    \"estimateMinutes\": 12,\n    \"priority\": 10\n   },\n   \"witnesses\": [\n    {\n     \"id\": \"first-main-rise\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-even-fall\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-shimmer-arc\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 6,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 8,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 2,\n           \"c\": 0\n          },\n          {\n           \"lane\": 2,\n           \"c\": 2\n          },\n          {\n           \"lane\": 2,\n           \"c\": 4\n          },\n          {\n           \"lane\": 2,\n           \"c\": 6\n          },\n          {\n           \"lane\": 2,\n           \"c\": 8\n          },\n          {\n           \"lane\": 2,\n           \"c\": 10\n          },\n          {\n           \"lane\": 2,\n           \"c\": 12\n          },\n          {\n           \"lane\": 2,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-fall-same-main\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-rise-even-walk\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    }\n   ]\n  }\n ]\n}";
+
 // ---------- QuestRun: the durable owner of a quest's versions, phase and tray ----------
 // A completion receipt from the reducer above is only a claim about what was heard. Nothing becomes
 // quest evidence until it survives a persisted transaction here — so a lost write can never leave the
@@ -6709,6 +6941,7 @@ if(progress.settings && progress.settings.voice) setVoice(progress.settings.voic
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
+loadQuestCatalog(BUILTIN_QUEST_CATALOG_JSON);   // all-or-nothing: a bad definition publishes an EMPTY registry
 hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at
 recoverQuestOfferings();   // a crash mid-offering finishes here: the artifact is written before the run completes
 toolboxOwner=null;   // per-scope now; the renderLevel below loads the resumed package's own tools

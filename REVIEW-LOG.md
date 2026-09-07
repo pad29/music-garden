@@ -1290,3 +1290,49 @@ exactly one saved artifact titled *The Firefly Crossing*.
 **Suite: 205 pass** (192 → 205). Eight mutations, eight catches. `SAVE-SHARE.md` records the two `meta`
 fields a quest artifact carries. Still no quest entry point and no renderer — step (d) consumes three
 stable doors: `advanceQuestPhase()`, `start({versionId, purpose})` and `transactQuestRun()`.
+
+### D1 — the sealed catalog
+
+**The Firefly Crossing is now data.** 15.5 KB of JSON in `BUILTIN_QUEST_CATALOG_JSON`, parsed and
+validated at boot by the same front door a future Questmaker import would use. Official content gets
+no shorter path to trust than a player's would — which is the whole reason quests are declarative in
+the first place. No analyzers, no evaluator, no UI; nothing player-visible yet.
+
+**Inline JSON, not `fetch`.** It is the only loading strategy that satisfies all four constraints at
+once: no network (an `AGENTS.md` invariant), survives `file://`, no `netlify.toml` change, and reachable
+from the vm harness.
+
+**`assertPlainJsonTree` refuses a getter by inspecting its descriptor, never by evaluating it** — a gate
+that discovers an accessor by calling it has already run the code it exists to keep out. It also rejects
+`__proto__` / `prototype` / `constructor` keys (`JSON.parse` creates a real own `__proto__` property —
+the pollution route parsing genuinely leaves open), non-`Object.prototype` prototypes, array holes,
+non-finite and out-of-range numbers, depth > 12 and > 10,000 nodes.
+
+**The grammar spec gives unknown-key rejection for free**, at every level, because validation walks the
+declared shape rather than the value. Schema dispatch is an own-property lookup on the version:
+an unrecognised `v` is refused, never quietly handed to the newest validator.
+
+**Cross-references are checked only where D1 can actually resolve them** — packages, palette, witness
+and phase ids, challenge capability equality, reflection/`versionIds` agreement. Analyzer, descriptor
+and capability ids are deliberately *not* checked here: their registries are D2's, and a lookup against
+an empty registry is a check that always passes, which is worse than no check at all.
+
+**GPT's design failed its own validator on the first run.** It specified an all-lowercase primitive-id
+grammar and then used `contour.anyOf` as its own example id. Renamed to `contour.any-of`; there is now a
+test asserting `contour.anyOf` is rejected, with the reason recorded in the test itself.
+
+**A `grep` in `index.html` started returning "Binary file matches."** Literal bidi-override characters in
+the text-safety regex made the one file this project searches constantly unsearchable. Rewritten with
+`\uXXXX` escapes. `QUEST_TEXT_BANNED` exists because `renderStage` writes `levelTitle.innerHTML`, so an
+authored title is exactly the string that reaches it.
+
+**One more false proof of my own.** The prototype-lookup test probed with `"toString"` — whose capital S
+fails the *slug* grammar first, so it never reached the cross-reference check it claimed to test. Now
+`"constructor"`: all-lowercase, a valid slug, and on `Object.prototype`.
+
+**Q5's ceiling of two observations per route is now structural** — a third is a schema error, not a
+review note. So is "at least two routes": one alternative is a hidden single answer.
+
+**Suite: 227 pass** (205 → 227). Sixteen mutations, sixteen catches — the last needed a second attempt,
+because my *mutation* was wrong rather than the test: a `SyntaxError` from `JSON.parse` carries no
+`.code`, so the rethrow I wrote never fired. Retried unconditionally: caught by 26 tests.
