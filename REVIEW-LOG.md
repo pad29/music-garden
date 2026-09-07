@@ -1707,3 +1707,32 @@ ordinary edit path and emptied the song it was opening; the workspace was declar
 so the first phase asked for a heartbeat with the drums shut; and the one-tap fix for a partial
 selection shipped disabled, because the test had checked the action existed rather than that it could
 be pressed.
+
+### After D6 — the rename that was approved and never done, and a way to test it
+
+**`QUESTS.md` Q2 was approved on 2026-09-06 and the edit was never made.** It says every
+`- **Quest:**` hook in `PACKAGES.md` becomes `- **World hook:**`, because those entries are *fiction
+attached to a package* — *The Lantern Meadow*, *The Root Path* — and imply no QuestDefinition. That was
+harmless while no quest existed. Now that one ships, 28 lines saying "Quest" would tell a reader the
+game has 28 of them.
+
+Done, with Q2's own verification searches: exactly **28** `- **World hook:**`, and **no** remaining
+`- **Quest:**` or `- Quest hook:`. The line describing the template's fields ("level patterns · quest
+hook · sandbox unlock") went with it — Q2 names "the template label", and leaving its description saying
+"quest hook" would undo the point.
+
+One "quest" stays, at `PACKAGES.md:218`: *"foundational for every later style/quest"*. Under the
+reserved meaning that sentence is now more accurate rather than less — quests genuinely build on package
+capabilities, which is exactly what eligibility checks — so it is left alone rather than swept up.
+
+**Two dev controls, behind the existing `?dev` flag.** Testing a quest needs a profile that has EARNED
+its prerequisites, which is otherwise several packages of real play, and re-testing needs a way back to
+never-played. `🗝️ Unlock quests` marks every quest's prerequisite packages complete — writing the
+ordinary progress record, so what it produces is a profile the game could have reached on its own — and
+`🧹 Clear quest runs` deletes every run and completion record. Clearing from *inside* a quest returns to
+the last package first, so the scope is never stranded on a run that is about to vanish; that path is
+the one worth checking, and it was.
+
+Both verified in the browser: the card appears the moment the prerequisites are marked, and clearing
+mid-quest lands back in `intro` with the level card up and the quest card gone. `README.md` and
+`AGENTS.md` list them beside the flags that were already there.

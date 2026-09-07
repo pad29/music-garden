@@ -116,7 +116,7 @@ Tag every rhythm-touching package with the tier it needs.
 ### 7. Rewards
 - Power unlocked:
 - Sandbox unlock:
-- Quest hook:
+- World hook:
 - Cosmetic / world-map consequence:
 ### 8. Success criteria
 - Felt intuitively:
@@ -164,7 +164,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 6. The 24 packages — high-level specs
 
-> Format per package: capability · hidden theory · palette · prereqs · level patterns · quest hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) specs come in the next pass for the first 8.
+> Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) specs come in the next pass for the first 8.
 
 ### REGION 1 — Paths of Song  *(cluster: voice · pentatonic)*
 
@@ -173,7 +173,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Playtest tuning (2026-06-13):** tightened hover (≥4 notes, must end near start — a short descent no longer passes); the compare level now requires hearing all 3 options before a pick counts; replaced the repetitive "Two Skies" (= L1+L3) with **Over the Twin Hills** (two hills in a row) and made the capstone a real multi-turn **journey** — adds a difficulty ramp via compound contours (peak/turn counting with prominence).
 - **Theory:** melodic contour, directional phrasing. **Palette:** pentatonic. **Prereqs:** garden-basics.
 - **Patterns:** match_feel, navigate, repair, transform, compare. **Success:** broad/targeted.
-- **Quest:** *The Lantern Meadow* — guide scattered lights home by contour.
+- **World hook:** *The Lantern Meadow* — guide scattered lights home by contour.
 - **Sandbox:** contour glow on a phrase; rise/fall/hover/arc prompt cards.
 - **System needs (S):** a **contour detector** (classify a placed melody's shape) + a ghost-path overlay on the grid. No new note systems.
 - **Why:** first "melody as expression" package; biggest emotional step after the intro. **The validation build** for the template + level engine.
@@ -183,7 +183,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** move gently by steps or boldly by leaps, on purpose.
 - **Theory:** stepwise motion vs. leaps (relative interval size). **Palette:** pentatonic *(steps are uneven — embodied feel reads fine; true diatonic steps arrive later)*. **Prereqs:** garden-basics, follow-the-fireflies.
 - **Patterns:** navigate, build_constraint, transform, compare, repair. **Success:** broad/targeted.
-- **Quest:** *Crossing the Silver Stream* — careful creature → steps, bold creature → leaps.
+- **World hook:** *Crossing the Silver Stream* — careful creature → steps, bold creature → leaps.
 - **Sandbox:** phrase motion tags (smooth/bold/jumpy/gliding); optional step-bias assist.
 - **System needs (S):** "mostly stepwise vs. contains leaps" detector; stone-spacing visual.
 - **Why:** turns note choice into *movement style* — pairs with PS-1 to form the whole melody-writing basis.
@@ -192,7 +192,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** make one phrase that feels open, and another that answers it.
 - **Theory:** antecedent/consequent, open vs. closed phrasing. **Palette:** pentatonic. **Prereqs:** garden-basics, follow-the-fireflies.
 - **Patterns:** answer, finish, compare, transform. **Success:** broad/targeted.
-- **Quest:** *Voices Across the Canyon* — a musical conversation between separated creatures.
+- **World hook:** *Voices Across the Canyon* — a musical conversation between separated creatures.
 - **Sandbox:** phrase-pair tool; call/response playback; "write a question, then answer it" prompt.
 - **System needs (M) — built:** **phrase A/B boundary** on the timeline (the field splits into a call half, cols 0–7, and an answer half, cols 8–15) + phrase-pair evaluation (open = ends away from HOME, closed = lands on HOME — reuses the existing tonic detection, no new pitch system). The phrase-split seam is reused by `ways-home`.
 - **Why:** teaches deep formal logic intuitively; the first real bridge from melody toward form.
@@ -201,7 +201,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** turn a small idea into something memorable via repetition + variation.
 - **Theory:** motif, repetition (repeat/sequence), variation, inversion. **Palette:** pentatonic. **Prereqs:** *(as built)* stepping-stones, question-and-answer.
 - **Patterns:** build_constraint, transform, repair, compare, capstone. **Success:** broad/targeted.
-- **Quest:** *Memory Stones* — a signature tune; the capstone grows one idea into a whole tune.
+- **World hook:** *Memory Stones* — a signature tune; the capstone grows one idea into a whole tune.
 - **Sandbox:** motif windows; echo/vary/flip prompts.
 - **System needs (M) — built:** a **motif window model** (4-column windows) + interval-signature similarity check — `windowNotes`/`intervalsOf` with `motifExactRepeat` / `motifEcho` (transposition) / `motifVariation` (same contour, reshaped) / `motifInversion` (flipped), plus `motifFamilyCount` for the capstone; a `motif:true` window-tint guide (`setMotifGuide`). Reuses `showChoices` for the recognition level. No `famous:` reward yet (needs a score-validated *pentatonic*, motif-driven public-domain tune — `odetojoy` etc. are diatonic).
 - **Why:** major retention package — creates musical *identity* and recognizability. Completes Paths of Song.
@@ -212,7 +212,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** create and feel a stable pulse; lock melody to it.
 - **Theory:** beat stability, simple subdivision, melody/beat alignment. **Palette:** pentatonic. **Rhythm tier:** R1. **Prereqs:** garden-basics.
 - **Patterns:** repair, build_constraint, match_feel, compare, restore. **Success:** broad/targeted.
-- **Quest:** *The Root Path* — dormant roots wake only when the pulse is steady.
+- **World hook:** *The Root Path* — dormant roots wake only when the pulse is steady.
 - **Sandbox:** pulse visualizer; clearer beat guides; first step toward note-length control.
 - **System needs (S):** beat-stability evaluation + stronger pulse→world coupling. Builds on existing drum sequencer.
 - **Why:** pulse is the fastest route to "this feels like real music"; foundational for every later style/quest.
@@ -221,7 +221,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** use rests and space intentionally ("not everything valuable is more notes").
 - **Theory:** rests, density, rhythmic breath, negative space. **Palette:** pentatonic. **Rhythm tier:** R2 (lite shipped on the R1 grid; full needs R3 duration). **Prereqs:** garden-basics, footsteps.
 - **Patterns:** repair, transform, compare, match_feel, build_constraint. **Success:** broad/targeted.
-- **Quest:** *The Night Grove* — move through the garden in the spaces between sounds.
+- **World hook:** *The Night Grove* — move through the garden in the spaces between sounds.
 - **Sandbox:** rest tool; sparse/dense prompts; optional density meter.
 - **System needs (M–L) — lite built:** the **rhythm-density version shipped** on the on/off drum grid ("remove hits to breathe") + a live **density meter** + a full-pattern compare picker (`showPatternChoices`); the full **melodic note-duration / rest-as-object** version still needs the parked **bars & plots** editor (DESIGN §12) and is deferred to that build.
 - **Why:** disproportionately improves the *maturity* of player creations without new theory.
@@ -230,7 +230,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** make rhythm lively/surprising without losing the beat.
 - **Theory:** syncopation, anticipation (the push), off-beat melody, swing feel. **Palette:** pentatonic. **Rhythm tier:** R1. **Prereqs:** *(as built)* garden-basics, footsteps, wind-and-gaps.
 - **Patterns:** transform, match_feel, repair, compare, build_constraint, capstone. **Success:** broad.
-- **Quest:** *The Dance Circle* in Pulse Woods — a trickster fox leads the player off the marked trail; the circle only spins for playful rhythm.
+- **World hook:** *The Dance Circle* in Pulse Woods — a trickster fox leads the player off the marked trail; the circle only spins for playful rhythm.
 - **Sandbox:** the **Feel switch** (🚶 Straight ↔ 🕺 Swing) stays on in the capstone + finale.
 - **System needs (S) — built:** off-beat/push detectors over the existing 16-step grid (`offAccents`/`pushHits`/`anchorKick`/`gridNotesOffBeats`) + a per-level **swing-feel toggle** (`feel:true` flag; tick() delays the "ands" a triplet's worth — the level-mode sibling of jam swing).
 - **Famous reward:** `igotrhythm` — Gershwin's *I Got Rhythm* (1930, US public domain since 2026-01-01): pure-pentatonic melody that lands a beat behind a steady kick pulse. **Owner score-checked (Pavel's save-link version, 2026-07-10, ♩=156); 13th Jukebox song.**
@@ -240,7 +240,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** make notes hold — long steps and quick ones.
 - **Theory:** note duration (long vs short), and that a gap can be silence *or* a note still singing. **Palette:** pentatonic. **Rhythm tier:** R3 (duration). **Prereqs:** *(as built)* `intro`, footsteps, off-the-path.
 - **Patterns:** transform, compare, classify, build_constraint, capstone. **Success:** broad/targeted.
-- **Quest:** *The Long Way Home* — walk a whole tune in two kinds of step and land it.
+- **World hook:** *The Long Way Home* — walk a whole tune in two kinds of step and land it.
 - **Sandbox:** Free Walk — quick steps, long holds, a beat if you want one.
 - **Unlocks:** 🌿 **Grow & ✂ Trim** (`unlock:["grow"]` on L1 — the first package outside the Studio to render the duration tools) and 🥁 Drums on L4.
 - **System needs (S) — BUILT:** the whole duration stack shipped in EDITOR-DESIGN Phase 2 (`durationTicks`, vines, `vineLen`, 🌿 Grow / ✂ Trim, `setMelodyLens`, `showLenChoices`).
@@ -251,7 +251,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** make music march, sway, or spin (embodied meter feel).
 - **Theory:** meter / grouping feel (2 vs 3 vs 4). **Palette:** pentatonic. **Rhythm tier:** R1 + meter extension. **Prereqs:** `intro`, footsteps, **two-kinds-of-walking**.
 - **Patterns:** classify, transform, match_feel, build_constraint. **Success:** broad/targeted.
-- **Quest:** *Waltz Garden / festival* — dance the correct step; gateway to folk/world styles.
+- **World hook:** *Waltz Garden / festival* — dance the correct step; gateway to folk/world styles.
 - **Sandbox:** movement-feel presets; dance-style groove families.
 - **System needs (M):** meter beyond fixed 4/4 (triple groupings) — a real grid/meter change. **Blocked on that engine work; file with the system-gated wave, NOT Wave A.**
 - **Why:** makes rhythm *embodied*; bridges into the style worlds. Duration is a genuine prerequisite, not a consolation — a waltz's identity is ONE-two-three, a long stressed beat and two short ones, so a child needs to hear length before they can feel a triple grouping.
@@ -263,7 +263,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** hear and choose between *kinds* of note-pairs by personality.
 - **Theory:** interval families, consonance contrast. **Palette:** pentatonic *(early stage)*. **Prereqs:** garden-basics.
 - **Patterns:** discover, match_feel, compare, classify, build_constraint. **Success:** broad.
-- **Quest:** *The Shrine of Two Flowers* — each side responds to a fitting pair-bond.
+- **World hook:** *The Shrine of Two Flowers* — each side responds to a fitting pair-bond.
 - **Sandbox:** expanded pair library; non-theory "personality" labels; pair collection shelf.
 - **System needs (S):** pair-personality descriptors over existing fuse/interval recognizer.
 - **Why:** deepens harmonic ears without names — the **early stage** teaches *pleasant vs. open* pairs only (all pentatonic can offer). The richer end (close tension, strong pull, real contrast) re-enters post-diatonic as `twin-blooms-plus`, so the player feels *"this system got richer,"* not *"this system changed."*
@@ -279,7 +279,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** build stable 3-note shapes intentionally.
 - **Theory:** triad construction, stability, chord completion. **Palette:** pentatonic *(only C-maj & A-min stand cleanly — enough to teach, thin for variety; blooms after widening to F/G-maj, D/E-min)*. **Prereqs:** garden-basics, twin-blooms.
 - **Patterns:** finish, build_constraint, repair, compare, restore. **Success:** targeted/broad.
-- **Quest:** *The Broken Causeway* — canyon bridges powered by stable structures.
+- **World hook:** *The Broken Causeway* — canyon bridges powered by stable structures.
 - **Sandbox:** stable-tower collection; richer chord stamps; structure decor.
 - **System needs (S):** extends intro Tower mechanic + stability preview.
 - **Why:** builds directly on our most differentiated mechanic; the natural pre-diatonic capstone.
@@ -290,7 +290,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** the world gains two new notes — **F first, then B** (the full major scale opens) — via a progressive reveal (§1a Phase 2).
 - **Theory:** diatonic scale; the 4th, then the leading tone. **Palette:** pentatonic → **diatonic** (staged). **Prereqs:** standing-towers.
 - **Patterns:** discover, match_feel, transform. **Success:** broad.
-- **Quest:** *(diegetic)* — the new "Color Spring" region; the world widens as each color is found.
+- **World hook:** *(diegetic)* — the new "Color Spring" region; the world widens as each color is found.
 - **Sandbox:** each new note becomes placeable as it is revealed (locked rows un-dim one at a time).
 - **System needs (L) — built:** the **palette system** (§1a engine note) — a `PALETTES` table + `setPalette()` that swaps `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid per-package; the package runs on the new **14-row `diatonic`** palette. The staged gate is done via **per-level row-locking** (`colors:["F"]` → `["F","B"]`; `setColorReveal`/`isLockedRow` dim & block undiscovered notes) rather than a third palette. Detectors: `placedF`/`placedB`, `bThenC` (leading-tone pull), `craftedNewTriad` (a standing tower using F or B). Sets a persistent `progress.colors=["F","B"]` on completion (future sandbox reads it). The **phased transposition toggle is deferred** (shape-based default works unchanged on the diatonic grid); **no active rails** (dissonance is the lesson). Save/share does NOT support diatonic yet (see DESIGN §11/§12).
 - **9 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
@@ -302,7 +302,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** choose how complete / restful / open an ending feels.
 - **Theory:** cadence strength, closure types. **Palette:** **diatonic** *(needs the leading tone — impossible in pentatonic)*. **Prereqs:** two-new-colors, question-and-answer, standing-towers.
 - **Patterns:** finish, compare, match_feel, repair. **Success:** targeted/broad.
-- **Quest:** *The Lantern Shore* — lanterns return only if the ending fits the emotional situation.
+- **World hook:** *The Lantern Shore* — lanterns return only if the ending fits the emotional situation.
 - **Sandbox:** ending mood cards; closure-strength preview.
 - **System needs (M):** phrase-end evaluation across multiple closure strengths; "partial vs. full home" world feedback. Builds on intro "Find Home."
 - **Why:** turns intuitive "home" into nuanced expressive control — the start of real functional power.
@@ -311,7 +311,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** move from one harmony to another like travel.
 - **Theory:** common progression motion. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home.
 - **Patterns:** repair, finish, transform, navigate, compare. **Success:** broad/targeted.
-- **Quest:** *Riverways* — navigate by harmonic flow; reconnect villages.
+- **World hook:** *Riverways* — navigate by harmonic flow; reconnect villages.
 - **Sandbox:** progression-path tool; "next chord" route suggestions; journey prompts.
 - **System needs (M):** chord-to-chord motion model over the existing jam progression engine.
 - **Why:** the unlock that makes later song-building possible.
@@ -320,7 +320,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** keep a shape's identity while changing its balance.
 - **Theory:** inversions / revoicing, common tones, smooth bass (first voice-leading). **Palette:** diatonic *(richer once more triads exist)*. **Prereqs:** two-new-colors, standing-towers.
 - **Patterns:** transform, compare, repair, match_feel, build_constraint, capstone. **Success:** targeted/broad.
-- **Quest:** *Rotate the stone columns* — turn towers so their shadows lighten and the canyon moths can cross; 4th canyon package (Geo reaches his final form).
+- **World hook:** *Rotate the stone columns* — turn towers so their shadows lighten and the canyon moths can cross; 4th canyon package (Geo reaches his final form).
 - **System needs (S, as built — lighter than planned):** inversion detectors over the existing chord engine (`colInv`/`colBassMidi`/`countInverted`/`voicingsOfOneChord`) + the voice-leading payoffs (`sharedStoneCols`, `smoothBassPath`); no new UI needed — turning = replanting a stone an octave up.
 - **Famous reward:** `bachprelude` — Bach's Prelude in C (BWV 846): chords turning over a barely-moving bass. **Owner-validated (Pavel's save-link, 2026-07-12): first four bars at full length**, the G7 bar's off-grid B3 bass read as a C pedal. **14th Jukebox song.**
 - **Why:** musically deep yet beautifully tactile/visual.
@@ -330,7 +330,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Theory:** consonance–dissonance gradation (4 grades: still · shimmer · restless · storm). **Palette:** diatonic *(the B/F semitones give the full ladder)*. **Prereqs:** *(as built)* two-new-colors, twin-blooms-plus — the tension intro (tritone/clash) comes from twin-blooms-plus, this package grades it.
 - **⚠️ TODO (chromatic era):** on the 7-row diatonic field, half steps and whole steps are both *adjacent rows* — the grades sound different but look the same. Revisit/upgrade this package on the future **12-note chromatic field**, where the ladder becomes visible, not just audible (owner note, 2026-07-13).
 - **Patterns:** discover, match_feel, compare, build_constraint, repair, capstone. **Success:** broad/targeted.
-- **Quest:** *The canyon's Weather Shrine* responds to tension grade; wake the storm beast carefully (climb all four grades without dropping). 5th canyon package — completes Stone Chorus Canyon.
+- **World hook:** *The canyon's Weather Shrine* responds to tension grade; wake the storm beast carefully (climb all four grades without dropping). 5th canyon package — completes Stone Chorus Canyon.
 - **Sandbox:** the **weather glass** (live tension gauge under the field, `wobble:true` flag) stays on in the capstone + finale.
 - **System needs (M) — built:** the tension-magnitude model — `wobbleOfGap` (interval class → grade 0–3), `colWobble` (a column's roughest pair, so chords grade too), sequence detectors `wobbleLadder`/`gentleApproach`/`stormThenCalm`, and the gauge UI.
 - **Famous reward:** `chopsticks` — The Celebrated Chop Waltz (1877): the world's most famous soft wobble, melting by grades into a calm octave. **Owner-validated (Pavel's save-link, 2026-07-14), two-tier: full first section in the Jukebox (15th song), the second pass with the true ending on the capstone.**
@@ -340,7 +340,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** create stronger longing/pull before returning home.
 - **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built yet); the tension groundwork comes from `twin-blooms-plus` instead.
 - **Patterns:** transform, compare, finish, match_feel. **Success:** targeted/broad.
-- **Quest:** *Raise the moon / celestial gates* open on strong pull + release.
+- **World hook:** *Raise the moon / celestial gates* open on strong pull + release.
 - **Sandbox:** gravity visualization; "longing" intensity; strong-return templates.
 - **System needs (M):** tendency-tone model (leading tone, 4→3) + tension visualizer.
 - **Why:** where players start feeling harmony as *emotion*.
@@ -349,7 +349,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** delay/redirect/surprise the expected landing — coherently.
 - **Theory:** deceptive resolution. **Palette:** diatonic. **Prereqs:** *(as built)* river-turns, pull-of-the-moon.
 - **Patterns:** transform, compare, build_constraint, restore. **Success:** targeted/broad.
-- **Quest:** *Trickster forest / mirror maze* powered by misleading-but-coherent music.
+- **World hook:** *Trickster forest / mirror maze* powered by misleading-but-coherent music.
 - **Sandbox:** surprise-turn tool; suspense cards; alternate-ending generators.
 - **System needs (M):** expectation model (what the listener expects) to subvert it.
 - **Why:** first great "advanced composition fun" — surprise without randomness.
@@ -360,7 +360,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** shift the same idea bright vs. wistful.
 - **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built yet).
 - **Patterns:** transform, match_feel, compare, repair. **Success:** broad/targeted.
-- **Quest:** *Twin biomes* — day garden & night garden; a character's day-song vs. night-song.
+- **World hook:** *Twin biomes* — day garden & night garden; a character's day-song vs. night-song.
 - **Sandbox:** mood palette switch; bright/dusk/moonlit presets.
 - **System needs (M):** mood/scale-tonic presets over the engine; reuses the existing tonic concept.
 - **Why:** first "same structure, different emotional color" package.
@@ -369,7 +369,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** add a surprising note/color that opens the atmosphere, not breaks it.
 - **Theory:** borrowed / non-diatonic color. **Palette:** **chromatic**. **Prereqs:** two-new-colors, sun-and-moon-garden, river-turns.
 - **Patterns:** discover, compare, transform, repair. **Success:** broad/targeted.
-- **Quest:** *Hidden shrine / secret passage* opens only with the right color.
+- **World hook:** *Hidden shrine / secret passage* opens only with the right color.
 - **Sandbox:** special color-note tool; rare-note cosmetics.
 - **System needs (M):** controlled chromatic note set with safe-use rails (so it stays "magic," not "wrong").
 - **Why:** introduces *magic* into the harmonic world — high delight.
@@ -378,7 +378,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** choose between distinct atmosphere-worlds, each a recognizable feel.
 - **Theory:** modal palette families. **Palette:** diatonic (modal). **Prereqs:** two-new-colors, sun-and-moon-garden, two-kinds-of-walking.
 - **Patterns:** match_feel, navigate, transform, classify, restore. **Success:** broad.
-- **Quest:** *Fog worlds* that respond only to their own musical atmosphere.
+- **World hook:** *Fog worlds* that respond only to their own musical atmosphere.
 - **Sandbox:** alternate color-physics presets; atmosphere browser; mood-tied biome visuals.
 - **System needs (M):** mode presets (physics-preset system — the same machinery styles/eras will use).
 - **Why:** begins turning theory into *world travel*; proves the physics-preset engine.
@@ -389,7 +389,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** separate bass-like support from melody-like expression.
 - **Theory:** role separation by register/function. **Palette:** diatonic. **Prereqs:** two-new-colors, footsteps, standing-towers, river-turns.
 - **Patterns:** arrange, repair, match_feel, transform, classify. **Success:** broad/targeted.
-- **Quest:** *Grove of root-drums and canopy-singers*; prepare ensemble roles.
+- **World hook:** *Grove of root-drums and canopy-singers*; prepare ensemble roles.
 - **Sandbox:** role lanes (roots/sky/support); bass-helper patterns.
 - **System needs (L):** **multiple simultaneous editable voices** — today there's one melody grid + drums + jam. Major new system; correctly far out.
 - **Why:** where players begin sounding like *arrangers*.
@@ -398,7 +398,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** choose how harmony behaves underneath a line (pulse/float/shimmer/step).
 - **Theory:** accompaniment textures. **Palette:** diatonic. **Prereqs:** two-new-colors, deep-roots-high-birds, off-the-path.
 - **Patterns:** arrange, match_feel, transform, repair. **Success:** broad.
-- **Quest:** *Lantern festival* — light it with the right moving accompaniment.
+- **World hook:** *Lantern festival* — light it with the right moving accompaniment.
 - **Sandbox:** accompaniment-pattern browser; texture presets; one-click support layers.
 - **System needs (M, after WG-1):** accompaniment generators over the multi-voice system + jam engine.
 - **Why:** huge retention — dramatically improves the payoff of player creations.
@@ -407,7 +407,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** shape dynamics and emphasis over time.
 - **Theory:** dynamics, accent, swell, phrase energy. **Palette:** diatonic. **Rhythm tier:** R4. **Prereqs:** two-new-colors, deep-roots-high-birds, tiny-motifs, wind-and-gaps.
 - **Patterns:** transform, build_constraint, match_feel, repair. **Success:** broad.
-- **Quest:** *Bring rain to a dry biome*; grow giant flowers with swell + release.
+- **World hook:** *Bring rain to a dry biome*; grow giant flowers with swell + release.
 - **Sandbox:** **dynamics-gardening** (water/fertilize → louder/softer — the parked idea, DESIGN §12); accent + crescendo gestures.
 - **System needs (M):** per-note velocity → gain (audio already supports it; needs UI + the gardening metaphor).
 - **Why:** one of the most emotionally satisfying dimensions, no notation needed.
@@ -418,7 +418,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** build one section, then a contrasting second.
 - **Theory:** A/B structure, sectional contrast. **Palette:** diatonic. **Prereqs:** two-new-colors, tiny-motifs, two-kinds-of-walking, river-turns.
 - **Patterns:** build_constraint, transform, compare, repair, navigate. **Success:** broad/targeted.
-- **Quest:** *Two-part temple*; a path from meadow to mountain with musical contrast.
+- **World hook:** *Two-part temple*; a path from meadow to mountain with musical contrast.
 - **Sandbox:** section arranger; scene markers / bar groups; A/B loop builder.
 - **System needs (L):** **sections / multi-bar form** on the timeline (extends the parked bars & plots).
 - **Why:** decisively shifts players from loops toward *piece-thinking*.
@@ -427,7 +427,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** bring something back, familiar but earned.
 - **Theory:** repetition with variation, return logic. **Palette:** diatonic. **Prereqs:** two-new-colors, rooms-and-paths, tiny-motifs, ways-home.
 - **Patterns:** transform, finish, compare, restore. **Success:** broad/targeted.
-- **Quest:** *Reunion* — recall an ancient melody to heal a place.
+- **World hook:** *Reunion* — recall an ancient melody to heal a place.
 - **Sandbox:** return/reprise tool; "bring back earlier idea" suggestions.
 - **System needs (M, after SM-1):** reference/recall a prior section.
 - **Why:** completes the first loop-to-story arc; sets up chorus/journey/style progression.
@@ -438,7 +438,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** compose inside a folk/communal/acoustic physics world.
 - **Theory:** folk-like modal simplicity, drone, dance feel. **Palette:** diatonic (modal). **Prereqs:** question-and-answer, **march-and-waltz** *(repointed 2026-08-13 — this one wants the dance FEEL, which is meter, not duration)*, standing-towers, ways-home.
 - **Patterns:** build_constraint, match_feel, arrange, restore. **Success:** broad.
-- **Quest:** *Prepare a village gathering*; share songs by the fire.
+- **World hook:** *Prepare a village gathering*; share songs by the fire.
 - **Sandbox:** folk timbres; drone mode; campfire biome theme.
 - **System needs (M):** a **style preset** (palette + groove + instruments + form constraints) — generalizes the existing 5-groove system into the real Styles engine.
 - **Why:** first proof that styles = physics presets; long-term retention engine.
@@ -447,7 +447,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Capability:** turn ideas into hook-driven, groove-forward songcraft.
 - **Theory:** pop songcraft (hook, lift, chorus). **Palette:** diatonic. **Prereqs:** tiny-motifs, off-the-path, river-turns, rooms-and-paths.
 - **Patterns:** build_constraint, transform, arrange, capstone. **Success:** broad.
-- **Quest:** *Festival parade anthem*; light a city district with a memorable chorus.
+- **World hook:** *Festival parade anthem*; light a city district with a memorable chorus.
 - **Sandbox:** pop groove kits; chorus enhancers; "radio garden" theme.
 - **System needs (M):** style preset + section/chorus tools (needs SM-1).
 - **Why:** the second style world; showcases hook/chorus mastery.

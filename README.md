@@ -27,7 +27,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
   node --test "tests/*.test.mjs"
   ```
   A young suite: it covers detectors and pure logic by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
-- **Dev URL flags:** append `?dev` to reveal a level-jump dropdown + a "🔒 Relock instruments" button (replays the region discovery cards without touching progress); `?reset` wipes local progress.
+- **Dev URL flags:** append `?dev` to reveal a level-jump dropdown, "🔒 Relock instruments" (replays the region discovery cards without touching progress), "🗝️ Unlock quests" (marks every quest's prerequisite packages complete, so its Home card appears without playing them) and "🧹 Clear quest runs" (deletes every quest run and completion record, so the quests are unplayed again); `?reset` wipes local progress.
 - **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`). Cloud APIs (https) are exempt.
 
 ---

@@ -28,7 +28,7 @@ writing a test** — it explains the harness, what it can't reach (rendering and
 realm gotcha that makes `deepStrictEqual` fail on structurally identical arrays.
 
 Serve locally: `npx http-server -p 8377 -c-1 .` → http://localhost:8377
-Dev URL flags: `?dev` (level-jump dropdown + "relock instruments"), `?reset` (wipe progress).
+Dev URL flags: `?dev` (level-jump dropdown, "relock instruments", "unlock quests", "clear quest runs"), `?reset` (wipe progress).
 
 Regenerators — slow, overwrite generated files, run only when their inputs changed:
 

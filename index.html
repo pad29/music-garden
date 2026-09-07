@@ -580,7 +580,7 @@
 </style>
 </head>
 <body>
-  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select> <button id="devrelock" title="Relock all instruments (keeps progress) so region discovery cards replay">🔒 Relock instruments</button></div>
+  <div id="devbar" style="display:none; font-size:.8rem; opacity:.85; margin-bottom:6px;">🛠️ Dev — jump to: <select id="devpkg"></select> <select id="devjump"></select> <button id="devrelock" title="Relock all instruments (keeps progress) so region discovery cards replay">🔒 Relock instruments</button> <button id="devquestunlock" title="Mark every quest's prerequisite packages complete, so its card appears on Home">🗝️ Unlock quests</button> <button id="devquestclear" title="Delete every quest run and completion record on this device — the quests go back to never played">🧹 Clear quest runs</button></div>
   <!-- One ☰ instead of a standing column of six: on a short landscape phone the column was taller than the
        screen, and even on desktop these are "every so often" tools, not per-note ones. Labels come along
        for free once they live in a panel — each is a SIBLING of its button, so the code that rewrites a
@@ -8156,6 +8156,32 @@ if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   // package selector jumps to any package's first level (ignores lock state — dev only)
   document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==scopeCatalogId()) openPkg(e.target.value,0); };
   document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
+  // Quest testing needs a profile that has EARNED the prerequisites, which is otherwise several
+  // packages of real play. Dev-only, behind the same ?dev flag as the jump above, and it writes the
+  // ordinary progress record rather than a special case — so what it produces is a profile the game
+  // could have reached on its own.
+  document.getElementById("devquestunlock").onclick=()=>{
+    const need=new Set();
+    for(const id of Object.keys(QUEST_DEFINITIONS))
+      for(const p of QUEST_DEFINITIONS[id].prerequisites.earnedByPackageIds) need.add(p);
+    const named=[];
+    for(const id of need){ const pk=PACKAGES[id]; if(!pk) continue;
+      const n=pk.levels.length;
+      progress.packages[id]=Object.assign(pkgProg(id), { level:0, maxLevel:n-1, done:n, completed:true });
+      named.push(pk.name); }
+    progress.updatedAt=Date.now(); Store.set("progress", progress);
+    renderWorld(); if(homeoverlay.style.display!=="none"){ renderPkgs(); renderQuestHome(); }
+    toast(named.length ? "🗝️ Completed: "+named.join(", ") : "No quests need unlocking");
+  };
+  document.getElementById("devquestclear").onclick=()=>{
+    if(isQuestScope()) restoreLastPackage();          // never strand the scope on a run about to vanish
+    const saved=saveQuestRuns(Object.create(null), Object.create(null));
+    if(saved===false){ toast("⚠️ Could not clear quest runs"); return; }
+    QUEST_RUNS=saved; QUEST_HISTORY=Object.create(null);
+    renderLevel();
+    if(homeoverlay.style.display!=="none") renderQuestHome();
+    toast("🧹 Quest runs cleared — every quest is unplayed again");
+  };
   // relock every instrument but keep all progress — entering each region replays its discovery
   // card, so the gradual reveal is testable without wiping a real save (?reset stays the big hammer)
   document.getElementById("devrelock").onclick=()=>{ progress.instruments=["musicbox"];
