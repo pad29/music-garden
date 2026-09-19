@@ -2,15 +2,17 @@
 
 *Requirements for the quest play mode. Last updated: 2026-09-07.*
 
-> **Kind 1 ships. Kinds 2–9 are still intent.** *The Firefly Crossing* is playable from the world
-> map: the sealed catalog, the analyzer and descriptor registries, the semantic validator, the
-> evaluator, the QuestRun, the phase controller, the shell and the Home card all exist in
-> `index.html`. Everything below about the later kinds states intent, the way `EDITOR-DESIGN.md`
-> does; `README.md` § Current status remains the record of what actually ships.
+> **Kind 1 ships, in two quests. Kinds 2–9 are still intent.** *The Firefly Crossing* and *The
+> Waking Woods* are playable from the world map: the sealed catalog, the analyzer and descriptor
+> registries, the semantic validator, the evaluator, the QuestRun, the phase controller, the shell
+> and the Home card all exist in `index.html`. Everything below about the later kinds states intent,
+> the way `EDITOR-DESIGN.md` does; `README.md` § Current status remains the record of what ships.
 >
 > The engine was built in six steps (D1–D6) against this document, each one design-reviewed,
 > mutation-tested and browser-verified — `REVIEW-LOG.md` records what each round found, including
-> the four rounds where the independent reviewer found a defect the tests had not.
+> the four rounds where the independent reviewer found a defect the tests had not. A seventh step
+> (D7) answered the whole-slice design review: it closed the ids a definition could invent, and
+> wrote the second commission that Q9's acceptance test asks for.
 
 ---
 
@@ -297,6 +299,16 @@ implementation must establish the safe vocabulary and execution boundary even th
 ships yet. Note every package already carries `version:1, author:"official"` and **nothing reads
 either field**; quest `author` and `v` must actually participate in validation and loading.
 
+Two things this needed that the first implementation did not have. **Every id must resolve.** Controls,
+tool grants, transitions, the completion action, the payoff and the presentation tokens were accepted as
+free slugs and looked up nowhere, so a definition inventing all of them published cleanly, opened,
+withheld the drums its own routes needed and dead-ended on its first button — official content passing
+only because a human wrote the right words is a quieter form of privileged trust. Each now names an
+entry in a closed engine registry, an analyzer declares the controls it reads, and a quest may claim
+only a capability its own prerequisites teach. **The source decides who is official.** `author.kind` is
+self-asserted, so `loadQuestCatalog(json, sourceKind)` takes the context it arrived on and refuses a
+definition that disagrees; the built-in catalog goes through the same check a player import would.
+
 **Verification:** Node tests cover schema validation, JSON round-trips, author/version handling,
 unknown-primitive rejection, bounded parameters, route normalization, stable-ID dispatch, and a
 definition loaded entirely from serialized data. Searching quest definitions must find no
@@ -340,6 +352,15 @@ the feature's first impression.
 
 **Verification — the authorability acceptance test:** an engineer must be able to create a second
 working Guided Commission by adding **only declarative data and no engine branch**.
+
+**Result (2026-09-07):** passed, by ***The Waking Woods*** — a second land (Pulse Woods), other
+prerequisites (`intro` + `footsteps`), a workspace that grants no loop, and routes carried by the pulse analyzers instead of the
+contour ones. It needed no engine change. Two things the attempt exposed, and neither is fixed here:
+a `way-` descriptor cannot express the PARAMETERS of the analyzer it describes (`contour.any-of` reads
+"a Rise, Fall, Hover, or Arc path" whichever families it was given), so a commission that varies a
+parameter would tell a child something untrue — the second quest therefore varies analyzers, not
+parameters; and the descriptor vocabulary is small enough that its two transform routes divide on the
+beat alone. Parameterised way-descriptors are the next vocabulary step.
 
 ---
 

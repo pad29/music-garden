@@ -185,7 +185,7 @@ test("the shell repeats what was heard, and only for the phase it belongs to", (
   edit(g, song(RISE, MAIN));
   g.onCompletePass({ runId, versionId: "A", editRev: 1, sessionId: "cs1", purpose: "play" });
   assert.deepEqual(model(g, runId, def, {}).heard,
-    ["The lights climbed.", "The roots stepped on the four main beats."]);
+    ["The notes climbed.", "The drum stepped on the four main beats."]);
 
   assert.strictEqual(g.performQuestAction("continue").ok, true);
   assert.deepEqual(model(g, runId, def, {}).heard, [],

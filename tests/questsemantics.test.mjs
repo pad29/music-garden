@@ -36,7 +36,7 @@ function catalog(mutate) {
   if (mutate) mutate(def);
   return JSON.stringify({ v: 1, definitions: [def] });
 }
-const load = mutate => { const g2 = loadGame({ fresh: true }); g2.loadQuestCatalog(catalog(mutate)); return g2; };
+const load = mutate => { const g2 = loadGame({ fresh: true }); g2.loadQuestCatalog(catalog(mutate), "official"); return g2; };
 const codes = game => game.QUEST_CATALOG_ERRORS.map(e => e.code);
 const route = (d, phase, i) => d.phases[phase].challenge.routes[i];
 

@@ -86,7 +86,10 @@ test("a workspace wider than the editor's default really is built wider", () => 
   const g = loadGame({ fresh: true });
   const wide = JSON.parse(JSON.stringify(g.QUEST_DEFINITIONS["firefly-crossing"]));
   wide.workspace.columns = 24;
-  g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [wide] }));
+  // …and so are the songs that prove its routes reachable: a 16-column witness is not something a
+  // 24-column workspace can hand back, and the validator now says so.
+  for (const w of wide.witnesses) for (const v of Object.keys(w.songs)) w.songs[v].time.cols = 24;
+  g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [wide] }), "official");
   assert.deepEqual([...g.QUEST_CATALOG_ERRORS], []);
 
   const r = g.startQuestRun("firefly-crossing");
@@ -109,14 +112,14 @@ test("a starter song must fit the workspace it starts in", () => {
   const withStarter = starter => {
     const d = JSON.parse(BASE);
     d.starterSong = starter;
-    g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [d] }));
+    g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [d] }), "official");
     return g.QUEST_CATALOG_ERRORS.map(e => e.code);
   };
   const at = cols => song(RISE, MAIN, { time: { cols, tempo: 108, groove: 0 } });
 
-  assert.strictEqual(withStarter(at(12)).includes("starter-columns-mismatch"), true);
-  assert.strictEqual(withStarter(at(24)).includes("starter-columns-mismatch"), true);
-  assert.strictEqual(withStarter(song(RISE, MAIN, { palette: "diatonic" })).includes("starter-palette-mismatch"), true);
+  assert.strictEqual(withStarter(at(12)).includes("starter-unreachable"), true);
+  assert.strictEqual(withStarter(at(24)).includes("starter-unreachable"), true);
+  assert.strictEqual(withStarter(song(RISE, MAIN, { palette: "diatonic" })).includes("starter-unreachable"), true);
   assert.strictEqual(withStarter(song(RISE, MAIN, { palette: "nope" })).includes("starter-palette-unusable"), true);
   assert.strictEqual(withStarter({ v: 2 }).includes("starter-song-invalid"), true);
 

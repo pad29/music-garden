@@ -19,13 +19,13 @@ function catalog(mutate) {
   if (mutate) mutate(def);
   return JSON.stringify({ v: 1, definitions: [def] });
 }
-const loadInto = (game, json) => { game.loadQuestCatalog(json); return game; };
+const loadInto = (game, json) => { game.loadQuestCatalog(json, "official"); return game; };
 const codes = game => game.QUEST_CATALOG_ERRORS.map(e => e.code);
 
 test("the shipped catalog validates, loads and is deep-frozen", () => {
   // MUTATION: corrupt any Firefly route id, witness reference or analyzer id.
   const g2 = loadGame({ fresh: true });
-  assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), ["firefly-crossing"]);
+  assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), ["firefly-crossing", "waking-woods"]);
   assert.deepEqual([...g2.QUEST_CATALOG_ERRORS], []);
 
   const fc = g2.QUEST_DEFINITIONS["firefly-crossing"];
@@ -110,7 +110,7 @@ test("a dangerous key cannot ride in through JSON.parse", () => {
   // MUTATION: drop the dangerous-key branch from the plain-JSON gate.
   const g2 = loadGame({ fresh: true });
   // JSON.parse creates a real own "__proto__" data property — the one poisoning route parse leaves open.
-  g2.loadQuestCatalog('{"v":1,"definitions":[{"__proto__":{"polluted":true},"v":1}]}');
+  g2.loadQuestCatalog('{"v":1,"definitions":[{"__proto__":{"polluted":true},"v":1}]}', "official");
   assert.strictEqual(codes(g2).includes("dangerous-key"), true);
   assert.strictEqual({}.polluted, undefined, "and nothing was polluted on the way past");
 });
@@ -218,14 +218,14 @@ test("the catalog survives a JSON round-trip unchanged", () => {
   // MUTATION: retain a reference to the parsed source, or normalise non-deterministically.
   const g2 = loadGame({ fresh: true });
   const once = JSON.stringify(g2.QUEST_DEFINITIONS["firefly-crossing"]);
-  g2.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [JSON.parse(once)] }));
+  g2.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [JSON.parse(once)] }), "official");
   assert.strictEqual(JSON.stringify(g2.QUEST_DEFINITIONS["firefly-crossing"]), once);
 });
 
 test("packages and the Studio are untouched by a catalog failure", () => {
   // MUTATION: let a catalog error throw out of boot instead of publishing an empty registry.
   const g2 = loadGame({ fresh: true });
-  g2.loadQuestCatalog("{ not json");
+  g2.loadQuestCatalog("{ not json", "official");
   assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), []);
   assert.strictEqual(g2.QUEST_CATALOG_ERRORS.length > 0, true);
 

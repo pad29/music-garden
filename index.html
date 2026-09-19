@@ -5130,12 +5130,12 @@ const QUEST_SCHEMA_V1=QT.obj({
   prerequisites:QT.obj({ earnedByPackageIds:QT.arr(QT.slug(),1,8,true) }),
   capabilityIds:QT.arr(QT.slug(),2,2,true),
   workspace:QT.obj({ paletteId:QT.slug(), columns:QT.int(16,64), grooveId:QT.slug(),
-    controlIds:QT.arr(QT.slug(),1,16,true),
+    controlIds:QT.arr(QT.slug(),0,16,true),
     toolGrants:QT.arr(QT.obj({ toolId:QT.primitiveId(), capabilityId:QT.slug() }),0,16) }),
   phases:QT.arr(QT.opaque(),3,3),        // per-type shapes checked below, since they differ
   completion:QT.obj({ actionId:QT.slug(), payoffId:QT.slug(), label:QT.text(1,60),
     defaultTitle:QT.text(1,80), completionText:QT.text(1,240) }),
-  presentation:QT.obj({ themeId:QT.slug(), iconId:QT.slug(), regionId:QT.slug(),
+  presentation:QT.obj({ themeId:QT.slug(), regionId:QT.slug(),
     cardText:QT.text(1,60),        // the invitation, not the instruction: what the map card says
     estimateMinutes:QT.int(1,60), priority:QT.int(0,999) }),
   witnesses:QT.arr(QT.obj({ id:QT.slug(), phaseId:QT.slug(), currentVersionId:QT.lit("A","B"),
@@ -5233,6 +5233,10 @@ function songEvidence(song){
   // count to the editor's floor of 16. Refusing here what the game opens without complaint would judge
   // a song "empty" that a player just heard — so the fallbacks are copied, and REPORTED rather than
   // hidden, since authored content has no business relying on them.
+  // ONE deliberate divergence from applySong: note length is ignored here. Every onset is one column,
+  // because every question this evidence answers is about pitch and placement and no shipped analyzer
+  // asks about duration. When one does, the projection has to carry duration and these two must be
+  // reconciled — until then, questWorkspaceMismatch() is what holds authored songs to the real editor.
   const declared=typeof song.palette==="string" ? song.palette : null;
   const palId=(declared && Object.prototype.hasOwnProperty.call(PALETTES,declared)) ? declared : "pentatonic";
   const mel=song.tracks.find(x=>x&&x.kind==="melody"), dr=song.tracks.find(x=>x&&x.kind==="drums");
@@ -5418,18 +5422,18 @@ const questBothNamed=(a,b)=>a.length>0 && b.length>0;        // both songs lande
 const QUEST_PRIMITIVES=deepFreezeQuest({
   // --- musical: they read evidence and nothing else ---
   "contour.any-of":{ kind:"musical", capabilityId:"melodic-contour", subject:"current",
-    allowedPhaseTypes:["compose"], parameterSchema:QP.enumSet("families",QUEST_CONTOUR_FAMILIES,1,4),
+    requiredControlIds:[], allowedPhaseTypes:["compose"], parameterSchema:QP.enumSet("families",QUEST_CONTOUR_FAMILIES,1,4),
     allowedDescriptorIds:["way-contour-any"], heardDescriptorIds:QUEST_HEARD_CONTOUR,
     evaluate:(cur,snap,p)=>({ ok:questShare(cur.contourFamilies,p.families), facts:{ families:cur.contourFamilies } }),
     describe:f=>describeContour(f.families) },
   "contour.same-family-as-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
-    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    requiredControlIds:[], allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
     allowedDescriptorIds:["way-contour-kept"], heardDescriptorIds:QUEST_HEARD_CONTOUR_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && questShare(cur.contourFamilies,snap.contourFamilies),
       facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }),
     describe:f=>describeContourPair(f.families, f.snapshotFamilies) },
   "contour.differs-from-snapshot":{ kind:"musical", capabilityId:"melodic-contour", subject:"snapshot-pair",
-    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    requiredControlIds:[], allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
     allowedDescriptorIds:["way-contour-changed"], heardDescriptorIds:QUEST_HEARD_CONTOUR_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.contourFamilies,snap.contourFamilies) && !questShare(cur.contourFamilies,snap.contourFamilies),
       facts:{ families:cur.contourFamilies, snapshotFamilies:snap.contourFamilies } }),
@@ -5437,34 +5441,34 @@ const QUEST_PRIMITIVES=deepFreezeQuest({
   // Each reads its own NAMED family off the evidence. The even walk is eight kicks in lane 0; the
   // shimmer is lane 2. Conflating those two cost a design round, so they never share a code path.
   "pulse.kick-on-main-beats":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
-    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    requiredControlIds:["drums"], allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
     allowedDescriptorIds:["way-pulse-main-kicks"], heardDescriptorIds:QUEST_HEARD_PULSE,
     evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("main-beat-kicks")>=0, facts:{ families:cur.steadyPulseFamilies } }),
     describe:f=>describePulse(f.families) },
   "pulse.even-walk":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
-    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    requiredControlIds:["drums"], allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
     allowedDescriptorIds:["way-pulse-even-kicks"], heardDescriptorIds:QUEST_HEARD_PULSE,
     evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("even-kick-walk")>=0, facts:{ families:cur.steadyPulseFamilies } }),
     describe:f=>describePulse(f.families) },
   "pulse.hat-shimmer":{ kind:"musical", capabilityId:"steady-pulse", subject:"current",
-    allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
+    requiredControlIds:["drums"], allowedPhaseTypes:["compose"], parameterSchema:QP.none(),
     allowedDescriptorIds:["way-pulse-hat-shimmer"], heardDescriptorIds:QUEST_HEARD_PULSE,
     evaluate:cur=>({ ok:cur.steadyPulseFamilies.indexOf("hat-shimmer")>=0, facts:{ families:cur.steadyPulseFamilies } }),
     describe:f=>describePulse(f.families) },
   "pulse.same-steady-family-as-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
-    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    requiredControlIds:["drums"], allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
     allowedDescriptorIds:["way-pulse-kept"], heardDescriptorIds:QUEST_HEARD_PULSE_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
       facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }),
     describe:f=>describePulsePair(f.families, f.snapshotFamilies) },
   "pulse.differs-steady-family-from-snapshot":{ kind:"musical", capabilityId:"steady-pulse", subject:"snapshot-pair",
-    allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
+    requiredControlIds:["drums"], allowedPhaseTypes:["transform"], parameterSchema:QP.snapshot(),
     allowedDescriptorIds:["way-pulse-changed"], heardDescriptorIds:QUEST_HEARD_PULSE_PAIR,
     evaluate:(cur,snap)=>({ ok:questBothNamed(cur.steadyPulseFamilies,snap.steadyPulseFamilies) && !questShare(cur.steadyPulseFamilies,snap.steadyPulseFamilies),
       facts:{ families:cur.steadyPulseFamilies, snapshotFamilies:snap.steadyPulseFamilies } }),
     describe:f=>describePulsePair(f.families, f.snapshotFamilies) },
   "phrase.minimum-onsets":{ kind:"musical", capabilityId:"melody-making", subject:"current",
-    allowedPhaseTypes:["compose","transform"], parameterSchema:QP.minimum("minimum",1,64),
+    requiredControlIds:[], allowedPhaseTypes:["compose","transform"], parameterSchema:QP.minimum("minimum",1,64),
     allowedDescriptorIds:["way-enough-notes"], heardDescriptorIds:[],
     evaluate:(cur,snap,p)=>({ ok:cur.melodyOnsetCount>=p.minimum, facts:{ onsets:cur.melodyOnsetCount } }),
     // No heard-* descriptor ships for onset counting, so it contributes nothing to what the garden says.
@@ -5498,6 +5502,58 @@ const QUEST_CAPABILITIES=deepFreezeQuest({
   "melody-making":{ earnedByPackageIds:["intro"] },
 });
 
+// ---- what a definition's remaining ids resolve to ----
+// Every id a definition writes must name something the engine can look up. An id that resolved to
+// NOTHING was a promise the validator could not keep: a definition naming an invented transition, an
+// invented tool and a control it never opened published with zero catalog errors, opened, and dead
+// ended on its first button. Official content passed only because a human happened to write the right
+// words — which is a quieter form of the privileged trust the whole format exists to remove.
+
+// The controls a workspace may open. Only what renderLevel() and scopeFeatures() actually honour is
+// listed: the pitch grid, the transport, undo and the voice picker are the floor EVERY scope gets, and
+// naming them as grants would be a definition taking credit for what it did not give.
+const QUEST_CONTROLS=deepFreezeQuest({
+  drums:{ opens:"the drum bed" },
+  loop: { opens:"looping, on from the first bar" },   // renderLevel sets `looping`; the button is always there
+  jam:  { opens:"the band and the groove picker" },
+  fuse: { opens:"the toolbox and Fuse" },
+  more: { opens:"the More menu" },
+  grow: { opens:"grow and trim" },
+});
+
+// Q10's Quest Tray. Nothing is grantable in this build, and an EMPTY registry is the honest way to say
+// so: a definition listing a tool grant is refused, rather than opening a quest whose promised stamp
+// never arrives. Adding the first grantable stamp is an entry here, not a change to the grammar.
+const QUEST_TOOLS=deepFreezeQuest({});
+
+// What a phase's button does BESIDES moving the phase on. The id dispatches — there is no switch on a
+// phase number anywhere — and each entry names the one phase type it may end, so a definition cannot
+// fork from a comparison or offer from a compose.
+const QUEST_TRANSITIONS=deepFreezeQuest({
+  "fork-version":{ phaseType:"compose", ops:(def,run,at)=>{
+    const p=def.phases[run.phase], next=def.phases[run.phase+1];
+    if(!next || !next.versionId) return null;                 // a fork with nowhere to fork TO
+    const v=run.versions[p.versionId]; if(!v) return null;
+    return [{ type:"forkFrom", sourceVersionId:p.versionId, sourceRev:v.editRev,
+              newVersionId:next.versionId, at }]; } },
+  "advance":{ phaseType:"transform", ops:()=>[] },
+  // Offering is not a phase move: the offer action finalises the run, so there is nowhere to advance to.
+  "offer":{ phaseType:"compare-offer", ops:null },
+});
+
+// The completion action names the transition that ENDS the quest; the payoff names what finalisation
+// writes. Both are looked up rather than assumed, so an invented one is a catalog error instead of a
+// button that quietly does nothing.
+const QUEST_COMPLETION_ACTIONS=deepFreezeQuest({ "offer-song":{ transitionId:"offer" } });
+const QUEST_PAYOFFS=deepFreezeQuest({ "saved-song":{ finalize:run=>questArtifactUpsert(run) } });
+
+// A theme is the quest's face on the Home card. ONE token, not two: an icon id beside a theme id was a
+// second name for the same look, and only one of them was ever read.
+const QUEST_THEMES=deepFreezeQuest({
+  "night-meadow":{ icon:"✨" },
+  "deep-woods":  { icon:"🌲" },
+});
+
 // Descriptors return TEXT, never markup. The braces are slots the shell fills from analyzer facts, and
 // they are engine strings — they never pass through the authored-text guard, which bans braces exactly
 // so that no authored string can pretend to be one of these.
@@ -5506,24 +5562,24 @@ const QUEST_DESCRIPTORS=deepFreezeQuest({
   "way-pulse-main-kicks":{ kind:"way", text:"clean kicks on the four main beats" },
   "way-pulse-even-kicks":{ kind:"way", text:"the even eight-step kick walk" },
   "way-pulse-hat-shimmer":{ kind:"way", text:"the steady hi-hat shimmer" },
-  "way-contour-changed":{ kind:"way", text:"a different recognized light shape" },
-  "way-contour-kept":{ kind:"way", text:"the same recognized light shape" },
+  "way-contour-changed":{ kind:"way", text:"a different recognized shape" },
+  "way-contour-kept":{ kind:"way", text:"the same recognized shape" },
   "way-pulse-kept":{ kind:"way", text:"the same steady heartbeat" },
   "way-pulse-changed":{ kind:"way", text:"a different steady heartbeat" },
   "way-enough-notes":{ kind:"way", text:"enough notes to make a phrase" },
-  "heard-contour-rise":{ kind:"heard", text:"The lights climbed." },
-  "heard-contour-fall":{ kind:"heard", text:"The lights came down." },
-  "heard-contour-hover":{ kind:"heard", text:"The lights hovered." },
-  "heard-contour-arc":{ kind:"heard", text:"The lights arched across." },
-  "heard-contour-unnamed":{ kind:"heard", text:"The lights made a path the garden has not named yet." },
-  "heard-pulse-main-kicks":{ kind:"heard", text:"The roots stepped on the four main beats." },
-  "heard-pulse-even-kicks":{ kind:"heard", text:"The roots took the even eight-step walk." },
-  "heard-pulse-hat-shimmer":{ kind:"heard", text:"A steady hi-hat shimmer lit the roots." },
-  "heard-pulse-none":{ kind:"heard", text:"The roots did not catch one of the steady heartbeats yet." },
-  "heard-contour-changed":{ kind:"heard", text:"The second path changed from {oldContour} to {newContour}.", slots:["oldContour","newContour"] },
-  "heard-contour-kept":{ kind:"heard", text:"The lights kept their {contour} shape.", slots:["contour"] },
-  "heard-pulse-changed":{ kind:"heard", text:"The roots changed from {oldPulse} to {newPulse}.", slots:["oldPulse","newPulse"] },
-  "heard-pulse-kept":{ kind:"heard", text:"The roots kept their {pulse}.", slots:["pulse"] },
+  "heard-contour-rise":{ kind:"heard", text:"The notes climbed." },
+  "heard-contour-fall":{ kind:"heard", text:"The notes came down." },
+  "heard-contour-hover":{ kind:"heard", text:"The notes hovered." },
+  "heard-contour-arc":{ kind:"heard", text:"The notes arched over and came back." },
+  "heard-contour-unnamed":{ kind:"heard", text:"The notes made a shape the garden has not named yet." },
+  "heard-pulse-main-kicks":{ kind:"heard", text:"The drum stepped on the four main beats." },
+  "heard-pulse-even-kicks":{ kind:"heard", text:"The drum took the even eight-step walk." },
+  "heard-pulse-hat-shimmer":{ kind:"heard", text:"The hi-hat kept a steady shimmer." },
+  "heard-pulse-none":{ kind:"heard", text:"The drums have not caught one of the steady heartbeats yet." },
+  "heard-contour-changed":{ kind:"heard", text:"The shape changed from {oldContour} to {newContour}.", slots:["oldContour","newContour"] },
+  "heard-contour-kept":{ kind:"heard", text:"The notes kept their {contour} shape.", slots:["contour"] },
+  "heard-pulse-changed":{ kind:"heard", text:"The drums changed from {oldPulse} to {newPulse}.", slots:["oldPulse","newPulse"] },
+  "heard-pulse-kept":{ kind:"heard", text:"The drums kept their {pulse}.", slots:["pulse"] },
 });
 
 // ---- evaluating one observation against a pair of songs ----
@@ -5545,19 +5601,77 @@ function questEvaluateObservation(obs, ctx){
 }
 const questRouteMatches=(route, ctx)=>route.observations.every(o=>questEvaluateObservation(o, ctx).ok);
 
+// Satisfiability is not reachability. A witness proves a route CAN be matched; this proves the song
+// that matches it is one a child could build in the workspace the definition opens. A witness leaning
+// on drums the quest withholds, or on a pitch the palette cannot place, proves nothing about the quest
+// as played — the route would be provably reachable and unreachable at the same time.
+// Called only for songs songEvidence() has already accepted, so the shapes below are known good.
+function questWorkspaceMismatch(song, def){
+  const t=(song.time && typeof song.time==="object") ? song.time : {};
+  if(song.palette!==def.workspace.paletteId) return "palette:"+song.palette;
+  if(t.cols!==def.workspace.columns) return "columns:"+t.cols;
+  if(t.groove!==QUEST_GROOVES[def.workspace.grooveId]) return "groove:"+t.groove;
+  const mel=song.tracks.find(x=>x&&x.kind==="melody"), dr=song.tracks.find(x=>x&&x.kind==="drums");
+  const ladder=new Set(PALETTES[def.workspace.paletteId].MIDI);
+  const canGrow=def.workspace.controlIds.indexOf("grow")>=0;
+  for(const n of (mel?mel.notes:[])){
+    if(!ladder.has(n.p)) return "pitch:"+n.p;
+    // Duration. songEvidence IGNORES note length — no shipped analyzer asks about it — but applySong
+    // does not: it loads `(n.len||1)` straight onto the field. So a witness holding a long note in a
+    // workspace with no grow/trim is claiming a song the child could not have built, and a length that
+    // is not a positive integer reaches the field as a NaN duration. Neither is a completion bypass
+    // today; both are the workspace equivalence this function exists to assert. Found by GPT's tester.
+    // MAX_VINE and the column bound are the editor's OWN ceiling, taken from where it grows a note.
+    const len=(n.len===undefined) ? 1 : n.len;
+    if(!Number.isInteger(len) || len<1) return "length:"+n.len;
+    if(len>1 && !canGrow) return "length-not-granted:"+len;
+    if(len>Math.min(MAX_VINE, def.workspace.columns-n.c)) return "length-past-reach:"+len; }
+  if(dr && dr.hits.length && def.workspace.controlIds.indexOf("drums")<0) return "drums-not-granted";
+  return null;
+}
+
 // ---- the semantic validator: Q5's rules, checked against the registries and against real songs ----
 function questSemantics(def, errs){
   let ok=true;
   const err=(code,path,extra)=>{ errs.push({code,path,extra}); ok=false; };
-  for(const cap of def.capabilityIds)
-    if(!Object.prototype.hasOwnProperty.call(QUEST_CAPABILITIES,cap)) err("no-such-capability","$.capabilityIds",cap);
+  const has=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+  const granted=new Set(def.workspace.controlIds);
+  const earned=new Set(def.prerequisites.earnedByPackageIds);
+  for(const cap of def.capabilityIds){
+    if(!has(QUEST_CAPABILITIES,cap)){ err("no-such-capability","$.capabilityIds",cap); continue; }
+    // A quest may only claim a power its OWN prerequisites teach. Claiming steady-pulse behind the
+    // intro package alone would put a child in front of a drum bed they have never been shown.
+    for(const pkg of QUEST_CAPABILITIES[cap].earnedByPackageIds)
+      if(!earned.has(pkg)) err("capability-not-earned","$.capabilityIds",cap+" needs "+pkg); }
+  for(const c of def.workspace.controlIds)
+    if(!has(QUEST_CONTROLS,c)) err("no-such-control","$.workspace.controlIds",c);
+  for(const t of def.workspace.toolGrants){
+    if(!has(QUEST_TOOLS,t.toolId)) err("no-such-tool","$.workspace.toolGrants",t.toolId);
+    // Q10: a grant names the COMPLETED capability that authorises it. That need not be one of the two
+    // the quest is about — its example grants a stable-tower stamp after `standing-towers` — but the
+    // player must have earned it, or the quest hands out a tool for a lesson they have never had.
+    if(!has(QUEST_CAPABILITIES,t.capabilityId)) err("no-such-capability","$.workspace.toolGrants",t.capabilityId);
+    else for(const pkg of QUEST_CAPABILITIES[t.capabilityId].earnedByPackageIds)
+      if(!earned.has(pkg)) err("tool-capability-not-earned","$.workspace.toolGrants",t.capabilityId+" needs "+pkg); }
+  const endAction=QUEST_COMPLETION_ACTIONS[def.completion.actionId];
+  if(!endAction) err("no-such-completion-action","$.completion",def.completion.actionId);
+  // The action names the transition that ENDS the quest. If no phase carries it, the last button in
+  // the quest leads nowhere and the child's song can never be put away.
+  else if(!def.phases.some(p=>p.procedure.transitionId===endAction.transitionId))
+    err("completion-unreachable","$.completion",def.completion.actionId);
+  if(!has(QUEST_PAYOFFS,def.completion.payoffId)) err("no-such-payoff","$.completion",def.completion.payoffId);
+  if(!has(QUEST_THEMES,def.presentation.themeId)) err("no-such-theme","$.presentation",def.presentation.themeId);
+  // REGION_MAP is declared further down the file; reading it here is safe because a catalog is only
+  // ever loaded after the whole script has run.
+  if(!REGION_MAP.some(r=>r.id===def.presentation.regionId))
+    err("no-such-region","$.presentation",def.presentation.regionId);
 
   if(def.starterSong!==undefined){
     const ev=songEvidence(def.starterSong);
     if(!ev.valid) err("starter-song-invalid","$.starterSong",ev.code);
     else if(ev.paletteFallback) err("starter-palette-unusable","$.starterSong",def.starterSong.palette);
-    else if(def.starterSong.palette!==def.workspace.paletteId) err("starter-palette-mismatch","$.starterSong",def.starterSong.palette);
-    else if(((def.starterSong.time||{}).cols)!==def.workspace.columns) err("starter-columns-mismatch","$.starterSong",(def.starterSong.time||{}).cols); }
+    else { const m=questWorkspaceMismatch(def.starterSong, def);
+           if(m) err("starter-unreachable","$.starterSong",m); } }
 
   const byWitnessId=Object.create(null);
   for(const w of def.witnesses) byWitnessId[w.id]=w;
@@ -5570,12 +5684,17 @@ function questSemantics(def, errs){
       const ev=songEvidence(w.songs[vid]);
       if(!ev.valid){ err("witness-song-invalid",path,w.id+"."+vid+":"+ev.code); good=false; continue; }
       if(ev.paletteFallback){ err("witness-palette-unusable",path,w.id+"."+vid); good=false; continue; }
+      const m=questWorkspaceMismatch(w.songs[vid], def);
+      if(m){ err("witness-unreachable",path,w.id+"."+vid+":"+m); good=false; continue; }
       byVersion[vid]=ev; }
     if(good && !byVersion[w.currentVersionId]){ err("witness-missing-current",path,w.id); good=false; }
     return (evidenceCache[w.id]= good ? { byVersion, currentVersionId:w.currentVersionId } : null); };
 
   def.phases.forEach((p,i)=>{
     const at="$.phases["+i+"]";
+    const tr=QUEST_TRANSITIONS[p.procedure.transitionId];
+    if(!tr) err("no-such-transition",at+".procedure",p.procedure.transitionId);
+    else if(tr.phaseType!==p.type) err("transition-wrong-phase",at+".procedure",p.procedure.transitionId+" in "+p.type);
     // Rule 6: a procedural fact may never masquerade as a musical one, in either direction.
     for(const g of p.procedure.gateIds){
       const prim=QUEST_PRIMITIVES[g];
@@ -5594,6 +5713,10 @@ function questSemantics(def, errs){
         if(prim.kind!=="musical"){ err("procedural-in-route",rat,obs.analyzerId); continue; }
         if(prim.allowedPhaseTypes.indexOf(p.type)<0) err("analyzer-wrong-phase",rat,obs.analyzerId+" in "+p.type);
         if(ch.capabilityIds.indexOf(prim.capabilityId)<0) err("analyzer-capability-not-claimed",rat,prim.capabilityId);
+        // The route asks the child for a heartbeat; the workspace decides whether they have a drum to
+        // make one with. A quest that asked without granting was enterable and unfinishable.
+        for(const c of prim.requiredControlIds)
+          if(!granted.has(c)) err("analyzer-control-not-granted",rat,obs.analyzerId+" needs "+c);
         caps.push(prim.capabilityId);
         const np=questNormalizeParams(prim.parameterSchema, obs.params);
         if(!np.ok){ err(np.code,rat+".params",obs.analyzerId); continue; }
@@ -5779,9 +5902,14 @@ function deepFreezeQuest(v){
 // because a half-installed quest is a quest that can strand a child mid-way.
 let QUEST_DEFINITIONS=Object.freeze(Object.create(null));
 let QUEST_CATALOG_ERRORS=Object.freeze([]);
-function loadQuestCatalog(jsonText){
+// The source context is an argument, not a default. A definition calls itself official; only the path
+// it arrived on can know whether that is true, and a player's import must not be able to promote
+// itself by writing a word. There is no shorter path for the built-in catalog: it declares the same
+// field and is checked against the same claim.
+function loadQuestCatalog(jsonText, sourceKind){
   const errs=[];
   try{
+    if(sourceKind!=="official" && sourceKind!=="player") throw new QuestLoadError("no-source-kind","$");
     if(typeof jsonText!=="string") throw new QuestLoadError("not-a-string","$");
     if(jsonText.length>QUEST_JSON_MAX) throw new QuestLoadError("source-too-large","$");
     const env=assertPlainJsonTree(JSON.parse(jsonText));
@@ -5794,6 +5922,8 @@ function loadQuestCatalog(jsonText){
         && QUEST_SCHEMA_VALIDATORS[def.v];
       if(!validate){ errs.push({code:"unsupported-schema-version", path:"$", extra:def&&def.v}); continue; }
       if(!validate(def, errs)) continue;
+      if(def.author.kind!==sourceKind){
+        errs.push({code:"author-kind-mismatch", path:"$.author", extra:def.author.kind}); continue; }
       if(!questCrossRefs(def, errs)) continue;
       if(!questSemantics(def, errs)) continue;
       if(out[def.id]){ errs.push({code:"duplicate-quest-id", path:"$", extra:def.id}); continue; }
@@ -5811,7 +5941,7 @@ function loadQuestCatalog(jsonText){
 // Questmaker import crosses too, so official content must not get a shorter path to trust than a
 // player's would. A backtick template is safe here — JSON.stringify escapes any backslash or
 // backtick, and the plain-JSON gate re-checks everything the parse produces.
-const BUILTIN_QUEST_CATALOG_JSON = "{\n \"v\": 1,\n \"definitions\": [\n  {\n   \"v\": 1,\n   \"id\": \"firefly-crossing\",\n   \"author\": {\n    \"kind\": \"official\",\n    \"id\": \"tune-garden\"\n   },\n   \"kind\": \"guided-commission\",\n   \"title\": \"The Firefly Crossing\",\n   \"brief\": {\n    \"worldText\": \"Flutter's lights can see the crossing, but Hopper's roots need a heartbeat.\",\n    \"intentionText\": \"Shape a path over a steady pulse, then make another version and choose the one to offer.\"\n   },\n   \"prerequisites\": {\n    \"earnedByPackageIds\": [\n     \"follow-the-fireflies\",\n     \"footsteps\"\n    ]\n   },\n   \"capabilityIds\": [\n    \"melodic-contour\",\n    \"steady-pulse\"\n   ],\n   \"workspace\": {\n    \"paletteId\": \"pentatonic\",\n    \"columns\": 16,\n    \"grooveId\": \"straight\",\n    \"controlIds\": [\n     \"melody\",\n     \"drums\",\n     \"playback\",\n     \"loop\",\n     \"voice\",\n     \"tempo\",\n     \"mixer\",\n     \"undo\",\n     \"redo\",\n     \"room\"\n    ],\n    \"toolGrants\": []\n   },\n   \"phases\": [\n    {\n     \"id\": \"light-first-path\",\n     \"name\": \"Light the first path\",\n     \"type\": \"compose\",\n     \"versionId\": \"A\",\n     \"worldText\": \"Give Flutter's lights a clear way across, and let Hopper's roots feel the beat.\",\n     \"intentionText\": \"Give the lights a clear path and the roots a heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"fork-version\",\n      \"buttonLabel\": \"Keep this path\"\n     },\n     \"challenge\": {\n      \"id\": \"shape-over-pulse\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"main-beat-crossing\",\n        \"witnessIds\": [\n         \"first-main-rise\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.kick-on-main-beats\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-main-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"even-walk-crossing\",\n        \"witnessIds\": [\n         \"first-even-fall\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.even-walk\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-even-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"shimmer-crossing\",\n        \"witnessIds\": [\n         \"first-shimmer-arc\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.hat-shimmer\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-hat-shimmer\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"another-way-across\",\n     \"name\": \"Another way across\",\n     \"type\": \"transform\",\n     \"sourceVersionId\": \"A\",\n     \"versionId\": \"B\",\n     \"worldText\": \"The lights know this path now. Show them another way across.\",\n     \"intentionText\": \"Change the shape and keep the heartbeat, or keep the shape and change the heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"edit.after-fork\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"advance\",\n      \"buttonLabel\": \"Compare both paths\"\n     },\n     \"challenge\": {\n      \"id\": \"retain-and-change\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"new-shape-same-heartbeat\",\n        \"witnessIds\": [\n         \"second-fall-same-main\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.differs-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-changed\"\n         },\n         {\n          \"analyzerId\": \"pulse.same-steady-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-kept\"\n         }\n        ]\n       },\n       {\n        \"id\": \"same-shape-new-heartbeat\",\n        \"witnessIds\": [\n         \"second-rise-even-walk\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.same-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-kept\"\n         },\n         {\n          \"analyzerId\": \"pulse.differs-steady-family-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-changed\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"choose-crossing\",\n     \"name\": \"Choose the crossing\",\n     \"type\": \"compare-offer\",\n     \"versionIds\": [\n      \"A\",\n      \"B\"\n     ],\n     \"worldText\": \"Both crossings are glowing. Listen to each one, then choose the path that feels like your journey.\",\n     \"intentionText\": \"Hear both versions, choose one, and play the final version all the way through before offering it.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"comparison.auditioned-both\",\n       \"comparison.chosen\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"offer\"\n     },\n     \"reflection\": {\n      \"promptText\": \"Which path feels more like the journey you wanted?\",\n      \"choices\": [\n       {\n        \"id\": \"A\",\n        \"label\": \"Path A\"\n       },\n       {\n        \"id\": \"B\",\n        \"label\": \"Path B\"\n       }\n      ]\n     }\n    }\n   ],\n   \"completion\": {\n    \"actionId\": \"offer-song\",\n    \"payoffId\": \"saved-song\",\n    \"label\": \"Offer this crossing\",\n    \"defaultTitle\": \"The Firefly Crossing\",\n    \"completionText\": \"Flutter's lights and Hopper's roots carry your crossing into the garden.\"\n   },\n   \"presentation\": {\n    \"themeId\": \"night-meadow\",\n    \"iconId\": \"fireflies\",\n    \"regionId\": \"paths-of-song\",\n    \"cardText\": \"A crossing for two powers\",\n    \"estimateMinutes\": 12,\n    \"priority\": 10\n   },\n   \"witnesses\": [\n    {\n     \"id\": \"first-main-rise\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-even-fall\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-shimmer-arc\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 6,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 8,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 2,\n           \"c\": 0\n          },\n          {\n           \"lane\": 2,\n           \"c\": 2\n          },\n          {\n           \"lane\": 2,\n           \"c\": 4\n          },\n          {\n           \"lane\": 2,\n           \"c\": 6\n          },\n          {\n           \"lane\": 2,\n           \"c\": 8\n          },\n          {\n           \"lane\": 2,\n           \"c\": 10\n          },\n          {\n           \"lane\": 2,\n           \"c\": 12\n          },\n          {\n           \"lane\": 2,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-fall-same-main\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-rise-even-walk\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    }\n   ]\n  }\n ]\n}";
+const BUILTIN_QUEST_CATALOG_JSON = "{\n \"v\": 1,\n \"definitions\": [\n  {\n   \"v\": 1,\n   \"id\": \"firefly-crossing\",\n   \"author\": {\n    \"kind\": \"official\",\n    \"id\": \"tune-garden\"\n   },\n   \"kind\": \"guided-commission\",\n   \"title\": \"The Firefly Crossing\",\n   \"brief\": {\n    \"worldText\": \"Flutter's lights can see the crossing, but Hopper's roots need a heartbeat.\",\n    \"intentionText\": \"Shape a path over a steady pulse, then make another version and choose the one to offer.\"\n   },\n   \"prerequisites\": {\n    \"earnedByPackageIds\": [\n     \"follow-the-fireflies\",\n     \"footsteps\"\n    ]\n   },\n   \"capabilityIds\": [\n    \"melodic-contour\",\n    \"steady-pulse\"\n   ],\n   \"workspace\": {\n    \"paletteId\": \"pentatonic\",\n    \"columns\": 16,\n    \"grooveId\": \"straight\",\n    \"controlIds\": [\n     \"drums\",\n     \"loop\"\n    ],\n    \"toolGrants\": []\n   },\n   \"phases\": [\n    {\n     \"id\": \"light-first-path\",\n     \"name\": \"Light the first path\",\n     \"type\": \"compose\",\n     \"versionId\": \"A\",\n     \"worldText\": \"Give Flutter's lights a clear way across, and let Hopper's roots feel the beat.\",\n     \"intentionText\": \"Give the lights a clear path and the roots a heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"fork-version\",\n      \"buttonLabel\": \"Keep this path\"\n     },\n     \"challenge\": {\n      \"id\": \"shape-over-pulse\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"main-beat-crossing\",\n        \"witnessIds\": [\n         \"first-main-rise\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.kick-on-main-beats\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-main-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"even-walk-crossing\",\n        \"witnessIds\": [\n         \"first-even-fall\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.even-walk\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-even-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"shimmer-crossing\",\n        \"witnessIds\": [\n         \"first-shimmer-arc\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.any-of\",\n          \"params\": {\n           \"families\": [\n            \"rise\",\n            \"fall\",\n            \"hover\",\n            \"arc\"\n           ]\n          },\n          \"descriptorId\": \"way-contour-any\"\n         },\n         {\n          \"analyzerId\": \"pulse.hat-shimmer\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-hat-shimmer\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"another-way-across\",\n     \"name\": \"Another way across\",\n     \"type\": \"transform\",\n     \"sourceVersionId\": \"A\",\n     \"versionId\": \"B\",\n     \"worldText\": \"The lights know this path now. Show them another way across.\",\n     \"intentionText\": \"Change the shape and keep the heartbeat, or keep the shape and change the heartbeat.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"edit.after-fork\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"advance\",\n      \"buttonLabel\": \"Compare both paths\"\n     },\n     \"challenge\": {\n      \"id\": \"retain-and-change\",\n      \"capabilityIds\": [\n       \"melodic-contour\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"new-shape-same-heartbeat\",\n        \"witnessIds\": [\n         \"second-fall-same-main\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.differs-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-changed\"\n         },\n         {\n          \"analyzerId\": \"pulse.same-steady-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-kept\"\n         }\n        ]\n       },\n       {\n        \"id\": \"same-shape-new-heartbeat\",\n        \"witnessIds\": [\n         \"second-rise-even-walk\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"contour.same-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-contour-kept\"\n         },\n         {\n          \"analyzerId\": \"pulse.differs-steady-family-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-changed\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"choose-crossing\",\n     \"name\": \"Choose the crossing\",\n     \"type\": \"compare-offer\",\n     \"versionIds\": [\n      \"A\",\n      \"B\"\n     ],\n     \"worldText\": \"Both crossings are glowing. Listen to each one, then choose the path that feels like your journey.\",\n     \"intentionText\": \"Hear both versions, choose one, and play the final version all the way through before offering it.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"comparison.auditioned-both\",\n       \"comparison.chosen\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"offer\"\n     },\n     \"reflection\": {\n      \"promptText\": \"Which path feels more like the journey you wanted?\",\n      \"choices\": [\n       {\n        \"id\": \"A\",\n        \"label\": \"Path A\"\n       },\n       {\n        \"id\": \"B\",\n        \"label\": \"Path B\"\n       }\n      ]\n     }\n    }\n   ],\n   \"completion\": {\n    \"actionId\": \"offer-song\",\n    \"payoffId\": \"saved-song\",\n    \"label\": \"Offer this crossing\",\n    \"defaultTitle\": \"The Firefly Crossing\",\n    \"completionText\": \"Flutter's lights and Hopper's roots carry your crossing into the garden.\"\n   },\n   \"presentation\": {\n    \"themeId\": \"night-meadow\",\n    \"regionId\": \"paths-of-song\",\n    \"cardText\": \"A crossing for two powers\",\n    \"estimateMinutes\": 12,\n    \"priority\": 10\n   },\n   \"witnesses\": [\n    {\n     \"id\": \"first-main-rise\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-even-fall\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"first-shimmer-arc\",\n     \"phaseId\": \"light-first-path\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 6,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 8,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 2,\n           \"c\": 0\n          },\n          {\n           \"lane\": 2,\n           \"c\": 2\n          },\n          {\n           \"lane\": 2,\n           \"c\": 4\n          },\n          {\n           \"lane\": 2,\n           \"c\": 6\n          },\n          {\n           \"lane\": 2,\n           \"c\": 8\n          },\n          {\n           \"lane\": 2,\n           \"c\": 10\n          },\n          {\n           \"lane\": 2,\n           \"c\": 12\n          },\n          {\n           \"lane\": 2,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-fall-same-main\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 67,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"second-rise-even-walk\",\n     \"phaseId\": \"another-way-across\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 62,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    }\n   ]\n  },\n  {\n   \"v\": 1,\n   \"id\": \"waking-woods\",\n   \"author\": {\n    \"kind\": \"official\",\n    \"id\": \"tune-garden\"\n   },\n   \"kind\": \"guided-commission\",\n   \"title\": \"The Waking Woods\",\n   \"brief\": {\n    \"worldText\": \"Hopper says the woods are still asleep. A tune on its own will not wake them - they need footsteps too.\",\n    \"intentionText\": \"Make a tune over a steady beat, then make a second walk and choose the one to give the woods.\"\n   },\n   \"prerequisites\": {\n    \"earnedByPackageIds\": [\n     \"intro\",\n     \"footsteps\"\n    ]\n   },\n   \"capabilityIds\": [\n    \"melody-making\",\n    \"steady-pulse\"\n   ],\n   \"workspace\": {\n    \"paletteId\": \"pentatonic\",\n    \"columns\": 16,\n    \"grooveId\": \"straight\",\n    \"controlIds\": [\n     \"drums\"\n    ],\n    \"toolGrants\": []\n   },\n   \"phases\": [\n    {\n     \"id\": \"wake-the-woods\",\n     \"name\": \"Wake the woods\",\n     \"type\": \"compose\",\n     \"versionId\": \"A\",\n     \"worldText\": \"Put a few notes into the trees, and give the woods a beat to walk to.\",\n     \"intentionText\": \"Plant at least four notes, and set a steady beat under them.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"fork-version\",\n      \"buttonLabel\": \"Keep this walk\"\n     },\n     \"challenge\": {\n      \"id\": \"tune-over-footsteps\",\n      \"capabilityIds\": [\n       \"melody-making\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"walk-on-main-beats\",\n        \"witnessIds\": [\n         \"woods-main-beats\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"phrase.minimum-onsets\",\n          \"params\": {\n           \"minimum\": 4\n          },\n          \"descriptorId\": \"way-enough-notes\"\n         },\n         {\n          \"analyzerId\": \"pulse.kick-on-main-beats\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-main-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"walk-the-even-eight\",\n        \"witnessIds\": [\n         \"woods-even-eight\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"phrase.minimum-onsets\",\n          \"params\": {\n           \"minimum\": 4\n          },\n          \"descriptorId\": \"way-enough-notes\"\n         },\n         {\n          \"analyzerId\": \"pulse.even-walk\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-even-kicks\"\n         }\n        ]\n       },\n       {\n        \"id\": \"walk-under-shimmer\",\n        \"witnessIds\": [\n         \"woods-shimmer\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"phrase.minimum-onsets\",\n          \"params\": {\n           \"minimum\": 4\n          },\n          \"descriptorId\": \"way-enough-notes\"\n         },\n         {\n          \"analyzerId\": \"pulse.hat-shimmer\",\n          \"params\": {},\n          \"descriptorId\": \"way-pulse-hat-shimmer\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"walk-it-again\",\n     \"name\": \"Walk it again\",\n     \"type\": \"transform\",\n     \"sourceVersionId\": \"A\",\n     \"versionId\": \"B\",\n     \"worldText\": \"The woods know that walk now. Show them a second one.\",\n     \"intentionText\": \"Keep the beat and change the tune, or change the beat itself.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"edit.after-fork\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"advance\",\n      \"buttonLabel\": \"Compare both walks\"\n     },\n     \"challenge\": {\n      \"id\": \"same-woods-new-walk\",\n      \"capabilityIds\": [\n       \"melody-making\",\n       \"steady-pulse\"\n      ],\n      \"routes\": [\n       {\n        \"id\": \"kept-the-beat\",\n        \"witnessIds\": [\n         \"woods-kept-the-beat\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"phrase.minimum-onsets\",\n          \"params\": {\n           \"minimum\": 4\n          },\n          \"descriptorId\": \"way-enough-notes\"\n         },\n         {\n          \"analyzerId\": \"pulse.same-steady-family-as-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-kept\"\n         }\n        ]\n       },\n       {\n        \"id\": \"changed-the-beat\",\n        \"witnessIds\": [\n         \"woods-changed-the-beat\"\n        ],\n        \"observations\": [\n         {\n          \"analyzerId\": \"phrase.minimum-onsets\",\n          \"params\": {\n           \"minimum\": 4\n          },\n          \"descriptorId\": \"way-enough-notes\"\n         },\n         {\n          \"analyzerId\": \"pulse.differs-steady-family-from-snapshot\",\n          \"params\": {\n           \"snapshotVersionId\": \"A\"\n          },\n          \"descriptorId\": \"way-pulse-changed\"\n         }\n        ]\n       }\n      ]\n     }\n    },\n    {\n     \"id\": \"choose-the-walk\",\n     \"name\": \"Choose the walk\",\n     \"type\": \"compare-offer\",\n     \"versionIds\": [\n      \"A\",\n      \"B\"\n     ],\n     \"worldText\": \"Both walks are awake. Listen to each one, then choose the walk the woods should keep.\",\n     \"intentionText\": \"Hear both versions, choose one, and play the final version all the way through before offering it.\",\n     \"procedure\": {\n      \"gateIds\": [\n       \"comparison.auditioned-both\",\n       \"comparison.chosen\",\n       \"playback.complete-since-last-edit\"\n      ],\n      \"transitionId\": \"offer\"\n     },\n     \"reflection\": {\n      \"promptText\": \"Which walk sounds more like the woods waking up?\",\n      \"choices\": [\n       {\n        \"id\": \"A\",\n        \"label\": \"Walk A\"\n       },\n       {\n        \"id\": \"B\",\n        \"label\": \"Walk B\"\n       }\n      ]\n     }\n    }\n   ],\n   \"completion\": {\n    \"actionId\": \"offer-song\",\n    \"payoffId\": \"saved-song\",\n    \"label\": \"Give this walk to the woods\",\n    \"defaultTitle\": \"The Waking Woods\",\n    \"completionText\": \"Hopper takes your walk into the trees, and the woods keep it.\"\n   },\n   \"presentation\": {\n    \"themeId\": \"deep-woods\",\n    \"regionId\": \"pulse-woods\",\n    \"cardText\": \"A walk to wake the woods\",\n    \"estimateMinutes\": 10,\n    \"priority\": 20\n   },\n   \"witnesses\": [\n    {\n     \"id\": \"woods-main-beats\",\n     \"phaseId\": \"wake-the-woods\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 72,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"woods-even-eight\",\n     \"phaseId\": \"wake-the-woods\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 72,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"woods-shimmer\",\n     \"phaseId\": \"wake-the-woods\",\n     \"currentVersionId\": \"A\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 2,\n           \"c\": 0\n          },\n          {\n           \"lane\": 2,\n           \"c\": 2\n          },\n          {\n           \"lane\": 2,\n           \"c\": 4\n          },\n          {\n           \"lane\": 2,\n           \"c\": 6\n          },\n          {\n           \"lane\": 2,\n           \"c\": 8\n          },\n          {\n           \"lane\": 2,\n           \"c\": 10\n          },\n          {\n           \"lane\": 2,\n           \"c\": 12\n          },\n          {\n           \"lane\": 2,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"woods-kept-the-beat\",\n     \"phaseId\": \"walk-it-again\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 72,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 72,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 60,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      }\n     }\n    },\n    {\n     \"id\": \"woods-changed-the-beat\",\n     \"phaseId\": \"walk-it-again\",\n     \"currentVersionId\": \"B\",\n     \"songs\": {\n      \"A\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 72,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          }\n         ]\n        }\n       ]\n      },\n      \"B\": {\n       \"v\": 3,\n       \"meta\": {\n        \"title\": null,\n        \"created\": 0,\n        \"updated\": 0,\n        \"author\": null\n       },\n       \"palette\": \"pentatonic\",\n       \"time\": {\n        \"cols\": 16,\n        \"tempo\": 108,\n        \"groove\": 0\n       },\n       \"tracks\": [\n        {\n         \"kind\": \"melody\",\n         \"voice\": \"musicbox\",\n         \"notes\": [\n          {\n           \"p\": 60,\n           \"c\": 0,\n           \"len\": 1\n          },\n          {\n           \"p\": 64,\n           \"c\": 2,\n           \"len\": 1\n          },\n          {\n           \"p\": 67,\n           \"c\": 4,\n           \"len\": 1\n          },\n          {\n           \"p\": 72,\n           \"c\": 6,\n           \"len\": 1\n          }\n         ]\n        },\n        {\n         \"kind\": \"drums\",\n         \"hits\": [\n          {\n           \"lane\": 0,\n           \"c\": 0\n          },\n          {\n           \"lane\": 0,\n           \"c\": 2\n          },\n          {\n           \"lane\": 0,\n           \"c\": 4\n          },\n          {\n           \"lane\": 0,\n           \"c\": 6\n          },\n          {\n           \"lane\": 0,\n           \"c\": 8\n          },\n          {\n           \"lane\": 0,\n           \"c\": 10\n          },\n          {\n           \"lane\": 0,\n           \"c\": 12\n          },\n          {\n           \"lane\": 0,\n           \"c\": 14\n          }\n         ]\n        }\n       ]\n      }\n     }\n    }\n   ]\n  }\n ]\n}";
 
 // ---------- QuestRun: the durable owner of a quest's versions, phase and tray ----------
 // A completion receipt from the reducer above is only a claim about what was heard. Nothing becomes
@@ -6108,7 +6238,13 @@ function questArtifactUpsert(run){
 function finalizeQuestOffering(runId){
   const run=QUEST_RUNS[runId];
   if(!run || run.status!=="offering" || !run.pendingOffer) return { ok:false, code:"not-offering" };
-  if(!questArtifactUpsert(run)) return { ok:false, code:"artifact-failed" };
+  // The definition names the payoff, so the id selects what finalisation writes rather than being a
+  // word nobody reads. With the definition gone there is nothing to read it from, and the saved song
+  // is the only payoff this format has ever had — putting the song away beats stranding it.
+  const def=QUEST_DEFINITIONS[run.questId];
+  const payoff=QUEST_PAYOFFS[def ? def.completion.payoffId : "saved-song"];
+  if(!payoff) return { ok:false, code:"no-payoff" };
+  if(!payoff.finalize(run)) return { ok:false, code:"artifact-failed" };
   const r=transactQuestRun(runId, [{ type:"saveAs", artifactId:run.pendingOffer.artifactId, savedAt:Date.now() }]);
   return r.ok ? { ok:true, artifactId:run.artifact&&run.artifact.artifactId } : { ok:false, code:r.code };
 }
@@ -6139,14 +6275,8 @@ function questPhaseGate(def, phaseIdx, versionId){
 // What a transition has to do BESIDES moving the phase, named by the definition rather than by a
 // switch on the phase number.
 function questTransitionOps(def, run, at){
-  const p=def.phases[run.phase], next=def.phases[run.phase+1];
-  if(p.procedure.transitionId==="fork-version"){
-    if(!next || !next.versionId) return null;                 // a fork with nowhere to fork TO
-    const v=run.versions[p.versionId]; if(!v) return null;
-    return [{ type:"forkFrom", sourceVersionId:p.versionId, sourceRev:v.editRev,
-              newVersionId:next.versionId, at }]; }
-  if(p.procedure.transitionId==="advance") return [];
-  return null;
+  const t=QUEST_TRANSITIONS[def.phases[run.phase].procedure.transitionId];
+  return (t && t.ops) ? t.ops(def, run, at) : null;
 }
 
 const QUEST_DEFAULT_TEMPO=108;
@@ -6243,7 +6373,8 @@ function performQuestAction(actionId, opts){
   }
 
   if(actionId==="offer"){
-    if(p.procedure.transitionId!=="offer") return fail("not-offerable");
+    const end=QUEST_COMPLETION_ACTIONS[def.completion.actionId];
+    if(!end || p.procedure.transitionId!==end.transitionId) return fail("not-offerable");
     // The SAME version the offer reducer will use. `run.selection || run.draft` also worked, because
     // choose() sets both — but two expressions that happen to agree are one refactor away from not
     // agreeing, and the gate must be asked about the song that is actually going to be saved.
@@ -6334,19 +6465,23 @@ function surfaceQuest(defs, progress, runs, history){
 
 // What the card says. Separated from the drawing for the same reason the shell's model is: the words
 // a child reads are the part worth testing.
+// The one place a theme id turns into something a child sees. An unknown theme cannot reach here - the
+// catalog refuses it - so the empty string is for a card drawn while the registry is still empty.
+const questIcon = def => ((QUEST_THEMES[def.presentation.themeId]||{}).icon || "");
 function questHomeCard(defs, progress, runs, history){
   const s=surfaceQuest(defs, progress, runs, history);
   if(!s) return null;
   const def=defs[s.questId];
-  if(s.kind==="begin") return { kind:"begin", questId:s.questId, title:def.title,
+  const icon=questIcon(def);
+  if(s.kind==="begin") return { kind:"begin", questId:s.questId, title:def.title, icon,
     subtitle:def.presentation.cardText,
     meta:"About "+def.presentation.estimateMinutes+" minutes", label:"Begin quest" };
   const run=runs[s.runId];
-  if(s.kind==="continue") return { kind:"continue", questId:s.questId, runId:s.runId,
+  if(s.kind==="continue") return { kind:"continue", questId:s.questId, runId:s.runId, icon,
     title:"Continue "+def.title,
     subtitle:"Phase "+(run.phase+1)+" of "+def.phases.length+" · saved on this device",
     meta:"", label:"Continue" };
-  return { kind:"retry", questId:s.questId, runId:s.runId, title:def.title,
+  return { kind:"retry", questId:s.questId, runId:s.runId, title:def.title, icon,
     subtitle:"Your song is still waiting to be put away.", meta:"", label:"Try saving it again" };
 }
 
@@ -6356,7 +6491,7 @@ function questTrailModel(defs, progress, runs, history){
   const surfaced=surfaceQuest(defs, progress, runs, history);
   return questEligibility(defs, progress, runs, history).filter(r=>r.action!=="locked").map(r=>{
     const def=defs[r.questId];
-    return { questId:r.questId, title:def.title, action:r.action, missing:r.missing,
+    return { questId:r.questId, title:def.title, icon:questIcon(def), action:r.action, missing:r.missing,
       surfaced: !!surfaced && surfaced.questId===r.questId,
       label: r.action==="continue" ? "Continue"
            : r.action==="replay"   ? "Start a new version" : "Begin quest",
@@ -6615,7 +6750,11 @@ const scopeKey        = () => isPackageScope() ? "pkg:"+activeScope.packageId
 const scopeToolboxOwner = () => scopeKey();
 // The autosave context keeps its shipped values ("intro", "studio") so existing rescues still match.
 const scopeAutosaveContext = () => isQuestScope() ? "quest:"+activeScope.runId : scopeCatalogId();
-const scopeVisualRegion    = () => isQuestScope() ? "first-garden" : regionOf(scopeCatalogId());
+// A quest is tinted by the land it belongs to, named in its presentation. The fallback keeps the page
+// painted rather than throwing on the render path if the definition has gone.
+const questScopeRegion = () => { const d=QUEST_DEFINITIONS[activeScope.questId];
+  return (d && d.presentation.regionId) || "first-garden"; };
+const scopeVisualRegion    = () => isQuestScope() ? questScopeRegion() : regionOf(scopeCatalogId());
 const scopeCompanionRegion = () => isQuestScope() ? null : regionOf(scopeCatalogId());
 function scopePalette(){
   if(isStudioScope()) return widestPalette();          // computed, not written into PACKAGES.studio
@@ -7752,7 +7891,7 @@ function renderQuestHome(){
     if(cls) b.className=cls; b.onclick=fn; box.appendChild(b); return b; };
 
   if(card){
-    line("qname", card.title);
+    line("qname", (card.icon?card.icon+" ":"")+card.title);
     line("qsub", card.subtitle);
     line("qmeta", card.meta);
     act(card.label, ()=>{ homeoverlay.style.display="none";
@@ -7770,7 +7909,7 @@ function renderQuestHome(){
       ? "Every quest you can reach is on the map right now."
       : "No quests are open yet — they arrive as the garden grows.");
     if(questTrailOpen) for(const row of others){
-      line("qname", row.title);
+      line("qname", (row.icon?row.icon+" ":"")+row.title);
       act(row.label, ()=>{ if(!row.enabled) return; homeoverlay.style.display="none";
         if(row.action==="continue") enterQuestRun(questEligibility(QUEST_DEFINITIONS, progress, QUEST_RUNS, QUEST_HISTORY)
           .find(x=>x.questId===row.questId).liveRunId);
@@ -8123,7 +8262,7 @@ if(progress.settings && progress.settings.voice) setVoice(progress.settings.voic
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
-loadQuestCatalog(BUILTIN_QUEST_CATALOG_JSON);   // all-or-nothing: a bad definition publishes an EMPTY registry
+loadQuestCatalog(BUILTIN_QUEST_CATALOG_JSON, "official");   // all-or-nothing: a bad definition publishes an EMPTY registry
 hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at
 recoverQuestOfferings();   // a crash mid-offering finishes here: the artifact is written before the run completes
 toolboxOwner=null;   // per-scope now; the renderLevel below loads the resumed package's own tools

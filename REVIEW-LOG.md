@@ -1736,3 +1736,154 @@ the one worth checking, and it was.
 Both verified in the browser: the card appears the moment the prerequisites are marked, and clearing
 mid-quest lands back in `intro` with the level card up and the quest card gone. `README.md` and
 `AGENTS.md` list them beside the flags that were already there.
+
+
+## D7 — the whole-slice design review, and what it cost to answer
+
+The seventh round was not a step in the plan. After D6 I asked the reviewer for an architectural verdict
+on the finished slice rather than another bug hunt, and it declined to bless the branch:
+
+> Keep the architecture, but I would not merge this exact branch under the claim that it has already
+> established the player-authoring boundary.
+
+### The finding, and the probe that proved it
+
+The schema accepted a family of **behaviour-bearing ids that nothing resolved** — `workspace.controlIds`,
+`workspace.toolGrants`, `procedure.transitionId`, `completion.actionId`, `completion.payoffId`, and the
+`presentation` tokens. I reproduced its probe before acting on it. A definition with an invented
+transition, an invented action, an invented payoff, an invented theme, an invented region, a tool grant
+naming a stamp that does not exist, prerequisites that do not teach the capabilities it claims, and
+`controlIds:["melody"]` — withholding the drums its own routes need — **published with zero catalog
+errors**, was enterable, and dead-ended at `not-a-transition` on the first button. Its phrasing is exact:
+
+> Official and player content share the same validation code, but official content currently relies on
+> unstated human knowledge that the validator does not enforce. That is a quieter form of privileged trust.
+
+The Firefly itself was carrying eight of those fictions: `melody`, `playback`, `voice`, `tempo`,
+`mixer`, `undo`, `redo` and `room` were listed as controls it granted, and not one reached
+`renderLevel()`. It effectively granted `drums` and `loop`, and now says so.
+
+**Every id resolves now.** `QUEST_CONTROLS` holds only what `renderLevel()` and `scopeFeatures()` really
+honour; `QUEST_TOOLS` is deliberately EMPTY, so a definition promising a Quest Tray stamp is refused
+rather than opening a quest whose stamp never arrives; `QUEST_TRANSITIONS` names the one phase type each
+transition may end; `QUEST_COMPLETION_ACTIONS` binds the completion action to the transition that ends
+the quest, and the validator refuses an action no phase carries; `QUEST_PAYOFFS` and `QUEST_THEMES`
+close the last two. Each musical primitive declares `requiredControlIds`, so asking for a heartbeat in
+a workspace with no drum bed is a catalog error rather than an unfinishable quest. A quest may claim
+only a capability its own prerequisites teach. `presentation.regionId` now tints the field and
+`themeId` puts an icon on the Home card, so both are read rather than merely checked; `iconId` is gone,
+because two ids for one look meant only one of them was ever used.
+
+**Satisfiability is not reachability**, its third finding. A witness proved a route *could* be matched;
+it did not prove the matching song was one the declared workspace could produce. `questWorkspaceMismatch()`
+now gates witnesses AND the starter song on the same question — palette, width, groove, the pitch ladder,
+and drums the quest withheld — replacing the starter song's own palette/columns comparison, because two
+gates answering "could this workspace produce this song?" is exactly the drift that produced two earlier
+defects at this seam.
+
+**The source decides who is official.** `author.kind` is self-asserted, so `loadQuestCatalog` now takes
+the context the definition arrived on and refuses one that disagrees. There is no default: a caller must
+say. The built-in catalog passes `"official"` and goes through the same check a player import would.
+
+### Where the reviewer moved toward me, and where I disagreed with it
+
+It now endorses **both** remedies I rejected in D2 and D5, and adds a good one I have not done: extract a
+single canonical v3 normalisation shared by `applySong` and `songEvidence`, since two findings already
+came from drift there. It also rejected my "one namespace makes misuse representable, so the check can
+fail" argument for `QUEST_PRIMITIVES` — separate typed registries would make misuse *unrepresentable*,
+which is better — while saying it is not worth rebuilding now. I agree on both counts.
+
+One correction. It said `stageComplete` "explicitly refuses lesson-step advancement in quest scope", so
+the quest envelope's missing `goals` is not load-bearing. Half right: in quest scope `stageComplete`
+skips the multi-step branch and falls into the LEVEL branch, where progress no-ops but confetti fires and
+a toast says "the whole garden is awake". The phase still cannot move, so the absence is real protection —
+but there is a cosmetic hole behind it that the missing `goals` is currently what hides.
+
+### Q9's acceptance test, finally run — *The Waking Woods*
+
+QUESTS.md asks that "an engineer must be able to create a second working Guided Commission by adding only
+declarative data and no engine branch". It had never been run. The second commission shares nothing
+structural with the first except the kind: **Pulse Woods** instead of Paths of Song, `intro` + `footsteps`
+instead of the fireflies, a workspace that grants no loop, and routes carried by the **pulse** analyzers
+and `phrase.minimum-onsets` — a primitive the Firefly never touches — instead of the contour ones. It
+needed no engine change, and a Node test plays it from its first note to a saved song.
+
+Two things the attempt exposed, both recorded in `QUESTS.md` Q9 and neither fixed here:
+
+- **A `way-` descriptor cannot express the parameters of the analyzer it describes.** `contour.any-of`
+  always reads "a Rise, Fall, Hover, or Arc path", whichever families it was given, so a commission that
+  varied that parameter would tell a child something untrue. The second quest therefore varies
+  *analyzers*, not parameters — which is a real constraint on the vocabulary, not a stylistic choice.
+- **The vocabulary is small.** With three capabilities and nine analyzers, the second quest's transform
+  phase divides on the beat alone. Parameterised way-descriptors are the next step, and they are an
+  engine change — which is itself the answer to "does every new quest need new analyzers?": not yet, but
+  the third one might.
+
+The reviewer's other finding, that the engine descriptors were written in the Firefly's fiction — "The
+lights climbed", "The roots stepped…" — was fixed rather than deferred, because the second commission
+would otherwise have spoken of lights and roots that are not in it. Engine text now names the music; the
+fiction lives in each quest's own authored fields, and a test asserts no engine descriptor carries either
+quest's nouns.
+
+### What is still open
+
+- `loadQuestCatalog` replaces one global registry, so a player import cannot coexist with official
+  content. The reviewer proposes splitting compilation from publication (`compileQuestDefinition(raw,
+  sourceContext)`); that is Questmaker work and is not done.
+- The shared v3 normalisation is not extracted.
+- The reviewer trusts the level-envelope reuse least after the catalog boundary, and recommends
+  extracting a shared `enterEditorWorkspace` lifecycle before quest kind 2. Also not done.
+
+### What the independent tester found
+
+One real finding, and it is the inverse of the risk I asked it to look for. I asked whether the new
+reachability gate was too STRICT — whether it now refuses a song a child could really build. It reported
+the opposite: **`questWorkspaceMismatch` checked pitch and drums but not note DURATION.**
+
+> A starter or witness can contain extended notes even when `grow` is withheld, and `applySong()` will
+> load them. Current analyzers don't use duration, so it does not create a completion bypass today — but
+> it contradicts the claimed workspace equivalence.
+
+Reproduced, and worse than reported: a Waking Woods witness with `len:4` published with zero catalog
+errors in a workspace that grants no grow — and so did one with `len:"long"`, which `applySong` turns
+into a NaN duration on the field, because `(n.len||1)` passes a string straight through. Fixed: a length
+must be a positive integer, a length above one needs the `grow` control, and the ceiling is the
+editor's own `min(MAX_VINE, columns - column)` rather than a number invented here.
+
+The finding also exposed a **false claim in a comment**. `songEvidence` says it normalises exactly as
+`applySong` does; it does not — it ignores note length and gives every onset one column. That is the
+right behaviour (no shipped analyzer asks about duration) but the wrong comment, and this seam has
+produced two defects already by drifting quietly. The comment now names the divergence, says why it is
+deliberate, and says what has to happen when an analyzer does read duration.
+
+It found no exploit in the source-kind ordering, in `requiredControlIds`, in multi-quest surfacing,
+history or pruning, or in dropped-catalog recovery. It kept three tests
+(`tests/questauthoring-d7-review.test.mjs`), reviewed and kept: each workspace is the only feature set
+that enters its own run; an offering still saves its song after its definition is withdrawn from the
+catalog — the crash-recovery path I had told it I could not reach; and run-cap pruning keeps a separate
+completion record for both real quest ids.
+
+On the two surviving mutations it agreed without hedging: "with one immutable completion action and one
+immutable payoff, no valid published definition can distinguish a literal `"offer"` dispatch or direct
+`questArtifactUpsert`. A test would only become meaningful once either registry gains a second entry."
+
+One caveat worth recording: I was editing `index.html` while it read, so its pass ran against a moving
+file. The finding was re-verified against the final version before it was fixed. Next time the tester
+runs, the tree should be still.
+
+### Verification
+
+**373 tests pass** — 18 new in `tests/questauthoring.test.mjs`, 3 in GPT's
+`tests/questauthoring-d7-review.test.mjs`. **32 mutations, 30 caught.** One survivor was a genuine gap
+and is now covered: a note with NO `len` must default to one column, and every fixture in the repo
+writes `len` explicitly, so the default was never exercised — the compact share format drops `len` when
+it is 1, which makes that the ordinary case in real data. The other two survivors are reported as
+equivalent rather than counted: with exactly one entry each in `QUEST_COMPLETION_ACTIONS` and
+`QUEST_PAYOFFS`, no *published* definition can tell the registry lookup apart from the string literal it
+replaced. Those lookups earn their place at load time, where an invented id is refused; they will earn
+it at run time when a second entry exists.
+
+Browser-verified on the real page: both quests on the Home surface with their theme icons (one card, the
+other on the trail — Q22 still holds with two), *The Waking Woods* opening into a Pulse Woods–tinted
+field with the drum bed up and looping off, its three "ways" reading correctly, and its continue button
+correctly disabled until the phase's gate opens.

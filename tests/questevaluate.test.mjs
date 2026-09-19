@@ -130,10 +130,10 @@ test("the description follows the music, not the question that was asked", () =>
   assert.strictEqual(differs.observations[0].analyzerId, "contour.differs-from-snapshot");
   assert.strictEqual(differs.observations[0].matched, false);
   assert.deepEqual(differs.observations[0].descriptorTokens.map(t => t.text),
-    ["The lights kept their Rise shape."]);
+    ["The notes kept their Rise shape."]);
 
   const texts = out.musical.descriptorTokens.map(t => t.text);
-  assert.strictEqual(texts.includes("The roots changed from main-beat kicks to even eight-step kick walk."),
+  assert.strictEqual(texts.includes("The drums changed from main-beat kicks to even eight-step kick walk."),
     true, JSON.stringify(texts));
 });
 
@@ -160,7 +160,7 @@ test("a song on two families is named in the engine's order, the same way every 
     { type: "edit", target: "song", versionId: "B", baseRev: 0, song: song(ARCH, EVEN), span: SPAN, at: 3 },
     { type: "_phase", to: 1, at: 4 }]);
   const out = g.evaluateQuest(DEF, evidenceOf({ A: song(ARCH, MAIN), B: song(ARCH, EVEN) }), run);
-  assert.strictEqual(out.musical.descriptorTokens.some(t => t.text === "The lights kept their Hover shape."),
+  assert.strictEqual(out.musical.descriptorTokens.some(t => t.text === "The notes kept their Hover shape."),
     true, JSON.stringify(out.musical.descriptorTokens.map(t => t.text)));
 });
 
@@ -175,14 +175,14 @@ test("a song the garden cannot name is said so, not passed over in silence", () 
 test("slot values are engine labels, and a slot that cannot be filled cancels the sentence", () => {
   // MUTATION: interpolate the raw enum id, or leave the brace in place when a slot is missing.
   assert.strictEqual(g.questTokenText({ id: "heard-contour-kept", slots: { contour: "rise" } }),
-    "The lights kept their Rise shape.");
+    "The notes kept their Rise shape.");
   // The same label has to read well in BOTH pulse templates. The design's "kept the {pulse} heartbeat"
   // produced "kept the main-beat kicks heartbeat", which is not a sentence to read to a six-year-old.
   assert.strictEqual(g.questTokenText({ id: "heard-pulse-kept", slots: { pulse: "main-beat-kicks" } }),
-    "The roots kept their main-beat kicks.");
+    "The drums kept their main-beat kicks.");
   assert.strictEqual(g.questTokenText({ id: "heard-pulse-changed",
     slots: { oldPulse: "main-beat-kicks", newPulse: "hat-shimmer" } }),
-    "The roots changed from main-beat kicks to hi-hat shimmer.");
+    "The drums changed from main-beat kicks to hi-hat shimmer.");
 
   assert.strictEqual(g.questTokenText({ id: "heard-contour-kept", slots: { contour: "nope" } }), null);
   assert.strictEqual(g.questTokenText({ id: "heard-contour-kept" }), null);
@@ -411,7 +411,7 @@ test("what was heard is stored as ids and slots, so a later rewording reaches an
   assert.strictEqual("text" in stored, false, "wording must not be frozen into the save");
 
   assert.deepEqual(g.questObservationFor(run, "another-way-across").descriptorTokens,
-    [{ descriptorId: "heard-contour-kept", slots: { contour: "rise" }, text: "The lights kept their Rise shape." }]);
+    [{ descriptorId: "heard-contour-kept", slots: { contour: "rise" }, text: "The notes kept their Rise shape." }]);
   assert.strictEqual(g.questObservationFor(run, "choose-crossing"), null);
 });
 
@@ -487,5 +487,5 @@ test("a resumed run still says what it last heard", () => {
   const back = g2.questObservationFor(g2.QUEST_RUNS["r9"], "light-first-path");
   assert.deepEqual(back.matchedRouteIds, ["main-beat-crossing"]);
   assert.deepEqual(back.descriptorTokens.map(t => t.text),
-    ["The lights climbed.", "The roots stepped on the four main beats."]);
+    ["The notes climbed.", "The drum stepped on the four main beats."]);
 });

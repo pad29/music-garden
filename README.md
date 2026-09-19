@@ -4,7 +4,7 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 **Live:** https://tunegarden.game/ (Netlify, auto-deploys from this repo on every push to `main`)
 
-> Status: working single-file game, in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), the first **quest** (*The Firefly Crossing*), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
+> Status: working single-file game, in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), the first two **quests** (*The Firefly Crossing*, *The Waking Woods*), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
 ---
 
@@ -43,7 +43,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 | **`PACKAGES-DETAILED.md`** | Level-by-level as-built specs for every shipped expansion package, plus the **difficulty-ramp doctrine** every package follows. |
 | **`EDITOR-DESIGN.md`** | The **long-term editor design**: notes-as-objects + lens architecture, the chromatic lattice with lighting-as-tonality (draggable HOME + mode switch), duration/dynamics/multi-voice/sections plans, and the build phases that unblock the remaining package waves. |
 | **`SAVE-SHARE.md`** | The save/share system spec (pitch-based v3 song format, Studio, cloud songs) — **implemented** (P1–P3). |
-| **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **Kind 1 (*The Firefly Crossing*) ships** — reachable from the world map. Kinds 2–9 are still intent. |
+| **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **Kind 1 ships**, in two quests (*The Firefly Crossing*, *The Waking Woods*) — reachable from the world map. Kinds 2–9 are still intent. |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
 | **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS). |
@@ -80,7 +80,7 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
-- **Quests** (declarative, data-not-code — a quest is JSON, never a `chk` closure, so a player-facing Questmaker stays reachable): `loadQuestCatalog()` → the plain-JSON gate + closed v1 grammar + `questSemantics()`; `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`; `songEvidence()` → `evaluateQuest()`; `reduceQuestRun()` / `transactQuestRun()`; `enterQuestRun()` / `performQuestAction()`; `questShellModel()` + `renderQuestShell()` (the `#questCard` panel); `questEligibility()` / `surfaceQuest()` / `renderQuestHome()` (the one calm card below the map). See `QUESTS.md`.
+- **Quests** (declarative, data-not-code — a quest is JSON, never a `chk` closure, so a player-facing Questmaker stays reachable): `loadQuestCatalog(json, sourceKind)` → the plain-JSON gate + closed v1 grammar + `questCrossRefs()` + `questSemantics()`; the closed registries every id resolves against — `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`, `QUEST_CAPABILITIES`, `QUEST_CONTROLS`, `QUEST_TOOLS`, `QUEST_TRANSITIONS`, `QUEST_COMPLETION_ACTIONS`, `QUEST_PAYOFFS`, `QUEST_THEMES`, `QUEST_GROOVES`; `songEvidence()` + `questWorkspaceMismatch()` → `evaluateQuest()`; `reduceQuestRun()` / `transactQuestRun()`; `enterQuestRun()` / `performQuestAction()`; `questShellModel()` + `renderQuestShell()` (the `#questCard` panel); `questEligibility()` / `surfaceQuest()` / `renderQuestHome()` (the one calm card below the map). See `QUESTS.md`.
 - **Contour** (melody shape): `contourSeqFromGrid()` (pure) with `contourSeq()` as its live-grid wrapper, `isRising/isFalling/isHovering/isArch/isTwoArcs/isJourney`, `extrema()` (prominence-based peak counting), the `#contourGhost` SVG target-path overlay.
 - **Motion**: `motionsOf()` + `isStepwise/isOneJump/isGentle/isBold/isStaircase/isLandSoftly` (steps vs. leaps).
 - **Pulse/rhythm**: the drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `placeDrums`), `gridNotesOnBeats()`, `setBeatGuide()`, density detectors (`drumHits/isBreathing/isSyncopated`) + the `#densityMeter`.
@@ -130,13 +130,16 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 
 **Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (15 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben, Goin' Home, I Got Rhythm, Bach's Prelude in C, Chopsticks); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually, one per region**, each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
 
-**Quests shipped:** **Kind 1 — *The Firefly Crossing*** (see `QUESTS.md`). A quest is a cross-package
-commission rather than a lesson: compose a path, make a second version of it, compare the two and offer
-the one you choose. It appears as one calm card below the world map once `follow-the-fireflies` and
-`footsteps` are both complete, and it saves an ordinary v3 song you own. Quests are **declarative data**
-— the definition is validated JSON with no executable callbacks anywhere, which is what keeps a
-player-facing Questmaker reachable later. The engine (catalog, registries, evidence, evaluator, run,
-phases, shell, eligibility) is general; the Firefly is the first thing written in it.
+**Quests shipped:** **Kind 1**, in two quests (see `QUESTS.md`). A quest is a cross-package commission
+rather than a lesson: compose a path, make a second version of it, compare the two and offer the one you
+choose. ***The Firefly Crossing*** asks for a shape over a steady pulse once `follow-the-fireflies` and
+`footsteps` are complete; ***The Waking Woods*** asks for a phrase over a walking beat once `intro` and
+`footsteps` are. One appears as a calm card below the world map and the rest sit on the quest trail, and
+each saves an ordinary v3 song you own. Quests are **declarative data** — the definition is validated
+JSON with no executable callbacks anywhere, and **every id it writes resolves against a closed engine
+registry**, so an author cannot name a control, tool, transition, payoff or theme the engine does not
+have. The Waking Woods was added as data alone, with no engine branch: that is `QUESTS.md` Q9's
+authorability acceptance test, and passing it is what keeps a player-facing Questmaker reachable.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
 1. `march-and-waltz` (PW-5) — the parked meter material; needs triple groupings beyond fixed 4/4
