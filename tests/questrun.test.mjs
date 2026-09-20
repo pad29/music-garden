@@ -19,7 +19,7 @@ const emptySong = () => ({ v: 3, meta: {}, time: { cols: 16, tempo: 108, groove:
   tracks: [{ kind: "melody", notes: [] }, { kind: "drums", hits: [] }] });
 
 const fresh = (over = {}) => g.newQuestRun({ runId: "r1", questId: "firefly-crossing",
-  definitionVersion: 1, song: song(), span: SPAN, at: 100, ...over });
+  definitionVersion: 2, song: song(), span: SPAN, at: 100, ...over });
 
 const apply = (run, ops) => g.reduceQuestTransaction(run, ops);
 
@@ -48,7 +48,7 @@ test("a stale receipt is refused even if the cancellation wiring failed", () => 
 });
 
 test("an empty composition cannot be credited", () => {
-  const run = g.newQuestRun({ runId: "r2", questId: "q", definitionVersion: 1, song: emptySong(), span: SPAN, at: 0 });
+  const run = g.newQuestRun({ runId: "r2", questId: "q", definitionVersion: 2, song: emptySong(), span: SPAN, at: 0 });
   const r = g.reduceQuestRun(run, { type: "completePass", versionId: "A", editRev: 0, sessionId: "s", at: 1 });
   assert.strictEqual(r.code, "empty-song");
 });

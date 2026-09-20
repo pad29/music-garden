@@ -17,7 +17,7 @@ const song = (notes = [{ p: 60, c: 0, len: 1 }]) => ({
 /** A game in quest scope with one heard version, ready to advance or offer. */
 function questGame({ heard = true, phases = 3 } = {}) {
   const g = loadGame({ fresh: true });
-  const run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  const run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: song(), span: SPAN, at: 1 });
   g.QUEST_RUNS = { r1: run };
   g.setPlayScope({ kind: "quest", questId: "firefly-crossing", runId: "r1",

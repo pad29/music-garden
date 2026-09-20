@@ -15,7 +15,7 @@ const song = () => ({ v: 3, meta: {}, time: { cols: 16, tempo: 108, groove: 0 },
 
 /** Drive one quest all the way to a saved artifact. */
 function completeAQuest(g, runId = "r1", questId = "firefly-crossing") {
-  g.QUEST_RUNS[runId] = g.newQuestRun({ runId, questId, definitionVersion: 1, song: song(), span: SPAN, at: 1 });
+  g.QUEST_RUNS[runId] = g.newQuestRun({ runId, questId, definitionVersion: 2, song: song(), span: SPAN, at: 1 });
   g.transactQuestRun(runId, [{ type: "completePass", versionId: "A", editRev: 0, sessionId: "s-" + runId, at: 2 }]);
   g.QUEST_RUNS[runId] = { ...g.QUEST_RUNS[runId], selection: "A" };
   g.transactQuestRun(runId, [{ type: "offer", title: "The Crossing", at: 3 }]);
@@ -49,7 +49,7 @@ test("the completion record and the completed run land in one write", () => {
   // MUTATION: record history in a second Store.set after the run transaction.
   const g = loadGame({ fresh: true });
   g.QUEST_RUNS = Object.create(null);
-  g.QUEST_RUNS.r1 = g.newQuestRun({ runId: "r1", questId: "fc", definitionVersion: 1, song: song(), span: SPAN, at: 1 });
+  g.QUEST_RUNS.r1 = g.newQuestRun({ runId: "r1", questId: "fc", definitionVersion: 2, song: song(), span: SPAN, at: 1 });
   g.transactQuestRun("r1", [{ type: "completePass", versionId: "A", editRev: 0, sessionId: "s1", at: 2 }]);
   g.QUEST_RUNS.r1 = { ...g.QUEST_RUNS.r1, selection: "A" };
   g.transactQuestRun("r1", [{ type: "offer", title: "x", at: 3 }]);
@@ -68,7 +68,7 @@ test("a failed write publishes neither the run nor the history", () => {
   // MUTATION: assign QUEST_HISTORY before checking the store result.
   const g = loadGame({ fresh: true });
   g.QUEST_RUNS = Object.create(null);
-  g.QUEST_RUNS.r1 = g.newQuestRun({ runId: "r1", questId: "fc", definitionVersion: 1, song: song(), span: SPAN, at: 1 });
+  g.QUEST_RUNS.r1 = g.newQuestRun({ runId: "r1", questId: "fc", definitionVersion: 2, song: song(), span: SPAN, at: 1 });
   g.transactQuestRun("r1", [{ type: "completePass", versionId: "A", editRev: 0, sessionId: "s1", at: 2 }]);
   g.QUEST_RUNS.r1 = { ...g.QUEST_RUNS.r1, selection: "A" };
   g.transactQuestRun("r1", [{ type: "offer", title: "x", at: 3 }]);
@@ -85,7 +85,7 @@ test("a failed write publishes neither the run nor the history", () => {
 test("a v1 profile migrates its completions in memory, without forcing a write", () => {
   // MUTATION: drop completed runs during migration, or ignore a v1 envelope entirely.
   const g = loadGame({ fresh: true });
-  const done = { ...g.newQuestRun({ runId: "old", questId: "fc", definitionVersion: 1, song: song(), span: SPAN, at: 1 }),
+  const done = { ...g.newQuestRun({ runId: "old", questId: "fc", definitionVersion: 2, song: song(), span: SPAN, at: 1 }),
     status: "completed", artifact: { artifactId: "quest-run:old", versionId: "A", editRev: 0, title: "t", savedAt: 50 } };
   g.Store.set("questRuns", { v: 1, runs: { old: done } });      // the shipped C2 shape
 
@@ -104,7 +104,7 @@ test("a v2 envelope round-trips its history", () => {
   // MUTATION: read env.completed without checking the key matches its questId.
   const g = loadGame({ fresh: true });
   g.Store.set("questRuns", { v: 2, runs: {}, completed: {
-    good: { questId: "good", definitionVersion: 1, lastRunId: "r9", artifactId: "quest-run:r9", completedAt: 5 },
+    good: { questId: "good", definitionVersion: 2, lastRunId: "r9", artifactId: "quest-run:r9", completedAt: 5 },
     mismatched: { questId: "somethingelse", lastRunId: "r8" },
   }});
   g.hydrateQuestRuns();

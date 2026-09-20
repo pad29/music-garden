@@ -46,18 +46,19 @@ test("quest undo persists the restored draft before leave and resume", t => {
   assert.strictEqual(begun.ok, true, begun.code);
   const run = () => g.QUEST_RUNS[begun.runId];
 
+  const dealt = run().versions.A.song.tracks[0].notes.length;   // the landmarks this run was dealt
   g.modelSetCell(g.ROWS - 1, 0, true); // an ordinary planted note uses noteEdit and is durable
   assert.strictEqual(run().versions.A.editRev, 1);
-  assert.strictEqual(run().versions.A.song.tracks[0].notes.length, 1);
+  assert.strictEqual(run().versions.A.song.tracks[0].notes.length, dealt + 1);
 
   g.undoEdit();
-  assert.strictEqual(g.currentSong().tracks[0].notes.length, 0, "the editor visibly undid the note");
-  assert.strictEqual(run().versions.A.song.tracks[0].notes.length, 0,
+  assert.strictEqual(g.currentSong().tracks[0].notes.length, dealt, "the editor visibly undid the note");
+  assert.strictEqual(run().versions.A.song.tracks[0].notes.length, dealt,
     "the run must record the same draft now visible in the editor");
 
   g.performQuestAction("leave");
   assert.strictEqual(g.enterQuestRun(begun.runId).ok, true);
-  assert.strictEqual(g.currentSong().tracks[0].notes.length, 0,
+  assert.strictEqual(g.currentSong().tracks[0].notes.length, dealt,
     "resume must restore the undo result, not silently bring the note back");
 });
 

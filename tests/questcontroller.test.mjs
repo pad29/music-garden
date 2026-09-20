@@ -121,6 +121,7 @@ test("a starter song must fit the workspace it starts in", () => {
   const BASE = JSON.stringify(g.QUEST_DEFINITIONS["firefly-crossing"]);
   const withStarter = starter => {
     const d = JSON.parse(BASE);
+    delete d.setup;                    // a dealt task and a starter song cannot share one field
     d.starterSong = starter;
     g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [d] }), "official");
     return g.QUEST_CATALOG_ERRORS.map(e => e.code);
@@ -173,7 +174,7 @@ test("entry refuses a run it cannot honestly render", () => {
 
   const g2 = loadGame({ fresh: true });
   const r2 = g2.startQuestRun("firefly-crossing");
-  g2.QUEST_RUNS[r2.runId] = { ...runOf(g2, r2.runId), definitionVersion: 2 };
+  g2.QUEST_RUNS[r2.runId] = { ...runOf(g2, r2.runId), definitionVersion: 3 };
   assert.strictEqual(g2.enterQuestRun(r2.runId).code, "definition-changed");
 
   const g3 = loadGame({ fresh: true });

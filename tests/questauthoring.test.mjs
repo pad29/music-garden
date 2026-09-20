@@ -263,10 +263,10 @@ test("the reachability gate is the same one the starter song goes through", () =
   // Two gates that answer "could this workspace produce this song?" drift, and this seam has already
   // produced two defects from exactly that.
   const at = cols => song(RISE, MAIN, { time: { cols, tempo: 108, groove: 0 } });
-  assert.strictEqual(codes(load(d => { d.starterSong = at(12); })).includes("starter-unreachable"), true);
-  assert.strictEqual(codes(load(d => { d.starterSong = song([[61, 0]], MAIN); }))
-    .includes("starter-unreachable"), true);
-  assert.deepEqual(codes(load(d => { d.starterSong = at(16); })), []);
+  const starter = (s, m) => load(d => { delete d.setup; d.starterSong = s; if (m) m(d); });
+  assert.strictEqual(codes(starter(at(12))).includes("starter-unreachable"), true);
+  assert.strictEqual(codes(starter(song([[61, 0]], MAIN))).includes("starter-unreachable"), true);
+  assert.deepEqual(codes(starter(at(16))), []);
 });
 
 // ======================= the engine speaks about music, not about one quest =======================

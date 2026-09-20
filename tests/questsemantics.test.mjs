@@ -419,7 +419,7 @@ const SPAN = { start: 0, end: 16 };
 const gateOf = id => g.QUEST_PRIMITIVES[id].gate;
 
 function runThrough(ops) {
-  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0 });
   for (const op of ops) {
     const r = g.reduceQuestTransaction(run, [op]);

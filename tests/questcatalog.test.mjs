@@ -65,7 +65,7 @@ test("an unknown key is rejected at every level of the grammar", () => {
 test("an unknown schema version is refused, never treated as the newest one", () => {
   // MUTATION: fall back to the v1 validator for any unrecognised version.
   const g2 = loadGame({ fresh: true });
-  loadInto(g2, catalog(d => { d.v = 2; }));
+  loadInto(g2, catalog(d => { d.v = 7; }));   // 1 and 2 both ship; 7 is the one nobody wrote
   assert.strictEqual(codes(g2).includes("unsupported-schema-version"), true);
   assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), []);
 });

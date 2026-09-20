@@ -40,7 +40,7 @@ const evidenceOf = versions => {
 
 /** Build a run by replaying real ops, so nothing here asserts against a hand-carved shape. */
 function build(ops, over = {}) {
-  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0, ...over });
   for (const op of ops) {
     const r = g.reduceQuestTransaction(run, [op]);
@@ -59,7 +59,7 @@ test("the evaluator answers only for the run and version it was handed", () => {
   const run = build([]);
 
   assert.strictEqual(g.evaluateQuest(DEF, ev, { ...run, questId: "other" }).code, "wrong-quest");
-  assert.strictEqual(g.evaluateQuest(DEF, ev, { ...run, definitionVersion: 2 }).code,
+  assert.strictEqual(g.evaluateQuest(DEF, ev, { ...run, definitionVersion: 3 }).code,
     "wrong-definition-version");
   assert.strictEqual(g.evaluateQuest(DEF, ev, { ...run, phase: 9 }).code, "no-phase");
   assert.strictEqual(g.evaluateQuest(DEF, { versions: {} }, run).code, "no-evidence");
@@ -84,7 +84,7 @@ test("the evaluation comes from the evidence, never from the live grid", () => {
   // MUTATION: call contourSeq() or read drumG instead of the evidence handed in.
   const g2 = loadGame({ fresh: true });
   g2.applySong(song(FALL, HATS));                    // the live document says fall + shimmer
-  const run = g2.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  const run = g2.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0 });
   const versions = {}; versions.A = g2.songEvidence(song(RISE, MAIN));
   const out = g2.evaluateQuest(g2.QUEST_DEFINITIONS["firefly-crossing"], { versions }, run);
@@ -270,7 +270,7 @@ test("no empty version can hold the playback gate open", () => {
   // check that looks like safety and proves nothing. If this test ever fails, that reasoning is wrong
   // and `nonempty` has to become a real gate.
   const empty = song([], []);
-  const fresh = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  const fresh = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: empty, span: SPAN, at: 0 });
 
   // 1. an empty song cannot be credited in the first place
@@ -281,7 +281,7 @@ test("no empty version can hold the playback gate open", () => {
   // by nobody, yet the old check counted it and handed out a playback credit for silence.
   const silent = song([[C4, 16]], []);
   assert.strictEqual(g.songEvidence(silent).nonempty, false);
-  const silentRun = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  const silentRun = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: silent, span: SPAN, at: 0 });
   assert.strictEqual(g.reduceQuestRun(silentRun, heardA).code, "empty-song");
 
@@ -383,7 +383,7 @@ test("a comparison receipt is refused unless the run is on a phase that can make
 test("the description rides in the same transaction as the credit it belongs to", () => {
   // MUTATION: write the observation in its own transaction, so a failed write could leave a
   // description attached to playback that never got credited (or the reverse).
-  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+  let run = g.newQuestRun({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0 });
   const both = g.reduceQuestTransaction(run, [heardA, OBS]);
   assert.strictEqual(both.ok, true);
@@ -422,7 +422,7 @@ test("a description is never allowed to cost the player their credit", () => {
   // playback credit down with it. So the sink must decline to describe, not decline to credit.
   const g2 = loadGame({ fresh: true });
   const mk = (id, run) => { g2.QUEST_RUNS = { ...g2.QUEST_RUNS, [id]: run }; return run; };
-  const base = () => g2.newQuestRun({ runId: "rx", questId: "firefly-crossing", definitionVersion: 1,
+  const base = () => g2.newQuestRun({ runId: "rx", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0 });
   const toPhaseTwo = ops => {
     let run = base();
@@ -478,7 +478,7 @@ test("a receipt names the version its phase is about", () => {
 test("a resumed run still says what it last heard", () => {
   // MUTATION: keep observations in memory only, so leaving the garden forgets them.
   const g2 = loadGame({ fresh: true });
-  const run = g2.newQuestRun({ runId: "r9", questId: "firefly-crossing", definitionVersion: 1,
+  const run = g2.newQuestRun({ runId: "r9", questId: "firefly-crossing", definitionVersion: 2,
     song: song(RISE, MAIN), span: SPAN, at: 0 });
   g2.QUEST_RUNS[run.runId] = run;
   assert.strictEqual(g2.transactQuestRun("r9", [heardA, OBS]).ok, true);

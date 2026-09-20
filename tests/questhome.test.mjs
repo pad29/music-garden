@@ -24,7 +24,7 @@ const progressWith = (...completed) => {
   return { packages };
 };
 const ALL_DONE = progressWith(...PREREQS);
-const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definitionVersion: 1,
+const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
   status: "active", phase: 0, draft: "A", selection: null, versions: {}, updatedAt: 10, ...over });
 const rows = (progress, runs = {}, hist = {}) => g.questEligibility(DEFS, progress, runs, hist);
 const one = (progress, runs = {}, hist = {}) => rows(progress, runs, hist)[0];

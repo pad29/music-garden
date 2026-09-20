@@ -20,7 +20,7 @@ const song = (notes = [{ p: 60, c: 0, len: 1 }]) => ({
   tracks: [{ kind: "melody", notes }, { kind: "drums", hits: [] }],
 });
 const makeRun = (g, id = "r1", s = song()) => g.newQuestRun({
-  runId: id, questId: "firefly-crossing", definitionVersion: 1, song: s,
+  runId: id, questId: "firefly-crossing", definitionVersion: 2, song: s,
   span: { start: 0, end: 16 }, at: 0,
 });
 const credited = { type: "completePass", versionId: "A", editRev: 0, sessionId: "s1", at: 1 };
