@@ -459,7 +459,7 @@ test("the comparison gates go shut again when the thing compared changes underne
   assert.strictEqual(gateOf("comparison.auditioned-both")(compared), true);
   assert.strictEqual(gateOf("comparison.chosen")(compared), false, "nothing has been chosen yet");
 
-  const chosen = g.reduceQuestTransaction(compared, [{ type: "choose", versionId: "B", at: 8 }]);
+  const chosen = g.reduceQuestTransaction(compared, [{ type: "selectDraft", versionId: "B", at: 8 }]);
   assert.strictEqual(chosen.ok, true);
   assert.strictEqual(gateOf("comparison.chosen")(chosen.run, "B"), true);
 

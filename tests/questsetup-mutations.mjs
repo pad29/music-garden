@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const evidenceLoop = 'function questEvaluateRun(run, def){\n  const versions={};\n  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);';
-const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questconfirm.test.mjs"]
+const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questconfirm.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs"]
   .map(name => ({ path: "tests/" + name, source: readFileSync(new URL("./" + name, import.meta.url), "utf8") }));
 function run(title, patches = []) {
   let candidate = source;
@@ -228,11 +228,11 @@ const mutations = [
   ["edits and undo retire the question even when the song returns to the same notes",
     'a.editRev===b.editRev', 'true'],
   ["leaving and reloading discard the answer without losing the draft or earned gates",
-    'questAuditionVersionId=null; questConfirm=null;', 'questAuditionVersionId=null;'],
+    'questConfirm=null;\n  if(typeof openHome', 'if(typeof openHome'],
   ["leaving and reloading discard the answer without losing the draft or earned gates",
     'const env=questRunEnvelope(pruned, hist);', 'const env=questRunEnvelope(pruned, hist); env.confirm=questConfirm;'],
-  ["auditioning clears an old answer including a refused audition",
-    'if(actionId==="audition"){ questConfirm=null;', 'if(actionId==="audition"){'],
+  ["picking clears an old answer including a refused pick",
+    'if(actionId==="pick"){\n    questConfirm=null;', 'if(actionId==="pick"){'],
   ...[
     ['if(!p || p.type==="compare-offer" || run.status!=="active") return null;',
       'if(!p || run.status!=="active") return null;'],
@@ -266,6 +266,84 @@ const mutations = [
   ["comparison offer availability follows its gates across all readiness combinations",
     'canOffer:  p.type==="compare-offer" && gatesOpen,',
     'canOffer:  p.type==="compare-offer" && gatesOpen && questReadinessMissing(def, run, current).length===0,'],
+
+  // ---- Step E commit 5: one pick hears and holds; only receipts compare ----
+  ...[
+    ['selection:op.versionId, draft:op.versionId', 'selection:op.versionId, draft:run.draft'],
+    ['selection:op.versionId, draft:op.versionId', 'selection:run.selection, draft:op.versionId'],
+    ['applySong(QUEST_RUNS[runId].versions[o.versionId].song)', 'applySong(QUEST_RUNS[runId].versions.B.song)'],
+    ['start({ versionId:o.versionId, purpose:"audition" });', ';'],
+    ['start({ versionId:o.versionId, purpose:"audition" });', 'start({ versionId:o.versionId, purpose:"play" });'],
+    ['start({ versionId:o.versionId, purpose:"audition" });', 'start({ versionId:"B", purpose:"audition" });'],
+    ['const was=run.draft;\n    if(playing) stop();', 'const was=run.draft;'],
+  ].map(([from,to])=>["pick stops the old session and binds the visible held path to its revision",from,to]),
+  ...[
+    ['if(op.type==="selectDraft"){', 'if(op.type==="selectDraft"){ if(!run.comparison) return no("not-compared");'],
+    ['if(op.type==="selectDraft"){\n    if(!active) return no("not-active");', 'if(op.type==="selectDraft"){'],
+    ['if(op.type==="selectDraft"){\n    if(!active) return no("not-active");\n    if(!V(op.versionId)) return no("no-version");',
+      'if(op.type==="selectDraft"){\n    if(!active) return no("not-active");'],
+    ['selection:op.versionId, draft:op.versionId', 'selection:(run.selection=op.versionId), draft:op.versionId'],
+    ['if(op.type==="selectDraft"){', 'if(op.type==="selectDraft" || op.type==="choose"){'],
+  ].map(([from,to])=>["selectDraft is pure and needs an active existing version but no comparison",from,to]),
+  ...["audition","choose","compare"].map(id=>[
+    "removed actions cannot select play or compare behind the new controls",
+    'if(actionId==="pick"){', `if(actionId==="pick" || actionId==="${id}"){`,
+  ]),
+  ...[
+    ['if(!r.ok) return r;                                   // a refused write leaves the field as it was',
+      'if(!r.ok) { applySong(run.versions[o.versionId].song); return r; }'],
+    ['if(!r.ok) return r;                                   // a refused write leaves the field as it was',
+      'if(!r.ok) { journalClear(); return r; }'],
+    ['if(!r.ok) return r;                                   // a refused write leaves the field as it was',
+      'if(!r.ok) { start({versionId:o.versionId,purpose:"audition"}); return r; }'],
+  ].map(([from,to])=>["failed selectDraft leaves the field run storage and undo target untouched",from,to]),
+  ["switching paths clears both undo and redo from the previous version",
+    "journalClear();                                     // the other path's history is not this one's", ";"],
+  // re-tapping the held path must not reload it: applySong rebuilds every note id, so tx() journals a
+  // musically invisible entry that eats the child's undo
+  ["one undo after re-tapping the held path takes back the last musical edit",
+    'if(was!==o.versionId){', 'if(true){'],
+  ["painting a pick never increments editRev even through palette clearing",
+    'const wasPainting=questPainting; questPainting=true;', 'const wasPainting=questPainting;'],
+  ...[
+    ['if(p && p.type==="compare-offer")\n      transactQuestRun(runId, [{ type:"compare",',
+      'if(false)\n      transactQuestRun(runId, [{ type:"compare",'],
+    ['if(p && p.type==="compare-offer")\n      transactQuestRun(runId, [{ type:"compare",',
+      'if(p && p.type==="compare-offer" && !run.comparison)\n      transactQuestRun(runId, [{ type:"compare",'],
+    ['if(fx.purpose==="audition") ops.push', 'if(false) ops.push'],
+  ].map(([from,to])=>["receipts refresh comparison after editing either held path and stale receipts cannot help",from,to]),
+  ...[
+    ['const saved=QUEST_RUNS[runId];', 'const saved=run;'],
+    ['if(!questPhaseGate(def, run.phase, run.selection)(run)) return fail("gate-closed");', ';'],
+    ['if(c.versionIds.indexOf(run.selection)<0) return false;', ';'],
+  ].map(([from,to])=>["offer needs both current auditions and a selection and returns the saved artifact id",from,to]),
+  // a finished quest keeps no path toggles: nothing left to tap
+  ["offer needs both current auditions and a selection and returns the saved artifact id",
+    'const paths = (p.type==="compare-offer" && !finished && !stuck)', 'const paths = (p.type==="compare-offer")'],
+  ...[
+    ['if(actionId==="pick"){', 'if(actionId==="pick" && run.questId==="firefly-crossing"){'],
+    ['p.versionIds.map(id=>({ versionId:id, label:label(id),', '["A","B"].map(id=>({ versionId:id, label:label(id),'],
+    ['reflectionPrompt: p.reflection ? p.reflection.promptText : ""', 'reflectionPrompt: ""'],
+    ['versionId:id, label:label(id),', 'versionId:id, label:id,'],
+    ['selected:run.selection===id, heard:auditioned(id)', 'selected:run.draft!==id, heard:auditioned(id)'],
+    ['selected:run.selection===id, heard:auditioned(id)', 'selected:run.selection===id, heard:false'],
+    ['paths,\n    // Validated by the catalog', 'paths:[],\n    // Validated by the catalog'],
+  ].map(([from,to])=>["pick and shell use authored ids labels and reflection without consulting live evidence",from,to]),
+  ["a stale audition stops counting as heard",
+    'return !!x && x.auditionedRev===x.editRev;', 'return !!x && x.auditionedRev!==null;'],
+  ...[
+    ['function choiceUp(){ return !!choiceOpts; }', 'function choiceUp(){ return document.getElementById("choiceRow").style.display!=="none"; }'],
+    ['function choiceUp(){ return !!choiceOpts; }', 'function choiceUp(){ return false; }'],
+  ].map(([from,to])=>["Grow and Trim use lesson picker state while quest paths remain editable",from,to]),
+  ["a field click during a pick edits the held path immediately",
+    'function cellClick(r,c,el){', 'function cellClick(r,c,el){ if(isQuestScope()) return;'],
+  ["a drum click during a pick edits the held path immediately",
+    'function drumClick(d,c){', 'function drumClick(d,c){ if(isQuestScope()) return;'],
+  ...[
+    ['function undoEdit(){', 'function undoEdit(){ if(isQuestScope()) return;'],
+    ['function redoEdit(){', 'function redoEdit(){ if(isQuestScope()) return;'],
+    ['if(questPainting) return;', 'if(questPainting || (isQuestScope() && QUEST_RUNS[activeScope.runId].phase===2)) return;'],
+  ].map(([from,to])=>["undo and redo during a pick restore the held version and leave its sibling alone",from,to]),
 ];
 
 const green = new Set();

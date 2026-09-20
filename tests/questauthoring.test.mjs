@@ -271,7 +271,7 @@ test("the reachability gate is the same one the starter song goes through", () =
 
 // ======================= the engine speaks about music, not about one quest =======================
 
-test("no engine descriptor is written in one quest's fiction", () => {
+test("no engine descriptor is written in one quest's fiction", t => {
   // MUTATION: put a quest's nouns back into QUEST_DESCRIPTORS.
   // "The lights climbed" and "The roots stepped…" were engine strings. A second, differently-themed
   // commission would have spoken of lights and roots that are not in it — mechanically generic and
@@ -287,7 +287,7 @@ test("no engine descriptor is written in one quest's fiction", () => {
   assert.strictEqual(g.QUEST_DEFINITIONS["waking-woods"].brief.worldText.includes("Hopper"), true);
 });
 
-test("the same music gets the same sentence, whichever quest asked", () => {
+test("the same music gets the same sentence, whichever quest asked", t => {
   // MUTATION: let describe() or the descriptor lookup take the quest into account.
   // This is the property the neutral wording exists for: a fact about the song must not change its
   // words because a different commission observed it.
@@ -388,14 +388,16 @@ test("the second commission can be played from its first note to a saved song", 
 
   // phase 3: hear both, choose one, offer it
   for (const id of ["A", "B"]) {
-    assert.strictEqual(g2.performQuestAction("audition", { versionId: id }).ok, true);
+    t.after(() => { if (g2.playing) g2.stop(); });
+    assert.strictEqual(g2.performQuestAction("pick", { versionId: id }).ok, true);
     g2.stop();
     const v = runOf(g2, runId).versions[id];
     g2.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  assert.strictEqual(g2.performQuestAction("compare").ok, true);
-  assert.strictEqual(g2.performQuestAction("choose", { versionId: "B" }).ok, true);
+  g2.questAfterReceipt(runId);
+  t.after(() => { if (g2.playing) g2.stop(); });
+  assert.strictEqual(g2.performQuestAction("pick", { versionId: "B" }).ok, true);
   const before = g2.getSaves().length;
   const offered = g2.performQuestAction("offer");
   assert.strictEqual(offered.ok, true, offered.code);

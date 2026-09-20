@@ -219,7 +219,7 @@ test("each readiness kind blocks phases one and two after all procedural gates a
   }
 });
 
-test("Q6 permits a final offer that fails every readiness kind and matches no route", () => {
+test("Q6 permits a final offer that fails every readiness kind and matches no route", t => {
   // MUTATION: remove compare-offer exemption from gate/evaluator, or consult readiness in offer.
   const { g, id, d } = launch();
   for (const vid of ["A", "B"]) {
@@ -233,8 +233,9 @@ test("Q6 permits a final offer that fails every readiness kind and matches no ro
     assert.strictEqual(g.transactQuestRun(id, [{ type: "audition", versionId: vid, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: 20 }]).ok, true);
   }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
+  g.questAfterReceipt(id);
+  t.after(() => { if (g.playing) g.stop(); });
+  assert.strictEqual(g.performQuestAction("pick", { versionId: "B" }).ok, true);
   const sparse = clone(g.QUEST_RUNS[id].versions.B.song);
   sparse.tracks[0].notes = [{ p: 60, c: 0, len: 1 }]; sparse.tracks[1].hits = [];
   edit(g, sparse);

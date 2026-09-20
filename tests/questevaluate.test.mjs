@@ -311,7 +311,7 @@ test("offering belongs to the last phase and advancing to the others", () => {
     { type: "audition", versionId: "B", editRev: 1, sessionId: "s2", at: 6 },
     { type: "_phase", to: 1, at: 7 }, { type: "_phase", to: 2, at: 8 },
     { type: "compare", leftVersionId: "A", rightVersionId: "B", at: 9 },
-    { type: "choose", versionId: "B", at: 10 }]);
+    { type: "selectDraft", versionId: "B", at: 10 }]);
   const last = g.evaluateQuest(DEF, evidenceOf({ A: song(RISE, MAIN), B: song(FALL, MAIN) }), done);
   assert.strictEqual(last.ok, true);
   assert.strictEqual(last.currentVersionId, "B", "the chosen version is the one being offered");

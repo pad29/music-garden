@@ -292,55 +292,37 @@ function atCompare() {
   return { g, runId };
 }
 
-test("auditioning is a listen: the grid becomes a speaker, never a page", t => {
-  // MUTATION: drop the audition guard in noteEdit.
-  // Applying A to hear it puts A's music on the grid while the DRAFT is B. Without the guard, the
-  // next edit writes A's notes back as B — silently replacing the second path with the first.
-  const { g, runId } = atCompare();
-  alwaysStop(t, g);
-  const bBefore = JSON.stringify(runOf(g, runId).versions.B.song);
-
-  const a = g.performQuestAction("audition", { versionId: "A" });
-  assert.strictEqual(a.ok, true);
-  assert.strictEqual(g.contourSeq().length, 7, "A really is on the grid");
+test("picking holds the visible path and edits never overwrite the other path", t => {
+  // Replaces the removed noteEdit listening-lock subject: pick now changes the write target.
+  // MUTATION: selectDraft updates selection but leaves draft pointing at B.
+  const { g, runId } = atCompare(); alwaysStop(t, g);
+  const bBefore = JSON.stringify(runOf(g, runId).versions.B);
+  assert.strictEqual(g.performQuestAction("pick", { versionId:"A" }).ok, true);
   assert.strictEqual(g.isRising(g.contourSeq()), true);
-
-  g.noteEdit("a stray poke while listening");
-  assert.strictEqual(JSON.stringify(runOf(g, runId).versions.B.song), bBefore,
-    "the second path must survive listening to the first");
-  assert.strictEqual(runOf(g, runId).versions.B.editRev, 1);
-
-  g.stop();
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "C" }).code, "bad-version");
+  assert.strictEqual(runOf(g, runId).draft, "A");
+  const rev = runOf(g, runId).versions.A.editRev;
+  g.modelSetCell(g.ROWS - 1, 9, true);
+  assert.strictEqual(runOf(g, runId).versions.A.editRev, rev + 1);
+  assert.deepEqual(runOf(g, runId).versions.A.song.tracks, g.currentSong().tracks);
+  assert.strictEqual(JSON.stringify(runOf(g, runId).versions.B), bBefore);
+  assert.strictEqual(g.performQuestAction("pick", { versionId:"C" }).code, "bad-version");
 });
 
-test("choosing hands the grid back, and the choice becomes the draft", t => {
-  // MUTATION: leave the audition lock set after a choice, so the player cannot edit their own pick.
-  const { g, runId } = atCompare();
-  alwaysStop(t, g);
-  for (const id of ["A", "B"]) {
-    assert.strictEqual(g.performQuestAction("audition", { versionId: id }).ok, true);
-    g.stop();
-    const v = runOf(g, runId).versions[id];
-    const r = g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
-      sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
-    assert.strictEqual(r.ok, true, "audition " + id + ": " + r.code);
-  }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "A" }).ok, true);
 
-  const run = runOf(g, runId);
-  assert.strictEqual(run.selection, "A");
-  assert.strictEqual(run.draft, "A");
-  assert.strictEqual(g.isRising(g.contourSeq()), true, "the chosen song is what is on the grid");
-
-  g.applySong(song([[60, 0], [62, 2], [64, 4], [67, 6], [67, 8]], MAIN));
-  g.noteEdit("a final touch");
-  assert.strictEqual(runOf(g, runId).versions.A.editRev, 2, "editing is live again on the chosen draft");
-  assert.strictEqual(runOf(g, runId).selection, "A", "and the choice is not forgotten by an edit");
+test("the first pick selects an editable draft before any comparison exists", t => {
+  // Replaces the removed separate choose step and its comparison prerequisite.
+  // MUTATION: selectDraft refuses until a comparison exists.
+  const { g, runId } = atCompare(); alwaysStop(t, g);
+  assert.strictEqual(runOf(g, runId).comparison, null);
+  assert.strictEqual(g.performQuestAction("pick", { versionId:"A" }).ok, true);
+  assert.strictEqual(runOf(g, runId).selection, "A");
+  assert.strictEqual(runOf(g, runId).draft, "A");
+  const rev=runOf(g, runId).versions.A.editRev;
+  g.modelSetCell(g.ROWS - 1, 9, true);
+  assert.strictEqual(runOf(g, runId).versions.A.editRev, rev+1);
+  assert.strictEqual(runOf(g, runId).selection, "A");
 });
 
-// ============================ offering ============================
 
 test("offering needs the phase's gates, and produces one ordinary saved song", t => {
   // MUTATION: offer without checking the gate, or write something other than a plain v3 song.
@@ -349,15 +331,17 @@ test("offering needs the phase's gates, and produces one ordinary saved song", t
   assert.strictEqual(g.performQuestAction("offer").code, "gate-closed", "nothing compared or chosen yet");
 
   for (const id of ["A", "B"]) {
-    assert.strictEqual(g.performQuestAction("audition", { versionId: id }).ok, true);
+    t.after(() => { if (g.playing) g.stop(); });
+    assert.strictEqual(g.performQuestAction("pick", { versionId: id }).ok, true);
     g.stop();
     const v = runOf(g, runId).versions[id];
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("offer").code, "gate-closed", "compared, but nothing chosen");
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
+  g.questAfterReceipt(runId);
+  assert.strictEqual(runOf(g, runId).selection, "B", "the last pick already selected B");
+  t.after(() => { if (g.playing) g.stop(); });
+  assert.strictEqual(g.performQuestAction("pick", { versionId: "B" }).ok, true);
 
   const before = g.getSaves().length;
   const r = g.performQuestAction("offer");
@@ -379,13 +363,15 @@ test("a title the player typed wins, and an empty one falls back to the quest's"
   const { g, runId } = atCompare();
   alwaysStop(t, g);
   for (const id of ["A", "B"]) {
-    g.performQuestAction("audition", { versionId: id }); g.stop();
+    t.after(() => { if (g.playing) g.stop(); });
+    g.performQuestAction("pick", { versionId: id }); g.stop();
     const v = runOf(g, runId).versions[id];
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
   assert.strictEqual(g.performQuestAction("offer", { title: "  Night Bridge  " }).ok, true);
   assert.strictEqual(g.getSaves()[0].meta.title, "Night Bridge");
 });
@@ -409,43 +395,39 @@ test("leaving is not abandoning, and loses nothing", () => {
   assert.strictEqual(runOf(g, runId).status, "abandoned");
 });
 
-test("a listening lock belongs to one comparison and never leaves it", t => {
-  // MUTATION: leave questAuditionVersionId set across a scope change.
-  // It is module state, not run state, and deliberately not persisted — a reload must land a child
-  // editing their draft, never stuck unable to touch their own work. The same reasoning that cancels
-  // a completion session on navigation applies to the lock.
-  const { g, runId } = atCompare();
-  alwaysStop(t, g);
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "A" }).ok, true);
-  assert.strictEqual(g.questAuditionVersionId, "A");
-  g.stop();
-
-  g.setPlayScope({ kind: "package", packageId: "footsteps" });
-  assert.strictEqual(g.questAuditionVersionId, null, "the lock does not follow you out of the quest");
-
+test("leaving after a pick resumes the held path as an editable draft", t => {
+  // Replaces lock lifecycle assertions: the held draft now survives navigation.
+  // MUTATION: persist selection without the new draft.
+  const { g, runId } = atCompare(); alwaysStop(t, g);
+  assert.strictEqual(g.performQuestAction("pick", {versionId:"A"}).ok, true);
+  g.performQuestAction("leave");
   assert.strictEqual(g.enterQuestRun(runId).ok, true);
-  assert.strictEqual(g.questAuditionVersionId, null, "and coming back does not restore it");
-  assert.strictEqual(g.isFalling(g.contourSeq()), true, "the draft is what is on the grid, not the last thing heard");
+  assert.strictEqual(g.isRising(g.contourSeq()), true);
+  assert.strictEqual(runOf(g, runId).draft, "A");
+  const rev=runOf(g, runId).versions.A.editRev;
+  g.modelSetCell(g.ROWS-1,9,true);
+  assert.strictEqual(runOf(g, runId).versions.A.editRev,rev+1);
 });
 
-test("undo is refused while listening, even once the grid has been poked", t => {
-  // MUTATION: drop the guard in undoEdit/redoEdit.
-  // A poke during an audition is refused persistence by the lock — but tx() journals it BEFORE
-  // noteEdit is consulted, so the journal is not empty after all. Undoing that entry would restore a
-  // snapshot the run does not have, putting the editor and the run back out of step.
-  const { g, runId } = atCompare();
-  alwaysStop(t, g);
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "A" }).ok, true);
-  const bBefore = JSON.stringify(runOf(g, runId).versions.B.song);
 
-  g.modelSetCell(g.ROWS - 1, 9, true);                      // a stray poke: journaled, never persisted
-  const poked = g.currentSong().tracks[0].notes.length;
+test("undo and redo during a pick restore the held version and leave its sibling alone", t => {
+  // Replaces the deliberately removed undo/redo lock, including the old untestable-redo caveat.
+  // MUTATION: refuse undo or redo while in the comparison phase.
+  const { g, runId }=atCompare(); alwaysStop(t,g);
+  g.performQuestAction("pick",{versionId:"A"});
+  const a=JSON.stringify(g.currentSong().tracks), b=JSON.stringify(runOf(g,runId).versions.B);
+  g.modelSetCell(g.ROWS-1,9,true);
+  const edited=JSON.stringify(g.currentSong().tracks);
+  assert.notStrictEqual(edited,a);
   g.undoEdit();
-  assert.strictEqual(g.currentSong().tracks[0].notes.length, poked, "undo did nothing, because it may not");
+  assert.strictEqual(JSON.stringify(g.currentSong().tracks),a);
+  assert.strictEqual(JSON.stringify(runOf(g,runId).versions.A.song.tracks),a);
   g.redoEdit();
-  assert.strictEqual(g.currentSong().tracks[0].notes.length, poked);
-  assert.strictEqual(JSON.stringify(runOf(g, runId).versions.B.song), bBefore, "and the draft is untouched");
+  assert.strictEqual(JSON.stringify(g.currentSong().tracks),edited);
+  assert.strictEqual(JSON.stringify(runOf(g,runId).versions.A.song.tracks),edited);
+  assert.strictEqual(JSON.stringify(runOf(g,runId).versions.B),b);
 });
+
 
 test("undo never walks back into a song the game applied", t => {
   // MUTATION: drop journalClear() after entering, auditioning, or choosing.
@@ -470,14 +452,16 @@ test("undo never walks back into a song the game applied", t => {
   assert.strictEqual(continueQuest(g).ok, true);
   alwaysStop(t, g);
   for (const id of ["A", "B"]) {
-    assert.strictEqual(g.performQuestAction("audition", { versionId: id }).ok, true);
+    t.after(() => { if (g.playing) g.stop(); });
+    assert.strictEqual(g.performQuestAction("pick", { versionId: id }).ok, true);
     g.stop();
     const v = runOf(g, runId).versions[id];
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  assert.strictEqual(g.performQuestAction("pick", { versionId: "B" }).ok, true);
 
   g.modelSetCell(g.ROWS - 1, 9, true);
   // asserted after EVERY press, not just the last: keep going far enough and the journal runs out
@@ -490,11 +474,6 @@ test("undo never walks back into a song the game applied", t => {
   assert.strictEqual(g.kickWalk8(), true);
   assert.strictEqual(runOf(g, runId).draft, "B");
 });
-
-// NO test for the matching guard in redoEdit(). It cannot fire today: tx() empties journalRedo on
-// every commit, and applying the audition's song is a commit — so the redo stack is always empty while
-// a lock is held, and a test would pass whether the guard were there or not. That is a false proof,
-// and this project has caught five of those already. The reasoning lives in the code beside the guard.
 
 test("every action refuses to run outside a quest", () => {
   // MUTATION: let the controller act on whatever scope happens to be current.

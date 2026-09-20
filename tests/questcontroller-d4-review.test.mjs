@@ -4,7 +4,7 @@
 // data and the existing undo journal.  A quest run owns the durable song, so neither may leave the live
 // document and the run disagreeing.
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert";
 import { loadQuestGame as loadGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
@@ -62,52 +62,20 @@ test("quest undo persists the restored draft before leave and resume", t => {
     "resume must restore the undo result, not silently bring the note back");
 });
 
-test("undo cannot write through a listening lock", t => {
-  // DEFECT (GPT's finding): undo during an audition restored a snapshot while the lock stayed set, so
-  // the grid and the run disagreed and the next edit was silently dropped.
-  //
-  // DISAGREEMENT ON THE REMEDY. GPT expected undo to release the lock and hand the draft back. I do
-  // not: undo is not a "stop listening" button anywhere else in this game, and during a comparison
-  // there is nothing of the player's to take back — only songs the game applied for them to hear.
-  // Two changes instead. An applied audition no longer enters the journal at all, following the rule
-  // openStudioWith() and the cloud load already follow ("the async load must not be the first undoable
-  // edit"); and undo refuses outright while a lock is held. The way back to the draft is choosing,
-  // which is the act that means "I have heard enough".
-  const g = loadGame({ fresh: true });
-  t.after(() => { try { if (g.playing) g.stop(); } finally { clearTimeout(g.autosaveT); } });
-  const runId = atCompare(g);
-  const bBefore = JSON.stringify(g.QUEST_RUNS[runId].versions.B.song);
-
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "A" }).ok, true);
+test("a final-phase undo remains durable when the held path is resumed", t => {
+  // The lock subject was removed in E5. The replacement pins D4's underlying persistence guarantee.
+  // MUTATION: restoreSnapshot schedules autosave instead of writing the quest run.
+  const g=loadGame({fresh:true});
+  t.after(()=>{if(g.playing)g.stop(); clearTimeout(g.autosaveT);});
+  const runId=atCompare(g);
+  g.performQuestAction("pick",{versionId:"A"});
+  const before=JSON.stringify(g.currentSong().tracks);
+  g.modelSetCell(g.ROWS-1,9,true);
+  assert.notStrictEqual(JSON.stringify(g.currentSong().tracks),before);
   g.undoEdit();
-  g.undoEdit();
-  assert.strictEqual(g.questAuditionVersionId, "A", "still listening to A");
-  assert.strictEqual(g.isRising(g.contourSeq()), true, "and A is still what is on the grid");
-  assert.strictEqual(JSON.stringify(g.QUEST_RUNS[runId].versions.B.song), bBefore,
-    "the draft survived, which is the whole point of the lock");
-  g.stop();
-
-  // choosing is what hands the grid back, and then undo is a real edit again
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).code, "not-compared",
-    "a choice still needs a comparison behind it");
-  for (const id of ["A", "B"]) {
-    assert.strictEqual(g.performQuestAction("audition", { versionId: id }).ok, true);
-    g.stop();
-    const v = g.QUEST_RUNS[runId].versions[id];
-    g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
-      sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
-  }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
-  assert.strictEqual(g.questAuditionVersionId, null);
-
-  g.modelSetCell(g.ROWS - 1, 8, true);
-  assert.strictEqual(g.QUEST_RUNS[runId].versions.B.editRev, 2,
-    "the chosen draft is editable and durable again");
-  g.undoEdit();
-  assert.strictEqual(g.QUEST_RUNS[runId].versions.B.editRev, 3,
-    "and undo is once more an edit the run records");
-  assert.strictEqual(g.currentSong().tracks[0].notes.length,
-    g.QUEST_RUNS[runId].versions.B.song.tracks[0].notes.length,
-    "the editor and the run agree on what the draft is");
+  assert.strictEqual(JSON.stringify(g.QUEST_RUNS[runId].versions.A.song.tracks),before);
+  g.performQuestAction("leave"); g.enterQuestRun(runId);
+  assert.strictEqual(g.QUEST_RUNS[runId].draft,"A");
+  assert.strictEqual(JSON.stringify(g.currentSong().tracks),before);
 });
+

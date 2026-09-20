@@ -140,32 +140,25 @@ function atCompare() {
   return { g, runId, def };
 }
 
-test("choosing waits for both paths to have been heard", () => {
-  // MUTATION: enable choose before there is a comparison behind it.
-  const { g, runId, def } = atCompare();
-  const before = model(g, runId, def, {});
-  assert.deepEqual(before.actions.filter(a => a.id === "audition").map(a => a.label),
-    ["Hear Path A", "Hear Path B"], "the labels are the definition's own choice text");
-  for (const a of before.actions.filter(a => a.id === "choose")) assert.strictEqual(a.enabled, false);
-  assert.strictEqual(action(before, "offer").enabled, false);
-
-  for (const id of ["A", "B"]) {
-    const v = runOf(g, runId).versions[id];
-    g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
-      sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
+test("paths can be picked immediately while offering waits for current listening", t => {
+  // Replaces separate Choose buttons and their removed comparison prerequisite.
+  // MUTATION: omit path choices or retain the six-action comparison card.
+  const {g,runId,def}=atCompare(); alwaysStop(t,g);
+  const before=model(g,runId,def,{});
+  assert.deepEqual(before.actions.map(a=>a.id),["offer","leave"]);
+  assert.deepEqual(before.paths,def.phases[2].reflection.choices.map(c=>({versionId:c.id,label:c.label,selected:false,heard:false})));
+  assert.strictEqual(before.reflectionPrompt,def.phases[2].reflection.promptText);
+  assert.strictEqual(action(before,"offer").enabled,false);
+  for(const versionId of ["A","B"]){
+    assert.strictEqual(g.performQuestAction("pick",{versionId}).ok,true);
+    assert.strictEqual(model(g,runId,def,{}).paths.find(p=>p.versionId===versionId).selected,true);
+    const v=runOf(g,runId).versions[versionId];
+    g.onCompletePass({runId,versionId,editRev:v.editRev,sessionId:"pick-"+versionId,purpose:"audition"});
+    assert.strictEqual(action(model(g,runId,def,{}),"offer").enabled,versionId==="B");
   }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  const after = model(g, runId, def, {});
-  for (const a of after.actions.filter(a => a.id === "choose")) assert.strictEqual(a.enabled, true);
-  assert.strictEqual(action(after, "offer").enabled, false, "chosen is still missing");
-
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
-  const chosen = model(g, runId, def, {});
-  assert.strictEqual(action(chosen, "choose", "B").done, true);
-  assert.strictEqual(action(chosen, "offer").enabled, true);
-  assert.strictEqual(action(chosen, "offer").label, def.completion.label);
-  assert.strictEqual(action(chosen, "offer").defaultTitle, def.completion.defaultTitle);
+  assert.strictEqual(action(model(g,runId,def,{}),"offer").label,def.completion.label);
 });
+
 
 test("hearing a path is marked done, and only at its current revision", () => {
   // MUTATION: mark it done from any past audition, so an edit would not un-hear it.
@@ -173,8 +166,8 @@ test("hearing a path is marked done, and only at its current revision", () => {
   const v = runOf(g, runId).versions.A;
   g.transactQuestRun(runId, [{ type: "audition", versionId: "A", editRev: v.editRev,
     sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
-  assert.strictEqual(action(model(g, runId, def, {}), "audition", "A").done, true);
-  assert.strictEqual(action(model(g, runId, def, {}), "audition", "B").done, false);
+  assert.strictEqual(model(g, runId, def, {}).paths.find(p => p.versionId === "A").heard, true);
+  assert.strictEqual(model(g, runId, def, {}).paths.find(p => p.versionId === "B").heard, false);
 });
 
 // ============================ what the garden said ============================
@@ -192,7 +185,7 @@ test("the shell repeats what was heard, and only for the phase it belongs to", (
     "phase 2 has heard nothing yet, whatever phase 1 remembers");
 });
 
-test("the saved line appears only once the run really is saved", () => {
+test("the saved line appears only once the run really is saved", t => {
   // MUTATION: show it when the offer is made rather than when the write lands.
   const { g, runId, def } = atCompare();
   assert.strictEqual(model(g, runId, def, {}).saved, "");
@@ -201,8 +194,9 @@ test("the saved line appears only once the run really is saved", () => {
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
   assert.strictEqual(model(g, runId, def, {}).saved, "");
   assert.strictEqual(g.performQuestAction("offer").ok, true);
 
@@ -333,7 +327,7 @@ test("entering a quest opens the workspace it declared, not the last level's", (
 
 // ============================ the shell repaints when the state moves ============================
 
-test("the screen speaks the moment the song is saved", () => {
+test("the screen speaks the moment the song is saved", t => {
   // MUTATION: drop the repaint after a successful offer.
   // This shipped silent: the song was written, the run completed, and the panel still showed the same
   // six buttons and no line of text. The whole quest was for that moment. `questLastRendered` is the
@@ -344,8 +338,9 @@ test("the screen speaks the moment the song is saved", () => {
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
   assert.strictEqual(g.performQuestAction("offer").ok, true);
   assert.strictEqual(g.questLastRendered.saved, def.completion.completionText);
   assert.deepEqual(g.questLastRendered.actions.map(a => a.id), ["leave"]);
@@ -365,7 +360,7 @@ test("an edit puts out the button it just invalidated", () => {
     "the shell must have repainted itself, without anyone asking it to");
 });
 
-test("a last touch after choosing can still be offered", () => {
+test("a last touch after choosing can still be offered", t => {
   // MUTATION: record the comparison only the first time both paths are heard.
   // A comparison stores the REVISIONS it compared. Adding one more seed to the path they had just
   // chosen left it stale, shut BOTH comparison gates, and nothing refreshed it — so offering became
@@ -377,8 +372,9 @@ test("a last touch after choosing can still be offered", () => {
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
   assert.strictEqual(action(model(g, runId, def, {}), "offer").enabled, true);
 
   edit(g, song([[67, 0], [64, 2], [62, 4], [60, 6], [60, 10]], MAIN));
@@ -396,7 +392,7 @@ test("a last touch after choosing can still be offered", () => {
   assert.strictEqual(g.performQuestAction("offer").ok, true);
 });
 
-test("a run stuck mid-offering offers the way out of it", () => {
+test("a run stuck mid-offering offers the way out of it", t => {
   // MUTATION: treat "offering" as finished, so the child is told the song is safe and given only Leave.
   // Nothing was written — that is what "offering" means — and there was no way to try again.
   const { g, runId, def } = atCompare();
@@ -405,8 +401,9 @@ test("a run stuck mid-offering offers the way out of it", () => {
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
 
   const realSet = g.Store.set;
   g.Store.set = (k, v) => (k === "saves" ? false : realSet(k, v));
@@ -426,7 +423,7 @@ test("a run stuck mid-offering offers the way out of it", () => {
   assert.strictEqual(g.getSaves()[0].meta.source.kind, "quest");
 });
 
-test("a stale audition stops counting as heard", () => {
+test("a stale audition stops counting as heard", t => {
   // MUTATION: mark a path heard from any past audition.
   // After choosing, the chosen version becomes editable again — and an edit means the version that was
   // heard is not the version that would be offered. The tick has to go out with the gate.
@@ -436,30 +433,32 @@ test("a stale audition stops counting as heard", () => {
     g.transactQuestRun(runId, [{ type: "audition", versionId: id, editRev: v.editRev,
       sessionId: v.lastCompletePlaySessionId, at: Date.now() }]);
   }
-  g.performQuestAction("compare");
-  g.performQuestAction("choose", { versionId: "B" });
-  assert.strictEqual(action(model(g, runId, def, {}), "audition", "B").done, true);
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  g.performQuestAction("pick", { versionId: "B" });
+  assert.strictEqual(model(g, runId, def, {}).paths.find(p => p.versionId === "B").heard, true);
 
   edit(g, song([[60, 0], [62, 2], [64, 4], [67, 6], [67, 10]], MAIN));   // one more seed on the chosen path
   const after = model(g, runId, def, {});
-  assert.strictEqual(action(after, "audition", "B").done, false,
+  assert.strictEqual(after.paths.find(p => p.versionId === "B").heard, false,
     "what was heard is no longer what would be offered");
   assert.strictEqual(action(after, "offer").enabled, false);
 });
 
-test("the drum bed is locked while a path is playing back, just as the field is", t => {
-  // MUTATION: guard only the melody bed. The heartbeat is half of what this quest is about, and a pad
-  // press during an audition changed what the child saw while the run kept the other version.
-  const { g, runId } = atCompare();
-  alwaysStop(t, g);
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "A" }).ok, true);
-  const music = () => { const s = g.currentSong(); delete s.meta; return JSON.stringify(s); };
-  const before = music(), bBefore = JSON.stringify(runOf(g, runId).versions.B.song);
-
-  g.drumClick(0, 9);
-  assert.strictEqual(music(), before, "the pad press must be refused before it changes anything");
-  assert.strictEqual(JSON.stringify(runOf(g, runId).versions.B.song), bBefore);
+test("a drum click during a pick edits the held path immediately", t => {
+  // Replaces the deliberately removed drumClick listening lock.
+  // MUTATION: reinstate the comparison guard in drumClick.
+  const {g,runId}=atCompare(); alwaysStop(t,g);
+  g.performQuestAction("pick",{versionId:"A"});
+  const b=JSON.stringify(runOf(g,runId).versions.B),rev=runOf(g,runId).versions.A.editRev;
+  const before=JSON.stringify(g.currentSong().tracks);
+  g.drumClick(0,9);
+  assert.notStrictEqual(JSON.stringify(g.currentSong().tracks),before);
+  assert.strictEqual(runOf(g,runId).versions.A.editRev,rev+1);
+  assert.deepEqual(runOf(g,runId).versions.A.song.tracks,g.currentSong().tracks);
+  assert.strictEqual(JSON.stringify(runOf(g,runId).versions.B),b);
 });
+
 
 test("packages and the Studio behave exactly as they did", () => {
   // MUTATION: commit a setting change everywhere rather than only inside a quest.

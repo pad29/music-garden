@@ -89,7 +89,7 @@ test("comparing needs both versions auditioned at their current revision", () =>
                     { type: "compare", leftVersionId: "A", rightVersionId: "B", at: 4 }]).run;
   assert.deepEqual(run.comparison.versionIds, ["A", "B"]);
 
-  const chosen = apply(run, [{ type: "choose", versionId: "B", at: 5 }]);
+  const chosen = apply(run, [{ type: "selectDraft", versionId: "B", at: 5 }]);
   assert.strictEqual(chosen.run.selection, "B");
   assert.strictEqual(chosen.run.draft, "B");
 });
@@ -108,7 +108,7 @@ test("editing after choosing keeps the selection but reopens the gate", () => {
                     { type: "completePass", versionId: "B", editRev: 0, sessionId: "s2", at: 3 },
                     { type: "audition", versionId: "B", editRev: 0, sessionId: "s2", at: 3 },
                     { type: "compare", leftVersionId: "A", rightVersionId: "B", at: 4 },
-                    { type: "choose", versionId: "B", at: 5 }]).run;
+                    { type: "selectDraft", versionId: "B", at: 5 }]).run;
 
   const after = apply(run, [{ type: "edit", target: "song", versionId: "B", baseRev: 0,
     song: song(16, [{ p: 67, c: 3, len: 1 }]), span: SPAN, at: 6 }]);

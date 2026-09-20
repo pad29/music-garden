@@ -535,7 +535,7 @@ test("a failed setup-run write publishes neither a run nor a new play scope", ()
   assert.strictEqual(g.activeScope, scope);
 });
 
-test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative deal without RNG", () => {
+test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative deal without RNG", t => {
   // MUTATION: reconstruct setup on enter/hydrate/phase advance or replace the edited draft with the
   // generated starting song. A different valid stored deal defeats same-seed regeneration false proofs.
   const first = fresh(), runId = launch(first), def = first.QUEST_DEFINITIONS["firefly-crossing"];
@@ -583,8 +583,9 @@ test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative dea
     assert.strictEqual(g.transactQuestRun(runId, [{ type: "audition", versionId,
       editRev: v.editRev, sessionId: v.lastCompletePlaySessionId, at: 40 }]).ok, true);
   }
-  assert.strictEqual(g.performQuestAction("compare").ok, true);
-  assert.strictEqual(g.performQuestAction("choose", { versionId: "B" }).ok, true);
+  g.questAfterReceipt(runId);
+  t.after(() => { if (g.playing) g.stop(); });
+  assert.strictEqual(g.performQuestAction("pick", { versionId: "B" }).ok, true);
   assert.strictEqual(g.performQuestAction("offer").ok, true);
   assert.strictEqual(g.QUEST_RUNS[runId].status, "completed");
   assert.deepEqual(g.QUEST_RUNS[runId].setup, authoritative);

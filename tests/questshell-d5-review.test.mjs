@@ -3,7 +3,7 @@
 // These are intentionally red against the reviewed change. They name the interaction that a
 // browser child can perform; the stubbed DOM is used only to invoke the same event handler.
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert";
 import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
@@ -39,20 +39,20 @@ function atCompare() {
   return { g, runId };
 }
 
-test("a path being auditioned is editor-locked, rather than merely refusing to persist a stray click", t => {
-  // MUTATION: omit the interaction-level questAuditionVersionId guard.  The old noteEdit-only guard
-  // is too late: tx has already changed the displayed document and journaled the click.
-  const { g } = atCompare();
-  t.after(() => { try { if (g.playing) g.stop(); } catch { /* transport already down */ } });
-  assert.strictEqual(g.performQuestAction("audition", { versionId: "A" }).ok, true);
-  const music = () => { const s = g.currentSong(); delete s.meta; return JSON.stringify(s); };
-  const before = music();
-
-  g.cellClick(g.ROWS - 1, 9, g.__document.createElement("div"));
-
-  assert.strictEqual(music(), before,
-    "a field click while hearing a path must be refused before it changes what the child sees");
+test("a field click during a pick edits the held path immediately", t => {
+  // Replaces D5's removed cellClick lock with the new editable-path guarantee.
+  // MUTATION: restore a quest comparison guard in cellClick.
+  const {g,runId}=atCompare(); t.after(()=>{if(g.playing)g.stop();});
+  g.performQuestAction("pick",{versionId:"A"});
+  const b=JSON.stringify(g.QUEST_RUNS[runId].versions.B), rev=g.QUEST_RUNS[runId].versions.A.editRev;
+  const before=JSON.stringify(g.currentSong().tracks);
+  g.cellClick(g.ROWS-1,9,g.__document.createElement("div"));
+  assert.notStrictEqual(JSON.stringify(g.currentSong().tracks),before);
+  assert.strictEqual(g.QUEST_RUNS[runId].versions.A.editRev,rev+1);
+  assert.deepEqual(g.QUEST_RUNS[runId].versions.A.song.tracks,g.currentSong().tracks);
+  assert.strictEqual(JSON.stringify(g.QUEST_RUNS[runId].versions.B),b);
 });
+
 
 test("a quest tempo change is committed to its draft and reopens the full-play gate", () => {
   // MUTATION: handle #tempo only as a personal setting. Tempo is serialized by currentSong(), so this

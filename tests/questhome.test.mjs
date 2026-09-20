@@ -223,7 +223,7 @@ test("the trail says which of its rows is the one already on the card", () => {
 
 // ============================ replay never overwrites ============================
 
-test("starting a new version writes a new song, never over the old one", () => {
+test("starting a new version writes a new song, never over the old one", t => {
   // MUTATION: key the artifact on the quest instead of the run, so a replay silently replaces the
   // song a child offered the first time.
   const g2 = loadGame({ fresh: true });
@@ -246,8 +246,9 @@ test("starting a new version writes a new song, never over the old one", () => {
     T([{ type: "completePass", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 },
        { type: "audition", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 }]);
     assert.strictEqual(continueQuest(g2).ok, true);
-    g2.performQuestAction("compare");
-    g2.performQuestAction("choose", { versionId: "B" });
+    g2.questAfterReceipt(id);
+    t.after(() => { if (g2.playing) g2.stop(); });
+    g2.performQuestAction("pick", { versionId: "B" });
     assert.strictEqual(g2.performQuestAction("offer", { title }).ok, true);
     return id;
   };

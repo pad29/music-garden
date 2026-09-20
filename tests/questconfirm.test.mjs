@@ -52,14 +52,15 @@ function reachCompare(f, matched = false) {
     assert.strictEqual(f.run().phase, phase + 1);
   }
 }
-function choose(f, vid = "B") {
-  for (const versionId of ["A", "B"]) {
-    const v = f.run().versions[versionId];
-    assert.strictEqual(f.g.transactQuestRun(f.id, [{ type: "audition", versionId,
-      editRev: v.editRev, sessionId: v.lastCompletePlaySessionId, at: 40 }]).ok, true);
-  }
-  assert.strictEqual(f.g.performQuestAction("compare").ok, true);
-  assert.strictEqual(f.g.performQuestAction("choose", { versionId: vid }).ok, true);
+function pickHeardPaths(f, vid = "B") {
+  try {
+    for (const versionId of [vid === "A" ? "B" : "A", vid]) {
+      assert.strictEqual(f.g.performQuestAction("pick", { versionId }).ok, true);
+      const v = f.run().versions[versionId];
+      f.g.onCompletePass({ runId:f.id, versionId, editRev:v.editRev,
+        sessionId:versionId + ":comparison", purpose:"audition" });
+    }
+  } finally { if (f.g.playing) f.g.stop(); }
 }
 
 test("unmatched paths ask once per early phase and finish with the same payoff", () => {
@@ -70,7 +71,7 @@ test("unmatched paths ask once per early phase and finish with the same payoff",
       const f = launch(questId), { g, run, model } = f;
       reachCompare(f, matched);
       assert.strictEqual(g.questConfirm, null);
-      choose(f);
+      pickHeardPaths(f);
       const offered = clone(run().versions.B.song);
       assert.strictEqual(g.performQuestAction("offer", { title: "My path" }).ok, true);
       assert.strictEqual(run().status, "completed");
@@ -227,10 +228,11 @@ test("leaving and reloading discard the answer without losing the draft or earne
   assert.strictEqual(g.performQuestAction("continue").ok, true);
 });
 
-test("auditioning clears an old answer including a refused audition", t => {
+test("picking clears an old answer including a refused pick", t => {
   // MUTATION: omit questConfirm cleanup in the audition handler.
   const f = launch(); ready(f); ask(f);
-  assert.strictEqual(f.g.performQuestAction("audition", { versionId: "A" }).code, "bad-version");
+  t.after(() => { if (f.g.playing) f.g.stop(); });
+  assert.strictEqual(f.g.performQuestAction("pick", { versionId: "A" }).code, "bad-version");
   assert.strictEqual(f.g.questConfirm, null);
   assert.strictEqual(f.model().asking, false);
   ask(f);
@@ -240,7 +242,8 @@ test("auditioning clears an old answer including a refused audition", t => {
   assert.strictEqual(f.g.performQuestAction("continue").ok, true);
   t.after(() => { if (f.g.playing) f.g.stop(); });
   f.g.questConfirm = stale;
-  assert.strictEqual(f.g.performQuestAction("audition", { versionId: "A" }).ok, true);
+  t.after(() => { if (f.g.playing) f.g.stop(); });
+  assert.strictEqual(f.g.performQuestAction("pick", { versionId: "A" }).ok, true);
   assert.strictEqual(f.g.questConfirm, null);
 });
 
@@ -280,7 +283,7 @@ test("comparison never asks for any route state selection or phase position", ()
   // MUTATION: return a confirmation key for compare-offer, test phase index instead of type,
   // or introduce the fork into offer. Injecting a challenge tests beyond the shipped no-challenge case.
   for (const matched of [false, true]) for (const selected of ["A", "B"]) {
-    const f = launch(); reachCompare(f, matched); choose(f, selected);
+    const f = launch(); reachCompare(f, matched); pickHeardPaths(f, selected);
     const { g, run } = f;
     const d = clone(f.d), p = d.phases[2];
     p.challenge = clone(d.phases[0].challenge);
@@ -372,7 +375,7 @@ test("an unready or unheard path never enters the confirmation fork", () => {
 
 test("comparison offer availability follows its gates across all readiness combinations", () => {
   // MUTATION: apply readiness to canOffer, leave canAdvance enabled in compare, or ignore a gate.
-  const f = launch(); reachCompare(f); choose(f);
+  const f = launch(); reachCompare(f); pickHeardPaths(f);
   for (const selected of ["A", "B"]) for (let mask = 0; mask < 8; mask++)
     for (const played of [false, true]) for (const auditioned of [false, true]) for (const chosen of [false, true]) {
       const r = clone(f.run()); r.selection = chosen ? selected : null; r.draft = selected;

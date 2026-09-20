@@ -692,6 +692,7 @@
         <div class="intro" id="questWorld"></div>
         <div class="teach" id="questIntention"></div>
         <details id="questWays"><summary>Ways this could work</summary><ul id="questWaysList" class="goals"></ul></details>
+        <div class="hint" id="questReflect"></div>
         <div class="hint" id="questMissing"></div>
         <div class="hint" id="questHeard"></div>
         <div class="hint" id="questNotice"></div>
@@ -1340,7 +1341,6 @@ function buildDrums(){ const rows=document.getElementById("drumrows"); rows.inne
   if(typeof syncCursor==="function") syncCursor();
 }
 function drumClick(d,c){ if(zoomBlocksEdit()) return;   // same as the melody bed: at 60% a tap zooms in, it does not lay a beat
-  if(questBlocksEdit()) return;
   initAudio(); actx.resume();
   followCursor(c);                 // the beat lane is the same timeline — tapping a pad is working at that column too
   const on=!drumG[d][c];
@@ -1487,7 +1487,9 @@ function tx(label,fn){
 // A and B in turn to hear them. Declared here, immediately above its only reader, because an edit is
 // the one thing that must never happen through it: writing the applied song back would persist A over
 // draft B. The shell locks the grid on top of this; this is the floor underneath that lock.
-let questAuditionVersionId=null;
+// The listening lock is gone with step E: a path being heard is the path being held, so the state it
+// guarded — one version on the grid while another was the write target — cannot occur. Undo is
+// ordinary again here, which was the remedy I argued against in D5 and is now simply true.
 // Set while the GAME is arranging the field — clearing it, re-applying a draft — rather than the
 // player editing it. resetTransient() wipes and re-truncates through tx(), so without this a repaint
 // would land in the run as a real edit.
@@ -1499,7 +1501,7 @@ let questPainting=false;
 function noteEdit(label){
   if(!isQuestScope()){ scheduleAutosave(); return; }
   cancelCompletionSession("edit");
-  if(questPainting || questAuditionVersionId) return;   // the game arranging the field is not the player editing it
+  if(questPainting) return;   // the game arranging the field is not the player editing it
   const run=QUEST_RUNS[activeScope.runId]; if(!run || run.status!=="active") return;
   const v=run.versions[run.draft]; if(!v) return;
   const song=currentSong();
@@ -1528,7 +1530,7 @@ function applyStageDecor(){ if(!activeScope||!currentLevel()) return;
   const L=currentLevel(), st=curStage();
   setBeatGuide(!!st.beatGuide); setPhraseGuide(!!(L.phrase||st.phrase));
   setColorReveal(st.colors||L.colors||null); setMood(st.mood||L.mood||null); setMotifGuide(!!(st.motif||L.motif)); }
-function undoEdit(){ if(questAuditionVersionId) return;   // listening is not a step to take back
+function undoEdit(){
   const e=journal.pop(); if(!e) return;
   if(playing) stop();                        // also unwinds a running reveal's restore hook safely
   journalRedo.push(e); restoreSnapshot(e.before); setStatus("↶ Undone — the garden stepped back 🌱"); }
@@ -1536,7 +1538,7 @@ function undoEdit(){ if(questAuditionVersionId) return;   // listening is not a 
 // audition's song IS a commit, so the redo stack is always empty while a lock is held. Kept because it
 // costs nothing and the day that stops being true is not a day anyone will remember to check — but no
 // test asserts it, because no test could tell it from its absence.
-function redoEdit(){ if(questAuditionVersionId) return;
+function redoEdit(){
   const e=journalRedo.pop(); if(!e) return;
   if(playing) stop();
   journal.push(e); restoreSnapshot(e.after); setStatus("↷ Redone 🌱"); }
@@ -2051,7 +2053,6 @@ function settle(){ document.body.classList.add("settle");
 function cellClick(r,c,el){
   if(trayMode) return;   // the tray owns the field — its pointer handlers on the track do the work (also eats synthesized post-touch mousedowns)
   if(zoomBlocksEdit()) return;   // …and at 60% the tap is aimed at the ZOOM, not at a square: it must not leave a seed behind on the way in
-  if(questBlocksEdit()) return;  // …and while a quest is playing a path back, the bed is a speaker
   initAudio(); actx.resume(); hideNoteTip();
   if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
   followCursor(c);   // …and covers the stamp path below, which is only ever reached from here
@@ -2321,7 +2322,10 @@ function traySurgeryBlocked(){
   return false; }
 // the same gate for DURATION (EDITOR-DESIGN §17's growBlocked, now that a package finally needs it): while a
 // picker is up, its options are laid out for the EAR — editing one would leave choiceViewed/choicePick lying.
-function choiceUp(){ const ch=document.getElementById("choiceRow"); return !!ch && ch.style.display!=="none"; }
+// Asked of the LESSON picker's own state, not of the row's visibility: a quest's path toggles share the
+// row, and they must not switch off Grow — the whole point of the last phase is that the path showing
+// is one you can still work on.
+function choiceUp(){ return !!choiceOpts; }
 function growBlocked(){ if(choiceUp()){
     setStatus("This level lays out the walks itself 👂 — tap each one, then pick."); return true; }
   return false; }
@@ -5530,7 +5534,10 @@ const QUEST_PRIMITIVES=questRegistry({
       return c.versionIds.every(id=>{ const v=run.versions[id];
         return !!v && v.editRev===c.revs[id] && v.auditionedRev===v.editRev; }); } },
   "comparison.chosen":{ kind:"procedural",
-    gate:run=>{ const c=run&&run.comparison; if(!c || !run.selection) return false;
+    // No separate "is there a selection" clause: indexOf refuses a missing one anyway, and a guard
+    // that can never be the one to fire makes the check behind it impossible to test. Since picking a
+    // path is what records an audition, a comparison cannot exist without a selection in any case.
+    gate:run=>{ const c=run&&run.comparison; if(!c) return false;
       if(c.versionIds.indexOf(run.selection)<0) return false;
       return c.versionIds.every(id=>{ const v=run.versions[id]; return !!v && v.editRev===c.revs[id]; }); } },
 });
@@ -6436,10 +6443,13 @@ function reduceQuestRun(run, op){
     return { ok:true, run:touch(Object.assign({}, run, { comparison })), effects:[] };
   }
 
-  if(op.type==="choose"){
+  // Tapping a path is how a child hears it, and the path they are hearing is the one they are holding:
+  // selection and draft move together. It waits for no comparison — the comparison is a CONSEQUENCE of
+  // having heard both, recorded on the receipts, and gating the pick on it made the first tap
+  // impossible. What the comparison still gates is the OFFER, which is where it belongs.
+  if(op.type==="selectDraft"){
     if(!active) return no("not-active");
-    const c=run.comparison; if(!c || c.versionIds.indexOf(op.versionId)<0) return no("not-compared");
-    for(const id of c.versionIds){ const v=V(id); if(!v || v.editRev!==c.revs[id]) return no("stale-comparison"); }
+    if(!V(op.versionId)) return no("no-version");
     return { ok:true, run:touch(Object.assign({}, run, { selection:op.versionId, draft:op.versionId })), effects:[] };
   }
 
@@ -6599,7 +6609,11 @@ function finalizeQuestOffering(runId){
   if(!payoff) return { ok:false, code:"no-payoff" };
   if(!payoff.finalize(run)) return { ok:false, code:"artifact-failed" };
   const r=transactQuestRun(runId, [{ type:"saveAs", artifactId:run.pendingOffer.artifactId, savedAt:Date.now() }]);
-  return r.ok ? { ok:true, artifactId:run.artifact&&run.artifact.artifactId } : { ok:false, code:r.code };
+  // …read back AFTER the write: `run` is the pre-transaction reference, whose artifact is still null,
+  // so this reported null every single time it succeeded.
+  const saved=QUEST_RUNS[runId];
+  return r.ok ? { ok:true, artifactId:saved && saved.artifact && saved.artifact.artifactId }
+              : { ok:false, code:r.code };
 }
 // ---------- Entering a quest, and moving through it ----------
 // ONE level whose steps are the phases, so the shipped indexed-stage engine is reused rather than
@@ -6678,7 +6692,6 @@ function enterQuestRun(runId){
   // The workspace palette is fixed by the definition, and a definition change is already refused
   // above — so a draft in another ladder is a corrupt run, not a legitimate one.
   if(v.song.palette!==def.workspace.paletteId) return fail("palette-mismatch");
-  questAuditionVersionId=null;
   setPlayScope({ kind:"quest", questId:run.questId, runId, stages:questEnvelope(def),
     palette:def.workspace.paletteId, features:def.workspace.controlIds });
   // renderLevel() applies the WORKSPACE — palette, toolbox, controls, the drum bed — and ends by
@@ -6724,35 +6737,33 @@ function performQuestAction(actionId, opts){
     return adv;
   }
 
-  if(actionId==="audition"){ questConfirm=null;
+  // Hear, choose and compare were three buttons for one act. Tapping a path now puts it on the field,
+  // makes it the one being held, and plays it — and because the path on the grid IS the draft, the
+  // listening lock that used to guard the gap between them has nothing left to guard.
+  if(actionId==="pick"){
+    questConfirm=null;
     if(p.type!=="compare-offer" || p.versionIds.indexOf(o.versionId)<0) return fail("bad-version");
-    const v=run.versions[o.versionId]; if(!v) return fail("no-version");
-    questAuditionVersionId=o.versionId;                   // the grid is now a speaker, not a page
-    applySong(v.song);
-    // NOT journalClear() here. The lock already refuses undo and redo while a version that is not the
-    // draft is on the grid, and choosing clears the journal on the way out — so clearing here as well
-    // would be a third guard that makes the other two untestable. Belt and braces are only worth it
-    // when a mutation can still tell them apart.
+    if(!run.versions[o.versionId]) return fail("no-version");
+    const was=run.draft;
+    if(playing) stop();
+    const r=transactQuestRun(runId, [{ type:"selectDraft", versionId:o.versionId, at }]);
+    if(!r.ok) return r;                                   // a refused write leaves the field as it was
+    // Only a SWITCH touches the document. Tapping the path already showing is just listening again, and
+    // reloading it was quietly destructive: applySong rebuilds every note with a fresh id, so tx() saw
+    // a changed document and journalled a musically invisible entry. One Undo then took back the load
+    // instead of the child's work, redo was dropped, and enough taps pushed real edits out of the
+    // bounded journal entirely. Found by GPT's tester, which left the regression red rather than hide it.
+    // (`load-song` is a SCRIPTED_TX, so it never counted as an edit — only as journal noise.)
+    if(was!==o.versionId){
+      // The paint guard stays: applySong's own tx is scripted, but a palette that differs makes it
+      // nest a NON-scripted one, and that would count the act of listening as an edit.
+      const wasPainting=questPainting; questPainting=true;
+      try{ applySong(QUEST_RUNS[runId].versions[o.versionId].song); } finally{ questPainting=wasPainting; }
+      journalClear();                                     // the other path's history is not this one's
+    }
     renderQuestShell();
     start({ versionId:o.versionId, purpose:"audition" });
     return { ok:true, versionId:o.versionId };
-  }
-
-  if(actionId==="compare"){
-    if(p.type!=="compare-offer") return fail("wrong-phase");
-    return transactQuestRun(runId, [{ type:"compare", leftVersionId:p.versionIds[0],
-      rightVersionId:p.versionIds[1], at }]);
-  }
-
-  if(actionId==="choose"){
-    if(p.type!=="compare-offer" || p.versionIds.indexOf(o.versionId)<0) return fail("bad-version");
-    const r=transactQuestRun(runId, [{ type:"choose", versionId:o.versionId, at }]);
-    if(!r.ok) return r;
-    questAuditionVersionId=null;                          // the choice is the draft again; editing is live
-    applySong(QUEST_RUNS[runId].versions[o.versionId].song);
-    journalClear();                                       // undo starts fresh from the path they chose
-    renderQuestShell();
-    return r;
   }
 
   if(actionId==="offer"){
@@ -6918,11 +6929,6 @@ function questShellModel(run, def, view){
     // which is the same recovery the next load would run by itself.
     actions.push({ id:"retry-offer", label:"Try saving it again", enabled:true });
   } else if(p.type==="compare-offer"){
-    for(const id of p.versionIds)
-      actions.push({ id:"audition", versionId:id, label:"Hear "+label(id), enabled:true, done:auditioned(id) });
-    for(const id of p.versionIds)
-      actions.push({ id:"choose", versionId:id, label:"Choose "+label(id), enabled:compared,
-                     done:run.selection===id });
     actions.push({ id:"offer", label:def.completion.label, enabled:!!(proc && proc.canOffer),
                    titleField:true, defaultTitle:def.completion.defaultTitle });
   } else {
@@ -6950,7 +6956,17 @@ function questShellModel(run, def, view){
     action:{ id:"play-whole", label:"Play the whole song", enabled:true, versionId, purpose } };
 
   const obs=questObservationFor(run, p.id);
+  // The paths, as a row under the field rather than four buttons in the card. Tapping one hears it AND
+  // holds it, so "heard" and "chosen" are one fact about one thing instead of two rows of buttons.
+  // …and they go once the song is put away. Leaving them up after the quest is finished invites a
+  // child to tap a path and watch nothing happen, which is why the offer button goes too.
+  const paths = (p.type==="compare-offer" && !finished && !stuck)
+    ? p.versionIds.map(id=>({ versionId:id, label:label(id),
+        selected:run.selection===id, heard:auditioned(id) })) : [];
   return {
+    paths,
+    // Validated by the catalog since D1 and rendered nowhere until now. The toggles are what answer it.
+    reflectionPrompt: p.reflection ? p.reflection.promptText : "",
     questId:def.id, title:def.title,
     phaseLabel:"Phase "+(run.phase+1)+" of "+def.phases.length,
     worldText:p.worldText, intentionText:p.intentionText,
@@ -6964,6 +6980,24 @@ function questShellModel(run, def, view){
          : stuck    ? "The garden could not put your song away just now — nothing is lost, try again." : "",
     versionId, notice, actions,
   };
+}
+
+// The paths, in the row the "choose the matching path" levels already use — the same idiom a child has
+// met before, doing the same thing: tap one to hear it, and the one lit is the one you are holding.
+// Built here rather than through the lesson picker's showChoices(), which writes through tx() and
+// belongs to a lesson's own answer bookkeeping.
+function questRenderPaths(m){
+  const row=document.getElementById("choiceRow"); if(!row) return;
+  if(!m || !m.paths || !m.paths.length){ row.style.display="none"; row.innerHTML=""; return; }
+  row.style.display="flex"; row.innerHTML="";
+  for(const path of m.paths){
+    const b=document.createElement("button");
+    b.className="secondary toggle"+(path.selected?" on":"");
+    b.textContent="🎵 "+path.label+(path.heard?" ✓":"");
+    b.onclick=()=>{ const r=performQuestAction("pick", { versionId:path.versionId });
+      if(!r.ok) setStatus(questRefusalText(r.code)); };
+    row.appendChild(b);
+  }
 }
 
 // The field, from scratch, with the run's draft back on it. resetTransient() is what a level uses to
@@ -7000,7 +7034,7 @@ function renderQuestShell(){
     partialCursor: !partialRange && cursorPinned && cursorCol!==0 });
   const card=document.getElementById("questCard");
   if(!card) return;
-  if(!m){ card.style.display="none"; return; }
+  if(!m){ card.style.display="none"; questRenderPaths(null); return; }
   { const lc=document.getElementById("levelCard"); if(lc) lc.style.display="none"; }
   card.style.display="";
   document.getElementById("questTitle").textContent=m.title;
@@ -7013,7 +7047,9 @@ function renderQuestShell(){
   list.textContent="";
   for(const w of m.ways){ const li=document.createElement("li"); li.textContent=w; list.appendChild(li); }
 
+  document.getElementById("questReflect").textContent=m.reflectionPrompt;
   document.getElementById("questMissing").textContent=m.confirmText || m.missing.join(" ");
+  questRenderPaths(m);
   document.getElementById("questHeard").textContent=m.heard.join(" ");
   document.getElementById("questSaved").textContent=m.saved;
   const notice=document.getElementById("questNotice");
@@ -7045,11 +7081,6 @@ function renderQuestShell(){
 // package tempo change through noteEdit would start scheduling autosaves that today it does not, and
 // that is a different change from this one.
 const questCommitSetting = label => { if(isQuestScope()) noteEdit(label); };
-function questBlocksEdit(){
-  if(!questAuditionVersionId) return false;
-  setStatus("You're listening to one of your paths 🎧 — choose a path and the garden hands the seeds back.");
-  return true;
-}
 function questRefusalText(code){
   if(code!=="gate-closed") return "Not yet — "+code;
   if(rangeOn() && (loopA()!==0 || loopB()!==COLS)) return QUEST_RANGE_TEXT;
@@ -7062,7 +7093,7 @@ function questExplainRefusal(code){ setStatus(questRefusalText(code)); }
 // transaction that made it, so there is no quest autosave to flush on the way out.
 function leaveQuest(){
   if(playing) stop(); else cancelCompletionSession("navigation");
-  questAuditionVersionId=null; questConfirm=null;
+  questConfirm=null;
   if(typeof openHome==="function") openHome();
 }
 
@@ -7138,7 +7169,7 @@ let activeScope=null;   // initialised below, once levelIdx/lessonStepIdx exist
 
 function setPlayScope(next, position){
   cancelCompletionSession("navigation");   // evidence never crosses a scope change
-  questAuditionVersionId=null;             // …and neither does a listening lock: it belongs to one comparison
+
   const p=position||{};
   if(!next || typeof next!=="object") throw new Error("setPlayScope: no scope given");
   if(next.kind==="package"){
