@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame as loadGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const RISE = [[60, 0], [62, 2], [64, 4], [67, 6]];
 const FALL = [[67, 0], [64, 2], [62, 4], [60, 6]];
@@ -143,7 +143,7 @@ test("a starter song must fit the workspace it starts in", () => {
   assert.strictEqual(v.song.tracks[0].notes.length, 4, "the run starts from the authored song");
   assert.strictEqual(v.span.end, g.COLS, "and the span the completion session checks matches the field");
   credit(g, r.runId, "A", "s1");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
 });
 
 test("every procedural gate answers with a real boolean", () => {
@@ -192,7 +192,7 @@ test("entry opens the draft, and is not itself an edit", () => {
   const { g, runId } = launched();
   edit(g, runId, song(RISE, MAIN));
   credit(g, runId, "A", "s1");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   edit(g, runId, song(FALL, EVEN));
   const beforeRev = runOf(g, runId).versions.B.editRev;
   credit(g, runId, "B", "s2");
@@ -215,6 +215,8 @@ test("entry opens the draft, and is not itself an edit", () => {
 test("a ready phase is gated by exactly the procedure ids it declares", () => {
   // Deliberate behavior change: procedure ids used to be the ONLY gates. These songs now finish
   // the dealt task first; independent tests pin readiness as the additional early-phase condition.
+  // Step E commit 4: open gates permit the unmatched-path choice, not immediate advancement.
+  // This test accepts that choice; questconfirm.test.mjs tests the individual presses.
   // MUTATION: hardcode the gate for phase 1, or gate on a route match.
   const { g, runId } = launched();
   const def = g.QUEST_DEFINITIONS["firefly-crossing"];
@@ -223,7 +225,7 @@ test("a ready phase is gated by exactly the procedure ids it declares", () => {
   edit(g, runId, song(RISE, MAIN));
   assert.strictEqual(g.performQuestAction("continue").code, "gate-closed");
   credit(g, runId, "A", "s1");
-  assert.strictEqual(g.performQuestAction("continue").ok, true, "one declared gate, now open");
+  assert.strictEqual(continueQuest(g).ok, true, "one declared gate, now open");
 
   // phase 2 declares TWO, and the fork alone opens neither
   assert.deepEqual(def.phases[1].procedure.gateIds,
@@ -233,12 +235,14 @@ test("a ready phase is gated by exactly the procedure ids it declares", () => {
   edit(g, runId, song(FALL, MAIN));
   assert.strictEqual(g.performQuestAction("continue").code, "gate-closed", "edited, but not yet heard");
   credit(g, runId, "B", "s2");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   assert.strictEqual(runOf(g, runId).phase, 2);
 });
 
-test("a song matching no route still moves the quest on", () => {
+test("a song matching no route moves the quest on after the explicit choice", () => {
   // MUTATION: gate a transition on a route match. Q6's "offer anyway" is the whole shape of this quest.
+  // Deliberate change: the old assertion required one press. Q6 now asks on the first press,
+  // while preserving the right to advance on the second regardless of route matches.
   const { g, runId } = launched();
   edit(g, runId, song([[60, 0], [60, 4]], []));      // completed landmarks and regions, but no steady pulse
   credit(g, runId, "A", "s1");
@@ -246,7 +250,10 @@ test("a song matching no route still moves the quest on", () => {
   assert.deepEqual(
     g.evaluateQuest(g.QUEST_DEFINITIONS["firefly-crossing"], ev, runOf(g, runId)).musical.matchedRouteIds,
     []);
+  assert.deepEqual(g.performQuestAction("continue"), { ok: false, code: "needs-confirm" });
+  assert.strictEqual(runOf(g, runId).phase, 0);
   assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(runOf(g, runId).phase, 1);
 });
 
 test("the fork is named by the definition, not by the phase number", () => {
@@ -254,7 +261,7 @@ test("the fork is named by the definition, not by the phase number", () => {
   const { g, runId } = launched();
   edit(g, runId, song(RISE, MAIN));
   credit(g, runId, "A", "s1");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
 
   const run = runOf(g, runId);
   assert.deepEqual(Object.keys(run.versions).sort(), ["A", "B"]);
@@ -266,7 +273,7 @@ test("the fork is named by the definition, not by the phase number", () => {
   // the compare phase's transition is "offer": it does not advance, and says so
   edit(g, runId, song(FALL, MAIN));
   credit(g, runId, "B", "s2");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   assert.strictEqual(g.performQuestAction("continue").code, "not-a-transition");
 });
 
@@ -277,10 +284,10 @@ function atCompare() {
   const { g, runId } = launched();
   edit(g, runId, song(RISE, MAIN));
   credit(g, runId, "A", "s1");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   edit(g, runId, song(FALL, MAIN));
   credit(g, runId, "B", "s2");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   assert.strictEqual(runOf(g, runId).phase, 2);
   return { g, runId };
 }
@@ -457,10 +464,10 @@ test("undo never walks back into a song the game applied", t => {
     "resuming is not a step to take back, however many times you press it");
 
   // now the whole comparison, and two undos after choosing
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   edit(g, runId, song(FALL, EVEN));
   credit(g, runId, "B", "s2");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   alwaysStop(t, g);
   for (const id of ["A", "B"]) {
     assert.strictEqual(g.performQuestAction("audition", { versionId: id }).ok, true);

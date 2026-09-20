@@ -17,3 +17,8 @@ registerHooks({
     return { ...result, source: source.replace(needle, replacement) };
   },
 });
+
+// Load once outside any test. A mutation that prevents initialization must fail the audit as
+// an invalid experiment, never be credited as the selected test detecting a behavioral fault.
+const { loadGame } = await import("../harness.mjs");
+loadGame({ fresh: true });

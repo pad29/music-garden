@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { loadGame } from "./harness.mjs";
-import { loadQuestGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const clone = x => JSON.parse(JSON.stringify(x));
 const fresh = () => loadGame({ fresh: true });
@@ -214,7 +214,7 @@ test("each readiness kind blocks phases one and two after all procedural gates a
       assert.deepEqual(g.QUEST_RUNS[id], snapshot, "a refused transition must not fork or mutate the run");
     }
     edit(g, good); credit(g, id, vid);
-    assert.strictEqual(g.performQuestAction("continue").ok, true);
+    assert.strictEqual(continueQuest(g).ok, true);
     assert.strictEqual(g.QUEST_RUNS[id].phase, phase + 1);
   }
 });
@@ -226,7 +226,7 @@ test("Q6 permits a final offer that fails every readiness kind and matches no ro
     const song = completeDealtSong(g, g.QUEST_RUNS[id].versions[vid].song);
     if (vid === "B") hits(song).push({ lane: 2, c: 3 });
     edit(g, song); credit(g, id, vid);
-    assert.strictEqual(g.performQuestAction("continue").ok, true);
+    assert.strictEqual(continueQuest(g).ok, true);
   }
   for (const vid of ["A", "B"]) {
     const v = g.QUEST_RUNS[id].versions[vid];

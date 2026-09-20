@@ -76,3 +76,26 @@ engine itself — the play scope, persistence, the completion session, the Quest
 history, the sealed catalog, and the analyzer registries and semantic validator. It is not a substitute
 for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
 worst at finding.
+
+## Quest setup and confirmation mutation audit
+
+```bash
+node tests/questsetup-mutations.mjs
+node tests/questsetup-mutations.mjs --confirm-only
+```
+
+Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
+flag selects the Step E commit 4 confirmation tests. Each fault must have a green unmodified test and
+make that exact test fail. Mutations affect the harness's script string in memory only. Syntax errors,
+initialization failures, ambiguous source anchors, and missing test titles fail the audit rather than
+counting as caught faults.
+
+`questconfirm.test.mjs` covers the two-press unmatched-path choice, one-press matched paths, identical
+completion payoff, all five confirmation key fields, edits/undo, leaving/resume, auditions, new runs,
+readiness/gate combinations, comparison exemptions, and the shared evaluation seam's purity. It checks
+shell models and controller state; it does not claim to verify drawn buttons or audible playback.
+
+Older controller fixtures use `continueQuest()` when their assertion concerns something beyond the
+choice. It retries exactly once for `needs-confirm`, preserving other failures. Tests of the choice
+itself call `performQuestAction()` directly. The former one-press unmatched-path assertion was deliberately
+changed to require the question followed by advancement, as specified by Q6.

@@ -9,6 +9,9 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const evidenceLoop = 'function questEvaluateRun(run, def){\n  const versions={};\n  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);';
+const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questconfirm.test.mjs"]
+  .map(name => ({ path: "tests/" + name, source: readFileSync(new URL("./" + name, import.meta.url), "utf8") }));
 function run(title, patches = []) {
   let candidate = source;
   for (const [from, to] of patches) {
@@ -16,8 +19,11 @@ function run(title, patches = []) {
     candidate = candidate.replace(from, to);
   }
   new Function(candidate); // A syntax error is not a caught behavioral mutation.
-  const file = readFileSync(new URL("./questsetup-readiness.test.mjs", import.meta.url), "utf8")
-    .includes('test("' + title + '"') ? "tests/questsetup-readiness.test.mjs" : "tests/questsetup.test.mjs";
+  const matches = testFiles.filter(f => f.source.includes('test("' + title + '"'));
+  assert.ok(matches.length <= 1, "ambiguous mutation test: " + title);
+  // questsetup also generates test titles in loops; the baseline TAP assertion below proves
+  // that the exact title ran, so a typo can never count as a green test or a caught mutation.
+  const file = matches[0]?.path || "tests/questsetup.test.mjs";
   const result = spawnSync(process.execPath, ["--import", "./tests/helpers/questsetup-mutation-hook.mjs",
     "--test", "--test-reporter=tap", "--test-name-pattern=^" + escape(title) + "$",
     file], { cwd: root, encoding: "utf8", timeout: 20000,
@@ -177,10 +183,97 @@ const mutations = [
     'questSetupRoutesReachable(def, hand) || questSetupCompletable(def, hand) || kind.validateInstance(hand, def.setup, def)'],
   ["independent witnesses agree with the search on the hand that exposed it",
     'if(isRising(seq))   contourFamilies.push("rise");', 'if(false) contourFamilies.push("rise");'],
+
+  // ---- Step E commit 4: the readiness button and transient Q6 choice ----
+  ...[
+    ['gatesOpen && missing.length===0', 'gatesOpen'],
+    ['gatesOpen && missing.length===0', 'missing.length===0'],
+    ['gatesOpen && missing.length===0', '(gatesOpen || missing.length===0)'],
+    ['gatesOpen && missing.length===0', 'gatesOpen && missing.length!==0'],
+    ['const can=!!(proc && proc.canAdvance);', 'const can=!!proc;'],
+    ['const can=!!(proc && proc.canAdvance);', 'const can=false;'],
+  ].map(([from, to]) => ["readiness and declared gate sweeps agree between evaluator model and controller gate", from, to]),
+  ...[
+    ['if(key && p.challenge && questPhaseGate(def, run.phase, p.versionId)(run)){', 'if(false){'],
+    ['!questSameConfirm(questConfirm, key)', 'true'],
+    ['questConfirm=key; renderQuestShell(); return { ok:false, code:"needs-confirm" };',
+      'questConfirm=key; run.confirm=key; renderQuestShell(); return { ok:false, code:"needs-confirm" };'],
+    ['saved: finished ? def.completion.completionText',
+      'saved: finished ? (questEvaluateRun({...run,phase:1},def).musical.matchedRouteIds.length===0 ? "Almost finished" : def.completion.completionText)'],
+  ].map(([from, to]) => ["unmatched paths ask once per early phase and finish with the same payoff", from, to]),
+  ["matched paths advance on the first press without a confirmation",
+    'if(ev.ok && ev.musical.matchedRouteIds.length===0 && !questSameConfirm(questConfirm, key)){',
+    'if(ev.ok && !questSameConfirm(questConfirm, key)){'],
+  ...[
+    ['actions.push({ id:"shape-more", label:"Shape it more", enabled:true });', ';'],
+    ['actions.push({ id:"continue", label:"Keep it anyway", enabled:true });', ';'],
+    ['actions.push({ id:"continue", label:"Keep it anyway", enabled:true });',
+      'actions.push({ id:"continue", label:"Keep it anyway", enabled:false });'],
+    ['if(actionId==="shape-more"){ questConfirm=null;', 'if(actionId==="shape-more"){'],
+    ['confirmText: asking ? QUEST_CONFIRM_TEXT : ""', 'confirmText: asking ? p.worldText : ""'],
+    ['{ partialRange, confirm:questConfirm,', '{ partialRange, confirm:null,'],
+  ].map(([from, to]) => ["the question offers two model actions and shape-more really cancels it", from, to]),
+  ...["runId", "phaseId", "versionId", "editRev", "actionId"].map(field => [
+    "confirmation keys bind every identity field and reject absent or stale answers",
+    `a.${field}===b.${field}`, 'true',
+  ]),
+  ...[
+    ['runId:run.runId, phaseId:p.id, versionId:p.versionId, editRev:v.editRev, actionId:"continue"',
+      'runId:run.runId, phaseId:p.id, versionId:p.versionId, editRev:0, actionId:"continue"'],
+    ['if(!p || p.type==="compare-offer" || run.status!=="active") return null;',
+      'if(!p || p.type==="compare-offer") return null;'],
+  ].map(([from, to]) => ["confirmation keys bind every identity field and reject absent or stale answers", from, to]),
+  ["a phase-one answer cannot authorize phase two even when revision numbers coincide",
+    'questConfirm=null;\n    const adv=advanceQuestPhase', 'const adv=advanceQuestPhase'],
+  ["edits and undo retire the question even when the song returns to the same notes",
+    'a.editRev===b.editRev', 'true'],
+  ["leaving and reloading discard the answer without losing the draft or earned gates",
+    'questAuditionVersionId=null; questConfirm=null;', 'questAuditionVersionId=null;'],
+  ["leaving and reloading discard the answer without losing the draft or earned gates",
+    'const env=questRunEnvelope(pruned, hist);', 'const env=questRunEnvelope(pruned, hist); env.confirm=questConfirm;'],
+  ["auditioning clears an old answer including a refused audition",
+    'if(actionId==="audition"){ questConfirm=null;', 'if(actionId==="audition"){'],
+  ...[
+    ['if(!p || p.type==="compare-offer" || run.status!=="active") return null;',
+      'if(!p || run.status!=="active") return null;'],
+    ['if(!p || p.type==="compare-offer" || run.status!=="active") return null;',
+      'if(!p || run.phase===2 || run.status!=="active") return null;'],
+    ['canAdvance: p.type!=="compare-offer" && gatesOpen && missing.length===0,',
+      'canAdvance: gatesOpen && missing.length===0,'],
+  ].map(([from, to]) => ["comparison never asks for any route state selection or phase position", from, to]),
+  ["an unready or unheard path never enters the confirmation fork",
+    'if(key && p.challenge && questPhaseGate(def, run.phase, p.versionId)(run)){',
+    'if(key && p.challenge){'],
+  ...[
+    [evidenceLoop, evidenceLoop.replace('Object.keys(run.versions)', '[run.draft]')],
+    [evidenceLoop, evidenceLoop.replace('Object.keys(run.versions)', '["A", "B"]')],
+    [evidenceLoop, evidenceLoop.replace('run.versions[id].song', 'run.versions.A.song')],
+    [evidenceLoop, evidenceLoop.replace('run.versions[id].song', 'currentSong()')],
+    ['function questEvaluateRun(run, def){', 'function questEvaluateRun(run, def){ run.evaluationProbe=true;'],
+  ].map(([from, to]) => ["questEvaluateRun builds all version evidence and stays detached and pure", from, to]),
+  ...[
+    ['const ev=questEvaluateRun(run, def);\n      if(ev.ok',
+      'const ev=evaluateQuest(def, { versions:Object.fromEntries(Object.entries(run.versions).map(([id,v])=>[id,songEvidence(v.song)])) }, run);\n      if(ev.ok'],
+    ['const ev=questEvaluateRun(run, def);\n  const proc=',
+      'const ev=evaluateQuest(def, { versions:Object.fromEntries(Object.entries(run.versions).map(([id,v])=>[id,songEvidence(v.song)])) }, run);\n  const proc='],
+  ].map(([from, to]) => ["the shell and controller both consume the shared evaluation seam", from, to]),
+  ["confirmation is not an authorable procedural gate",
+    '"playback.complete-since-last-edit":{ kind:"procedural",',
+    '"confirmation.required":{ kind:"procedural", gate:()=>true }, "playback.complete-since-last-edit":{ kind:"procedural",'],
+  ["a fresh run cannot inherit an answer from an otherwise identical run", 'a.runId===b.runId', 'true'],
+  ["a pending answer cannot bypass a gate that closes before the second press",
+    'gate:questPhaseGate(def, run.phase, p.versionId), ops });', 'gate:()=>true, ops });'],
+  ["comparison offer availability follows its gates across all readiness combinations",
+    'canOffer:  p.type==="compare-offer" && gatesOpen,',
+    'canOffer:  p.type==="compare-offer" && gatesOpen && questReadinessMissing(def, run, current).length===0,'],
 ];
 
 const green = new Set();
-for (const [title, from, to] of mutations) {
+// A focused rerun is useful while developing new faults; the default always runs the full audit.
+const selectedMutations = process.argv.includes("--confirm-only")
+  ? mutations.filter(([title]) => testFiles.find(f => f.path === "tests/questconfirm.test.mjs").source.includes('test("' + title + '"'))
+  : mutations;
+for (const [title, from, to] of selectedMutations) {
   if (!green.has(title)) {
     const baseline = run(title);
     assert.strictEqual(baseline.status, 0, "not a green baseline: " + title + "\n" + baseline.stdout + baseline.stderr);
@@ -197,4 +290,4 @@ for (const [title, from, to] of mutations) {
 // The five regressions this audit was written alongside are now ordinary green tests: the dealer reads
 // its own bounds, a hydrated instance is re-validated, and an inherited property name finds nothing.
 // Their repair experiments are gone with the defects; the faults above are what keeps them honest.
-console.log(`${mutations.length} mutations caught across ${green.size} green tests. No source files changed.`);
+console.log(`${selectedMutations.length} mutations caught across ${green.size} green tests. No source files changed.`);

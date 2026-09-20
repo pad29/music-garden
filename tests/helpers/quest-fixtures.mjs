@@ -1,5 +1,13 @@
 import { loadGame } from "../harness.mjs";
 
+// Fixture navigation only: unrelated controller tests may accept Q6's unmatched-path choice.
+// Retry exactly once, and only for that choice; gate/storage failures must remain visible.
+// Tests of the fork itself must press performQuestAction directly.
+export function continueQuest(g) {
+  const first = g.performQuestAction("continue");
+  return first.code === "needs-confirm" ? g.performQuestAction("continue") : first;
+}
+
 // Controller/shell fixtures need a reproducible usable hand. Dealer coverage uses the real
 // seed space in questsetup*.test.mjs; a random refused hand must not mask a controller assertion.
 export function loadQuestGame(options) {

@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame as loadGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const g = loadGame();
 const DEFS = g.QUEST_DEFINITIONS;
@@ -241,11 +241,11 @@ test("starting a new version writes a new song, never over the old one", () => {
     g2.applySong(completeDealtSong(g2, song(melA))); g2.noteEdit("e");
     T([{ type: "completePass", versionId: "A", editRev: at().versions.A.editRev, sessionId: "s1", at: 1 },
        { type: "audition", versionId: "A", editRev: at().versions.A.editRev, sessionId: "s1", at: 1 }]);
-    assert.strictEqual(g2.performQuestAction("continue").ok, true);
+    assert.strictEqual(continueQuest(g2).ok, true);
     g2.applySong(completeDealtSong(g2, song(melB))); g2.noteEdit("e");
     T([{ type: "completePass", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 },
        { type: "audition", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 }]);
-    assert.strictEqual(g2.performQuestAction("continue").ok, true);
+    assert.strictEqual(continueQuest(g2).ok, true);
     g2.performQuestAction("compare");
     g2.performQuestAction("choose", { versionId: "B" });
     assert.strictEqual(g2.performQuestAction("offer", { title }).ok, true);

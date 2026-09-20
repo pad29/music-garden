@@ -6180,6 +6180,9 @@ function evaluateQuest(def, evidence, run){
   const gate=(id,vid)=>{ const g=QUEST_PRIMITIVES[id];
     if(!g || g.kind!=="procedural") return false;
     try{ return g.gate(run, vid)===true; }catch(e){ return false; } };   // a throwing gate is a closed gate
+  // Readiness sits ABOVE the declared gates, so it has to reach the button too: questPhaseGate refuses
+  // without it, and a lit button that then does nothing is the defect D5 found in another costume.
+  const missing = p.type==="compare-offer" ? [] : questReadinessMissing(def, run, current);
   const c=run.comparison;
   const blockers=[];
   for(const id of p.procedure.gateIds) if(!gate(id, current)) blockers.push(id);
@@ -6192,16 +6195,42 @@ function evaluateQuest(def, evidence, run){
     comparedCurrentRevisions: !!c && c.versionIds.every(id=>{ const v=run.versions[id];
       return !!v && v.editRev===c.revs[id]; }),
     chosen: gate("comparison.chosen", current),
-    canAdvance: p.type!=="compare-offer" && gatesOpen,
+    canAdvance: p.type!=="compare-offer" && gatesOpen && missing.length===0,
     canOffer:  p.type==="compare-offer" && gatesOpen,
     blockers,
   };
-  const missing = p.type==="compare-offer" ? [] : questReadinessMissing(def, run, current);
   return { ok:true, questId:def.id, definitionVersion:def.v, phaseId:p.id, currentVersionId:current,
     musical:{ routes, matchedRouteIds, descriptorTokens:questRenderTokens(allTokens) },
     readiness:{ ok:missing.length===0, missing:missing.slice() },
     procedural };
 }
+
+// Evidence for every version, then the evaluation. Extracted because the shell and the controller both
+// need it and were each building it themselves — and the fork below only works if what the card shows
+// and what the button does are the same answer to the same question.
+function questEvaluateRun(run, def){
+  const versions={};
+  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);
+  return evaluateQuest(def, { versions }, run);
+}
+
+// Q6's fork asks a question about ONE version at ONE revision on ONE phase. A boolean would let an
+// answer given about the first path authorise offering the second, so the answer carries what it was
+// an answer to, and an edit — which moves editRev — silently retires it.
+function questConfirmKeyFor(run, def){
+  const p=def && def.phases[run.phase];
+  if(!p || p.type==="compare-offer" || run.status!=="active") return null;
+  const v=run.versions[p.versionId];
+  if(!v) return null;
+  return { runId:run.runId, phaseId:p.id, versionId:p.versionId, editRev:v.editRev, actionId:"continue" };
+}
+const questSameConfirm=(a,b)=> !!a && !!b && a.runId===b.runId && a.phaseId===b.phaseId
+  && a.versionId===b.versionId && a.editRev===b.editRev && a.actionId===b.actionId;
+let questConfirm=null;          // transient: a half-pressed button is not run state
+
+// The engine's own words, never an authored string: the question a child is asked when nothing the
+// garden suggested came out, and the answer is theirs either way.
+const QUEST_CONFIRM_TEXT="None of the ways the garden suggested came out this time. You can shape it some more, or keep this path as it is — it is yours either way.";
 
 // The persisted observation, rendered. A resumed run shows what it last heard until a newer completed
 // playback replaces it — so the description a child left the garden with is the one they come back to.
@@ -6673,9 +6702,20 @@ function performQuestAction(actionId, opts){
   if(!p) return fail("no-phase");
   const o=opts||{}, at=Date.now();
 
+  if(actionId==="shape-more"){ questConfirm=null; renderQuestShell(); return { ok:true }; }
   if(actionId==="continue"){
     const ops=questTransitionOps(def, run, at);
     if(!ops) return fail("not-a-transition");             // the compare phase offers; it does not advance
+    // Q6's fork, built at last. When the work is ready but nothing the garden suggested came out, the
+    // first press ASKS instead of advancing; the second answers. Never a block — the way on is always
+    // one more tap, and the answer is remembered against the exact version and revision it was given
+    // about, so it cannot travel to a different path or survive another edit.
+    const key=questConfirmKeyFor(run, def);
+    if(key && p.challenge && questPhaseGate(def, run.phase, p.versionId)(run)){
+      const ev=questEvaluateRun(run, def);
+      if(ev.ok && ev.musical.matchedRouteIds.length===0 && !questSameConfirm(questConfirm, key)){
+        questConfirm=key; renderQuestShell(); return { ok:false, code:"needs-confirm" }; } }
+    questConfirm=null;
     const adv=advanceQuestPhase({ runId, expectedPhase:run.phase,
       gate:questPhaseGate(def, run.phase, p.versionId), ops });
     // A new phase is a new beginning: the previous phase's undo history would otherwise let a child
@@ -6684,7 +6724,7 @@ function performQuestAction(actionId, opts){
     return adv;
   }
 
-  if(actionId==="audition"){
+  if(actionId==="audition"){ questConfirm=null;
     if(p.type!=="compare-offer" || p.versionIds.indexOf(o.versionId)<0) return fail("bad-version");
     const v=run.versions[o.versionId]; if(!v) return fail("no-version");
     questAuditionVersionId=o.versionId;                   // the grid is now a speaker, not a page
@@ -6857,9 +6897,7 @@ function questShellModel(run, def, view){
   if(!p) return null;
   const v=view||{};
   const versionId = p.type==="compare-offer" ? (run.selection || run.draft) : p.versionId;
-  const versions={};
-  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);
-  const ev=evaluateQuest(def, { versions }, run);
+  const ev=questEvaluateRun(run, def);
   const proc=ev.ok ? ev.procedural : null;
   const label=id=>{ const c=p.reflection && p.reflection.choices.find(x=>x.id===id); return c?c.label:id; };
   const auditioned=id=>{ const x=run.versions[id]; return !!x && x.auditionedRev===x.editRev; };
@@ -6868,6 +6906,10 @@ function questShellModel(run, def, view){
   const actions=[];
   const finished = run.status==="completed";
   const stuck = run.status==="offering";
+  // Q6: "you can shape it again, or offer this crossing as yours". The card only asks once the work is
+  // otherwise done — asking while a region is still empty would be nagging, not offering a choice.
+  const unmatched = !!(ev.ok && p.challenge && ev.musical.matchedRouteIds.length===0);
+  const asking = unmatched && questSameConfirm(v && v.confirm, questConfirmKeyFor(run, def));
   if(finished){
     // Nothing to press but the way out. Leaving the offer button lit after the song is saved invites a
     // child to press it again and watch nothing happen.
@@ -6884,8 +6926,14 @@ function questShellModel(run, def, view){
     actions.push({ id:"offer", label:def.completion.label, enabled:!!(proc && proc.canOffer),
                    titleField:true, defaultTitle:def.completion.defaultTitle });
   } else {
-    actions.push({ id:"continue", label:p.procedure.buttonLabel || "Continue",
-                   enabled:!!(proc && proc.canAdvance) });
+    const can=!!(proc && proc.canAdvance);
+    // Nothing matched, everything else is ready, and the question has been put: two answers, both real.
+    if(can && asking){
+      actions.push({ id:"shape-more", label:"Shape it more", enabled:true });
+      actions.push({ id:"continue", label:"Keep it anyway", enabled:true });
+    } else {
+      actions.push({ id:"continue", label:p.procedure.buttonLabel || "Continue", enabled:can });
+    }
   }
   actions.push({ id:"leave", label:"Leave for now", enabled:true });
 
@@ -6911,6 +6959,7 @@ function questShellModel(run, def, view){
       .map(x=>{ const d=QUEST_DESCRIPTORS[x.descriptorId]; return d && d.kind==="missing" ? d.text : null; })
       .filter(Boolean),
     heard:obs ? obs.descriptorTokens.map(t=>t.text) : [],
+    asking, confirmText: asking ? QUEST_CONFIRM_TEXT : "",
     saved: finished ? def.completion.completionText
          : stuck    ? "The garden could not put your song away just now — nothing is lost, try again." : "",
     versionId, notice, actions,
@@ -6947,7 +6996,8 @@ function renderQuestShell(){
   if(!isQuestScope()) return;
   const run=QUEST_RUNS[activeScope.runId], def=run && QUEST_DEFINITIONS[run.questId];
   const partialRange = rangeOn() && (loopA()!==0 || loopB()!==COLS);
-  const m=questShellModel(run, def, { partialRange, partialCursor: !partialRange && cursorPinned && cursorCol!==0 });
+  const m=questShellModel(run, def, { partialRange, confirm:questConfirm,
+    partialCursor: !partialRange && cursorPinned && cursorCol!==0 });
   const card=document.getElementById("questCard");
   if(!card) return;
   if(!m){ card.style.display="none"; return; }
@@ -6963,7 +7013,7 @@ function renderQuestShell(){
   list.textContent="";
   for(const w of m.ways){ const li=document.createElement("li"); li.textContent=w; list.appendChild(li); }
 
-  document.getElementById("questMissing").textContent=m.missing.join(" ");
+  document.getElementById("questMissing").textContent=m.confirmText || m.missing.join(" ");
   document.getElementById("questHeard").textContent=m.heard.join(" ");
   document.getElementById("questSaved").textContent=m.saved;
   const notice=document.getElementById("questNotice");
@@ -7012,7 +7062,7 @@ function questExplainRefusal(code){ setStatus(questRefusalText(code)); }
 // transaction that made it, so there is no quest autosave to flush on the way out.
 function leaveQuest(){
   if(playing) stop(); else cancelCompletionSession("navigation");
-  questAuditionVersionId=null;
+  questAuditionVersionId=null; questConfirm=null;
   if(typeof openHome==="function") openHome();
 }
 

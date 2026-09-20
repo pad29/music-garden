@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { loadGame } from "./harness.mjs";
+import { continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fresh = () => loadGame({ fresh: true });
@@ -558,7 +559,7 @@ test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative dea
   const version = g.QUEST_RUNS[runId].versions.A;
   assert.strictEqual(g.transactQuestRun(runId, [{ type: "completePass", versionId: "A",
     editRev: version.editRev, sessionId: "setup-heard", at: 20 }]).ok, true);
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   assert.strictEqual(g.QUEST_RUNS[runId].phase, 1);
   assert.deepEqual(g.QUEST_RUNS[runId].setup, authoritative);
   assert.deepEqual(g.QUEST_RUNS[runId].versions.B.song, version.song);
@@ -573,7 +574,7 @@ test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative dea
   const b = g.QUEST_RUNS[runId].versions.B;
   assert.strictEqual(g.transactQuestRun(runId, [{ type: "completePass", versionId: "B",
     editRev: b.editRev, sessionId: "b-heard", at: 30 }]).ok, true);
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   assert.strictEqual(g.QUEST_RUNS[runId].phase, 2);
   g.performQuestAction("leave"); g.hydrateQuestRuns();
   assert.strictEqual(g.enterQuestRun(runId).ok, true);

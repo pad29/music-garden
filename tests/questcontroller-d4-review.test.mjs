@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame as loadGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const song = (mel, hits) => ({
   v: 3, meta: { title: null, created: 0, updated: 0, author: null },
@@ -31,9 +31,9 @@ function atCompare(g) {
     assert.strictEqual(r.ok, true, r.code);
   };
   g.applySong(completeDealtSong(g, song(RISE, MAIN))); g.noteEdit("A edit"); credit("A", "a");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   g.applySong(completeDealtSong(g, song(FALL, MAIN))); g.noteEdit("B edit"); credit("B", "b");
-  assert.strictEqual(g.performQuestAction("continue").ok, true);
+  assert.strictEqual(continueQuest(g).ok, true);
   return begun.runId;
 }
 
