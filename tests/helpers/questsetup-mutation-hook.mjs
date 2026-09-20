@@ -9,7 +9,7 @@ registerHooks({
     const source = String(result.source);
     const needle = "const src = match[1];";
     if (!source.includes(needle)) throw new Error("Harness source extraction changed; update the audit hook");
-    const replacement = `let src = match[1];
+    const replacement = `let src = match[1].replace(/\\r\\n/g, "\\n");
       for (const [from, to] of JSON.parse(process.env.QUEST_SETUP_MUTATIONS || "[]")) {
         if (src.split(from).length !== 2) throw new Error("Mutation anchor must occur once: " + from);
         src = src.replace(from, to);

@@ -1,5 +1,4 @@
-// Step E / commit 2: generated tasks, geometry, construction and durable instances.
-// Obligation THREE (advertised-route reachability) deliberately belongs to commit 3.
+// Step E: generated tasks, geometry, construction and durable instances.
 // No assertions here use rendered output or pretend the VM can hear audio.
 import { test } from "node:test";
 import assert from "node:assert";
@@ -8,7 +7,7 @@ import { loadGame } from "./harness.mjs";
 const clone = value => JSON.parse(JSON.stringify(value));
 const fresh = () => loadGame({ fresh: true });
 const definition = (g, id = "firefly-crossing") => clone(g.QUEST_DEFINITIONS[id]);
-const RULE = { kind: "waypoints", count: 3, minGap: 4, edgeMargin: 2, maxRowSpread: 2 };
+const RULE = { kind: "waypoints", count: 3, minGap: 4, edgeMargin: 2, rowMargin: 1, minRowSpread: 2, maxRowSpread: 4 };
 const instance = (cols = [3, 7, 12], rows = [2, 3, 4]) => ({
   kind: "waypoints", generatorVersion: 1,
   waypoints: cols.map((col, i) => ({ row: rows[i], col })),
@@ -30,23 +29,28 @@ function rejects(g, def, code, path) {
 const melody = song => song.tracks.find(t => t.kind === "melody").notes;
 const drums = song => song.tracks.find(t => t.kind === "drums").hits;
 const enoughRoom = (rule, width) => 2 * rule.edgeMargin + 1 + (rule.count - 1) * rule.minGap <= width;
-// An independent constructive witness: minimum legal columns, all on the same row.
+// Independent minimum columns and a band whose endpoints attain the spread floor.
 const legalInstance = rule => instance(
   Array.from({ length: rule.count }, (_, i) => rule.edgeMargin + i * rule.minGap),
-  Array(rule.count).fill(0));
+  Array.from({ length: rule.count }, (_, i) => rule.rowMargin + (i === 0 ? rule.minRowSpread : 0)));
 function schemaErrors(g, rule) {
   const errors = [];
   g.questCheck(rule, g.QUEST_SETUP_KINDS.waypoints.parameterSchema, "$.setup", errors);
   return errors;
 }
-function* rules() {
+function* rules(allRows = true) {
   for (let count = 2; count <= 5; count++)
     for (let minGap = 2; minGap <= 8; minGap++)
       for (let edgeMargin = 1; edgeMargin <= 8; edgeMargin++)
         for (let maxRowSpread = 0; maxRowSpread <= 4; maxRowSpread++)
-          yield { kind: "waypoints", count, minGap, edgeMargin, maxRowSpread };
+          for (const rowMargin of allRows ? [0,1,2,3,4] : [1])
+            for (const minRowSpread of allRows ? [0,1,2,3,4] : [Math.min(2, maxRowSpread)])
+              yield { kind: "waypoints", count, minGap, edgeMargin, rowMargin, minRowSpread, maxRowSpread };
 }
 function launch(g, id = "firefly-crossing") {
+  // Stable valid deal; seed-space refusal is tested separately from persistence.
+  const rng = g.questRng;
+  g.questRng = seed => rng("fixture-4");
   const result = g.startQuestRun(id);
   assert.strictEqual(result.ok, true, JSON.stringify(result));
   return result.runId;
@@ -106,9 +110,9 @@ test("rule grammar accepts every bounded tuple and rejects malformed parameters"
   const g = fresh();
   let tuples = 0;
   for (const rule of rules()) { assert.deepEqual(schemaErrors(g, rule), []); tuples++; }
-  assert.strictEqual(tuples, 1120);
+  assert.strictEqual(tuples, 28000);
   for (const [key, low, high] of [["count", 2, 5], ["minGap", 2, 8],
-    ["edgeMargin", 1, 8], ["maxRowSpread", 0, 4]]) {
+    ["edgeMargin", 1, 8], ["rowMargin", 0, 4], ["minRowSpread", 0, 4], ["maxRowSpread", 0, 4]]) {
     for (const value of [low - 1, high + 1, low + 0.5, String(low), null, true]) {
       const rule = { ...RULE, [key]: value };
       assert.ok(schemaErrors(g, rule).some(e => e.code === "int-range"), JSON.stringify(rule));
@@ -151,14 +155,14 @@ test("shipped deals are repeatable, varied, versioned and valid across 512 seeds
   }
 });
 
-test("every feasible schema rule at every width generates legal geometry on both ladders", t => {
-  // MUTATION: ignore minGap/edgeMargin (the current defect), use the live ladder/width, or overshoot
+test("every horizontal rule at every width generates legal geometry on both ladders", t => {
+  // MUTATION: ignore minGap/edgeMargin, use the live ladder/width, or overshoot
   // the row band. Check independent inequalities as well as the production validator; they must not
   // validate each other's mistake. Finish the sweep before failing so narrow widths cannot hide 64.
   const g = fresh(), def = definition(g), k = g.QUEST_SETUP_KINDS.waypoints;
   const failures = {}, examples = {};
   let checked = 0, impossible = 0;
-  for (const rule of rules()) {
+  for (const rule of rules(false)) {
     assert.deepEqual(schemaErrors(g, rule), []);
     for (let width = 16; width <= 64; width++) {
       if (!enoughRoom(rule, width)) { impossible++; continue; }
@@ -193,8 +197,8 @@ test("every feasible schema rule at every width generates legal geometry on both
 });
 
 for (const [name, rule, legalColumns] of [
-  ["gap", { ...RULE, count: 2, minGap: 8, edgeMargin: 1, maxRowSpread: 0 }, [1, 9]],
-  ["margin", { ...RULE, count: 2, minGap: 2, edgeMargin: 6, maxRowSpread: 0 }, [6, 8]],
+  ["gap", { ...RULE, count: 2, minGap: 8, edgeMargin: 1, rowMargin: 0, minRowSpread: 0, maxRowSpread: 0 }, [1, 9]],
+  ["margin", { ...RULE, count: 2, minGap: 2, edgeMargin: 6, rowMargin: 0, minRowSpread: 0, maxRowSpread: 0 }, [6, 8]],
 ]) {
   test("a feasible non-default " + name + " rule must not be refused by the dealer", () => {
     // MUTATION: divide spare columns evenly without reserving the authored gap/margins.
@@ -226,7 +230,10 @@ const invalidInstances = [
   ["no-room-before", x => { x.waypoints[0].col = 1; return x; }],
   ["no-room-after", x => { x.waypoints[2].col = 14; return x; }],
   ["gap-too-narrow", x => { x.waypoints[1].col = 6; return x; }],
-  ["row-spread-too-wide", x => { x.waypoints[2].row = 5; return x; }],
+  ["row-spread-too-narrow", x => { x.waypoints.forEach(p => p.row = 3); return x; }],
+  ["row-off-band", x => { x.waypoints[0].row = 0; return x; }],
+  ["row-off-band", x => { x.waypoints.forEach((p,i) => p.row = [7,8,9][i]); return x; }],
+  ["row-spread-too-wide", x => { x.waypoints[2].row = 7; return x; }],
 ];
 for (const code of new Set(invalidInstances.map(([code]) => code))) {
   test("instance validation specifically rejects " + code, () => {
@@ -245,13 +252,13 @@ for (const code of new Set(invalidInstances.map(([code]) => code))) {
 test("geometry accepts exact bounds and uses the definition's ladder, not the live palette", () => {
   // MUTATION: replace a strict boundary with an inclusive rejection, or use global ROWS.
   const g = fresh(), def = definition(g), k = g.QUEST_SETUP_KINDS.waypoints;
-  const rule = { ...RULE, count: 2, minGap: 8, edgeMargin: 3, maxRowSpread: 4 };
+  const rule = { ...RULE, count: 2, minGap: 8, edgeMargin: 3, rowMargin: 0, maxRowSpread: 4 };
   assert.strictEqual(k.validateInstance(instance([3, 12], [0, 4]), rule, def), null);
   assert.strictEqual(k.validateInstance(instance([3, 11], [9, 5]), rule, def), null);
   def.workspace.paletteId = "diatonic";
   assert.strictEqual(k.validateInstance(instance([3, 12], [13, 9]), rule, def), null);
   assert.strictEqual(k.validateInstance(instance([3, 12], [14, 10]), rule, def), "row-off-ladder");
-  const flat = { ...RULE, maxRowSpread: 0 };
+  const flat = { ...RULE, rowMargin: 0, minRowSpread: 0, maxRowSpread: 0 };
   assert.strictEqual(k.validateInstance(instance([2, 6, 13], [0, 0, 0]), flat, definition(g)), null);
 });
 
@@ -369,8 +376,8 @@ test("prototype property names are unknown setup kinds, not an exception in the 
 });
 
 test("catalog validates the bounded rule and accepts optional valid witness instances", () => {
-  // MUTATION: skip parameterSchema, validate only the first witness, or require witnesses to carry
-  // setup before readiness (which is not in this commit).
+  // MUTATION: skip parameterSchema, validate only the first witness, or require every ordinary
+  // route witness to carry an optional setup instance.
   const g = fresh(), base = definition(g);
   accepts(g, base); // shipped witnesses intentionally have no setup yet
   for (const [key, value, code] of [["count", 1, "int-range"], ["count", 6, "int-range"],
@@ -520,6 +527,7 @@ test("start refuses legal geometry whose constructed completion is unreachable",
 test("a failed setup-run write publishes neither a run nor a new play scope", () => {
   // MUTATION: publish/enter the generated run before saveQuestRuns succeeds.
   const g = fresh(), scope = g.activeScope;
+  const rng = g.questRng; g.questRng = () => rng("fixture-4");
   g.Store.set = () => false;
   assert.deepEqual(g.startQuestRun("firefly-crossing"), { ok: false, code: "store-failed" });
   assert.deepEqual(Object.keys(g.QUEST_RUNS), []);
@@ -531,11 +539,11 @@ test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative dea
   // generated starting song. A different valid stored deal defeats same-seed regeneration false proofs.
   const first = fresh(), runId = launch(first), def = first.QUEST_DEFINITIONS["firefly-crossing"];
   const dealt = clone(first.QUEST_RUNS[runId].setup);
-  const authoritative = { ...instance([2, 6, 13], [0, 0, 0]), seed: "archived-seed" };
+  const authoritative = { ...instance([2, 6, 13], [2, 3, 4]), seed: "archived-seed" };
   assert.notDeepEqual(authoritative.waypoints, dealt.waypoints);
   first.QUEST_RUNS[runId].setup = authoritative;
-  const edited = first.QUEST_SETUP_KINDS.waypoints.startingSong(def, authoritative);
-  melody(edited).push({ p: 72, c: 0, len: 1 });
+  const edited = first.questSetupCompletion(def, authoritative);
+  melody(edited).push({ p: 72, c: 1, len: 1 });
   first.applySong(edited); first.noteEdit("setup-resume-fixture");
   assert.strictEqual(first.QUEST_RUNS[runId].versions.A.editRev, 1);
   assert.strictEqual(first.performQuestAction("leave").ok, true);
@@ -587,10 +595,10 @@ test("replay deals a new instance without overwriting the earlier run", () => {
   const g = fresh(), rng = g.questRng, seen = [];
   let serial = 0;
   g.__window.Math = Object.assign(Object.create(Math), { random: () => ++serial / 100 });
-  g.questRng = seed => { seen.push(seed); return rng(seed); };
-  const a = launch(g), before = clone(g.QUEST_RUNS[a]);
+  g.questRng = seed => { seen.push(seed); return rng("fixture-4"); };
+  const a = g.startQuestRun("firefly-crossing").runId, before = clone(g.QUEST_RUNS[a]);
   g.performQuestAction("leave");
-  const b = launch(g);
+  const b = g.startQuestRun("firefly-crossing").runId;
   assert.notStrictEqual(a, b);
   assert.deepEqual(seen, [a, b]);
   assert.strictEqual(g.QUEST_RUNS[b].setup.seed, b);
@@ -626,7 +634,7 @@ test("a rule whose landmarks cannot fit its own field is refused by the catalog"
   // MUTATION: drop the feasibility check, leaving the refusal to startQuestRun.
   // Geometry that cannot fit is an authoring mistake, and the moment to say so is while a person is
   // still editing the file — not when a child presses Begin and gets a dead end.
-  const wide = d => { d.setup = { kind: "waypoints", count: 5, minGap: 8, edgeMargin: 4, maxRowSpread: 2 }; };
+  const wide = d => { d.setup = { ...RULE, count: 5, minGap: 8, edgeMargin: 4 }; };
   const g2 = fresh();
   const d = definition(g2);
   wide(d);

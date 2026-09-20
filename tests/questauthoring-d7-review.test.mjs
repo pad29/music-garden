@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame } from "./helpers/quest-fixtures.mjs";
 
 const song = () => ({
   v: 3, meta: { title: null, created: 0, updated: 0, author: null },

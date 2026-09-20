@@ -1,14 +1,13 @@
 // Optional, dependency-free proof audit (Node >=22.15): node tests/questsetup-mutations.mjs
-// Each green test is run once unchanged, then against its named fault IN MEMORY. Existing red
-// regressions are never counted as mutation kills. Temporary repair experiments below establish
-// that those tests can pass; they do not change source or the ordinary suite's expected failures.
+// Each green test is run once unchanged, then against its named fault IN MEMORY.
+// A syntax/load failure or a test that was already red is never counted as a mutation kill.
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1];
+const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function run(title, patches = []) {
   let candidate = source;
@@ -17,9 +16,11 @@ function run(title, patches = []) {
     candidate = candidate.replace(from, to);
   }
   new Function(candidate); // A syntax error is not a caught behavioral mutation.
+  const file = readFileSync(new URL("./questsetup-readiness.test.mjs", import.meta.url), "utf8")
+    .includes('test("' + title + '"') ? "tests/questsetup-readiness.test.mjs" : "tests/questsetup.test.mjs";
   const result = spawnSync(process.execPath, ["--import", "./tests/helpers/questsetup-mutation-hook.mjs",
     "--test", "--test-reporter=tap", "--test-name-pattern=^" + escape(title) + "$",
-    "tests/questsetup.test.mjs"], { cwd: root, encoding: "utf8", timeout: 20000,
+    file], { cwd: root, encoding: "utf8", timeout: 20000,
     env: { ...process.env, QUEST_SETUP_MUTATIONS: JSON.stringify(patches) } });
   assert.ifError(result.error);
   assert.strictEqual(result.signal, null);
@@ -31,7 +32,8 @@ const mutations = [
     "const questRegistry = obj => deepFreezeQuest(Object.assign(Object.create(null), obj));",
     "const questRegistry = obj => Object.freeze(Object.assign(Object.create(null), obj));"],
   ...[["count:QT.int(2,5)", "count:QT.int(1,5)"], ["minGap:QT.int(2,8)", "minGap:QT.int(1,8)"],
-    ["edgeMargin:QT.int(1,8)", "edgeMargin:QT.int(0,8)"], ["maxRowSpread:QT.int(0,4)", "maxRowSpread:QT.int(0,5)"]]
+    ["edgeMargin:QT.int(1,8)", "edgeMargin:QT.int(0,8)"], ["rowMargin:QT.int(0,4)", "rowMargin:QT.int(0,5)"],
+    ["minRowSpread:QT.int(0,4)", "minRowSpread:QT.int(0,5)"], ["maxRowSpread:QT.int(0,4)", "maxRowSpread:QT.int(0,5)"]]
     .map(([from, to]) => ["rule grammar accepts every bounded tuple and rejects malformed parameters", from, to]),
   ["shipped deals are repeatable, varied, versioned and valid across 512 seeds per quest", "generate(rule, def, rng){", "generate(rule, def, rng){ rng=questRng('constant');"],
   ["shipped deals are repeatable, varied, versioned and valid across 512 seeds per quest",
@@ -39,10 +41,10 @@ const mutations = [
     'return { kind:"waypoints", generatorVersion:0, waypoints };'],
 
   // ---- the three defects GPT found, each with the fault that brings it back ----
-  ["every feasible schema rule at every width generates legal geometry on both ladders",
+  ["every horizontal rule at every width generates legal geometry on both ladders",
     "const lo=Math.max(rule.edgeMargin, 1), hi=span-1-Math.max(rule.edgeMargin, 1);",
     "const lo=1, hi=span-2;"],
-  ["every feasible schema rule at every width generates legal geometry on both ladders",
+  ["every horizontal rule at every width generates legal geometry on both ladders",
     "const step=Math.max(rule.minGap, 2), slack=(hi-lo)-(rule.count-1)*step;",
     "const step=2, slack=(hi-lo)-(rule.count-1)*step;"],
   ["hydrated generated runs with missing or illegal instances must not resume",
@@ -54,7 +56,7 @@ const mutations = [
   ["a rule whose landmarks cannot fit its own field is refused by the catalog",
     'if(kind.feasible && !kind.feasible(def.setup, def))', "if(false)"],
   ...["not-waypoints", "wrong-count", "bad-waypoint", "row-off-ladder", "columns-not-ascending", "no-room-before",
-    "no-room-after", "gap-too-narrow", "row-spread-too-wide"].map(code => [
+    "no-room-after", "gap-too-narrow", "row-spread-too-wide", "row-spread-too-narrow", "row-off-band"].map(code => [
     "instance validation specifically rejects " + code, 'return "' + code + '";', "return null;",
   ]),
   ["geometry accepts exact bounds and uses the definition's ladder, not the live palette", "if(w[0].col<rule.edgeMargin)", "if(w[0].col<=rule.edgeMargin)"],
@@ -79,13 +81,102 @@ const mutations = [
     'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1), setup:QT.opaque() }, QUEST_SHAPE_COMMON), ["starterSong","setup"])'],
   ["newQuestRun deeply owns its instance, including one supplied by a frozen definition", "setup:o.setup ? jclone(o.setup) : null", "setup:o.setup ? Object.assign({},o.setup) : null"],
   ["start stores the seeded instance and opens exactly its landmarks, never the constructed completion", "song=kind.startingSong(def, setup);", "song=questSetupCompletion(def, setup);"],
-  ["impossible rule-width combinations are refused before persisting or entering a run", "kind.validateInstance(setup, def.setup, def) || questSetupCompletable(def, setup)", "questSetupCompletable(def, setup)"],
-  ["start refuses legal geometry whose constructed completion is unreachable", "kind.validateInstance(setup, def.setup, def) || questSetupCompletable(def, setup)", "kind.validateInstance(setup, def.setup, def)"],
+  ["impossible rule-width combinations are refused before persisting or entering a run",
+    "kind.validateInstance(hand, def.setup, def) || questSetupCompletable(def, hand)", "questSetupCompletable(def, hand)"],
+  ["start refuses legal geometry whose constructed completion is unreachable",
+    "kind.validateInstance(hand, def.setup, def) || questSetupCompletable(def, hand)", "kind.validateInstance(hand, def.setup, def)"],
+  // the re-deal itself: a search is a lower bound, so an unvouched hand must be replaced, not refused
+  ["a hand the search cannot vouch for is re-dealt, not refused in the child's face",
+    "for(let attempt=0; attempt<12 && !setup; attempt++){", "for(let attempt=0; attempt<1 && !setup; attempt++){"],
+  ["a hand the search cannot vouch for is re-dealt, not refused in the child's face",
+    "for(let attempt=0; attempt<12 && !setup; attempt++){", "for(let attempt=0; attempt<9999 && !setup; attempt++){"],
+  ["the hand that used to be refused for a search's shortcoming now launches",
+    "attempt(along(slots, shapes[name]));", ";"],
   ["a failed setup-run write publishes neither a run nor a new play scope", 'if(!saved) return { ok:false, code:"store-failed" };    // a full disk must not produce a run nothing saved', 'if(!saved) { QUEST_RUNS=cand; return { ok:false, code:"store-failed" }; }'],
   ["leave, hydrate in a fresh VM, edit and fork preserve the authoritative deal without RNG", "function enterQuestRun(runId){", "function enterQuestRun(runId){ questRng(runId);"],
   ["leave, hydrate in a fresh VM, edit and fork preserve the authoritative deal without RNG", "function hydrateQuestRuns(){", "function hydrateQuestRuns(){ questRng('hydrate');"],
-  ["replay deals a new instance without overwriting the earlier run", "kind.generate(def.setup, def, questRng(runId))", "kind.generate(def.setup, def, questRng('previous-run'))"],
+  ["replay deals a new instance without overwriting the earlier run", "kind.generate(def.setup, def, questRng(seed))", "kind.generate(def.setup, def, questRng('previous-run'))"],
   ["v1 runs without tasks still launch and resume with setup null", "setup:o.setup ? jclone(o.setup) : null", "setup:o.setup ? jclone(o.setup) : {}"],
+
+  // ---- Step E commit 3: row bands, readiness, Q6, and the third obligation ----
+  ...[
+    ["return !!K.bounds(rule, def) && !!K.rowBounds(rule, def);", "return !!K.bounds(rule, def);"],
+    ["(hi-lo)<rule.maxRowSpread || rule.minRowSpread>rule.maxRowSpread", "(hi-lo)<rule.maxRowSpread"],
+    ["(hi-lo)<rule.maxRowSpread || rule.minRowSpread>rule.maxRowSpread", "rule.minRowSpread>rule.maxRowSpread"],
+    ["(hi-lo)<rule.maxRowSpread || rule.minRowSpread>rule.maxRowSpread", "(hi-lo)<=rule.maxRowSpread || rule.minRowSpread>rule.maxRowSpread"],
+    ["const lo=rule.rowMargin, hi=rows-1-rule.rowMargin;", "const lo=rule.rowMargin, hi=ROWS-1-rule.rowMargin;"],
+  ].map(([from, to]) => ["row bounds and feasibility reject every impossible band independently of column fit", from, to]),
+  ...[
+    ["rowsPick[pinLo]=base; rowsPick[pinHi]=base+spread;", "rowsPick[pinHi]=base+spread;"],
+    ["rowsPick[pinLo]=base; rowsPick[pinHi]=base+spread;", "rowsPick[pinLo]=base;"],
+    ["if(pinHi===pinLo) pinHi=(pinLo+1)%rule.count;", "if(false) pinHi=(pinLo+1)%rule.count;"],
+    ["rule.minRowSpread+Math.floor(rng()*(rule.maxRowSpread-rule.minRowSpread+1))", "rule.minRowSpread+Math.floor(rng()*(rule.maxRowSpread-rule.minRowSpread+2))"],
+    ["const base=rb.lo+Math.floor(rng()*(room-spread+1));", "const base=Math.floor(rng()*(room-spread+1));"],
+    ["const base=rb.lo+Math.floor(rng()*(room-spread+1));", "const base=rb.lo+Math.floor(rng()*(room-spread+2));"],
+  ].map(([from, to]) => ["all 28000 schema tuples honor both spread bounds and margins across seeds", from, to]),
+  ...[
+    ['if(inst.waypoints.some(p=>!lit(p.row,p.col)))', 'if(false)'],
+    ['if(empty) out.push({ code:"region-empty", descriptorId:"missing-region" });', 'if(false) out.push({ code:"region-empty", descriptorId:"missing-region" });'],
+    ['if(ev.drumOnsetCount===0) out.push', 'if(false) out.push'],
+    ['if(empty) out.push({ code:"region-empty", descriptorId:"missing-region" });', 'if(empty) for(const r of K.regions(inst, def)) out.push({ code:"region-empty", descriptorId:"missing-region" });'],
+    ['out.push({ code:"landmark-gone", descriptorId:"missing-landmark" });', 'out.push({ code:"landmark-gone", descriptorId:"missing-landmark", count:1 });'],
+    ['const lit=(row,col)=> !!(g[row] && g[row][col]);', 'const lit=(row,col)=> g.some(r=>!!r[col]);'],
+    ['for(let c=r.from;c<=r.to;c++) for(let row=0;row<rows;row++) if(lit(row,c)) return false;', 'for(let c=r.from-1;c<=r.to+1;c++) for(let row=0;row<rows;row++) if(lit(row,c)) return false;'],
+    ['"missing-region":{ kind:"missing",', '"missing-region":{ kind:"heard",'],
+  ].map(([from, to]) => ["readiness is one missing sentence per kind across every missing-region subset", from, to]),
+  ["drum evidence counts projected onsets on all lanes and clips out-of-span and duplicate hits",
+    "melodyOnsetCount, drumOnsetCount, projected, contourFamilies", "melodyOnsetCount, projected, contourFamilies"],
+  ["drum evidence counts projected onsets on all lanes and clips out-of-span and duplicate hits",
+    "for(let d=0;d<dg.length;d++) for(let c=0;c<span;c++) if(dg[d][c]) drumOnsetCount++;",
+    "for(let c=0;c<span;c++) if(dg[0][c]) drumOnsetCount++;"],
+  ...[
+    ['const rd=QUEST_READINESS[def.setup.kind];', 'const rd=def.id==="firefly-crossing" ? QUEST_READINESS[def.setup.kind] : null;'],
+    ['const v=run.versions && run.versions[versionId];', 'const v=run.versions && run.versions.A;'],
+    ['if(!ev.valid) return [{ code:"song-invalid", descriptorId:"missing-region" }];', 'if(!ev.valid) return [];'],
+    ['if(!def || def.setup===undefined || !run || !run.setup) return [];', 'if(!def || !run || !run.setup) return [];'],
+  ].map(([from, to]) => ["readiness dispatch uses setup kind and version, with safe no-task and invalid-song paths", from, to]),
+  ["missing descriptors and setup kinds cannot be smuggled into procedure gateIds",
+    '"playback.complete-since-last-edit":{ kind:"procedural",',
+    '"readiness.waypoints":{ kind:"procedural", gate:()=>true }, "playback.complete-since-last-edit":{ kind:"procedural",'],
+  ...[
+    ['if(p.type!=="compare-offer" && questReadinessMissing(def, run, versionId).length) return false;', 'if(false) return false;'],
+    ['if(p.type!=="compare-offer" && questReadinessMissing(def, run, versionId).length) return false;', 'if(p.type==="compose" && questReadinessMissing(def, run, versionId).length) return false;'],
+    ['if(p.type!=="compare-offer" && questReadinessMissing(def, run, versionId).length) return false;', 'if(p.type!=="compare-offer" && questReadinessMissing(def, run, "A").length) return false;'],
+  ].map(([from, to]) => ["each readiness kind blocks phases one and two after all procedural gates are open", from, to]),
+  ...[
+    ['if(p.type!=="compare-offer" && questReadinessMissing(def, run, versionId).length) return false;', 'if(questReadinessMissing(def, run, versionId).length) return false;'],
+    ['const missing = p.type==="compare-offer" ? [] : questReadinessMissing(def, run, current);', 'const missing = questReadinessMissing(def, run, current);'],
+  ].map(([from, to]) => ["Q6 permits a final offer that fails every readiness kind and matches no route", from, to]),
+  ...[
+    ['const missing = p.type==="compare-offer" ? [] : questReadinessMissing(def, run, current);', 'const missing = [];'],
+    ['function evaluateQuest(def, evidence, run){', 'function evaluateQuest(def, evidence, run){ run.readinessProbe=true;'],
+  ].map(([from, to]) => ["evaluateQuest reports readiness without mutating frozen inputs or consulting live state", from, to]),
+  ["readiness exemptions follow phase type and absent setup rather than phase position or quest id",
+    'if(p.type!=="compare-offer" && questReadinessMissing(def, run, versionId).length) return false;',
+    'if(phaseIdx!==2 && questReadinessMissing(def, run, versionId).length) return false;'],
+  ...[
+    ['if(ev.valid) for(const f of ev.contourFamilies) if(found.indexOf(f)<0) found.push(f);', 'if(found.indexOf(name)<0) found.push(name);'],
+    ['if(ev.valid) for(const f of ev.contourFamilies) if(found.indexOf(f)<0) found.push(f);', 'for(const f of ev.contourFamilies) if(found.indexOf(f)<0) found.push(f);'],
+    ['if(ev.valid) for(const f of ev.contourFamilies) if(found.indexOf(f)<0) found.push(f);', 'if(ev.valid) for(const f of ev.contourFamilies) found.push(f);'],
+    ['if(ev.valid) for(const f of ev.contourFamilies) if(found.indexOf(f)<0) found.push(f);', 'if(ev.valid) for(const f of ev.contourFamilies.slice(0,1)) if(found.indexOf(f)<0) found.push(f);'],
+    ['for(const name of Object.keys(shapes)){', 'for(const name of Object.keys(shapes).slice(0,3)){'],
+    // the dense fill is what made the search stop refusing legal hands; dropping it must be caught
+    ['attempt(along(slots, shapes[name]));', ';'],
+    ['attempt(along(regions, shapes[name]).map(([row,r])=>[row, Math.floor((r.from+r.to)/2)]));', ';'],
+  ].map(([from, to]) => ["reachable families are exactly the evidence of real constructed songs, never strategy names", from, to]),
+  ...[
+    ['if(reach.length<2) return "one-contour-family-only";', 'if(false) return "one-contour-family-only";'],
+    ['if(!want.some(f=>reach.indexOf(f)>=0)) return "route-unreachable:"+r.id;', 'if(false) return "route-unreachable:"+r.id;'],
+    ['if(!want.some(f=>reach.indexOf(f)>=0)) return "route-unreachable:"+r.id;', 'if(!want.every(f=>reach.indexOf(f)>=0)) return "route-unreachable:"+r.id;'],
+    ['for(const p of def.phases){\n    if(!p.challenge) continue;', 'for(const p of def.phases.slice(0,1)){\n    if(!p.challenge) continue;'],
+  ].map(([from, to]) => ["route reachability checks each declared contour alternative after the two-family floor", from, to]),
+  ["start checks geometry then completability then reachability before any write or entry",
+    '|| questSetupRoutesReachable(def, hand);', ';'],
+  ["start checks geometry then completability then reachability before any write or entry",
+    'kind.validateInstance(hand, def.setup, def) || questSetupCompletable(def, hand)\n        || questSetupRoutesReachable(def, hand)',
+    'questSetupRoutesReachable(def, hand) || questSetupCompletable(def, hand) || kind.validateInstance(hand, def.setup, def)'],
+  ["independent witnesses agree with the search on the hand that exposed it",
+    'if(isRising(seq))   contourFamilies.push("rise");', 'if(false) contourFamilies.push("rise");'],
 ];
 
 const green = new Set();

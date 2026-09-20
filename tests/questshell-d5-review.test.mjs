@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
 const RISE = [[60, 0], [62, 2], [64, 4], [67, 6]];
 const FALL = [[67, 0], [64, 2], [62, 4], [60, 6]];
@@ -25,7 +25,7 @@ function atCompare() {
   const launch = g.startQuestRun("firefly-crossing");
   assert.strictEqual(launch.ok, true, launch.code);
   const runId = launch.runId;
-  const edit = s => { g.applySong(s); g.noteEdit("test-edit"); };
+  const edit = s => { g.applySong(completeDealtSong(g, s)); g.noteEdit("test-edit"); };
   const credit = (versionId, sessionId) => {
     const v = g.QUEST_RUNS[runId].versions[versionId];
     const r = g.transactQuestRun(runId, [{ type: "completePass", versionId, editRev: v.editRev,

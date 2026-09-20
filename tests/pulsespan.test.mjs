@@ -144,6 +144,8 @@ test("the room controls are a grant, not a given", () => {
   g2.setPlayScope({ kind: "package", packageId: "intro" });
   assert.strictEqual(g2.scopeFeatures().has("room"), true, "a package has always had them");
 
+  // This test concerns control grants, so choose a reproducible hand that passes all three obligations.
+  const rng = g2.questRng; g2.questRng = () => rng("fixture-4");
   const r = g2.startQuestRun("firefly-crossing");
   assert.strictEqual(r.ok, true, r.code);
   assert.strictEqual(g2.scopeFeatures().has("room"), false,

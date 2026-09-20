@@ -16,7 +16,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
 const g = loadGame();
 
@@ -316,7 +316,7 @@ test("the same music gets the same sentence, whichever quest asked", () => {
 
 const runOf = (g2, runId) => g2.QUEST_RUNS[runId];
 const alwaysStop = (t, g2) => t.after(() => { try { if (g2.playing) g2.stop(); } catch (e) { /* down */ } });
-function edit(g2, s) { g2.applySong(s); g2.noteEdit("test-edit"); }
+function edit(g2, s) { g2.applySong(completeDealtSong(g2, s)); g2.noteEdit("test-edit"); }
 const credit = (g2, runId, versionId, sessionId) => {
   const v = runOf(g2, runId).versions[versionId];
   const r = g2.transactQuestRun(runId, [{ type: "completePass", versionId, editRev: v.editRev,

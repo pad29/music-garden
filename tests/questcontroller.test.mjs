@@ -1,7 +1,8 @@
 // Entering a quest, and moving through it.
 //
 // The controller is generic on purpose: what a transition does is named by the definition, and the
-// gate for a phase is the AND of the gate ids that phase declares. There is no branch on phase number
+// procedural gate is the AND of its declared ids; a dealt task also needs readiness before comparison.
+// There is no branch on phase number
 // anywhere in it, because the whole point of the declarative format is that a new phase is data.
 //
 // Each test names the mutation it must catch. A test that passes against the correct code AND against
@@ -9,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
 const RISE = [[60, 0], [62, 2], [64, 4], [67, 6]];
 const FALL = [[67, 0], [64, 2], [62, 4], [60, 6]];
@@ -38,7 +39,7 @@ const runOf = (g, runId) => g.QUEST_RUNS[runId];
  *  test that plays must stop even when it FAILS, or a red test becomes a hung suite. */
 const alwaysStop = (t, g) => t.after(() => { try { if (g.playing) g.stop(); } catch (e) { /* already down */ } });
 /** A real player edit: change the live document, then tell the game an edit happened. */
-function edit(g, runId, s) { g.applySong(s); g.noteEdit("test-edit"); return runOf(g, runId); }
+function edit(g, runId, s) { g.applySong(completeDealtSong(g, s)); g.noteEdit("test-edit"); return runOf(g, runId); }
 const credit = (g, runId, versionId, sessionId) => {
   const v = runOf(g, runId).versions[versionId];
   const r = g.transactQuestRun(runId, [{ type: "completePass", versionId, editRev: v.editRev,
@@ -83,7 +84,7 @@ test("the launcher builds the field the workspace asked for", () => {
 test("a workspace wider than the editor's default really is built wider", () => {
   // MUTATION: use the live COLS instead of workspace.columns. The shipped Firefly asks for 16, which
   // is also the editor's floor — so only a definition that asks for something else can tell them apart.
-  const g = loadGame({ fresh: true });
+  const g = loadGame({ fresh: true, questSeed: "fixture-0" });
   const wide = JSON.parse(JSON.stringify(g.QUEST_DEFINITIONS["firefly-crossing"]));
   wide.workspace.columns = 24;
   // …and so are the songs that prove its routes reachable: a 16-column witness is not something a
@@ -211,7 +212,9 @@ test("entry opens the draft, and is not itself an edit", () => {
 
 // ============================ the generic gate ============================
 
-test("a phase is gated by exactly the ids it declares, and nothing else", () => {
+test("a ready phase is gated by exactly the procedure ids it declares", () => {
+  // Deliberate behavior change: procedure ids used to be the ONLY gates. These songs now finish
+  // the dealt task first; independent tests pin readiness as the additional early-phase condition.
   // MUTATION: hardcode the gate for phase 1, or gate on a route match.
   const { g, runId } = launched();
   const def = g.QUEST_DEFINITIONS["firefly-crossing"];
@@ -237,7 +240,7 @@ test("a phase is gated by exactly the ids it declares, and nothing else", () => 
 test("a song matching no route still moves the quest on", () => {
   // MUTATION: gate a transition on a route match. Q6's "offer anyway" is the whole shape of this quest.
   const { g, runId } = launched();
-  edit(g, runId, song([[60, 0], [60, 4]], []));      // no recognized contour, no steady pulse
+  edit(g, runId, song([[60, 0], [60, 4]], []));      // completed landmarks and regions, but no steady pulse
   credit(g, runId, "A", "s1");
   const ev = { versions: { A: g.songEvidence(runOf(g, runId).versions.A.song) } };
   assert.deepEqual(
@@ -292,7 +295,7 @@ test("auditioning is a listen: the grid becomes a speaker, never a page", t => {
 
   const a = g.performQuestAction("audition", { versionId: "A" });
   assert.strictEqual(a.ok, true);
-  assert.strictEqual(g.contourSeq().length, 4, "A really is on the grid");
+  assert.strictEqual(g.contourSeq().length, 7, "A really is on the grid");
   assert.strictEqual(g.isRising(g.contourSeq()), true);
 
   g.noteEdit("a stray poke while listening");

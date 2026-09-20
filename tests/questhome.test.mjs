@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
 const g = loadGame();
 const DEFS = g.QUEST_DEFINITIONS;
@@ -24,7 +24,18 @@ const progressWith = (...completed) => {
   return { packages };
 };
 const ALL_DONE = progressWith(...PREREQS);
+// A live run now carries the hand it was dealt, and Home refuses to advertise a Continue the door
+// would bounce — so a fixture without one is a run the game would rightly not offer.
+const DEALT = (() => {
+  const def = DEFS["firefly-crossing"], k = g.QUEST_SETUP_KINDS[def.setup.kind];
+  for (let i = 0; i < 12; i++) {
+    const hand = k.generate(def.setup, def, g.questRng("home-fixture:" + i));
+    if (!k.validateInstance(hand, def.setup, def) && !g.questSetupCompletable(def, hand)) return hand;
+  }
+  throw new Error("no usable fixture hand");
+})();
 const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
+  setup: JSON.parse(JSON.stringify(DEALT)),
   status: "active", phase: 0, draft: "A", selection: null, versions: {}, updatedAt: 10, ...over });
 const rows = (progress, runs = {}, hist = {}) => g.questEligibility(DEFS, progress, runs, hist);
 const one = (progress, runs = {}, hist = {}) => rows(progress, runs, hist)[0];
@@ -57,6 +68,13 @@ test("a run already going means Continue, never Begin", () => {
 
   // a run stuck mid-save is still this child's run
   assert.strictEqual(one(ALL_DONE, { r1: run({ status: "offering" }) }).action, "continue");
+  // …and a run whose dealt hand no longer fits its rule is not advertised either: Home and the door
+  // ask one question, so a Continue that the door would bounce is never offered. D6 found this with a
+  // replaced definition; a stale task instance is the same defect in the new field's clothes.
+  assert.strictEqual(one(ALL_DONE, { r1: run({ setup: null }) }).action, "begin");
+  assert.strictEqual(one(ALL_DONE, { r1: run({ setup: { kind: "waypoints", generatorVersion: 1,
+    waypoints: [{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 }] } }) }).action, "begin");
+
   // …but a finished or abandoned one is not
   for (const status of ["completed", "abandoned"]) {
     const r = one(ALL_DONE, { r1: run({ status }) });
@@ -220,11 +238,11 @@ test("starting a new version writes a new song, never over the old one", () => {
     assert.strictEqual(r.ok, true, r.code);
     const id = r.runId, at = () => g2.QUEST_RUNS[id];
     const T = ops => { const x = g2.transactQuestRun(id, ops); assert.strictEqual(x.ok, true, x.code); };
-    g2.applySong(song(melA)); g2.noteEdit("e");
+    g2.applySong(completeDealtSong(g2, song(melA))); g2.noteEdit("e");
     T([{ type: "completePass", versionId: "A", editRev: at().versions.A.editRev, sessionId: "s1", at: 1 },
        { type: "audition", versionId: "A", editRev: at().versions.A.editRev, sessionId: "s1", at: 1 }]);
     assert.strictEqual(g2.performQuestAction("continue").ok, true);
-    g2.applySong(song(melB)); g2.noteEdit("e");
+    g2.applySong(completeDealtSong(g2, song(melB))); g2.noteEdit("e");
     T([{ type: "completePass", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 },
        { type: "audition", versionId: "B", editRev: at().versions.B.editRev, sessionId: "s2", at: 2 }]);
     assert.strictEqual(g2.performQuestAction("continue").ok, true);

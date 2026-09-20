@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
 
 const RISE = [[60, 0], [62, 2], [64, 4], [67, 6]];
 const FALL = [[67, 0], [64, 2], [62, 4], [60, 6]];
@@ -35,7 +35,7 @@ function launched() {
 }
 const runOf = (g, id) => g.QUEST_RUNS[id];
 const alwaysStop = (t, g) => t.after(() => { try { if (g.playing) g.stop(); } catch (e) { /* down already */ } });
-const edit = (g, s) => { g.applySong(s); g.noteEdit("test-edit"); };
+const edit = (g, s) => { g.applySong(completeDealtSong(g, s)); g.noteEdit("test-edit"); };
 const credit = (g, runId, versionId, sessionId) => {
   const v = runOf(g, runId).versions[versionId];
   const r = g.transactQuestRun(runId, [{ type: "completePass", versionId, editRev: v.editRev,
@@ -185,7 +185,7 @@ test("the shell repeats what was heard, and only for the phase it belongs to", (
   edit(g, song(RISE, MAIN));
   g.onCompletePass({ runId, versionId: "A", editRev: 1, sessionId: "cs1", purpose: "play" });
   assert.deepEqual(model(g, runId, def, {}).heard,
-    ["The notes climbed.", "The drum stepped on every main beat."]);
+    ["The notes climbed.", "The notes arched over and came back.", "The drum stepped on every main beat."]);
 
   assert.strictEqual(g.performQuestAction("continue").ok, true);
   assert.deepEqual(model(g, runId, def, {}).heard, [],
