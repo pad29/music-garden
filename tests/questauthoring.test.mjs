@@ -77,7 +77,7 @@ test("a control the engine does not open cannot be granted", () => {
   // The shipped list used to name melody, playback, voice, tempo, mixer, undo, redo and room. Not one
   // of them reached renderLevel(): the definition was claiming credit for what it did not give.
   assert.deepEqual(Object.keys(g.QUEST_CONTROLS).sort(),
-    ["drums", "fuse", "grow", "jam", "loop", "more"]);
+    ["drums", "fuse", "grow", "jam", "loop", "more", "room"]);
   assert.strictEqual(codes(load(d => { d.workspace.controlIds = ["drums", "mixer"]; }))
     .includes("no-such-control"), true);
   // and every id the shipped catalog grants is one scopeFeatures() actually honours
@@ -309,7 +309,7 @@ test("the same music gets the same sentence, whichever quest asked", () => {
   assert.strictEqual(woods.includes("heard-pulse-main-kicks"), true,
     "the same drum pattern is the same fact in both quests");
   assert.strictEqual(g.questTokenText({ id: "heard-pulse-main-kicks" }),
-    "The drum stepped on the four main beats.");
+    "The drum stepped on every main beat.");
 });
 
 // ======================= the second commission, played end to end =======================

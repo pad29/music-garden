@@ -88,7 +88,17 @@ test("a workspace wider than the editor's default really is built wider", () => 
   wide.workspace.columns = 24;
   // …and so are the songs that prove its routes reachable: a 16-column witness is not something a
   // 24-column workspace can hand back, and the validator now says so.
-  for (const w of wide.witnesses) for (const v of Object.keys(w.songs)) w.songs[v].time.cols = 24;
+  for (const w of wide.witnesses) for (const v of Object.keys(w.songs)) {
+    const s = w.songs[v];
+    s.time.cols = 24;
+    // extend each witness's own drum pattern across the wider field, keeping its family
+    const hits = s.tracks[1].hits;
+    if (hits.length) {
+      const lane = hits[0].lane, step = hits.length > 4 ? 2 : 4;
+      s.tracks[1].hits = [];
+      for (let c = 0; c < 24; c += step) s.tracks[1].hits.push({ lane, c });
+    }
+  }
   g.loadQuestCatalog(JSON.stringify({ v: 1, definitions: [wide] }), "official");
   assert.deepEqual([...g.QUEST_CATALOG_ERRORS], []);
 

@@ -161,8 +161,9 @@ test("every shipped package resolves exactly as it did before the migration", ()
     assert.strictEqual(g.scopePalette(), def.palette || def.levels[0].palette || "pentatonic", `${id}: palette`);
     assert.strictEqual(g.scopeCatalogId(), id, `${id}: catalog id`);
     assert.strictEqual(g.scopeToolboxOwner(), "pkg:" + id, `${id}: toolbox owner`);
-    // features accumulate level by level, exactly as unlockedSet did over LEVELS
-    const expected = new Set();
+    // features accumulate level by level, exactly as unlockedSet did over LEVELS — plus `room`,
+    // which every package has always had and no level ever unlocked. A quest must declare it.
+    const expected = new Set(["room"]);
     (def.levels[0].unlock || []).forEach(f => expected.add(f));
     assert.deepEqual([...g.scopeFeatures()].sort(), [...expected].sort(), `${id}: level-0 features`);
   }

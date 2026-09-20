@@ -703,7 +703,7 @@
                horizontal space, and it runs the full height of the field — a tool is beside your finger
                wherever you are planting, instead of a scroll away at the bottom. -->
           <div id="fieldbar">
-            <span class="fbgroup">
+            <span class="fbgroup" id="roomgroup">
               <span class="fbpair">
                 <button id="colPlus" class="secondary" title="Make room for one more step at the cursor 🌱 — seeds and beat slide right">＋</button>
                 <button id="colMinus" class="secondary" title="Close up the cursor's step ✂ — the rest pulls together, beat too">－</button>
@@ -3005,14 +3005,34 @@ function gridNotesOnBeats(){ let n=0; for(let c=0;c<COLS;c+=4) for(let r=0;r<ROW
 // song without loading it into the editor. `dg` must be forwarded through every nested call: defaulting
 // only the outer function leaves the inner one reading the global, so the "pure" form silently consults
 // live state while looking correct. Every shipped caller passes nothing and is unaffected.
-const kickOn4 = (dg=drumG) => [0,4,8,12].every(i=>dg[0][i]);
-const kickClean = (dg=drumG) => kickOn4(dg) && dg[0].every((on,i)=>!on||i%4===0);
+// ONE pure pattern helper with an explicit span, and two families of caller. A lesson is checked across
+// 16 columns and always has been, so its wrapper hardcodes 16 and keeps its old name and signature. A
+// quest passes the width of its OWN field, because on a wider field "a walk that stops two thirds of the
+// way across" must not still count as a walk. Widening the field used to be invisible to these: every
+// one of them read fixed positions in the first 16 columns.
+const laneEvery = (dg, lane, step, span) => { const row=dg[lane]||[];
+  for(let i=0;i<span;i+=step) if(!row[i]) return false; return true; };
+// …and nothing OFF the pattern, anywhere in the lane. This is what keeps the clean four disjoint from
+// the even walk — the walk tolerates extra hits and the clean four does not — and the quest's route
+// alternatives depend on that distinction, so it is swept over the whole lane rather than the span.
+const laneOnlyEvery = (dg, lane, step) => (dg[lane]||[]).every((on,i)=>!on||i%step===0);
+
+// span-explicit, for anything that knows how wide its field is
+const pulseMainBeats  = (dg, span) => laneEvery(dg,0,4,span) && laneOnlyEvery(dg,0,4);
+const pulseEvenWalk   = (dg, span) => laneEvery(dg,0,2,span);
+const pulseHatShimmer = (dg, span) => laneEvery(dg,2,2,span);
+
+// the lesson wrappers — 16 columns, exactly as before, names unchanged for the 247 goal closures
+const kickOn4 = (dg=drumG) => laneEvery(dg,0,4,16);
+const kickClean = (dg=drumG) => pulseMainBeats(dg,16);
 // the even walk — eight KICKS, one every other step. Lane 0, not the hi-hat shimmer below: they are
 // different lanes and different lessons, and conflating them cost a design round.
-const kickWalk8 = (dg=drumG) => [0,2,4,6,8,10,12,14].every(i=>dg[0][i]);
+const kickWalk8 = (dg=drumG) => pulseEvenWalk(dg,16);
+// The snare pair stays at fixed positions: no quest analyzer reads it yet, so giving it a span would be
+// a generalisation nothing has asked for and nothing could test.
 const snareBackbeat = (dg=drumG) => dg[1][4]&&dg[1][12];
 const snareBackbeatClean = (dg=drumG) => snareBackbeat(dg) && dg[1].every((on,i)=>!on||i===4||i===12);
-const hat8ths = (dg=drumG) => [0,2,4,6,8,10,12,14].every(i=>dg[2][i]);
+const hat8ths = (dg=drumG) => pulseHatShimmer(dg,16);
 // tint the beat columns on the field so the player can land a melody "on the beat"
 function setBeatGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) if(cells[r]&&cells[r][c])
   cells[r][c].classList.toggle("beatcol", !!on && c%4===0); }
@@ -5268,9 +5288,11 @@ function songEvidence(song){
   if(isHovering(seq)) contourFamilies.push("hover");
   if(isArch(seq))     contourFamilies.push("arc");
   const dg=projected.drumG, steadyPulseFamilies=[];
-  if(kickClean(dg))  steadyPulseFamilies.push("main-beat-kicks");
-  if(kickWalk8(dg))  steadyPulseFamilies.push("even-kick-walk");
-  if(hat8ths(dg))    steadyPulseFamilies.push("hat-shimmer");
+  // The SPAN, not 16: this evidence may describe a song wider than the editor's floor, and a pulse that
+  // stops before the end of it is not the steady pulse the descriptor claims.
+  if(pulseMainBeats(dg,span))  steadyPulseFamilies.push("main-beat-kicks");
+  if(pulseEvenWalk(dg,span))   steadyPulseFamilies.push("even-kick-walk");
+  if(pulseHatShimmer(dg,span)) steadyPulseFamilies.push("hat-shimmer");
   // Onsets are counted off the PROJECTION, not the note list: two notes that snap to one cell are one
   // thing the player hears, and every other analyzer reads the projection too.
   let melodyOnsetCount=0, drumOnsetCount=0;
@@ -5375,7 +5397,7 @@ function questRelate(leftId, leftParams, rightId, rightParams){
 // kept their shape, which is what was true, rather than a negation of the question.
 const QUEST_ENUM_LABELS=Object.freeze({
   rise:"Rise", fall:"Fall", hover:"Hover", arc:"Arc",
-  "main-beat-kicks":"main-beat kicks", "even-kick-walk":"even eight-step kick walk",
+  "main-beat-kicks":"main-beat kicks", "even-kick-walk":"even kick walk",
   "hat-shimmer":"hi-hat shimmer",
 });
 // Canonical order, not alphabetical accident: when a song lands on more than one family, the sentence
@@ -5514,6 +5536,11 @@ const QUEST_CAPABILITIES=deepFreezeQuest({
 // naming them as grants would be a definition taking credit for what it did not give.
 const QUEST_CONTROLS=deepFreezeQuest({
   drums:{ opens:"the drum bed" },
+  // The ＋/－ beside the cursor INSERT AND REMOVE TIME, sliding every note and beat sideways. D7 closed
+  // the ids that resolved to nothing and missed these two entirely: they were gated by nothing at all,
+  // so every quest has always granted time surgery it never declared. A quest whose task is pinned to
+  // columns cannot afford that quietly.
+  room: { opens:"the ＋/－ room controls at the cursor" },
   loop: { opens:"looping, on from the first bar" },   // renderLevel sets `looping`; the button is always there
   jam:  { opens:"the band and the groove picker" },
   fuse: { opens:"the toolbox and Fuse" },
@@ -5559,9 +5586,9 @@ const QUEST_THEMES=deepFreezeQuest({
 // so that no authored string can pretend to be one of these.
 const QUEST_DESCRIPTORS=deepFreezeQuest({
   "way-contour-any":{ kind:"way", text:"a Rise, Fall, Hover, or Arc path" },
-  "way-pulse-main-kicks":{ kind:"way", text:"clean kicks on the four main beats" },
-  "way-pulse-even-kicks":{ kind:"way", text:"the even eight-step kick walk" },
-  "way-pulse-hat-shimmer":{ kind:"way", text:"the steady hi-hat shimmer" },
+  "way-pulse-main-kicks":{ kind:"way", text:"a clean kick on every main beat" },
+  "way-pulse-even-kicks":{ kind:"way", text:"an even kick walk, all the way across" },
+  "way-pulse-hat-shimmer":{ kind:"way", text:"a steady hi-hat shimmer, all the way across" },
   "way-contour-changed":{ kind:"way", text:"a different recognized shape" },
   "way-contour-kept":{ kind:"way", text:"the same recognized shape" },
   "way-pulse-kept":{ kind:"way", text:"the same steady heartbeat" },
@@ -5572,8 +5599,8 @@ const QUEST_DESCRIPTORS=deepFreezeQuest({
   "heard-contour-hover":{ kind:"heard", text:"The notes hovered." },
   "heard-contour-arc":{ kind:"heard", text:"The notes arched over and came back." },
   "heard-contour-unnamed":{ kind:"heard", text:"The notes made a shape the garden has not named yet." },
-  "heard-pulse-main-kicks":{ kind:"heard", text:"The drum stepped on the four main beats." },
-  "heard-pulse-even-kicks":{ kind:"heard", text:"The drum took the even eight-step walk." },
+  "heard-pulse-main-kicks":{ kind:"heard", text:"The drum stepped on every main beat." },
+  "heard-pulse-even-kicks":{ kind:"heard", text:"The drum walked evenly, all the way across." },
   "heard-pulse-hat-shimmer":{ kind:"heard", text:"The hi-hat kept a steady shimmer." },
   "heard-pulse-none":{ kind:"heard", text:"The drums have not caught one of the steady heartbeats yet." },
   "heard-contour-changed":{ kind:"heard", text:"The shape changed from {oldContour} to {newContour}.", slots:["oldContour","newContour"] },
@@ -6765,7 +6792,9 @@ function scopePalette(){
 // a quest gets only what its workspace granted — never inherited from a prerequisite package.
 function scopeFeatures(){
   if(isQuestScope()) return new Set(activeScope.features);
-  const s=unlockedSet(levelIdx); if(isStudioScope()) s.add("grow"); return s; }
+  // A package has always had the cursor room controls, and its progression never unlocked them — so
+  // they are granted here rather than written into 247 levels. A quest gets them only by declaring them.
+  const s=unlockedSet(levelIdx); s.add("room"); if(isStudioScope()) s.add("grow"); return s; }
 
 // Quest phase position belongs to the QuestRun, never to a second mutable index — the same drift this
 // scope exists to prevent. Step (c) owns this store; B2 needs only enough of it to be testable, and
@@ -6888,6 +6917,7 @@ function renderLevel(){   // level-wide setup (unlocks, layout), then render its
   syncMeterUI();                                     // Studio-only meter controls, and the bars that go with them
   craftBtn.style.display=U.has("fuse")?"":"none"; toolboxCard.style.display=U.has("fuse")?"":"none";
   moreMenu.style.display=U.has("more")?"":"none";
+  roomGroup.style.display=U.has("room")?"":"none";
   const drumsUnlocked=U.has("drums");
   drumsOn = drumsUnlocked && (!!L.rhythm || !!L.drums);
   drumBtn.style.display=(drumsUnlocked && !L.rhythm)?"":"none";
@@ -7518,7 +7548,7 @@ function syncPatchCopy(){ const m=meterAt(), k=barCols();
                                : "Add a whole patch of room — 16 more steps at the end";
   if(lessBtn) lessBtn.title = m ? `Take back the last bar (${k} steps)`
                                : "Take back the last patch — 16 steps"; }
-const moreMenu=document.getElementById("moremenu");
+const moreMenu=document.getElementById("moremenu"), roomGroup=document.getElementById("roomgroup");
 // ONE keyboard handler, a priority ladder — never two listeners fighting over the same key (design-panel rule).
 function overlayUp(){ return ["powoverlay","congratsoverlay","moverlay","homeoverlay","landingoverlay","compoverlay","instroverlay","mixoverlay"]
   .some(id=>{ const el=document.getElementById(id); return el && getComputedStyle(el).display!=="none"; }); }

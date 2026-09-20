@@ -133,7 +133,7 @@ test("the description follows the music, not the question that was asked", () =>
     ["The notes kept their Rise shape."]);
 
   const texts = out.musical.descriptorTokens.map(t => t.text);
-  assert.strictEqual(texts.includes("The drums changed from main-beat kicks to even eight-step kick walk."),
+  assert.strictEqual(texts.includes("The drums changed from main-beat kicks to even kick walk."),
     true, JSON.stringify(texts));
 });
 
@@ -223,9 +223,9 @@ test("no analyzer can say something its own declared list does not allow", () =>
 test("ways this could work are the engine's phrases, one entry per route", () => {
   // MUTATION: read authored text, or collapse the routes into one.
   assert.deepEqual(g.questWays(DEF, "light-first-path"), [
-    { routeId: "main-beat-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "clean kicks on the four main beats"] },
-    { routeId: "even-walk-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "the even eight-step kick walk"] },
-    { routeId: "shimmer-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "the steady hi-hat shimmer"] },
+    { routeId: "main-beat-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "a clean kick on every main beat"] },
+    { routeId: "even-walk-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "an even kick walk, all the way across"] },
+    { routeId: "shimmer-crossing", phrases: ["a Rise, Fall, Hover, or Arc path", "a steady hi-hat shimmer, all the way across"] },
   ]);
   assert.deepEqual(g.questWays(DEF, "choose-crossing"), [], "a compare phase has no routes to offer");
 });
@@ -487,5 +487,5 @@ test("a resumed run still says what it last heard", () => {
   const back = g2.questObservationFor(g2.QUEST_RUNS["r9"], "light-first-path");
   assert.deepEqual(back.matchedRouteIds, ["main-beat-crossing"]);
   assert.deepEqual(back.descriptorTokens.map(t => t.text),
-    ["The notes climbed.", "The drum stepped on the four main beats."]);
+    ["The notes climbed.", "The drum stepped on every main beat."]);
 });

@@ -68,9 +68,9 @@ test("the ways are one sentence per route, in the engine's own words", () => {
   // MUTATION: render one way per observation, or read authored text instead of the descriptors.
   const { g, runId, def } = launched();
   assert.deepEqual(model(g, runId, def, {}).ways, [
-    "A Rise, Fall, Hover, or Arc path with clean kicks on the four main beats.",
-    "A Rise, Fall, Hover, or Arc path with the even eight-step kick walk.",
-    "A Rise, Fall, Hover, or Arc path with the steady hi-hat shimmer.",
+    "A Rise, Fall, Hover, or Arc path with a clean kick on every main beat.",
+    "A Rise, Fall, Hover, or Arc path with an even kick walk, all the way across.",
+    "A Rise, Fall, Hover, or Arc path with a steady hi-hat shimmer, all the way across.",
   ]);
   assert.strictEqual(model(g, runId, def, {}).ways.length, def.phases[0].challenge.routes.length);
 });
@@ -185,7 +185,7 @@ test("the shell repeats what was heard, and only for the phase it belongs to", (
   edit(g, song(RISE, MAIN));
   g.onCompletePass({ runId, versionId: "A", editRev: 1, sessionId: "cs1", purpose: "play" });
   assert.deepEqual(model(g, runId, def, {}).heard,
-    ["The notes climbed.", "The drum stepped on the four main beats."]);
+    ["The notes climbed.", "The drum stepped on every main beat."]);
 
   assert.strictEqual(g.performQuestAction("continue").ok, true);
   assert.deepEqual(model(g, runId, def, {}).heard, [],
