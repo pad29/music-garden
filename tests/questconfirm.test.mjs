@@ -115,7 +115,6 @@ test("the question offers two model actions and shape-more really cancels it", (
   assert.deepEqual(f.model().actions, [
     { id: "shape-more", label: "Shape it more", enabled: true },
     { id: "continue", label: "Keep it anyway", enabled: true },
-    { id: "leave", label: "Leave for now", enabled: true },
   ]);
   assert.strictEqual(f.model().confirmText, f.g.QUEST_CONFIRM_TEXT);
   assert.ok(f.g.QUEST_CONFIRM_TEXT.length > 0);

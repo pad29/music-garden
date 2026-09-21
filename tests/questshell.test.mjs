@@ -54,7 +54,8 @@ test("the shell states one intention and never ticks the routes off", () => {
   const m = model(g, runId, def, {});
 
   assert.strictEqual(m.title, "The Firefly Crossing");
-  assert.strictEqual(m.phaseLabel, "Phase 1 of 3");
+  assert.strictEqual("phaseLabel" in m, false);
+  assert.deepEqual(m.steps, def.phases.map((p,i)=>({name:p.name,state:i===0?"current":"todo"})));
   assert.strictEqual(m.intentionText, def.phases[0].intentionText);
   assert.strictEqual(m.worldText, def.phases[0].worldText);
 
@@ -119,12 +120,20 @@ test("every action the model emits says out loud whether it can be pressed", () 
   }
 });
 
-test("leaving is offered in every phase", () => {
-  // MUTATION: show it only on the last one, or drop it when a gate is open.
+test("the menu exit and truthful save status replace the leave button in every phase", () => {
+  // A5 removed this control; pin the visible exit guidance instead of resurrecting it.
+  // MUTATION: omit exitText, retain Leave, or announce saved over an unsaved edit.
   const { g, runId, def } = launched();
-  assert.strictEqual(action(model(g, runId, def, {}), "leave").enabled, true);
-  const c = atCompare();
-  assert.strictEqual(action(model(c.g, c.runId, c.def, {}), "leave").enabled, true);
+  for(const phase of [0,1,2]) for(const status of ["active","offering","completed"]){
+    const run={...runOf(g,runId),phase,status};
+    for(const unsaved of [false,true]){
+      const m=g.questShellModel(run,def,{unsaved});
+      assert.strictEqual(action(m,"leave"),undefined);
+      if(!unsaved)assert.ok(m.exitText.includes("☰"));
+      assert.strictEqual(m.exitText,unsaved?g.QUEST_UNSAVED_TEXT:g.QUEST_EXIT_TEXT);
+      assert.deepEqual(m.steps,def.phases.map((p,i)=>({name:p.name,state:i<phase?"done":i===phase?"current":"todo"})));
+    }
+  }
 });
 
 /** Drive a fresh run to the compare phase: A rises over main kicks, B falls over an even walk. */
@@ -145,8 +154,9 @@ test("paths can be picked immediately while offering waits for current listening
   // MUTATION: omit path choices or retain the six-action comparison card.
   const {g,runId,def}=atCompare(); alwaysStop(t,g);
   const before=model(g,runId,def,{});
-  assert.deepEqual(before.actions.map(a=>a.id),["offer","leave"]);
-  assert.deepEqual(before.paths,def.phases[2].reflection.choices.map(c=>({versionId:c.id,label:c.label,selected:false,heard:false})));
+  assert.deepEqual(before.actions.map(a=>a.id),["offer"]);
+  // `enabled` is false only while an edit has failed to save, because switching would discard it.
+  assert.deepEqual(before.paths,def.phases[2].reflection.choices.map(c=>({versionId:c.id,label:c.label,selected:false,heard:false,enabled:true})));
   assert.strictEqual(before.reflectionPrompt,def.phases[2].reflection.promptText);
   assert.strictEqual(action(before,"offer").enabled,false);
   for(const versionId of ["A","B"]){
@@ -177,12 +187,15 @@ test("the shell repeats what was heard, and only for the phase it belongs to", (
   const { g, runId, def } = launched();
   edit(g, song(RISE, MAIN));
   g.onCompletePass({ runId, versionId: "A", editRev: 1, sessionId: "cs1", purpose: "play" });
-  assert.deepEqual(model(g, runId, def, {}).heard,
-    ["The notes climbed.", "The notes arched over and came back.", "The drum stepped on every main beat."]);
+  const heard=model(g, runId, def, {});
+  assert.deepEqual(heard.heard, []);
+  assert.deepEqual(heard.voices.map(v=>v.lines),
+    [["The notes climbed.", "The notes arched over and came back."], ["The drum stepped on every main beat."]]);
 
   assert.strictEqual(g.performQuestAction("continue").ok, true);
   assert.deepEqual(model(g, runId, def, {}).heard, [],
     "phase 2 has heard nothing yet, whatever phase 1 remembers");
+  assert.ok(model(g, runId, def, {}).voices.every(v=>v.lines.length===0));
 });
 
 test("the saved line appears only once the run really is saved", t => {
@@ -200,13 +213,12 @@ test("the saved line appears only once the run really is saved", t => {
   assert.strictEqual(model(g, runId, def, {}).saved, "");
   assert.strictEqual(g.performQuestAction("offer").ok, true);
 
-  const done = model(g, runId, def, {});
+  const done = model(g, runId, def, {saved:g.questSavedState(g.getSaves(),runOf(g,runId))});
   assert.strictEqual(done.saved, def.completion.completionText);
   // MUTATION: leave the offer button lit after the song is saved.
   // The whole quest was for this moment, and the screen said nothing: same six buttons, no line of
   // text, an offer button inviting a second press that does nothing.
-  assert.deepEqual(done.actions.map(a => a.id), ["leave"],
-    "a finished run has one thing left to do");
+  assert.deepEqual(done.actions, [], "the finale owns the exits from the completed field");
   assert.strictEqual(model(g, runId, def, { partialRange: true }).notice, null,
     "and nothing is in the way of a song already saved");
 });
@@ -343,7 +355,7 @@ test("the screen speaks the moment the song is saved", t => {
   g.performQuestAction("pick", { versionId: "B" });
   assert.strictEqual(g.performQuestAction("offer").ok, true);
   assert.strictEqual(g.questLastRendered.saved, def.completion.completionText);
-  assert.deepEqual(g.questLastRendered.actions.map(a => a.id), ["leave"]);
+  assert.deepEqual(g.questLastRendered.actions, []);
 });
 
 test("an edit puts out the button it just invalidated", () => {
@@ -411,7 +423,7 @@ test("a run stuck mid-offering offers the way out of it", t => {
   assert.strictEqual(runOf(g, runId).status, "offering");
 
   const stuck = model(g, runId, def, {});
-  assert.deepEqual(stuck.actions.map(a => a.id), ["retry-offer", "leave"]);
+  assert.deepEqual(stuck.actions.map(a => a.id), ["retry-offer"]);
   assert.strictEqual(/nothing is lost/.test(stuck.saved), true, stuck.saved);
   assert.notStrictEqual(stuck.saved, def.completion.completionText,
     "a song that was not written must not be described as carried into the garden");
@@ -419,7 +431,8 @@ test("a run stuck mid-offering offers the way out of it", t => {
   g.Store.set = realSet;                                  // the disk frees up
   assert.strictEqual(g.performQuestAction("retry-offer").ok, true);
   assert.strictEqual(runOf(g, runId).status, "completed");
-  assert.strictEqual(model(g, runId, def, {}).saved, def.completion.completionText);
+  assert.strictEqual(model(g, runId, def, {saved:g.questSavedState(g.getSaves(),runOf(g,runId))}).saved,
+    def.completion.completionText);
   assert.strictEqual(g.getSaves()[0].meta.source.kind, "quest");
 });
 

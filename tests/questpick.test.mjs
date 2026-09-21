@@ -224,7 +224,7 @@ test("offer needs both current auditions and a selection and returns the saved a
   // tap that can do nothing — the same reason the offer button does not stay lit.
   g.renderQuestShell();
   assert.deepEqual(g.questLastRendered.paths,[]);
-  assert.deepEqual(g.questLastRendered.actions.map(a=>a.id),["leave"]);
+  assert.deepEqual(g.questLastRendered.actions,[]);
 });
 
 test("pick and shell use authored ids labels and reflection without consulting live evidence", t => {
@@ -242,9 +242,9 @@ test("pick and shell use authored ids labels and reflection without consulting l
     const model=g.questShellModel(run(),def,{});
     assert.deepEqual(g.questEvaluateRun(run(),def),expected);
     assert.strictEqual(model.reflectionPrompt,"Which walk will you keep?");
-    assert.deepEqual(model.paths,[{versionId:"B",label:def.phases[2].reflection.choices[1].label,selected:false,heard:true},
-      {versionId:"A",label:"My quiet walk",selected:true,heard:true}]);
-    assert.deepEqual(model.actions.map(a=>a.id),["offer","leave"]);
+    assert.deepEqual(model.paths,[{versionId:"B",label:def.phases[2].reflection.choices[1].label,selected:false,heard:true,enabled:true},
+      {versionId:"A",label:"My quiet walk",selected:true,heard:true,enabled:true}]);
+    assert.deepEqual(model.actions.map(a=>a.id),["offer"]);
     assert.deepEqual(run(),before);assert.strictEqual(JSON.stringify(def),definition);
   } finally {g.currentSong=oldCurrent;}
   assert.strictEqual(g.performQuestAction("offer").ok,true);

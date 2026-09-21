@@ -286,6 +286,9 @@ export function loadGame({ fresh = false } = {}) {
 
   // Don't spread — that would evaluate the getters once and lose liveness.
   const api = sandbox.__api;
+  // Let registry tests execute the actual compiled initializer against a synthetic collision.
+  // This is the same in-memory source used above, including mutation-audit patches.
+  Object.defineProperty(api, "__script", { value: src });
   Object.defineProperty(api, "__window", { value: sandbox });
   Object.defineProperty(api, "__document", { value: stubDoc });
   if (!fresh) cached = api;

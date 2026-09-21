@@ -5,12 +5,13 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { e6Mutations } from "./helpers/quest-e6-mutations.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const evidenceLoop = 'function questEvaluateRun(run, def){\n  const versions={};\n  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);';
-const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questconfirm.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs"]
+const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questconfirm.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs", "questfinale.test.mjs", "questcast.test.mjs", "quest-e6-review.test.mjs"]
   .map(name => ({ path: "tests/" + name, source: readFileSync(new URL("./" + name, import.meta.url), "utf8") }));
 function run(title, patches = []) {
   let candidate = source;
@@ -33,6 +34,24 @@ function run(title, patches = []) {
   return result;
 }
 const mutations = [
+  // ---- the four defects GPT's tester found in commit 6, each with the fault that brings it back ----
+  // Offering saved the STORED version while the field held an edit that never reached the store.
+  ["a failed comparison edit cannot be offered as an older saved document",
+    '    if(questHasUnsavedEdit(runId, run.selection)) return fail("unsaved-edit");\n', ""],
+  ["a failed comparison edit cannot be offered as an older saved document",
+    "enabled:!!(proc && proc.canOffer) && !unsaved", "enabled:!!(proc && proc.canOffer)"],
+  // Switching paths repainted from the other version, taking the unsaved note with it for good.
+  ["switching paths cannot silently discard a failed edit",
+    '    if(o.versionId!==run.draft && questHasUnsavedEdit(runId, run.draft)) return fail("unsaved-edit");\n', ""],
+  ["switching paths cannot silently discard a failed edit",
+    "enabled: !unsaved || run.draft===id })) : [];", "enabled: true })) : [];"],
+  // The card read no saved state at all, so it announced the song deleted in the breath that saved it.
+  ["the screen speaks the moment the song is saved",
+    "    saved: questSavedState(getSaves(), run),\n", ""],
+  // The honest warning replaced the whole line, taking the only instruction for how to leave with it.
+  ["the unsaved exit explanation still identifies the menu route",
+    " The world map is under the ☰ menu.\";\nconst QUEST_RANGE_TEXT", "\";\nconst QUEST_RANGE_TEXT"],
+
   ["RNG pins version-one sequences, including the empty seed and UTF-16 input", "h=2166136261>>>0", "h=2166136260>>>0"],
   ["the setup registry, rule grammar and forbidden controls are deeply frozen",
     "const questRegistry = obj => deepFreezeQuest(Object.assign(Object.create(null), obj));",
@@ -83,8 +102,8 @@ const mutations = [
     'Object.assign({ v:QT.lit(2), setup:QT.opaque() }, QUEST_SHAPE_COMMON)',
     'Object.assign({ v:QT.lit(2), setup:QT.opaque() }, QUEST_SHAPE_COMMON, { title:QT.opaque() })'],
   ["setup is a v2-only definition key and unsupported versions never dispatch as v2",
-    'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1) }, QUEST_SHAPE_COMMON), ["starterSong"])',
-    'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1), setup:QT.opaque() }, QUEST_SHAPE_COMMON), ["starterSong","setup"])'],
+    'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1) }, QUEST_SHAPE_COMMON), ["starterSong","cast"])',
+    'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1), setup:QT.opaque() }, QUEST_SHAPE_COMMON), ["starterSong","cast","setup"])'],
   ["newQuestRun deeply owns its instance, including one supplied by a frozen definition", "setup:o.setup ? jclone(o.setup) : null", "setup:o.setup ? Object.assign({},o.setup) : null"],
   ["start stores the seeded instance and opens exactly its landmarks, never the constructed completion", "song=kind.startingSong(def, setup);", "song=questSetupCompletion(def, setup);"],
   ["impossible rule-width combinations are refused before persisting or entering a run",
@@ -190,16 +209,16 @@ const mutations = [
     ['gatesOpen && missing.length===0', 'missing.length===0'],
     ['gatesOpen && missing.length===0', '(gatesOpen || missing.length===0)'],
     ['gatesOpen && missing.length===0', 'gatesOpen && missing.length!==0'],
-    ['const can=!!(proc && proc.canAdvance);', 'const can=!!proc;'],
-    ['const can=!!(proc && proc.canAdvance);', 'const can=false;'],
+    ['const can=!!(proc && proc.canAdvance) && !unsaved;', 'const can=!!proc && !unsaved;'],
+    ['const can=!!(proc && proc.canAdvance) && !unsaved;', 'const can=false;'],
   ].map(([from, to]) => ["readiness and declared gate sweeps agree between evaluator model and controller gate", from, to]),
   ...[
     ['if(key && p.challenge && questPhaseGate(def, run.phase, p.versionId)(run)){', 'if(false){'],
     ['!questSameConfirm(questConfirm, key)', 'true'],
     ['questConfirm=key; renderQuestShell(); return { ok:false, code:"needs-confirm" };',
       'questConfirm=key; run.confirm=key; renderQuestShell(); return { ok:false, code:"needs-confirm" };'],
-    ['saved: finished ? def.completion.completionText',
-      'saved: finished ? (questEvaluateRun({...run,phase:1},def).musical.matchedRouteIds.length===0 ? "Almost finished" : def.completion.completionText)'],
+    ['saved: finished ? (def.completion.completionText',
+      'saved: finished ? ((questEvaluateRun({...run,phase:1},def).musical.matchedRouteIds.length===0 ? "Almost finished" : def.completion.completionText)'],
   ].map(([from, to]) => ["unmatched paths ask once per early phase and finish with the same payoff", from, to]),
   ["matched paths advance on the first press without a confirmation",
     'if(ev.ok && ev.musical.matchedRouteIds.length===0 && !questSameConfirm(questConfirm, key)){',
@@ -228,7 +247,7 @@ const mutations = [
   ["edits and undo retire the question even when the song returns to the same notes",
     'a.editRev===b.editRev', 'true'],
   ["leaving and reloading discard the answer without losing the draft or earned gates",
-    'questConfirm=null;\n  if(typeof openHome', 'if(typeof openHome'],
+    'questConfirm=null;\n  { const fin=document.getElementById("questfinale");', '{ const fin=document.getElementById("questfinale");'],
   ["leaving and reloading discard the answer without losing the draft or earned gates",
     'const env=questRunEnvelope(pruned, hist);', 'const env=questRunEnvelope(pruned, hist); env.confirm=questConfirm;'],
   ["picking clears an old answer including a refused pick",
@@ -346,11 +365,17 @@ const mutations = [
   ].map(([from,to])=>["undo and redo during a pick restore the held version and leave its sibling alone",from,to]),
 ];
 
+mutations.push(...e6Mutations);
 const green = new Set();
 // A focused rerun is useful while developing new faults; the default always runs the full audit.
-const selectedMutations = process.argv.includes("--confirm-only")
+const selectedMutations = process.argv.includes("--e6-only") ? e6Mutations : process.argv.includes("--confirm-only")
   ? mutations.filter(([title]) => testFiles.find(f => f.path === "tests/questconfirm.test.mjs").source.includes('test("' + title + '"'))
   : mutations;
+// Catch stale anchors before spending minutes running the full sweep.
+for(const [,from,to] of selectedMutations){
+  assert.strictEqual(source.split(from).length,2,"unique mutation anchor: "+from);
+  new Function(source.replace(from,to));
+}
 for (const [title, from, to] of selectedMutations) {
   if (!green.has(title)) {
     const baseline = run(title);

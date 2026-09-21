@@ -46,6 +46,20 @@ Where the two models disagreed, §9 records who won and why. Working files live 
 - **A3 — Map presentation constrained.** Neither draft bounded where quests appear, despite GPT's
   own failure mode *"the quest board becomes map clutter."* Added as **Q22**.
 
+### Amendments applied after the first playtest (2026-09-20)
+
+The owner played the built quest on 2026-09-19. Three amendments follow from it, each marked inline.
+None reverses a decision; each narrows one that turned out to permit something nobody wanted.
+
+- **A4 — "Nonempty" was not a composition.** One seed and no drums completed the quest. Phases 1 and 2
+  now require the dealt landmark task to be engaged; the final offer keeps Q6 unchanged (§3, Q6).
+- **A5 — The exit is visible, the control is not specified.** A *Leave for now* button beside the
+  phase's own button read as a consequential choice. The requirement is now that the shell make the way
+  out and the saved state plain, not that it carry a particular button (§6, Q11).
+- **A6 — The playtest gate's first result, recorded.** Under thirty seconds against a 10–15 minute band,
+  and the landmark commission that answers it is written down as a **hypothesis** the five-novice median
+  still has to settle (§2, Q4).
+
 ---
 
 ## 1. Vocabulary
@@ -189,6 +203,24 @@ Draft 2's estimates summed to 8–13, undershooting their own acceptance band.
 completion must fall between 10 and 15 minutes. If it does not, **the content must be revised — it
 must not be padded** with waiting, extra detector clauses or forced repetition.
 
+**Amendment A6 — the first playtest, and what has been done about it.** The owner played the quest on
+2026-09-19 and finished it in **under thirty seconds**, with one seed and no drums. The gate above was
+not merely missed; nothing in the build asked for a composition at all.
+
+What ships in answer is the **landmark commission**: the run is dealt three stepping stones, spaced
+apart and away from the edges, and the task is to keep them and travel between them — something of the
+player's own before the first, between each pair, and after the last, over a beat. The stones are
+generated per run, so the problem is not the same twice.
+
+**This is a hypothesis, not a fix.** It is the reviewer's own standard and it is adopted verbatim:
+
+> Also observe whether time is spent listening and revising, or locating missing regions and satisfying
+> buttons. Ten minutes of the latter would miss the product goal.
+
+The five-novice median still decides. A completion that takes ten minutes of hunting for an empty
+stretch has failed this gate exactly as a thirty-second one did, and the remedy would again be content,
+not padding.
+
 **Reason:** One contour plus one pulse is a three-minute task. Composing once, transforming the
 same material, comparing both and choosing an artifact creates the promised middle session while
 teaching revision rather than first-pass correctness. The shipped *Calm Reply, Bold Reply* step
@@ -253,6 +285,18 @@ resume and world-response purposes but must not label the result deficient.
 
 Phases 1 and 2 follow the same principle. Phase 2 additionally requires at least one musical edit
 after version A is copied — proving a revision occurred without dictating what it must mean.
+
+**Amendment A4 — what "nonempty" means in phases 1 and 2.** The first playtest (2026-09-19) completed
+the whole quest in under thirty seconds with one note and no drums, because "nonempty" is satisfied by
+a single seed. Phases 1 and 2 now require the **dealt task** to be engaged instead: every landmark the
+run was dealt still present, every stretch between and around them carrying something of the player's,
+and a beat under the path. That is a statement about the commission, not a grade — one sentence saying
+what the crossing is still missing, never a tally, and the field itself shows where.
+
+**The offer keeps Q6 exactly as written.** Readiness gates leaving phases 1 and 2 and nothing else:
+the final offer asks for a playthrough and an audible song, as it always has. When readiness is met and
+no suggested route matched, the button does not block — it asks once ("shape it more" / "keep it
+anyway") and takes either answer, which is this section's own wording finally built.
 
 **Reason:** A hard stop at the first quest's emotional peak would teach that the Studio accepts only
 detector-approved music. Objective routes still make transfer visible and testable, but final
@@ -404,6 +448,15 @@ A quest opens the Studio editor under a quest shell containing: one current phas
 optional "ways this could work" affordance rather than a checklist; a phase counter; descriptive
 observations after playback; visible save/resume state; and **Leave for now**, compare, continue and
 final-offering actions as appropriate.
+
+**Amendment A5 — the exit is visible; the control is not specified.** The shell must make two things
+plain at all times: that the player may stop whenever they like, and whether their work is saved. It
+must **not** be required to do that with a button. A *Leave for now* button was built and playtested,
+and the owner's finding was that it reads as a decision with consequences beside the phase's own
+button — "it is not clear what choosing 'Keep this path' vs 'Leave for now' would do". The shell now
+says it in words that also name where the way out is, because the world-map button lives behind the ☰
+menu and is not on screen. The saved state is **read from the store**, not asserted: it must be able to
+say that a write did not land.
 
 It must reuse the Studio's musical document, playback, mixer, undo behaviour and v3 save/share seam.
 It must **not fork a second composition editor.**
@@ -611,12 +664,14 @@ composition editor.
 
 ## 12. Decision record
 
-All thirteen decisions below were made by the owner (2026-09-05 / 2026-09-06). None are open.
+All thirteen decisions below were made by the owner (2026-09-05 / 2026-09-06). None are open. Two —
+**#2** and **#11** — were **refined** on 2026-09-20 after the first playtest; the refinements narrow what
+they permit and are recorded in the rows themselves. Neither is reversed.
 
 | # | Decision | Outcome |
 |---|---|---|
 | 1 | Reserve "quest" for the cross-package mode; rename 28 hooks `World hook:` | Approved |
-| 2 | Guided Commission as first coordinate; *The Firefly Crossing* as first slice | Approved — **must genuinely occupy 10–15 min** |
+| 2 | Guided Commission as first coordinate; *The Firefly Crossing* as first slice | Approved — **must genuinely occupy 10–15 min**; refined 2026-09-20 (**A4/A6**): the first playtest took under 30 s, so the quest now deals a landmark commission. The band is unchanged and unmet — it is a hypothesis awaiting the five-novice median |
 | 3 | Objective ingredients + ungraded interpretation as completion contract | Approved — **avoid checklists** |
 | 4 | Isolated Quest Tray, never merging package bags | Approved |
 | 5 | Parallel QuestDefinition/QuestRun, v3 for musical payloads only | Approved |
@@ -625,6 +680,6 @@ All thirteen decisions below were made by the owner (2026-09-05 / 2026-09-06). N
 | 8 | Ordered sequence | Approved **with Questmaker deferred** to Kind 7 |
 | 9 | Calm 10–15 min: autosave, exact resume, no timer, no expiry | Approved |
 | 10 | Three-phase *Firefly Crossing* (compose → transform → compare) | Approved with A1, A2 |
-| 11 | "Offer anyway" with identical payoff | Approved |
+| 11 | "Offer anyway" with identical payoff | Approved; refined 2026-09-20 (**A4/A5**): "offer anyway" is now a question the button asks once and either answer carries, and readiness gates leaving phases 1 and 2 only — never the offer. The payoff is still identical |
 | 12 | Schema-level anti-checklist rules | Approved |
 | 13 | Opportunistic removal of legacy root `progress.toolbox` | Approved |

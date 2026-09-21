@@ -82,6 +82,7 @@ worst at finding.
 ```bash
 node tests/questsetup-mutations.mjs
 node tests/questsetup-mutations.mjs --confirm-only
+node tests/questsetup-mutations.mjs --e6-only
 ```
 
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
@@ -99,3 +100,21 @@ Older controller fixtures use `continueQuest()` when their assertion concerns so
 choice. It retries exactly once for `needs-confirm`, preserving other failures. Tests of the choice
 itself call `performQuestAction()` directly. The former one-press unmatched-path assertion was deliberately
 changed to require the question followed by advancement, as specified by Q6.
+
+Step E commit 6 coverage is in `questcast.test.mjs` and `questfinale.test.mjs`. It covers cast
+validation and derived attribution, persisted tokens, unsaved-edit guards, rename ordering and
+repair, pure models, and finale effect boundaries. `helpers/quest-e6-mutations.mjs` contributes
+its faults to the same default audit; `--e6-only` selects them while developing. All anchors and
+mutant syntax are checked before the sweep starts.
+
+The harness exposes `__script`, the exact script it compiled (including in-memory audit mutations).
+The collision test executes the actual descriptor-index initializer with synthetic primitives in an
+isolated VM. It does not copy the indexing algorithm or change the production registry. Finale tests
+spy on the transport/confetti boundaries and invoke navigation with explicit input; they do not prove
+drawn overlays, focus, confetti, audible playback, or real menu routing.
+
+`quest-e6-review.test.mjs` holds the source regressions the E6 tester found — an offer that could save a
+document the store had just refused, and a path switch that discarded it. They were left **red** by the
+tester rather than hidden, and are green now that the source is fixed; the saved-message regression it
+found lives in `questshell.test.mjs`. `REVIEW-LOG.md` § *Step E* records what was found and what was done
+about it.

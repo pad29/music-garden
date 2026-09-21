@@ -1887,3 +1887,215 @@ Browser-verified on the real page: both quests on the Home surface with their th
 other on the trail — Q22 still holds with two), *The Waking Woods* opening into a Pulse Woods–tinted
 field with the drum bed up and looping off, its three "ways" reading correctly, and its continue button
 correctly disabled until the phase's gate opens.
+
+## Step E — the landmark crossing (2026-09-19/20, branch `quests`)
+
+The owner played the finished D-slice quest and finished it **in under thirty seconds**, with one seed
+and no drums, against a requirement (Q4) of a 10–15 minute novice median. Seven findings came back from
+that playtest. Step E is the answer to them, in six commits.
+
+### Two design reviews, and one draft thrown away
+
+**Draft 1** proposed a numeric floor — four notes, four beats — and a confirmation tap. Sol refused it:
+
+> Do not implement Step E as written. […] The central finding is unchanged from Q4's own rationale: one
+> contour plus one pulse is intrinsically a short task. Four notes, four beats, and another confirmation
+> tap turn 30 seconds into perhaps one or two minutes — not 10–15.
+
+It found five further defects in the floor itself and one conflict with Q6 at the final offer. The floor
+was dropped rather than tuned.
+
+**Draft 2** took the owner's own proposal instead: three landmark seeds dealt per run, and a commission
+to connect them. This review ran on **Astra**, in a fresh session, at the owner's request — the first use
+of that model here. It kept the direction and rejected the draft:
+
+> Three seeds are a credible prompt for composing. They are not yet a credible explanation of ten-minute
+> engagement, and the proposed architecture leaves several consequential rules undefined.
+
+Its sharpest finding was that the draft had mistranslated the owner's idea — *"the draft currently
+equates connecting with occupying four intervals. Those are different things."* It also showed the fast
+path survived the change: four notes, one drum hit, and a 24-column playback lasting 6.7 seconds at 108
+BPM. I verified that arithmetic against `stepDur = 60000/tempo/2` — a column is half a beat — and it is
+exact. And it found a defect in the draft's own worked example: landmarks at rows 6, 3 and 5 span three
+rows, while `isHovering` needs a total range of at most two, so that instance would have advertised a way
+the player could never take.
+
+Its verdict is adopted verbatim as the standard the work is held to, and is now in `QUESTS.md` as
+amendment **A6**:
+
+> I would approve this as a playtest hypothesis, not as the resolved pacing fix. […] Also observe whether
+> time is spent listening and revising, or locating missing regions and satisfying buttons. Ten minutes of
+> the latter would miss the product goal.
+
+The owner then settled three things: the landmarks are **kept, not consumed**; the field widens and the
+descriptors stop naming counts; and the comparison phase **judges nothing**. Draft 3 is what was built.
+
+### What GPT found, commit by commit
+
+Each commit was implemented by me — GPT never edits source — and then handed to `gpt-tester` on Astra
+with an explicit statement of what I had already tested and what I could not reach.
+
+**Commit 1** (`d87b922`, span-aware pulses and the `room` grant). Nothing found. The equivalence claim
+here is not carried by mutation testing at all: all **65,536** patterns of a sixteen-cell lane are checked
+against the old predicates, because mutation testing shows that tests catch mistakes and cannot show two
+functions are the same.
+
+**Commit 2** (`f47f5a0`, the setup seam) — three faults, all verified and all mine:
+
+- the generator **ignored the bounds it was given**, so a rule other than the shipped one produced hands
+  its own validator refused. Generator and validator now read one piece of arithmetic, and a rule that
+  cannot fit its field is refused at load time while an author can still fix it;
+- a run **restored from disk** was trusted without being re-checked, though it had crossed a storage
+  boundary since anyone last looked at it;
+- an id out of a file could reach `Object.prototype`: a quest naming `constructor` as its setup kind
+  found a function and failed as a parse error rather than as the refusal it was. **That was true of
+  every quest registry**, not only the new one, so every registry is now prototype-less.
+
+**Commit 3** (`23e0085`, readiness and the landmark field). The new third obligation — that a dealt hand
+leaves every advertised route reachable — caught its own author within minutes of existing: my first
+reachability search put one note in each region, which left too few notes of the player's own to outweigh
+the fixed landmarks, so a rise anyone could plainly draw read as no rise at all. GPT's tester found the
+hand; a sweep put the damage at **26 refusals in 400 deals** — one child in fifteen pressing Begin and
+getting nothing. The search now builds densely as well as sparsely and finds every family an
+independently built witness finds. A search remains a **lower bound**: failing to find a way is not proof
+there is none, so an unvouched hand is quietly re-dealt rather than refused in a child's face. Ten
+thousand hands, none refused.
+
+**Commit 4** (`8d95e75`, Q6's fork). One defect, found by the browser rather than by GPT: **the button
+and the door disagreed.** Readiness stopped a phase from advancing but never reached the button, so once
+the song had been played through the button lit up with a stretch of path still empty — and then did
+nothing. Evidence and evaluation now come from one seam instead of being built twice.
+
+**Commit 5** (`148cf09`, the comparison phase rebuilt). GPT's tester found the sharpest defect of the
+step and handled it exactly as this project asks. Re-tapping the path already showing reloaded it, and
+because a load rebuilds every note with a fresh identity, the journal recorded a **musically invisible
+entry**: one undo took back the load instead of the child's work, redo was dropped, and enough taps
+pushed real edits out of the bounded history entirely. It wrote three failing regression tests, **asked
+whether to fix the source or leave them red**, and — getting no answer — left them red rather than
+weaken its own tests. Re-tapping no longer reloads at all.
+
+It also caught **me**. I had argued that the paint guard around `applySong` in the new `pick` action was
+a check that could never fail, since `load-song` is a scripted transaction, and removed it. Its test
+proved otherwise: a differing palette makes `applySong` nest a non-scripted transaction, so listening to
+a path would have counted as editing it — and staled the very comparison the offer depends on. The guard
+is back.
+
+Two more faults surfaced from the mutation audit and the browser: the offer **reported the id of the song
+it had just saved by reading the run from before the write**, so it answered null every time it
+succeeded; and a guard that could never be the one to fail turned out to be hiding a check that *was*
+load-bearing — for the button rather than the door. The test now asks the button as well.
+
+### One disagreement, revisited honestly
+
+D5's disagreement was about the listening lock: the reviewer wanted ordinary undo in the last phase and
+I refused, because a version could be playing while a different one was the write target. Commit 5
+deletes the lock and undo is ordinary there again — not because I was talked round, but because making
+the path you hear the path you hold removes the state I was protecting. The reviewer's instinct about
+where the complexity was came out ahead of mine, and that is worth recording rather than smoothing over.
+
+### Verification
+
+**469 tests pass. 189 mutations, all caught, none survived.** Browser-verified end to end at each of
+commits 3, 4 and 5 — the landmarks ringed on the field, the readiness sentences dropping one at a time as
+each was answered, the fork's question, the path toggles with their heard-ticks, the offer lighting only
+when both paths had been heard, and a saved song at the end of it.
+
+### Commit 6 — the friends, the finale, and leaving
+
+The last commit of step E, and the one with the hardest review of the whole slice. Both rounds ran on
+**Astra**: a design review before anything was written, and a tester afterwards.
+
+#### The design review: six findings, three High, two of them pre-existing
+
+Its verdict: *"I would not implement this draft unchanged. The settled decisions are sound; the defects
+are in the contracts connecting them."* Every finding was reproduced against the code before being acted
+on, and two of the three High ones were defects **already in shipped code** that the new design would
+have papered over rather than caused.
+
+1. **A successful write is not a saved document.** `noteEdit` called `transactQuestRun` and threw the
+   answer away, so a failed run write left the live field one edit ahead of the store in silence — and
+   advancing forks the *stored* version and repaints, which is the moment the child's note disappears.
+   The flag I had designed, cleared by any successful write, would have been discharged by an unrelated
+   playback receipt and announced "saved" over it. The marker is now keyed to the run and version, only
+   an *edit* write for that pair discharges it, and the phase cannot advance while it stands — the model
+   and the controller reading one fact, which is commit 4's lesson.
+
+2. **The finale would have played the wrong thing.** `start()` plays the live grid; the `versionId` the
+   design passed only reaches completion-session bookkeeping. And `recoverQuestOfferings()` runs at boot
+   in the last package's scope, before the field is rebuilt, so celebrating there would play whatever
+   happened to be on screen. The finale is foreground-only now, and **boot recovery finalises silently**
+   — stated rather than discovered later.
+
+3. **A completed quest's field still looks alive.** `cellClick` has no status guard, so after offering, a
+   tap lights the cell and sounds the note while `noteEdit` drops the write. The new permanent "your
+   quest is saved" line would have sat directly on top of that. The finale overlay therefore has **no
+   dismiss**: both exits leave the finished field, and it joins `overlayUp()`.
+
+4. **"Has heard nothing" is not "has nothing to say."** Three reachable counterexamples, all confirmed:
+   the comparison phase records no observations at all; one shipped analyzer describes nothing by design;
+   and `heard-pulse-none` already reads *"The drums have not caught one of the steady heartbeats yet"* —
+   so the "still listening for…" line I had invented would have put a **"not yet" in a friend's mouth**,
+   including while they danced at the end. It is deleted. A friend says what was heard, or says nothing.
+   The review caught a contradiction in my own design text, not merely in the code.
+
+5. **The rename's contracts were unfinished** — what commits the input, what supplies the displayed title
+   after a half-failure, and whether "unchanged" is a no-op. All closed, and one fact makes them matter:
+   **there is no rename anywhere else in the game**, so the finale is the only moment a quest song is
+   named. Both exits commit; the song's title is authoritative; the same action with the same text
+   repairs a pair left stale.
+
+6. **The bijection did not bijec.** Unique regions plus equal capability *sets* still allows
+   Flutter→contour, Hopper→pulse, Geo→contour. Capability ids are unique now — and the better half of
+   the answer was to delete the mechanism it was guarding: **the persisted `cap` field is gone**, and
+   attribution is derived from each primitive's own `heardDescriptorIds`. No migration, no legacy gap,
+   and mis-attribution is impossible by construction. Contested ownership maps to nobody and falls to the
+   garden's voice.
+
+Two of its five judgements on my stated worries were "mostly misplaced", and its sixth — that the design
+gave the celebration a model but never gave its **lifecycle** a contract — was the one I had not seen.
+
+One rule was relaxed deliberately and is recorded here: draft 3 asked for a speaker per claimed
+capability, and *The Waking Woods* cannot satisfy it, because melody-making is taught by the First
+Garden, whose friend is whichever companion the player picked. A capability may now go unspoken; its
+sentences stay in the garden's own voice, which is where every sentence lived before there was a cast.
+
+#### The tester: four more defects, all mine
+
+It added 24 tests and left four regressions **red rather than hiding them**:
+
+- **High — offering could save a document we had just failed to save.** The `continue` path consulted the
+  outstanding edit; `offer` did not. Offer stayed lit, saved the stored version, and the finale then
+  played a field holding a note that was never in it. Its phrasing is exact: *"Q6's exemption from
+  musical readiness does not make a failed edit a saved song."*
+- **High — switching paths discarded the unsaved edit.** Picking the other path repainted from its stored
+  song; the marker survived, the note did not, and the later edit the warning promised would save it had
+  nothing left to save. The switch is refused now, and the toggle that would have done it goes dark
+  rather than refusing under a child's finger.
+- **Medium — the card announced the song deleted in the same breath as saving it.** `renderQuestShell`
+  never passed `saved`, and the model correctly reports absent evidence as "not there". Caught because
+  its fixtures pass the saved state explicitly, so no default could hide the missing wiring.
+- **Low — the unsaved warning dropped the way out.** It replaced the whole exit line, taking the one
+  instruction a child needs in order to leave with it. Q11/A5 asks for the exit to be visible at *all*
+  times.
+
+It also made one shared-infrastructure change worth naming: `tests/harness.mjs` exposes the compiled
+source read-only, so a test can re-run the registry initializer against a **synthetic** descriptor
+collision. That branch is unreachable in shipped data, and without it the conflict handling would have
+been a check that can never fire.
+
+Fixing the switch defect invalidated three of its own tests, which had been written against the old
+behaviour; they were updated rather than weakened, and the refusal is now the guarantee they pin.
+
+#### Verification
+
+**493 tests pass. 294 mutations caught across 114 green tests, none survived.** The six faults covering
+this round's fixes were added here rather than taken on trust — the tester had explicitly excluded the
+red regressions from its own audit.
+
+Browser-verified twice, on the real page, through to a saved song: the friends on screen from the first
+phase, silent until there was something to say; Flutter carrying the contour sentences and Hopper the
+drum one; *"The notes made a shape the garden has not named yet"* in a friend's voice on a second run,
+which is the case the review said would otherwise have become a "not yet"; the stepper; the exit line;
+the Q6 fork firing on its own; the finale with confetti, both friends dancing, the song named and
+renamed; Escape and an outside click both refusing to dismiss it; and the ☰ → 🗺️ exit stopping playback,
+which it never did before this commit.
