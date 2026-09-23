@@ -142,9 +142,11 @@ have. The Waking Woods was added as data alone, with no engine branch: that is `
 authorability acceptance test, and passing it is what keeps a player-facing Questmaker reachable.
 
 Each run is **dealt its own task**: three landmark stones, spaced apart and away from the edges, planted
-on the field before you start. Keeping them and travelling between them — something of your own before
-the first, between each pair and after the last, over a beat — is the commission, and a phase will not
-move on until the crossing is that. One sentence above the field says which of those is still missing,
+on the field before you start, and a short **opening drum fragment** — two or three hits in the first two
+beats, drawn from a small authored pool — ringed on the drum pads. Keeping the stones and travelling
+between them, and keeping the opening and carrying the beat on in your own way, is the commission, and a
+phase will not move on until the crossing is that. The catalog *proves*, over the whole pool, that no
+opening can make a suggested heartbeat impossible. One sentence above the field says which of those is still missing,
 never a row of ticks — and **nothing ever tells you a way "did not come out"**: the engine evaluates its
 routes, and the friends simply describe what they heard, which is Q5's anti-checklist rule and Q6's
 descriptive response meeting in the same place. The last phase is two controls, not six: tap a path to

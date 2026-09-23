@@ -23,9 +23,9 @@ function fixture(t, questId = "firefly-crossing", customize) {
       sessionId:`receipt-${versionId}-${v.editRev}`, purpose });
   };
   for (const phase of [0, 1]) {
-    const vid = run().draft, s = completeDealtSong(g, run().versions[vid].song);
+    const vid = run().draft, s = clone(run().versions[vid].song);
     s.tracks[1].hits = [{ lane:phase, c:phase + 1 }]; // distinct, audible, deliberately unmatched
-    g.applySong(s); g.noteEdit("fixture"); receipt(vid, "play");
+    g.applySong(completeDealtSong(g, s)); g.noteEdit("fixture"); receipt(vid, "play");
     assert.strictEqual(continueQuest(g).ok, true);
   }
   const pick = versionId => {

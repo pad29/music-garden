@@ -39,13 +39,13 @@ test("equal tokens make matched and unmatched songs indistinguishable throughout
       base.selection=phase===2 ? "B" : null;
       const vid=phase ? "B" : "A";
       // Both keep the same complete melody and receipts. Only the pulse family changes.
-      base.versions.A.song.tracks[1].hits=beats(0,4);
-      base.versions.B.song.tracks[1].hits=beats(0,2);
+      base.versions.A.song.tracks[1].hits=[...clone(base.setup.fragment.hits),...beats(0,4)];
+      base.versions.B.song.tracks[1].hits=[...clone(base.setup.fragment.hits),...beats(0,2)];
       for(const p of def.phases) {
         const obs=base.evidence.observations[p.id];
         if(obs)obs.matchedRouteIds=(p.challenge?.routes||[]).map(r=>r.id);
       }
-      const unmatch=clone(base); unmatch.versions[vid].song.tracks[1].hits=[{lane:1,c:3}];
+      const unmatch=clone(base); unmatch.versions[vid].song.tracks[1].hits=[...clone(base.setup.fragment.hits),{lane:1,c:5}];
       if(phase<2) {
         assert.ok(g.questEvaluateRun(base,def).musical.matchedRouteIds.length>0);
         assert.deepEqual(g.questEvaluateRun(unmatch,def).musical.matchedRouteIds,[]);
@@ -90,9 +90,9 @@ test("matched and unmatched paths advance once and receive identical completion 
       const receipt=(vid,purpose="play")=>g.onCompletePass({runId:begun.runId,versionId:vid,
         editRev:run().versions[vid].editRev,sessionId:vid+"-"+run().versions[vid].editRev,purpose});
       for(const phase of [0,1]) {
-        const vid=run().draft, s=completeDealtSong(g,run().versions[vid].song);
+        const vid=run().draft, s=clone(run().versions[vid].song);
         s.tracks[1].hits=matched ? beats(0,phase ? 2 : 4) : [{lane:1,c:phase+1}];
-        g.applySong(s); g.noteEdit("A7-real-edit"); receipt(vid);
+        g.applySong(completeDealtSong(g, s)); g.noteEdit("A7-real-edit"); receipt(vid);
         const ev=g.questEvaluateRun(run(),d);
         assert.strictEqual(ev.musical.matchedRouteIds.length>0,matched);
         assert.strictEqual(g.questShellModel(run(),d).actions[0].enabled,true);
@@ -167,7 +167,7 @@ test("the final offer in either quest remains free of every readiness requiremen
     const f=compare(t,questId),{g,def,run}=f,song=clone(run().versions.B.song);
     song.tracks[0].notes=[{p:60,c:0,len:1}];song.tracks[1].hits=[];
     g.applySong(song);g.noteEdit("free-final-offer");
-    assert.strictEqual(g.questReadinessMissing(def,run(),"B").length,3);
+    assert.strictEqual(g.questReadinessMissing(def,run(),"B").length,4);
     assert.strictEqual(g.questShellModel(run(),def).actions[0].enabled,false,"an edit still requires hearing it");
     assert.strictEqual(g.performQuestAction("offer").code,"gate-closed");
     f.receipt("B","audition");

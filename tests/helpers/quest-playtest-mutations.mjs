@@ -79,10 +79,10 @@ export const playtestMutations=[
     ['intro:p.worldText+" "+p.intentionText','intro:p.intentionText'],
     ['intro:p.worldText+" "+p.intentionText','intro:def.phases[0].worldText+" "+def.phases[0].intentionText'],
     ...[
-      'Keep the ringed stones, add notes of your own before, between and after them, and put a beat underneath.',
-      'Keep the ringed stones again. Change the shape of the path, or the beat under it — or both.',
-      'Keep the ringed stones, put notes of your own before, between and after them, and set a steady beat underneath.',
-      'Keep the ringed stones again. Change the tune between them, or change the beat itself.',
+      "Keep the ringed stones and Hopper's opening beat. Add notes around the stones, and continue the beat in your own way.",
+      "Keep the ringed stones and the opening beat. Change the path's shape, or the beat after the opening — or both.",
+      "Keep the ringed stones and Hopper's opening footsteps. Put notes of your own around the stones, and carry the walk on in your own way.",
+      "Keep the ringed stones and the opening footsteps. Change the tune between them, or the beat that follows.",
     ].map(text=>[text,text.replace('Keep the ringed stones','Move the ringed stones')]),
   ]),
   ...faults("the finale names its commit action Save this name while retaining rename and exit behavior",[

@@ -6,7 +6,8 @@ import { loadQuestGame, completeDealtSong, continueQuest } from "./helpers/quest
 
 const clone = x => JSON.parse(JSON.stringify(x));
 const fresh = () => loadGame({ fresh: true });
-const defOf = g => clone(g.QUEST_DEFINITIONS["firefly-crossing"]);
+// Isolate the original readiness guarantees with a valid optional pool-less rule.
+const poollessDefOf = g => { const d=clone(g.QUEST_DEFINITIONS["firefly-crossing"]); delete d.setup.fragments; return d; };
 const instOf = (rows = [3, 5, 4], cols = [3, 7, 13]) => ({ kind: "waypoints", generatorVersion: 1,
   waypoints: rows.map((row, i) => ({ row, col: cols[i] })) });
 const notes = s => s.tracks.find(t => t.kind === "melody").notes;
@@ -36,7 +37,7 @@ function frozen(x) {
 test("row bounds and feasibility reject every impossible band independently of column fit", () => {
   // MUTATION: ignore rowBounds in feasible, accept reversed spread bounds, use live ROWS,
   // or reject exact room. The catalog must enforce this before anybody presses Begin.
-  const g = fresh(), d = defOf(g), k = g.QUEST_SETUP_KINDS.waypoints;
+  const g = fresh(), d = poollessDefOf(g), k = g.QUEST_SETUP_KINDS.waypoints;
   for (const paletteId of ["pentatonic", "diatonic"]) {
     d.workspace.paletteId = paletteId;
     const rows = paletteId === "pentatonic" ? 10 : 14;
@@ -55,7 +56,7 @@ test("row bounds and feasibility reject every impossible band independently of c
           assert.strictEqual(k.feasible(crowded, d), false);
         }
   }
-  const base = defOf(g);
+  const base = poollessDefOf(g);
   for (const setup of [{ rowMargin: 4, minRowSpread: 0, maxRowSpread: 2 },
     { rowMargin: 0, minRowSpread: 4, maxRowSpread: 3 }]) {
     const bad = clone(base); Object.assign(bad.setup, setup);
@@ -68,7 +69,7 @@ test("all 28000 schema tuples honor both spread bounds and margins across seeds"
   // MUTATION: omit either pin, collide pins for count=2, allow a spread above max, or drop rowMargin.
   // The older test sweeps EVERY width for horizontal geometry; here every full rule gets both
   // ladders, its minimum feasible width and 64, eight seeded streams and both RNG extremes.
-  const g = fresh(), d = defOf(g), k = g.QUEST_SETUP_KINDS.waypoints;
+  const g = fresh(), d = poollessDefOf(g), k = g.QUEST_SETUP_KINDS.waypoints;
   let tuples = 0, deals = 0;
   for (let count = 2; count <= 5; count++) for (let minGap = 2; minGap <= 8; minGap++)
     for (let edgeMargin = 1; edgeMargin <= 8; edgeMargin++) for (let rowMargin = 0; rowMargin <= 4; rowMargin++)
@@ -101,7 +102,7 @@ test("all 28000 schema tuples honor both spread bounds and margins across seeds"
 test("readiness is one missing sentence per kind across every missing-region subset", () => {
   // MUTATION: report each empty region/stone, count drums as region contents, or count a landmark
   // column as part of an adjoining region. All 16 subsets also exercise both edge regions.
-  const g = fresh(), d = defOf(g), i = instOf(), ready = completion(g, d, i);
+  const g = fresh(), d = poollessDefOf(g), i = instOf(), ready = completion(g, d, i);
   assert.deepEqual(missing(g, d, i, ready), []);
   for (let mask = 0; mask < 16; mask++) {
     const s = clone(ready); s.tracks[0].notes = notes(s).filter((n, at) => at < 3 || !(mask & (1 << (at - 3))));
@@ -131,7 +132,7 @@ test("readiness is one missing sentence per kind across every missing-region sub
 
 test("drum evidence counts projected onsets on all lanes and clips out-of-span and duplicate hits", () => {
   // MUTATION: omit drumOnsetCount, count raw hits, or count only kicks.
-  const g = fresh(), d = defOf(g), s = completion(g, d, instOf());
+  const g = fresh(), d = poollessDefOf(g), s = completion(g, d, instOf());
   s.tracks[0].notes = [];
   for (const [input, count] of [[[], 0], [[{ lane: 2, c: 15 }], 1],
     [[{ lane: 0, c: 0 }, { lane: 0, c: 0 }, { lane: 1, c: 0 }, { lane: 2, c: 15 },
@@ -147,7 +148,7 @@ test("drum evidence counts projected onsets on all lanes and clips out-of-span a
 
 test("readiness dispatch uses setup kind and version, with safe no-task and invalid-song paths", () => {
   // MUTATION: key readiness on Firefly's id, ignore versionId, or require readiness for no-task runs.
-  const g = fresh(), d = defOf(g), i = instOf(), good = completion(g, d, i);
+  const g = fresh(), d = poollessDefOf(g), i = instOf(), good = completion(g, d, i);
   const run = runFor(g, d, i, good);
   run.versions.B = clone(run.versions.A); run.versions.B.song.tracks[1].hits = [];
   for (const id of ["firefly-crossing", "waking-woods", "my-new-quest"]) {
@@ -167,8 +168,9 @@ test("readiness dispatch uses setup kind and version, with safe no-task and inva
 
 test("missing descriptors and setup kinds cannot be smuggled into procedure gateIds", () => {
   // MUTATION: let readiness live in QUEST_PRIMITIVES as procedural gates, or bypass gate crossrefs.
-  const g = fresh(), base = defOf(g);
+  const g = fresh(), base = poollessDefOf(g);
   for (const id of ["waypoints", "landmark-gone", "region-empty", "no-beat", "song-invalid",
+    "fragment-gone", "beat-stops", "missing-fragment", "missing-beat-continues",
     "missing-landmark", "missing-region", "missing-beat", "readiness.waypoints"]) {
     assert.strictEqual(g.QUEST_PRIMITIVES[id], undefined);
     const d = clone(base); d.phases[0].procedure.gateIds.push(id);
@@ -179,7 +181,7 @@ test("missing descriptors and setup kinds cannot be smuggled into procedure gate
     assert.strictEqual(g.questPhaseGate(d, 0, "A")(run), false);
   }
   assert.deepEqual(Object.entries(g.QUEST_DESCRIPTORS).filter(([, v]) => v.kind === "missing").map(([k]) => k).sort(),
-    ["missing-beat", "missing-landmark", "missing-region"]);
+    ["missing-beat", "missing-beat-continues", "missing-fragment", "missing-landmark", "missing-region"]);
 });
 
 function launch() {
@@ -200,16 +202,18 @@ test("each readiness kind blocks phases one and two after all procedural gates a
   const { g, id, d } = launch();
   for (const [phase, vid] of [[0, "A"], [1, "B"]]) {
     const good = completeDealtSong(g, g.QUEST_RUNS[id].versions[vid].song);
-    for (const code of ["landmark-gone", "region-empty", "no-beat"]) {
+    for (const code of ["landmark-gone", "region-empty", "fragment-gone", "beat-stops"]) {
       const s = clone(good), inst = g.QUEST_RUNS[id].setup;
       if (code === "landmark-gone") s.tracks[0].notes = notes(s).filter(n => n.c !== inst.waypoints[0].col);
       if (code === "region-empty") s.tracks[0].notes = notes(s).filter(n => n.c >= inst.waypoints[0].col);
-      if (code === "no-beat") s.tracks[1].hits = [];
+      if (code === "fragment-gone") s.tracks[1].hits = hits(s).filter(h => h.c >= 4);
+      if (code === "beat-stops") s.tracks[1].hits = clone(inst.fragment.hits);
       edit(g, s); credit(g, id, vid);
       const run = g.QUEST_RUNS[id], snapshot = clone(run);
       assert.deepEqual(codes(g.questReadinessMissing(d, run, vid)), [code]);
       for (const gateId of d.phases[phase].procedure.gateIds) assert.strictEqual(g.QUEST_PRIMITIVES[gateId].gate(run, vid), true);
       assert.strictEqual(g.questPhaseGate(d, phase, vid)(run), false);
+      assert.strictEqual(g.questShellModel(run, d).actions.find(a => a.id === "continue").enabled, false);
       assert.strictEqual(g.performQuestAction("continue").code, "gate-closed");
       assert.deepEqual(g.QUEST_RUNS[id], snapshot, "a refused transition must not fork or mutate the run");
     }
@@ -246,7 +250,7 @@ test("Q6 permits a final offer that fails every readiness kind and matches no ro
     sessionId: heard.lastCompletePlaySessionId, at: 30 }]).ok, true);
   g.questAfterReceipt(id);
   const run = g.QUEST_RUNS[id];
-  assert.deepEqual(codes(g.questReadinessMissing(d, run, "B")), ["landmark-gone", "no-beat", "region-empty"]);
+  assert.deepEqual(codes(g.questReadinessMissing(d, run, "B")), ["beat-stops", "fragment-gone", "landmark-gone", "region-empty"]);
   const ev = g.evaluateQuest(d, { versions: Object.fromEntries(Object.entries(run.versions).map(([v, x]) => [v, g.songEvidence(x.song)])) }, run);
   assert.deepEqual(ev.readiness, { ok: true, missing: [] });
   assert.deepEqual(ev.musical.matchedRouteIds, []);
@@ -260,7 +264,7 @@ test("Q6 permits a final offer that fails every readiness kind and matches no ro
 
 test("evaluateQuest reports readiness without mutating frozen inputs or consulting live state", () => {
   // MUTATION: skip readiness in evaluateQuest, modify its inputs, or consult activeScope/live grids.
-  const g = fresh(), d = defOf(g), i = instOf(), s = completion(g, d, i);
+  const g = fresh(), d = poollessDefOf(g), i = instOf(), s = completion(g, d, i);
   s.tracks[1].hits = [];
   const run = runFor(g, d, i, s), evidence = { versions: { A: g.songEvidence(s) } };
   const before = JSON.stringify({ d, run, evidence });
@@ -279,7 +283,7 @@ test("evaluateQuest reports readiness without mutating frozen inputs or consulti
 test("readiness exemptions follow phase type and absent setup rather than phase position or quest id", () => {
   // MUTATION: exempt phase index 2 instead of compare-offer, or introduce global readiness for v1.
   // Direct gate/evaluator calls isolate phase type from the catalog's ordered phase grammar.
-  const g = fresh(), d = defOf(g), i = instOf(), s = completion(g, d, i);
+  const g = fresh(), d = poollessDefOf(g), i = instOf(), s = completion(g, d, i);
   s.tracks[1].hits = [];
   const run = runFor(g, d, i, s);
   const ev = { versions: { A: g.songEvidence(s) } };
@@ -293,7 +297,7 @@ test("readiness exemptions follow phase type and absent setup rather than phase 
   delete d.setup; run.setup = null;
   assert.strictEqual(g.questPhaseGate(d, 2, "A")(run), true);
   assert.deepEqual(g.evaluateQuest(d, ev, run).readiness, { ok: true, missing: [] });
-  d.setup = defOf(g).setup; run.setup = i;
+  d.setup = poollessDefOf(g).setup; run.setup = i;
   d.phases[0] = { ...compose, type: "compare-offer", versionIds: ["A"] };
   run.phase = 0;
   assert.strictEqual(g.questPhaseGate(d, 0, "A")(run), true);
@@ -303,7 +307,7 @@ test("readiness exemptions follow phase type and absent setup rather than phase 
 test("reachable families are exactly the evidence of real constructed songs, never strategy names", () => {
   // MUTATION: push plan names, invent a family, ignore ev.valid, duplicate families, or lose a song's
   // second family. Capture the real analyzer inputs, not a copy of the production strategy formula.
-  const g = fresh(), d = defOf(g), k = g.QUEST_SETUP_KINDS.waypoints, analyze = g.songEvidence;
+  const g = fresh(), d = poollessDefOf(g), k = g.QUEST_SETUP_KINDS.waypoints, analyze = g.songEvidence;
   for (const paletteId of ["pentatonic", "diatonic"]) for (const columns of [16, 32, 64]) {
     d.workspace = { ...d.workspace, paletteId, columns };
     for (let seed = 0; seed < 64; seed++) {
@@ -335,7 +339,7 @@ test("reachable families are exactly the evidence of real constructed songs, nev
 test("route reachability checks each declared contour alternative after the two-family floor", () => {
   // MUTATION: skip the floor, stop after the first phase/route, or require every alternative instead
   // of any one. Injection isolates routing from the conservative construction search.
-  const g = fresh(), d = defOf(g), i = instOf();
+  const g = fresh(), d = poollessDefOf(g), i = instOf();
   g.questSetupReachableFamilies = () => ["rise"];
   assert.strictEqual(g.questSetupRoutesReachable(d, i), "one-contour-family-only");
   g.questSetupReachableFamilies = () => ["rise", "fall"];
@@ -355,7 +359,7 @@ test("start checks geometry then completability then reachability before any wri
   // MUTATION: skip/reorder any obligation, or persist an unusable hand. Each guard is the sole
   // refusing guard in one case; earlier refusal must never even call a later obligation.
   for (const failure of ["geometry", "completion", "reachability", null]) {
-    const g = fresh(), d = defOf(g), calls = [], rng = g.questRng;
+    const g = fresh(), d = poollessDefOf(g), calls = [], rng = g.questRng;
     if (failure === "geometry") d.setup = { ...d.setup, count: 5, minGap: 8, edgeMargin: 8 };
     g.QUEST_DEFINITIONS = { [d.id]: d };
     g.questRng = () => rng("fixture-4");
@@ -383,7 +387,7 @@ test("a hand the search cannot vouch for is re-dealt, not refused in the child's
   // on it means a child presses Begin and nothing happens, which is the worst outcome available here —
   // so an unvouched hand is quietly replaced, and only a rule that cannot produce one in a dozen tries
   // is reported as the bug it is.
-  const g = fresh(), d = defOf(g);
+  const g = fresh(), d = poollessDefOf(g);
   g.QUEST_DEFINITIONS = { [d.id]: d };
   const real = g.questSetupRoutesReachable;
   let asked = 0;
@@ -392,7 +396,7 @@ test("a hand the search cannot vouch for is re-dealt, not refused in the child's
   assert.strictEqual(r.ok, true, r.code + " " + r.extra);
   assert.strictEqual(asked, 4, "three hands set aside, the fourth kept");
 
-  const g2 = fresh(), d2 = defOf(g2);
+  const g2 = fresh(), d2 = poollessDefOf(g2);
   g2.QUEST_DEFINITIONS = { [d2.id]: d2 };
   let tries = 0;
   g2.questSetupRoutesReachable = () => { tries++; return "one-contour-family-only"; };
@@ -407,7 +411,7 @@ test("the hand that used to be refused for a search's shortcoming now launches",
   // GPT's tester found this hand: legal geometry, a completable task, and ready songs producing rise,
   // fall and arc — yet the search saw only arc and refused. One deal in fifteen died that way, which a
   // child would have met as a Begin button that did nothing.
-  const g = fresh(), d = defOf(g), rng = g.questRng;
+  const g = fresh(), d = poollessDefOf(g), rng = g.questRng;
   const inst = g.QUEST_SETUP_KINDS.waypoints.generate(d.setup, d, rng("attack-28"));
   assert.strictEqual(g.QUEST_SETUP_KINDS.waypoints.validateInstance(inst, d.setup, d), null);
   assert.strictEqual(g.questSetupCompletable(d, inst), null);
@@ -423,7 +427,7 @@ test("independent witnesses agree with the search on the hand that exposed it", 
   // narrow the search so it stops agreeing with witnesses built without it.
   // These three songs are built by hand, not by the search, so they are evidence about the HAND rather
   // than a restatement of the strategy. They are what showed the old search was refusing legal deals.
-  const g = fresh(), d = defOf(g), inst = instOf([4, 7, 4]);
+  const g = fresh(), d = poollessDefOf(g), inst = instOf([4, 7, 4]);
   const rise = completion(g, d, inst, [4, 0, 0, 0]);
   const arc = completion(g, d, inst, [0, 3, 0, 0]);
   const fall = completion(g, d, inst, [0, 4, 0, 3]);

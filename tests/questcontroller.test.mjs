@@ -175,7 +175,7 @@ test("entry refuses a run it cannot honestly render", () => {
 
   const g2 = loadGame({ fresh: true });
   const r2 = g2.startQuestRun("firefly-crossing");
-  g2.QUEST_RUNS[r2.runId] = { ...runOf(g2, r2.runId), definitionVersion: 3 };
+  g2.QUEST_RUNS[r2.runId] = { ...runOf(g2, r2.runId), definitionVersion: 999 };
   assert.strictEqual(g2.enterQuestRun(r2.runId).code, "definition-changed");
 
   const g3 = loadGame({ fresh: true });

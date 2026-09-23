@@ -70,6 +70,13 @@ None reverses a decision; each narrows one that turned out to permit something n
   shape, new beat", so changing both matched neither. A third route makes the larger revision a
   recognised way across (§2, Q4's phase 2).
 
+### Amendment applied after replaying the quest (2026-09-23)
+
+- **A9 — The drums get an opening to develop.** A short authored drum fragment is dealt per run, to be
+  kept and carried on. Recorded as option 1 of a two-arm playtest comparison, with the protocol that
+  makes the comparison interpretable (§2, Q4). Q6's readiness is **restated whole** in one box rather
+  than amended a fourth time (§3, Q6).
+
 ---
 
 ## 1. Vocabulary
@@ -237,6 +244,23 @@ The five-novice median still decides. A completion that takes ten minutes of hun
 stretch has failed this gate exactly as a thirty-second one did, and the remedy would again be content,
 not padding.
 
+**Amendment A9 — the drums get an opening, as one arm of a comparison (2026-09-23).** After replaying
+the landmark quest several times the owner found the melody half well challenged and the drum half not:
+the melody is dealt stones to connect, the drums only had to be non-empty. Two remedies were considered
+and one was withdrawn on review — dealing snare presets with three drum regions to fill measured
+*coverage*, not rhythm. What ships instead is **an opening drum fragment**: two or three hits in the first
+two beats, dealt per run from a small authored pool, ringed like the stones, to be kept and carried on in
+the player's own way. The owner's condition: *"careful to make it short, so that there is still many
+different ways to extend it, rather than the only way is to repeat it."*
+
+It is **option 1 of 2**. Option 2 — two dealt hits that always fall on a main beat — is to be compared
+against it by playtest, and for that comparison to mean anything the two arms must share everything
+else: the same continuation rule (keep what was dealt; something of your own after it), the same
+descriptive feedback, width, tempo and phase wording; order balanced between players; the dealt fragment
+recorded (the run stores it). Compare **listening, revision, unwanted repetition, refused endings and how
+different the offered songs are** — not completion time alone. A shorter quest that children listen to
+and revise is better evidence than a longer one produced by refusals.
+
 **Reason:** One contour plus one pulse is a three-minute task. Composing once, transforming the
 same material, comparing both and choosing an artifact creates the promised middle session while
 teaching revision rather than first-pass correctness. The shipped *Calm Reply, Bold Reply* step
@@ -288,6 +312,25 @@ correct.
 > observation per package. Adequate for Kind 1; revisit when a quest spans three packages.
 
 ### Q6. Kind 1 always permits "offer anyway"
+
+> **The current contract, stated once (2026-09-23).** This section was amended four times in four days
+> (A4, A5, A7 and now the drum opening). The amendments below are kept as the record of *why*; this box
+> is what the engine implements, and it replaces reading them together.
+>
+> **Phases 1 and 2** move on when all of these hold, and only these: the **dealt task** is engaged — every
+> landmark kept, every stretch between and around them holding a note of the player's own, and, where an
+> opening drum fragment was dealt, that opening kept and the beat carried on past it (with no opening, the
+> drum bed simply must not be empty); the version has been **played completely since its latest edit**;
+> and, in phase 2, **a musical edit has been made since the fork**. Whether a suggested route matched
+> **neither gates progress nor produces an approval or failure notice** — the friends describe what they
+> heard, and that is the whole response.
+>
+> **Phase 3** permits final edits with **no** dealt-task readiness — the opening and the stones may be
+> removed. It offers when both current versions have been heard at their current revisions and one is
+> held, and the offer saves the audible chosen song with an **identical payoff** whatever it matched.
+>
+> An edit that failed to reach the store is a separate blocker in every phase, and a button's
+> availability is read from the same authority as the transition it triggers.
 
 Once a nonempty composition has been played completely since its latest edit, **Offer this
 crossing** is available **even if no suggested route matched**. The response stays descriptive:

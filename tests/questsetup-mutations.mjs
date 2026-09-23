@@ -5,6 +5,7 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { fragmentMutations } from "./helpers/quest-fragment-mutations.mjs";
 import { e6Mutations } from "./helpers/quest-e6-mutations.mjs";
 import { playtestMutations } from "./helpers/quest-playtest-mutations.mjs";
 
@@ -12,7 +13,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const evidenceLoop = 'function questEvaluateRun(run, def){\n  const versions={};\n  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);';
-const testFiles = ["questsetup.test.mjs", "questsetup-readiness.test.mjs", "questavailability.test.mjs", "quest-playtest.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs", "questfinale.test.mjs", "questcast.test.mjs", "quest-e6-review.test.mjs", "questlisten.test.mjs"]
+const testFiles = ["quest-fragments.test.mjs", "questsetup.test.mjs", "questsetup-readiness.test.mjs", "questavailability.test.mjs", "quest-playtest.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs", "questfinale.test.mjs", "questcast.test.mjs", "quest-e6-review.test.mjs", "questlisten.test.mjs"]
   .map(name => ({ path: "tests/" + name, source: readFileSync(new URL("./" + name, import.meta.url), "utf8") }));
 function run(title, patches = []) {
   let candidate = source;
@@ -35,6 +36,15 @@ function run(title, patches = []) {
   return result;
 }
 const mutations = [
+  // ---- two shipped defects GPT found while reviewing a proposal that was not built ----
+  // Every spare column was spent before the last landmark, so it fell on the bound in every deal.
+  ["the slack reaches the stretch after the last landmark, so that landmark moves",
+    "const extra=new Array(rule.count+1).fill(0);\n      for(let i=0;i<b.slack;i++) extra[Math.floor(rng()*(rule.count+1))]++;",
+    "const extra=new Array(rule.count).fill(0);\n      for(let i=0;i<b.slack;i++) extra[Math.floor(rng()*rule.count)]++;"],
+  // Obligation two asked whether the constructed song was legal, never whether it finished anything.
+  ["a completion that completes nothing is refused",
+    '  const rd=QUEST_READINESS[def.setup && def.setup.kind];\n  if(rd){ const missing=rd.missing(def, inst, ev);\n    if(missing.length) return "completion-incomplete:"+missing[0].code; }\n', ""],
+
   // ---- the four defects GPT's tester found in commit 6, each with the fault that brings it back ----
   // Offering saved the STORED version while the field held an edit that never reached the store.
   ["a failed comparison edit cannot be offered as an older saved document",
@@ -64,8 +74,8 @@ const mutations = [
     .map(([from, to]) => ["rule grammar accepts every bounded tuple and rejects malformed parameters", from, to]),
   ["shipped deals are repeatable, varied, versioned and valid across 512 seeds per quest", "generate(rule, def, rng){", "generate(rule, def, rng){ rng=questRng('constant');"],
   ["shipped deals are repeatable, varied, versioned and valid across 512 seeds per quest",
-    'return { kind:"waypoints", generatorVersion:QUEST_SETUP_GENERATOR_VERSION, waypoints };',
-    'return { kind:"waypoints", generatorVersion:0, waypoints };'],
+    'const inst={ kind:"waypoints", generatorVersion:QUEST_SETUP_GENERATOR_VERSION, waypoints };',
+    'const inst={ kind:"waypoints", generatorVersion:0, waypoints };'],
 
   // ---- the three defects GPT found, each with the fault that brings it back ----
   ["every horizontal rule at every width generates legal geometry on both ladders",
@@ -90,9 +100,10 @@ const mutations = [
   ["regions exactly partition free columns and the starting song contains only landmarks", "to:w[0].col-1", "to:w[0].col"],
   ["regions exactly partition free columns and the starting song contains only landmarks", "({ p:ladder[p.row], c:p.col, len:1 })", "({ p:ladder[0], c:p.col, len:1 })"],
   ["constructed completions preserve landmarks and fill every region throughout the workspace range", "for(const r of kind.regions(inst, def)){", "for(const r of kind.regions(inst, def).slice(1)){"],
-  ["constructed completions preserve landmarks and fill every region throughout the workspace range", "for(let c=0;c<def.workspace.columns;c+=4) song.tracks[1]", "for(let c=0;c<16;c+=4) song.tracks[1]"],
+  ["constructed completions preserve landmarks and fill every region throughout the workspace range", "for(let c=0;c<def.workspace.columns;c+=4)", "for(let c=0;c<16;c+=4)"],
   ["a missing region cannot be repaired into a completion by putting a note on a landmark", "if(r.to<r.from) return null;", "if(false) return null;"],
-  ["legal geometry does not bypass completion reachability in a workspace with no drums", 'return m ? "completion-unreachable:"+m : null;', "return null;"],
+  ["legal geometry does not bypass completion reachability in a workspace with no drums",
+    'if(m) return "completion-unreachable:"+m;', "if(false) return m;"],
   ["an invalid constructed song is refused even when geometry was legal", 'if(!ev.valid) return "completion-invalid:"+ev.code;', "if(false) return null;"],
   ["catalog reaches no-such-setup-kind through an otherwise valid definition", 'if(!kind) err("no-such-setup-kind","$.setup",def.setup && def.setup.kind);', "if(!kind) {}"],
   ["catalog reaches setup-forbids-control through an otherwise valid definition", 'if(granted.has(c)) err("setup-forbids-control","$.setup",c);', "if(false) {}"],
@@ -103,7 +114,7 @@ const mutations = [
   ["v1 and v2 reject the same malformed common fields, including nested phase and witness fields",
     'Object.assign({ v:QT.lit(2), setup:QT.opaque() }, QUEST_SHAPE_COMMON)',
     'Object.assign({ v:QT.lit(2), setup:QT.opaque() }, QUEST_SHAPE_COMMON, { title:QT.opaque() })'],
-  ["setup is a v2-only definition key and unsupported versions never dispatch as v2",
+  ["setup is a v2 and v3 definition key and unsupported versions never dispatch",
     'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1) }, QUEST_SHAPE_COMMON), ["starterSong","cast"])',
     'QUEST_SCHEMA_V1=QT.obj(Object.assign({ v:QT.lit(1), setup:QT.opaque() }, QUEST_SHAPE_COMMON), ["starterSong","cast","setup"])'],
   ["newQuestRun deeply owns its instance, including one supplied by a frozen definition", "setup:o.setup ? jclone(o.setup) : null", "setup:o.setup ? Object.assign({},o.setup) : null"],
@@ -311,13 +322,15 @@ const mutations = [
   ].map(([from,to])=>["undo and redo during a pick restore the held version and leave its sibling alone",from,to]),
 ];
 
+mutations.push(...fragmentMutations);
 mutations.push(...e6Mutations);
 mutations.push(...playtestMutations);
 const green = new Set();
 // A focused rerun is useful while developing new faults; the default always runs the full audit.
 for(const arg of process.argv.slice(2))
-  assert.ok(["--e6-only", "--playtest-only"].includes(arg), "unknown audit selector: " + arg);
-const selectedMutations = process.argv.includes("--e6-only") ? e6Mutations
+  assert.ok(["--e6-only", "--playtest-only", "--fragments-only"].includes(arg), "unknown audit selector: " + arg);
+const selectedMutations = process.argv.includes("--fragments-only") ? fragmentMutations
+  : process.argv.includes("--e6-only") ? e6Mutations
   : process.argv.includes("--playtest-only") ? playtestMutations : mutations;
 // Catch stale anchors before spending minutes running the full sweep.
 for(const [,from,to] of selectedMutations){

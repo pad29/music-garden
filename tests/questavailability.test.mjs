@@ -24,13 +24,13 @@ function credit(f, vid = f.run().draft) {
 }
 function ready(f, matched = false) {
   const { g, run } = f, vid = run().draft;
-  const song = completeDealtSong(g, run().versions[vid].song);
+  const song = clone(run().versions[vid].song);
   // Independently chosen beats: an isolated offbeat matches no suggested steady family;
   // main beats -> even eighths supplies a real matched transform with a changed beat.
   song.tracks[1].hits = matched
     ? (vid === "A" ? [0, 4, 8, 12] : [0, 2, 4, 6, 8, 10, 12, 14]).map(c => ({ lane: 0, c }))
     : [{ lane: 1, c: vid === "A" ? 1 : 3 }];
-  g.applySong(song); g.noteEdit("availability-fixture"); credit(f);
+  g.applySong(completeDealtSong(g, song)); g.noteEdit("availability-fixture"); credit(f);
   const ev = g.questEvaluateRun(run(), f.d);
   assert.strictEqual(ev.ok, true);
   assert.strictEqual(ev.readiness.ok, true);

@@ -83,7 +83,17 @@ worst at finding.
 node tests/questsetup-mutations.mjs
 node tests/questsetup-mutations.mjs --e6-only
 node tests/questsetup-mutations.mjs --playtest-only
+node tests/questsetup-mutations.mjs --fragments-only
 ```
+
+`quest-fragments.test.mjs` covers step F's opening drum fragment: the pool grammar and the refusal of a
+composite single attack, the catalog's proof (exhaustive over every legal short fragment at every legal
+width, executing the real drum predicates on every ordered snapshot pair), the draw coming last so a pool
+never moves a seed's stones, instance integrity against a tampered hydrated run, the drum readiness
+(an ending rest is allowed; column 3 is not a continuation), silent versus unnamed drums, and the ring
+wiring on `.dcell` pads. `completeDealtSong` restores the dealt opening and adds one continuation snare
+that names no pulse family, so fixtures written to be unmatched stay unmatched — it completes the task
+the player is held to rather than loosening it. `helpers/quest-fragment-mutations.mjs` supplies the faults.
 
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
 flags select commit 6 or the A7/A8 playtest faults. Each fault must have a green unmodified test and

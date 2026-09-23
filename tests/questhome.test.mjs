@@ -34,7 +34,7 @@ const DEALT = (() => {
   }
   throw new Error("no usable fixture hand");
 })();
-const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definitionVersion: 2,
+const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definitionVersion: 3,
   setup: JSON.parse(JSON.stringify(DEALT)),
   status: "active", phase: 0, draft: "A", selection: null, versions: {}, updatedAt: 10, ...over });
 const rows = (progress, runs = {}, hist = {}) => g.questEligibility(DEFS, progress, runs, hist);

@@ -103,7 +103,9 @@ test("the setup registry, rule grammar and forbidden controls are deeply frozen"
     Object.values(value).forEach(frozen);
   }
   frozen(registry);
-  assert.strictEqual(g.QUEST_SETUP_GENERATOR_VERSION, 1);
+  // Bumped to 2 when the slack gained a bucket for the trailing stretch. It rides on every dealt
+  // instance for diagnosis; stored hands are authoritative and are never re-dealt under a new version.
+  assert.strictEqual(g.QUEST_SETUP_GENERATOR_VERSION, 2);
 });
 
 test("rule grammar accepts every bounded tuple and rejects malformed parameters", () => {
@@ -133,9 +135,10 @@ test("shipped deals are repeatable, varied, versioned and valid across 512 seeds
   assert.deepEqual(g.QUEST_CATALOG_ERRORS, []);
   assert.deepEqual(Object.keys(g.QUEST_DEFINITIONS).sort(), ["firefly-crossing", "waking-woods"]);
   for (const def of Object.values(g.QUEST_DEFINITIONS)) {
-    assert.strictEqual(def.v, 2);
+    assert.strictEqual(def.v, 3);
     assert.strictEqual(def.workspace.columns, 16);
-    assert.deepEqual(def.setup, RULE);
+    const {fragments, ...geometry}=def.setup;
+    assert.deepEqual(geometry, RULE); assert.strictEqual(fragments.length, 6);
     const before = clone(def), positions = new Set(), columns = new Set();
     const k = g.QUEST_SETUP_KINDS.waypoints;
     for (let i = 0; i < 512; i++) {
@@ -144,7 +147,9 @@ test("shipped deals are repeatable, varied, versioned and valid across 512 seeds
       const b = k.generate(def.setup, def, g.questRng(seed));
       assert.deepEqual(a, b);
       assert.notStrictEqual(a.waypoints, b.waypoints);
-      assert.strictEqual(a.generatorVersion, 1);
+      // 2 since the slack gained a bucket for the stretch AFTER the last landmark; under 1 that
+      // landmark fell on the upper bound in every deal.
+      assert.strictEqual(a.generatorVersion, 2);
       assert.strictEqual(k.validateInstance(a, def.setup, def), null, seed);
       assert.strictEqual(g.questSetupCompletable(def, a), null, seed);
       positions.add(JSON.stringify(a.waypoints));
@@ -173,7 +178,7 @@ test("every horizontal rule at every width generates legal geometry on both ladd
           const rng = seed === "rng-zero" ? () => 0 : seed === "rng-top" ? () => 1 - 2 ** -32 : g.questRng(seed);
           const inst = k.generate(rule, def, rng), w = inst.waypoints;
           const bad = [];
-          if (inst.kind !== "waypoints" || inst.generatorVersion !== 1) bad.push("envelope");
+          if (inst.kind !== "waypoints" || inst.generatorVersion !== g.QUEST_SETUP_GENERATOR_VERSION) bad.push("envelope");
           if (w.length !== rule.count) bad.push("count");
           if (w.some(p => !Number.isInteger(p.row) || !Number.isInteger(p.col) || p.row < 0 ||
             p.row >= g.PALETTES[paletteId].MIDI.length)) bad.push("ladder");
@@ -333,6 +338,7 @@ test("legal geometry does not bypass completion reachability in a workspace with
   // MUTATION: questSetupCompletable returns null after geometry without checking the constructed song.
   const g = fresh(), def = definition(g), inst = instance();
   def.workspace.controlIds = [];
+  inst.fragment={index:0,hits:clone(def.setup.fragments[0])};
   assert.strictEqual(g.QUEST_SETUP_KINDS.waypoints.validateInstance(inst, def.setup, def), null);
   assert.strictEqual(g.questSetupCompletable(def, inst), "completion-unreachable:drums-not-granted");
 });
@@ -388,7 +394,7 @@ test("catalog validates the bounded rule and accepts optional valid witness inst
     rejects(g, def, code, "$.setup." + key);
   }
   const good = clone(base);
-  good.witnesses.forEach(w => { w.setup = instance(); });
+  good.witnesses.forEach(w => { w.setup = {...instance(), fragment:{index:0,hits:clone(good.setup.fragments[0])}}; });
   accepts(g, good);
   good.witnesses.at(-1).setup.waypoints[0].row = 99;
   rejects(g, good, "witness-setup-invalid");
@@ -433,13 +439,13 @@ test("v1 and v2 reject the same malformed common fields, including nested phase 
   for (const v of [1, 2]) { const def = clone(base); def.v = v; accepts(g, def); }
 });
 
-test("setup is a v2-only definition key and unsupported versions never dispatch as v2", () => {
+test("setup is a v2 and v3 definition key and unsupported versions never dispatch", () => {
   // MUTATION: add setup to v1, or fall back to the newest validator for unknown versions.
   const g = fresh(), base = definition(g);
   const old = clone(base); old.v = 1;
   rejects(g, old, "unknown-key", "$.setup");
   accepts(g, base);
-  for (const v of [0, 3, -1, 2.5, null, "constructor", "__proto__"]) {
+  for (const v of [0, 4, -1, 2.5, null, "constructor", "__proto__"]) {
     const def = clone(base); def.v = v;
     rejects(g, def, "unsupported-schema-version");
   }
@@ -449,7 +455,7 @@ test("newQuestRun deeply owns its instance, including one supplied by a frozen d
   // MUTATION: store o.setup directly or shallow-copy it; frozen witness data would become the run's
   // frozen/shared waypoints, and later player state could alias catalog data.
   const g = fresh(), def = definition(g);
-  def.witnesses[0].setup = instance();
+  def.witnesses[0].setup = {...instance(), fragment:{index:0,hits:clone(def.setup.fragments[0])}};
   accepts(g, def);
   const frozen = g.QUEST_DEFINITIONS[def.id], setup = frozen.witnesses[0].setup;
   assert.strictEqual(Object.isFrozen(setup.waypoints[0]), true);
@@ -478,9 +484,9 @@ test("start stores the seeded instance and opens exactly its landmarks, never th
     const def = g.QUEST_DEFINITIONS[id], before = clone(def), runId = launch(g, id);
     const run = g.QUEST_RUNS[runId], k = g.QUEST_SETUP_KINDS.waypoints;
     assert.deepEqual(run.setup, { seed: runId, ...k.generate(def.setup, def, g.questRng(runId)) });
-    assert.strictEqual(run.definitionVersion, 2);
+    assert.strictEqual(run.definitionVersion, 3);
     assert.deepEqual(melody(run.versions.A.song), melody(k.startingSong(def, run.setup)));
-    assert.deepEqual(drums(run.versions.A.song), []);
+    assert.deepEqual(drums(run.versions.A.song), run.setup.fragment.hits);
     assert.deepEqual(g.Store.get("questRuns").runs[runId].setup, run.setup);
     assert.deepEqual(def, before);
   }
@@ -540,7 +546,7 @@ test("leave, hydrate in a fresh VM, edit and fork preserve the authoritative dea
   // generated starting song. A different valid stored deal defeats same-seed regeneration false proofs.
   const first = fresh(), runId = launch(first), def = first.QUEST_DEFINITIONS["firefly-crossing"];
   const dealt = clone(first.QUEST_RUNS[runId].setup);
-  const authoritative = { ...instance([2, 6, 13], [2, 3, 4]), seed: "archived-seed" };
+  const authoritative = { ...instance([2, 6, 13], [2, 3, 4]), fragment: clone(dealt.fragment), seed: "archived-seed" };
   assert.notDeepEqual(authoritative.waypoints, dealt.waypoints);
   first.QUEST_RUNS[runId].setup = authoritative;
   const edited = first.questSetupCompletion(def, authoritative);
@@ -672,4 +678,68 @@ test("v1 runs without tasks still launch and resume with setup null", () => {
   g.hydrateQuestRuns();
   assert.strictEqual(g.enterQuestRun(runId).ok, true);
   assert.strictEqual(g.QUEST_RUNS[runId].setup, null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Two defects GPT found while reviewing a proposal that was NOT built. Both are in shipped code.
+
+test("the slack reaches the stretch after the last landmark, so that landmark moves", () => {
+  // MUTATION: share the slack over `rule.count` buckets instead of `rule.count+1` — the lead-in and
+  // the gaps, with nothing left for the trailing stretch.
+  //
+  // That is what shipped. Every spare column was spent before the last landmark, so it fell on the
+  // upper bound in EVERY deal: 4000 hands of the Firefly rule put the third stone on column 13 four
+  // thousand times, and the stretch after it was permanently the narrowest the rule allows. Its row
+  // still varied, so no two deals were identical; the column and the final stretch never did.
+  const g = fresh();
+  const def = definition(g), k = g.QUEST_SETUP_KINDS.waypoints;
+  const last = new Set(), trailing = new Set();
+  for (let i = 0; i < 400; i++) {
+    const w = k.generate(def.setup, def, g.questRng("variety" + i)).waypoints;
+    last.add(w.at(-1).col);
+    trailing.add(def.workspace.columns - 1 - w.at(-1).col);   // how wide the final stretch is
+  }
+  assert.ok(last.size > 1, "the last landmark must not be pinned to one column: " + [...last]);
+  assert.ok(trailing.size > 1, "…so the stretch after it is not always the same width");
+
+  // And the bound is still a bound — sharing the slack must not walk a landmark out of the field.
+  for (let i = 0; i < 400; i++) {
+    const inst = k.generate(def.setup, def, g.questRng("bounds" + i));
+    assert.strictEqual(k.validateInstance(inst, def.setup, def), null, "deal " + i);
+  }
+});
+
+test("a completion that completes nothing is refused", () => {
+  // MUTATION: drop the readiness check from questSetupCompletable, leaving only song validity and
+  // workspace legality — which is exactly what shipped.
+  //
+  // Obligation two claims the dealt task can be FINISHED in the declared workspace. Every check it
+  // made asked whether the constructed song was a legal song, never whether it finished anything, so
+  // the obligation held by construction and was verified by nothing. GPT's probe: return an empty
+  // legal song from the constructor and the check still reported success.
+  const g = fresh();
+  const def = definition(g), k = g.QUEST_SETUP_KINDS.waypoints;
+  const inst = k.generate(def.setup, def, g.questRng("probe"));
+  assert.strictEqual(g.questSetupCompletable(def, inst), null, "the real completion completes");
+
+  const real = g.questSetupCompletion;
+  try {
+    // The landmarks and nothing else: legal, in-workspace, and not a finished crossing.
+    g.questSetupCompletion = (d, i) => k.startingSong(d, i);
+    assert.strictEqual(g.questSetupCompletable(def, inst), "completion-incomplete:region-empty");
+
+    // Regions filled but a landmark deleted: the other half of the same obligation.
+    g.questSetupCompletion = (d, i) => {
+      const song = real(d, i);
+      song.tracks[0].notes = song.tracks[0].notes.filter(n => n.c !== i.waypoints[0].col);
+      return song;
+    };
+    assert.strictEqual(g.questSetupCompletable(def, inst), "completion-incomplete:landmark-gone");
+
+    // …and with the drums stripped, which is the third thing readiness asks for.
+    g.questSetupCompletion = (d, i) => {
+      const song = real(d, i); song.tracks[1].hits = []; return song;
+    };
+    assert.strictEqual(g.questSetupCompletable(def, inst), "completion-incomplete:fragment-gone");
+  } finally { g.questSetupCompletion = real; }
 });

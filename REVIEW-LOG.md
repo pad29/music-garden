@@ -2205,3 +2205,89 @@ survived it, and the audit fault that removed the route sentence now removes the
 
 **493 tests pass. 311 mutations caught, none survived.** Browser-verified: editing the held path darkens
 the offer, one playthrough lights it again, and the path that was not touched keeps its audition.
+
+## Step F — the drums get an opening (2026-09-22/23, branch `quests`)
+
+After replaying the landmark quest several times the owner found the halves uneven: *"the 3 preset seeds
+for the melody work really well … But the drums don't get the same level of challenge."* They proposed
+two random preset drum hits.
+
+### Draft 1 — two snare presets and three drum regions. Withdrawn.
+
+One constraint was measured before drafting: a preset **kick** off a multiple of four makes "a clean
+kick on every main beat" unreachable for the whole run, because that detector forbids other kicks. So
+the presets went in the snare lane. Astra rejected the draft anyway, and the objection was the right one:
+
+> The design rewards additional occupancy whether or not the addition improves the rhythm.
+
+Its counterexample: presets at 3 and 11, snares at 0, 7 and 15 satisfy every drum requirement and the
+detectors recognise **no heartbeat at all**; and 35 of the 66 legal preset pairs would force a hit
+outside the main-beat pattern just to fill a gap. It recommended giving the drums **a musical idea to
+develop** — a short authored fragment — rather than another partition of the field.
+
+The same review found **two defects in shipped code**, both fixed:
+
+- **The third stone's column never moved.** The dealer shared spare width across the lead-in and the
+  gaps but had no bucket for the stretch after the last landmark, so every spare column was spent before
+  it: 4000 of 4000 deals put the third stone on column 13. Its row still varied — the owner corrected my
+  first description of this as losing a third of the variety — but the final stretch was always the
+  narrowest the rule allows. `generatorVersion` 2; the third stone now falls on 10–13.
+- **Obligation two proved nothing.** `questSetupCompletable` asked whether the engine's constructed
+  song was a legal song in the workspace, never whether it *finished the task*; Astra's probe returned an
+  empty legal song from the constructor and the check still passed. It now asks the same readiness the
+  player is held to. Its regression test survived its first audit — it claimed a half of the promise it
+  never exercised — and was fixed by asserting that half, not by dropping the fault.
+
+Also recorded, not fixed: *The Waking Woods*' "at least four notes" route clause can never fail, since
+readiness already forces at least seven melody onsets.
+
+### Draft 2 — an opening fragment. Built.
+
+The owner chose the fragment, with one condition: *"careful to make it short, so that there is still many
+different ways to extend it, rather than the only way is to repeat it."* They will playtest it against
+their second idea, two presets always on a main beat.
+
+Astra's second review found no blockers and three things worth changing, all taken:
+
+- **The final-quarter gate was coverage in costume.** I had drafted "a player hit in the last quarter of
+  the field" as the continuation rule. Its finding: *"The new reach gate adds no requirement to
+  recognised pulses. Its additional restrictions fall entirely on unrecognised patterns"* — so it refused
+  a developed groove with a deliberate rest at the end while accepting a single hat on column 15. The rule
+  is now **anything after the opening**, and it is described honestly as an engagement floor; whether the
+  beat was *developed* is for the playtest to observe.
+- **The feedback was steering the experiment.** A child who answered an off-beat snare opening with a
+  steady off-beat snare line was told, in Hopper's voice, that the drums *"have not caught one of the
+  steady heartbeats yet."* Silent drums and unnamed drums were the same sentence; they are two now, and the
+  second puts the limitation on the garden — *"The drums played a pattern the garden has no name for."*
+- **The pool.** It kept four of my six and replaced two that already set up an ostinato (`S1 S3` became
+  `S1 S2`; `K0 H1 H3` became `K0 H1`), and caught that the grammar allowed `K0 S0 H0` — three hits on one
+  column, a single composite attack — so a fragment now needs two onset columns. On whether three hits
+  was too many: *"Temporal shape matters more than count."*
+
+It also said the comparison needs a protocol to mean anything, which is now in `QUESTS.md` Q4/A9, and —
+for the second time — that Q6 should be restated whole rather than amended again. It is, in one box.
+
+**The proof.** The catalog proves over the whole finite pool that no opening can close a declared route:
+each fragment's union with the plainest pattern of every heartbeat is built, filtered to songs that
+satisfy the drum readiness, and every drum-reading observation is *executed* against them — every
+ordered pair for a snapshot comparison. Astra confirmed the construction is complete for these detectors,
+and why: the walk and the shimmer require hits and tolerate extras, while the clean main beat forbids
+other kicks, so a fragment that breaks it cannot be repaired by adding anything.
+
+### The tester
+
+Astra migrated 107 failures — one cause, as expected: the shared fixture completed the melody task and
+only guaranteed "some drum hit", so it deleted the dealt opening. The fix restores the opening and adds a
+continuation snare that names no pulse family, so fixtures written to be unmatched stay unmatched. It
+completes the task the player is held to rather than loosening readiness. Thirteen new tests, including
+an exhaustive proof check over every legal short fragment at every legal width.
+
+It hit its usage limit during its **final** verification run and never delivered a report. The suite
+and the audit were re-run here instead, and the fixture change was reviewed line by line.
+
+### Verification
+
+**508 tests pass. 384 mutations caught across 129 green tests, none survived.** Checked in the harness:
+all six fragments dealt about evenly over 2000 runs, every deal valid and completable, and the proof
+refusing a kick on column 2. **Not browser-verified**: the preview pane serves the main checkout, not
+this worktree, so the drum rings and the narration are the owner's playtest to see first.

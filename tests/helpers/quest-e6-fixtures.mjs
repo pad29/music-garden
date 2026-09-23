@@ -12,9 +12,9 @@ export function launch(t, questId="firefly-crossing") {
     g.onCompletePass({runId:id,versionId:vid,editRev:v.editRev,sessionId:`${vid}-${v.editRev}`,purpose});
   };
   const ready=()=>{
-    const s=completeDealtSong(g,run().versions[run().draft].song);
+    const s=clone(run().versions[run().draft].song);
     s.tracks[1].hits=[{lane:1,c:run().phase+1}];
-    g.applySong(s); g.noteEdit("fixture"); receipt();
+    g.applySong(completeDealtSong(g, s)); g.noteEdit("fixture"); receipt();
   };
   return {g,id,def,run,receipt,ready};
 }

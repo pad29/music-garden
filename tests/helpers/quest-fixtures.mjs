@@ -14,7 +14,7 @@ export function loadQuestGame(options) {
 }
 
 // Complete the dealt task independently of questSetupCompletion/readiness. Preserve the fixture's
-// beat and metadata; a silent fixture gets one off-beat hit (ready, but no steady-pulse route).
+// beat and metadata; retain the opening and add a continuation without naming a pulse.
 // Only early phases need adapting. Comparison edits deliberately remain free under Q6.
 export function completeDealtSong(g, input) {
   const run = g.QUEST_RUNS[g.activeScope.runId];
@@ -32,6 +32,8 @@ export function completeDealtSong(g, input) {
   }
   song.tracks.find(t => t.kind === "melody").notes = filled;
   const hits = song.tracks.find(t => t.kind === "drums").hits;
-  if (!hits.length) hits.push({ lane: 1, c: 1 });
+  for (const hit of run.setup.fragment?.hits || [])
+    if (!hits.some(h => h.lane === hit.lane && h.c === hit.c)) hits.push({ ...hit });
+  if (!hits.some(h => h.c >= 4)) hits.push({ lane: 1, c: 5 });
   return song;
 }
