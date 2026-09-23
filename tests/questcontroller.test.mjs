@@ -239,10 +239,9 @@ test("a ready phase is gated by exactly the procedure ids it declares", () => {
   assert.strictEqual(runOf(g, runId).phase, 2);
 });
 
-test("a song matching no route moves the quest on after the explicit choice", () => {
+test("a song matching no route moves the quest on with one press", () => {
   // MUTATION: gate a transition on a route match. Q6's "offer anyway" is the whole shape of this quest.
-  // Deliberate change: the old assertion required one press. Q6 now asks on the first press,
-  // while preserving the right to advance on the second regardless of route matches.
+  // A7 deliberately removes the intermediate choice; the labelled action advances immediately.
   const { g, runId } = launched();
   edit(g, runId, song([[60, 0], [60, 4]], []));      // completed landmarks and regions, but no steady pulse
   credit(g, runId, "A", "s1");
@@ -250,8 +249,6 @@ test("a song matching no route moves the quest on after the explicit choice", ()
   assert.deepEqual(
     g.evaluateQuest(g.QUEST_DEFINITIONS["firefly-crossing"], ev, runOf(g, runId)).musical.matchedRouteIds,
     []);
-  assert.deepEqual(g.performQuestAction("continue"), { ok: false, code: "needs-confirm" });
-  assert.strictEqual(runOf(g, runId).phase, 0);
   assert.strictEqual(g.performQuestAction("continue").ok, true);
   assert.strictEqual(runOf(g, runId).phase, 1);
 });

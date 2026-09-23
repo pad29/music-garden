@@ -129,7 +129,8 @@ test("the menu exit and truthful save status replace the leave button in every p
     for(const unsaved of [false,true]){
       const m=g.questShellModel(run,def,{unsaved});
       assert.strictEqual(action(m,"leave"),undefined);
-      if(!unsaved)assert.ok(m.exitText.includes("☰"));
+      // Naming the ☰ route was dropped after the third playtest; saying that leaving is free was not.
+      if(!unsaved)assert.match(m.exitText,/leave any time/);
       assert.strictEqual(m.exitText,unsaved?g.QUEST_UNSAVED_TEXT:g.QUEST_EXIT_TEXT);
       assert.deepEqual(m.steps,def.phases.map((p,i)=>({name:p.name,state:i<phase?"done":i===phase?"current":"todo"})));
     }

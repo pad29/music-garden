@@ -1,11 +1,8 @@
 import { loadGame } from "../harness.mjs";
 
-// Fixture navigation only: unrelated controller tests may accept Q6's unmatched-path choice.
-// Retry exactly once, and only for that choice; gate/storage failures must remain visible.
-// Tests of the fork itself must press performQuestAction directly.
+// One press means one action. Never retry or synthesize the removed A7 confirmation fork.
 export function continueQuest(g) {
-  const first = g.performQuestAction("continue");
-  return first.code === "needs-confirm" ? g.performQuestAction("continue") : first;
+  return g.performQuestAction("continue");
 }
 
 // Controller/shell fixtures need a reproducible usable hand. Dealer coverage uses the real

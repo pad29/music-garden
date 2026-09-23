@@ -14,7 +14,7 @@ export const e6Mutations=[
     ['&& questUnsavedEdit.runId===runId && questUnsavedEdit.versionId===versionId;','&& questUnsavedEdit.versionId===versionId;'],
     ['&& questUnsavedEdit.runId===runId && questUnsavedEdit.versionId===versionId;','&& questUnsavedEdit.runId===runId;'],
     ['if(r.ok){ if(questHasUnsavedEdit(activeScope.runId, run.draft)) questUnsavedEdit=null; }','if(r.ok){ questUnsavedEdit=null; }'],
-    ['if(actionId==="pick"){\n    questConfirm=null;','if(actionId==="pick"){\n    questConfirm=null; questUnsavedEdit=null;'],
+    ['if(actionId==="pick"){','if(actionId==="pick"){ questUnsavedEdit=null;'],
   ]),
   ...faults("a phase transaction cannot discharge the outstanding edit",[
     ['return r.ok ? { ok:true, phase:QUEST_RUNS[o.runId].phase }','if(r.ok) questUnsavedEdit=null;\n  return r.ok ? { ok:true, phase:QUEST_RUNS[o.runId].phase }'],
@@ -81,7 +81,7 @@ export const e6Mutations=[
     ['if(!run || !def || run.status!=="completed" || !run.artifact) return null;','if(!run || !def || run.status!=="completed") return null;'],
     ['nameField:{ value:title, maxLength:80, enabled:saved.present },','nameField:{ value:title, maxLength:80, enabled:true },'],
     ['stale: !!(saved.present && run.artifact.title!==saved.title),','stale:false,'],
-    ['{ id:"name-song", label:"Name it", enabled:saved.present }','{ id:"name-song", label:"Name it", enabled:true }'],
+    ['{ id:"name-song", label:"Save this name", enabled:saved.present }','{ id:"name-song", label:"Save this name", enabled:true }'],
   ]),
   ...faults("rename saves the song first and same-text retry repairs partial success without rewriting the song",[
     ['const id=done.artifact.artifactId;','transactQuestRun(runId,[{type:"rename",title,at}]);\n    const id=done.artifact.artifactId;'],

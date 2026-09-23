@@ -410,6 +410,8 @@ test("the shipped quest passes every semantic rule, on real songs", () => {
     "first-shimmer-arc:arc:hat-shimmer",
     "second-fall-same-main:fall:main-beat-kicks",
     "second-rise-even-walk:rise:even-kick-walk",
+    // The third phase-2 route: changing BOTH the shape and the heartbeat is another way across too.
+    "second-fall-new-shimmer:fall:hat-shimmer",
   ]);
 });
 

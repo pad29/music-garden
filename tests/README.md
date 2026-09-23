@@ -77,29 +77,33 @@ history, the sealed catalog, and the analyzer registries and semantic validator.
 for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
 worst at finding.
 
-## Quest setup and confirmation mutation audit
+## Quest setup and playtest mutation audit
 
 ```bash
 node tests/questsetup-mutations.mjs
-node tests/questsetup-mutations.mjs --confirm-only
 node tests/questsetup-mutations.mjs --e6-only
+node tests/questsetup-mutations.mjs --playtest-only
 ```
 
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
-flag selects the Step E commit 4 confirmation tests. Each fault must have a green unmodified test and
+flags select commit 6 or the A7/A8 playtest faults. Each fault must have a green unmodified test and
 make that exact test fail. Mutations affect the harness's script string in memory only. Syntax errors,
 initialization failures, ambiguous source anchors, and missing test titles fail the audit rather than
 counting as caught faults.
 
-`questconfirm.test.mjs` covers the two-press unmatched-path choice, one-press matched paths, identical
-completion payoff, all five confirmation key fields, edits/undo, leaving/resume, auditions, new runs,
-readiness/gate combinations, comparison exemptions, and the shared evaluation seam's purity. It checks
-shell models and controller state; it does not claim to verify drawn buttons or audible playback.
+`questavailability.test.mjs` retains all five non-fork guarantees from the former
+`questconfirm.test.mjs`: readiness/declared-gate sweeps, comparison-offer gate sweeps,
+`questEvaluateRun` evidence construction and purity, the shared shell/controller evaluation seam,
+and rejection of authorable confirmation gates. `continueQuest()` is now exactly one action call;
+it never retries a refusal or manufactures the removed confirmation state.
 
-Older controller fixtures use `continueQuest()` when their assertion concerns something beyond the
-choice. It retries exactly once for `needs-confirm`, preserving other failures. Tests of the choice
-itself call `performQuestAction()` directly. The former one-press unmatched-path assertion was deliberately
-changed to require the question followed by advancement, as specified by Q6.
+`quest-playtest.test.mjs` covers whole-model route invisibility with identical descriptor tokens,
+independently varied live and persisted matches, immediate matched/unmatched progression and equal
+payoff, renamed quest ids, all three exclusive transform witnesses and the four keep/change
+combinations, final-offer readiness exemption after an actual edit, phase/status text, the text-only
+status sink, friend/path render boundaries, narration envelopes, landmark wording, and finale naming.
+`helpers/quest-playtest-mutations.mjs` supplies a fault for each new guarantee. The source/sink tests
+check wiring and text assignment; they do not infer rendering, audio, or background paint from stubs.
 
 Step E commit 6 coverage is in `questcast.test.mjs` and `questfinale.test.mjs`. It covers cast
 validation and derived attribution, persisted tokens, unsaved-edit guards, rename ordering and
@@ -118,3 +122,47 @@ document the store had just refused, and a path switch that discarded it. They w
 tester rather than hidden, and are green now that the source is fixed; the saved-message regression it
 found lives in `questshell.test.mjs`. `REVIEW-LOG.md` § *Step E* records what was found and what was done
 about it.
+
+## A7/A8 migration record (2026-09-22)
+
+The supplied working tree reproduced **16 failures out of 493**, rather than 17. Its pre-existing
+`questsemantics.test.mjs` edit already added `second-fall-new-shimmer` to the expected witness list;
+that mechanical update was preserved. The other mechanical audit updates are the rename label's
+new spelling and the unsaved-edit fault's anchor after `questConfirm` was removed.
+
+**Removed subjects:** twelve tests in `questconfirm.test.mjs` exercised the deleted fork itself:
+asking once; matched-path confirmation exemption; the two prompt actions and cancellation;
+confirmation-key fields; phase identity; edit/undo invalidation; leave/reload invalidation;
+pick invalidation; new-run identity; gate closure while an answer was pending; comparison's
+confirmation exemption; and refusing to ask before readiness/playback. Their confirmation faults
+and the confirmation-only selector were deleted because A7 removes the behavior, not because they
+were failing. The old controller test requiring an explicit choice now requires one press.
+The former unmatched-path test's **equal-payoff guarantee** survives in the new end-to-end test.
+
+**Preserved subjects:** the five availability/purity/grammar tests above remain. Their fixtures
+no longer call `ask()` or assert `asking`/`confirmText`. The readiness and comparison sweeps keep
+their combinations and button/door assertions. The shared-seam test now tests procedural shell
+availability and a pre-transition controller consultation, without making route matches a gate.
+
+**Outstanding source regression:** `the shell and controller both consume the shared evaluation seam`
+is intentionally red. The shell still calls `questEvaluateRun`; `performQuestAction("continue")`
+no longer does. Suppressing `questPaintField` in the test prevents a post-transition repaint from
+masquerading as the controller consultation. The same migrated test was executed against pre-playtest
+`HEAD:index.html` in memory and passed. This is an architectural regression in the explicitly retained
+guarantee; the ordinary readiness/gate sweeps agree, and this is not evidence of a normal player's
+button disagreeing with the door. No source was changed to resolve it or disguise it in a helper.
+
+The green shell half is separately mutation-audited. The red controller regression has no green
+baseline on current source and is therefore not counted as a mutation kill or silently skipped in
+the normal suite. A successful mutation audit is not a claim that the full suite is green.
+
+Verification: syntax passes; **490 of 491 tests pass**, with only the retained controller-seam
+regression failing (zero skips). The complete audit catches **307 faults across 111 green tests**;
+the A7/A8 subset catches **44 faults across all 10 new tests**. The pre-existing semantics fixture
+change is included in these counts. `git diff --check` passes.
+
+Read-aloud **input** is covered; actual narration, voice assets, `file://` playback, sidebar/progress
+placement, collapsed ways, and gradient tiling still require real-browser observation/listening.
+The owner supplied the layout verification; this tests-only round does not re-certify it or the
+unheard/unseen audio and paint changes. No game, design, generated asset, or review-history file was
+edited, and nothing was committed or pushed.

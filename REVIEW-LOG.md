@@ -2099,3 +2099,109 @@ which is the case the review said would otherwise have become a "not yet"; the s
 the Q6 fork firing on its own; the finale with confetti, both friends dancing, the song named and
 renamed; Escape and an outside click both refusing to dismiss it; and the ☰ → 🗺️ exit stopping playback,
 which it never did before this commit.
+
+### The second playtest — seven findings, and one of them was a design fault
+
+The owner played the finished quest on 2026-09-21 and sent seven notes. Two were bugs, one was a
+design fault the engineering had been hiding, and the rest were the card asking a child to read too
+much.
+
+**The card was doing five jobs in five fonts.** The friends moved to the sidebar card the region
+companion has always grown in — a quest hides that card, so this stands in its place rather than beside
+it. What the crossing still needs moved to a line above the field, under Voice and Tempo, where a child
+is already looking; it was previously the smallest text on the screen, off to one side. The exit line
+merged into the status bar, which in a quest was still offering the package's advice — *"Plant seeds,
+press Play, try Hint"* — for a mode with neither a Hint nor a Fuse. "Ways this could work" is collapsed
+again: opening it by default, added two days earlier because nothing directed the player to build
+anything, made the card taller than the field.
+
+**The quest had no voice.** Read-aloud is on by default and narrates every lesson in the game, and it
+had been silent through the entire quest: `renderStage` narrates `curStage().intro`, and quest phases
+were the one kind of step built without one. They carry the world and intention sentences now.
+
+**The instructions never mentioned the stones.** A child was shown three ringed seeds and told to give
+the lights a way across, with nothing saying the ringed ones are part of the path and have to stay —
+the whole task, discoverable only by having it refused. Both quests say it now.
+
+**"A strange line in the background."** A real bug with a satisfying cause: the body's radial gradient
+propagates to the canvas, which sizes it to the **html box**, not the document — and it kept CSS's
+default `background-repeat: repeat`. The moment any card made the page taller than the window, the
+gradient tiled and drew a hard edge straight across the garden. Hence "it appears when Ways is open".
+Pinned to the viewport, with no-repeat as the fallback where that is unsupported.
+
+**The fork was removed — built, playtested, and withdrawn.** Pressing a button labelled *Compare both
+paths* produced two different buttons, which is a bait-and-switch whatever the words say. Worse, the
+sentence above them announced that none of the suggested ways came out, for a revision that had changed
+**both** the shape and the beat. A matched route is no longer reported to the shell at all; the friends
+describe what they heard either way. `QUESTS.md` records this as **A7** rather than quietly deleting
+A4 — the fork was this document's own wording built literally, and that it failed in front of a player
+is the useful part.
+
+The owner proposed replacing it with a *Shape this path more* button in the last phase. That phase has
+been editable since the previous commit, so the button would have done nothing when pressed — the same
+defect as the *Leave for now* button they had already asked to remove. They took the alternative: a
+line that says the path lit below is theirs to change.
+
+**And the design fault.** *"It says the shape is a Fall, and drums are there. Then why does the message
+say that none of the ways came out?"* Because phase 2's two routes were "change the shape, keep the
+beat" and "keep the shape, change the beat", and the owner had changed both — so **doing more counted
+as doing less**. A third route, `new-shape-new-heartbeat`, with a witness that proves it reachable and
+distinct; the catalog's constructive checks accepted it with zero errors, which is what those checks are
+for. Recorded as **A8**.
+
+### What GPT found
+
+The tester migrated the fork's tests — twelve deleted with reasons, five guarantees preserved — and
+caught one regression I had introduced without noticing:
+
+> Continue no longer consults the shared evaluation seam. The same migrated test passes against
+> pre-playtest `HEAD`.
+
+Exactly right, and worth recording because the cause is instructive: the seam D4 and commit 4 exist to
+protect was being held **by an accident**. The controller called the evaluator only because the
+confirmation fork needed it, so removing the fork silently left the button and the door computing
+readiness from two separate code paths again.
+
+I took the opposite remedy to the one it proposed. Its test asked the controller to consult the
+evaluator before advancing — but `advanceQuestPhase` then applies `questPhaseGate` inside the
+transaction, so that would be two guards where the first masks the second, which this project treats as
+making the second untestable. Instead the **gate is now the single authority** and the model reads it:
+`canAdvance` *is* `questPhaseGate`'s answer. The test was rewritten to pin that — stubbing the gate must
+move the button and the door together — and the mutation faults that targeted the model's own copy of
+"gates open and nothing missing" were re-pointed at the gate, since that copy no longer exists.
+
+### Verification
+
+**491 tests pass. 307 mutations caught, none survived.** Browser-verified: the rearranged card, the
+friends in the sidebar with their names, the progress line above the field, the status line carrying the
+phase's own intention, the collapsed routes, the third route matching the owner's exact case
+(`matchedRouteIds: ["new-shape-new-heartbeat"]`), the button advancing on one press, the last phase's
+editable line, and no seam at any window height. The read-aloud audio and the background painting are
+the two things no assertion here reaches.
+
+### The third playtest — two notes, one of them a real refusal
+
+**"Offer stays greyed out until I click the other path, play it, and come back and play this one
+again."** Only an `audition` purpose records `auditionedRev`, and the only caller that ever set one was
+the path toggle. `beginCompletionSession` defaulted every other playback to `"play"` — so pressing ▶ Play
+on the path you were holding, the most direct way there is to listen to it, did not count as listening
+to it. The offer then stayed shut until the player had tapped their way around both paths again.
+
+In the phase whose whole job is listening to two paths, listening *is* auditioning: the default purpose
+now follows the phase type. Nothing about re-hearing an edited path changed — `auditionedRev` is still
+compared against `editRev`, and the audition op still refuses a receipt for a play that did not finish
+at that revision in that session. The untouched path was never the problem; the game was refusing to
+notice a listen it had just been given.
+
+The regression test for it exposed a survivor on its first audit run: it claimed the "an edited path
+must still be re-heard" half of the promise and never exercised it, so the fault that removes that guard
+lived through it. Fixed by asserting the guard rather than by dropping the fault.
+
+**"Remove 'The world map is under the ☰ menu' — the player already knows it, and it makes the line too
+long."** Done, and **A5 refined** rather than quietly contradicted: what the requirement asks for is
+that stopping reads as free and the work's state is told truthfully. Naming the route was one way to
+meet that and is no longer required. Three tests pinned the ☰ mention; each now pins the guarantee that
+survived it, and the audit fault that removed the route sentence now removes the promise instead.
+
+**493 tests pass. 311 mutations caught, none survived.** Browser-verified: editing the held path darkens
+the offer, one playthrough lights it again, and the path that was not touched keeps its audition.

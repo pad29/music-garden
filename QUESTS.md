@@ -60,6 +60,16 @@ None reverses a decision; each narrows one that turned out to permit something n
   and the landmark commission that answers it is written down as a **hypothesis** the five-novice median
   still has to settle (§2, Q4).
 
+### Amendments applied after the second playtest (2026-09-21)
+
+- **A7 — The shell stops reporting whether a route matched.** A4's confirmation fork was built as
+  specified and playtested badly: it hijacked the button the player pressed, and told a child who had
+  revised *more* than asked that nothing came out. Removed; the friends' descriptions are the whole
+  response (§3, Q6).
+- **A8 — Phase 2 accepts changing both levers.** Its two routes were "new shape, same beat" and "same
+  shape, new beat", so changing both matched neither. A third route makes the larger revision a
+  recognised way across (§2, Q4's phase 2).
+
 ---
 
 ## 1. Vocabulary
@@ -170,6 +180,12 @@ teach — `follow-the-fireflies` gives **Rise, Fall, Hover, Arc** (each with its
 
 Valid routes accordingly: change the contour family while retaining any steady pulse; **or** retain
 a recognized contour while changing to a different steady pulse family.
+
+**Amendment A8 (2026-09-21).** A third route: **change both.** As first written the two routes each
+asked the player to move exactly one lever, so a child who changed the shape *and* the heartbeat matched
+neither — doing more counted as doing less, which the first playtest of the finished quest ran straight
+into. Isolating one variable is still the clearer lesson and is still what the phase suggests; it is no
+longer the only thing the garden can recognise.
 
 This phase uses **revision, not accumulation** — it must not add requirements on top of version A.
 After version B is played, the world describes the difference it detected ("The second path arches
@@ -294,9 +310,20 @@ and a beat under the path. That is a statement about the commission, not a grade
 what the crossing is still missing, never a tally, and the field itself shows where.
 
 **The offer keeps Q6 exactly as written.** Readiness gates leaving phases 1 and 2 and nothing else:
-the final offer asks for a playthrough and an audible song, as it always has. When readiness is met and
-no suggested route matched, the button does not block — it asks once ("shape it more" / "keep it
-anyway") and takes either answer, which is this section's own wording finally built.
+the final offer asks for a playthrough and an audible song, as it always has.
+
+**Amendment A7 — the response is descriptive, and only descriptive (2026-09-21).** A4 first built this
+section's "you can shape it again, or offer this crossing as yours" as a literal fork: when readiness was
+met and no route matched, the button asked once before advancing. Playtested, it was worse than the
+problem. Pressing a button labelled *Compare both paths* produced two different buttons, and the sentence
+above them announced that none of the suggested ways came out — read by the owner as a failure notice for
+a revision that had changed **both** the shape and the beat, which is more than either route asked for.
+
+**A matched route is no longer reported to the shell at all.** The friends describe what they heard
+either way, the button does what its label says, and "ways this could work" stays an optional aid read
+before you start rather than a score read afterwards. This is Q5's anti-checklist rule and Q6's
+descriptive response arriving at the same place: the engine still evaluates routes, and nothing in the
+interface ever tells a child their music did not count.
 
 **Reason:** A hard stop at the first quest's emotional peak would teach that the Studio accepts only
 detector-approved music. Objective routes still make transfer visible and testable, but final
@@ -453,10 +480,16 @@ final-offering actions as appropriate.
 plain at all times: that the player may stop whenever they like, and whether their work is saved. It
 must **not** be required to do that with a button. A *Leave for now* button was built and playtested,
 and the owner's finding was that it reads as a decision with consequences beside the phase's own
-button — "it is not clear what choosing 'Keep this path' vs 'Leave for now' would do". The shell now
-says it in words that also name where the way out is, because the world-map button lives behind the ☰
-menu and is not on screen. The saved state is **read from the store**, not asserted: it must be able to
-say that a write did not land.
+button — "it is not clear what choosing 'Keep this path' vs 'Leave for now' would do". The shell says it
+in words instead. The saved state is **read from the store**, not asserted: it must be able to say that
+a write did not land.
+
+*Refined 2026-09-22, after the third playtest.* The line first named the route as well — "the world map
+is under the ☰ menu" — because that button is hidden behind the toggle. On screen every render, beside
+the phase's own instruction, it was the longest thing on the line, and the owner asked for it back:
+*"the player already knows it, and it makes the line too long."* What this requirement asks for is that
+the player can see **that stopping is free and their work is safe**. Naming the route is one way to meet
+that and not the only one; it is no longer required.
 
 It must reuse the Studio's musical document, playback, mixer, undo behaviour and v3 save/share seam.
 It must **not fork a second composition editor.**
@@ -680,6 +713,6 @@ they permit and are recorded in the rows themselves. Neither is reversed.
 | 8 | Ordered sequence | Approved **with Questmaker deferred** to Kind 7 |
 | 9 | Calm 10–15 min: autosave, exact resume, no timer, no expiry | Approved |
 | 10 | Three-phase *Firefly Crossing* (compose → transform → compare) | Approved with A1, A2 |
-| 11 | "Offer anyway" with identical payoff | Approved; refined 2026-09-20 (**A4/A5**): "offer anyway" is now a question the button asks once and either answer carries, and readiness gates leaving phases 1 and 2 only — never the offer. The payoff is still identical |
+| 11 | "Offer anyway" with identical payoff | Approved; refined 2026-09-20/21 (**A4/A5/A7**): readiness gates leaving phases 1 and 2 only, never the offer, and the shell never reports whether a route matched — the fork that asked "shape it more or keep it anyway" was built, playtested and removed as worse than silence. The payoff is still identical |
 | 12 | Schema-level anti-checklist rules | Approved |
 | 13 | Opportunistic removal of legacy root `progress.toolbox` | Approved |

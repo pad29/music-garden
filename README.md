@@ -144,13 +144,14 @@ authorability acceptance test, and passing it is what keeps a player-facing Ques
 Each run is **dealt its own task**: three landmark stones, spaced apart and away from the edges, planted
 on the field before you start. Keeping them and travelling between them — something of your own before
 the first, between each pair and after the last, over a beat — is the commission, and a phase will not
-move on until the crossing is that. The card says which of those is missing in one sentence, never a row
-of ticks. When the work is ready but none of the ways the garden suggested came out, the button **asks
-once** and takes either answer; the final offer is never gated that way (Q6). The last phase is two
-controls, not six: tap a path to hear it and hold it, then offer the one you are holding. **Flutter and
-Hopper are on screen**, carrying the observations in their own voices — who speaks is worked out from
-the analyzer that produced each sentence, so a friend can only say what its own capability heard, and
-never approves or disapproves of your music. Offering ends in a real finale: confetti, your chosen path
+move on until the crossing is that. One sentence above the field says which of those is still missing,
+never a row of ticks — and **nothing ever tells you a way "did not come out"**: the engine evaluates its
+routes, and the friends simply describe what they heard, which is Q5's anti-checklist rule and Q6's
+descriptive response meeting in the same place. The last phase is two controls, not six: tap a path to
+hear it and hold it, then offer the one you are holding. **Flutter and Hopper are on screen**, in the
+sidebar the region companion grows in, carrying the observations in their own voices — who speaks is
+worked out from the analyzer that produced each sentence, so a friend can only say what its own
+capability heard, and never approves or disapproves of your music. Offering ends in a real finale: confetti, your chosen path
 playing, both friends dancing, and the song named and saved to your melodies.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
