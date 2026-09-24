@@ -1,12 +1,11 @@
 // D7 adversarial review: the cross-catalog seams that only become meaningful once two quests exist.
 //
-// These deliberately exercise the official ids rather than invented fixtures: a collision in history,
-// a catalog disappearing between an offer and crash recovery, or one quest inheriting the other one's
-// controls only appears when both definitions travel through the same registries and persistence key.
+// Official ids exercise history and recovery. A no-loop Woods clone also crosses the catalog boundary
+// to distinguish workspace defaults now that both official definitions grant the same controls.
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadQuestGame as loadGame } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame as loadGame, loadNoLoopWoods } from "./helpers/quest-fixtures.mjs";
 
 const song = () => ({
   v: 3, meta: { title: null, created: 0, updated: 0, author: null },
@@ -31,16 +30,19 @@ function offer(g, runId, questId, at) {
 }
 
 test("each official workspace is the only feature set and envelope that enters its run", () => {
-  // MUTATION: reuse Firefly's feature list or envelope while opening Waking Woods.
-  // Two definitions sharing one controller must not inherit loop/drums or their reverse by accident.
+  // MUTATIONS: reuse Firefly's feature list/envelope, force loop, or keep the preceding loop state.
+  // The synthetic entry is loaded, not inserted into the registry or patched into an open run.
   const g = loadGame({ fresh: true });
-  for (const id of ["firefly-crossing", "waking-woods"]) {
+  const noLoopId = loadNoLoopWoods(g);
+  assert.deepEqual(g.QUEST_CATALOG_ERRORS, []);
+  for (const id of ["firefly-crossing", noLoopId, "waking-woods"]) {
     const def = g.QUEST_DEFINITIONS[id];
     const r = g.startQuestRun(id);
     assert.strictEqual(r.ok, true, id + ": " + r.code);
     assert.deepEqual([...g.scopeFeatures()].sort(), [...def.workspace.controlIds].sort(), id);
     assert.strictEqual(g.currentLevel().drums, def.workspace.controlIds.includes("drums"), id + " drum envelope");
     assert.strictEqual(g.currentLevel().loop, def.workspace.controlIds.includes("loop"), id + " loop envelope");
+    assert.strictEqual(g.looping, def.workspace.controlIds.includes("loop"), id + " transport default");
     assert.strictEqual(g.questWorkspaceMismatch(g.currentSong(), def), null,
       id + " opens a song its own workspace accepts");
   }

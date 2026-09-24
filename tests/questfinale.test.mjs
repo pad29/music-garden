@@ -191,31 +191,34 @@ test("offer retry and boot recovery return completion without starting the party
 });
 
 test("finale claims its key before reentrant start and clears playback constraints once", t=>{
-  // MUTATIONS: claim after start, omit a key field, reset key on render, or omit transport resets.
-  const {g,id,run}=completed(t), before=clone(run()); let starts=0, parties=0, reentry;
-  g.confetti=()=>{parties++;};
-  g.looping=true; g.loopStart=4;g.loopEnd=12;g.pinCursor(7);
-  g.start=opts=>{
-    starts++;
-    assert.deepEqual(opts,{versionId:run().artifact.versionId,purpose:"finale"});
-    assert.strictEqual(g.looping,false);assert.strictEqual(g.rangeOn(),false);
-    assert.strictEqual(g.cursorPinned,false);assert.strictEqual(g.cursorCol,0);
-    // Guard the probe itself against infinite recursion in the deliberately broken mutant.
-    if(starts===1){g.renderQuestShell();reentry=g.questShowFinale(id);}
-  };
-  assert.strictEqual(g.questShowFinale(id),true); assert.strictEqual(reentry,false);
-  assert.strictEqual(starts,1);assert.strictEqual(parties,1);
-  g.renderQuestFinale();g.renderQuestShell();
-  assert.strictEqual(g.questShowFinale(id),false);
-  assert.strictEqual(g.performQuestAction("retry-offer").ok,false);
-  assert.strictEqual(g.questShowFinale(id),false);
-  assert.deepEqual(run(),before,"party has no receipt or run write");
-  // Isolate each component; normal new runs change all three and cannot prove all three matter.
-  run().artifact.savedAt++; assert.strictEqual(g.questShowFinale(id),true);
-  run().artifact.artifactId+="-other"; assert.strictEqual(g.questShowFinale(id),true);
-  const other=clone(run()); other.runId=id+"-other";g.QUEST_RUNS[other.runId]=other;
-  assert.strictEqual(g.questShowFinale(other.runId),true);
-  assert.strictEqual(starts,4);assert.strictEqual(parties,4);
+  // MUTATIONS: claim after start, omit a key field/reset, or turn looping off only for Firefly.
+  for(const questId of ["firefly-crossing","waking-woods"]){
+    const {g,id,run}=completed(t,questId), before=clone(run()); let starts=0, parties=0, reentry;
+    g.confetti=()=>{parties++;};
+    assert.strictEqual(g.looping,true,questId+" must reach the finale with its loop default still on");
+    g.loopStart=4;g.loopEnd=12;g.pinCursor(7);
+    g.start=opts=>{
+      starts++;
+      assert.deepEqual(opts,{versionId:run().artifact.versionId,purpose:"finale"});
+      assert.strictEqual(g.looping,false);assert.strictEqual(g.rangeOn(),false);
+      assert.strictEqual(g.cursorPinned,false);assert.strictEqual(g.cursorCol,0);
+      // Guard the probe itself against infinite recursion in the deliberately broken mutant.
+      if(starts===1){g.renderQuestShell();reentry=g.questShowFinale(id);}
+    };
+    assert.strictEqual(g.questShowFinale(id),true); assert.strictEqual(reentry,false);
+    assert.strictEqual(starts,1);assert.strictEqual(parties,1);
+    g.renderQuestFinale();g.renderQuestShell();
+    assert.strictEqual(g.questShowFinale(id),false);
+    assert.strictEqual(g.performQuestAction("retry-offer").ok,false);
+    assert.strictEqual(g.questShowFinale(id),false);
+    assert.deepEqual(run(),before,"party has no receipt or run write");
+    // Isolate each component; normal new runs change all three and cannot prove all three matter.
+    run().artifact.savedAt++; assert.strictEqual(g.questShowFinale(id),true);
+    run().artifact.artifactId+="-other"; assert.strictEqual(g.questShowFinale(id),true);
+    const other=clone(run()); other.runId=id+"-other";g.QUEST_RUNS[other.runId]=other;
+    assert.strictEqual(g.questShowFinale(other.runId),true);
+    assert.strictEqual(starts,4);assert.strictEqual(parties,4);
+  }
 });
 
 test("finale refuses missing incomplete or unresolvable runs without effects", t=>{

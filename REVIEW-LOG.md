@@ -2291,3 +2291,70 @@ and the audit were re-run here instead, and the fixture change was reviewed line
 all six fragments dealt about evenly over 2000 runs, every deal valid and completable, and the proof
 refusing a kick on column 2. **Not browser-verified**: the preview pane serves the main checkout, not
 this worktree, so the drum rings and the narration are the owner's playtest to see first.
+
+## Step G — *The Waking Woods* before its first playtest (2026-09-23, branch `quests`)
+
+The owner found *The Firefly Crossing* working after three playtest rounds and asked which of its lessons
+apply to *The Waking Woods*, which they had not opened. Most of those lessons were engine fixes, so Woods
+already had them. I proposed five data-level changes, and the owner approved four: plain task lines,
+neutral engine sentences, dropping the vacuous melody clause (item 3), and loop.
+
+### Two things I told the owner that were wrong
+
+- **Item 3 had no quick fix.** I said Woods' challenges could claim only `steady-pulse`, so each way
+  would lose its "enough notes to make a phrase" half. The grammar fixes a challenge at exactly the
+  quest's two capabilities, and `QUESTS.md` rule 4 says each route spans them. I caught this while
+  drafting and put the options to Astra: leave it, replace it with a real melody clause, hide it, or allow
+  one-capability challenges. Astra agreed with **leave it now, and try a HOME-ending clause after the
+  playtest if the melody half feels thin**, and rejected raising the threshold above seven as "note
+  quantity for a musical idea". It also corrected my diagnosis: the clause *"can fail during unfinished
+  editing. It becomes redundant **once readiness is satisfied**."*
+- **"No loop button" was false.** Astra: *"The loop button already exists; the grant makes the quest open
+  with looping on. Its absence did not prohibit the player from looping."* `QUEST_CONTROLS.loop` says as
+  much ("the button is always there"). The change is unchanged, and it is smaller than I described it: Woods
+  now opens looping, like Firefly.
+
+### Astra's review — no blockers, Low findings only
+
+- **Taken:** phase 1's world text says *"Make a tune that reaches all three stones"*, not "Carry a tune",
+  which is an idiom. `missing-fragment` says *"One of the opening drum hits is missing."* The old
+  "missing a step" was a story word in a line that tells a child what to fix, and it was vaguer than the
+  check.
+- **Not taken:** renaming the pulse family "even kick walk" to "even kick beat" so that ways and Hopper's
+  lines follow the literal rule. The `footsteps` package teaches that exact pattern as "WALK"
+  (`index.html:3697`), so it is the child's taught name, not a story word. The rule now reads: task-tier
+  lines (intention, missing, editable, ways) are literal and keep taught names; story-tier lines (world
+  text, a friend's heard lines) may use story words with an explicit subject. Hopper's *"The drum
+  walked…"* stays.
+- **Corrected:** I claimed "stepping stones" appeared nowhere but the old missing notice. Firefly's brief
+  also says it. That is world text, and it stays.
+- **Recorded, not changed:** *"editing during playback cancels the completion session; subsequent laps
+  do not automatically credit the edited revision."* Firefly shares this. With looping now on in both
+  quests, it goes on the playtest's watch list.
+
+### What shipped
+
+Woods' brief, phase 1 world and task text, and phase 2 task text now use "notes"/"tune" for the melody,
+"beat" for the drums, and "walk" only for the whole song. Four missing sentences were rewritten. With
+the fifth, which was already neutral, they and the phase-3 editable line now use no quest's nouns
+(`QUESTS.md` A10). Woods grants `loop`. `QUESTS.md` Q9 has a dated note saying the
+acceptance test's loop difference is gone. No schema bump: a definition has no revision apart from
+`v`, and no one has a Woods run.
+
+### The tester
+
+It migrated the two workspace tests to a catalog-loaded no-loop Woods clone, checking features, envelope
+and the real `looping` across loop on → off → on. It updated the two stale audit anchors. It added
+`quest-g.test.mjs`: a vocabulary boundary over the shared missing/editable sentences, with a restoration
+fault for every old one, and a Woods loop test that drives real booking and clock events through the
+completion session. That test shows a partial lap earns nothing, a full lap counts at audible time, and
+an edited version must be heard again while its untouched sibling need not be. It ran the finale test on
+both quests, with a fault that resets looping only for Firefly. It left Woods' task wording as **content
+review**, reasoning that keyword checks would not prove clarity. It found no regressions.
+
+### Verification
+
+Re-run here, not taken from the tester's report: **510 tests pass; 406 mutations caught across 133 green
+tests, none survived**, including 22 new step G faults. The harness loads the catalog with zero errors,
+and Woods starts with `looping` on. **Not browser-verified**: the wording and the loop default are the
+owner's playtest to see and hear first.

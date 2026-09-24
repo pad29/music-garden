@@ -476,6 +476,12 @@ parameter would tell a child something untrue — the second quest therefore var
 parameters; and the descriptor vocabulary is small enough that its two transform routes divide on the
 beat alone. Parameterised way-descriptors are the next vocabulary step.
 
+**Since (2026-09-23, before its first playtest):** the loop difference is gone. *The Waking Woods* now
+grants `loop` like the first quest. That grant was never access to looping; the ↻ button is always
+there. It only means looping is on from the first bar. The Firefly playtests all ran with it on, and a
+drum opening to carry on is heard best going round. The acceptance test keeps its proof with a
+synthetic definition that grants no loop, not with the shipped data.
+
 ---
 
 ## 5. Cross-package tools
@@ -533,6 +539,22 @@ the phase's own instruction, it was the longest thing on the line, and the owner
 *"the player already knows it, and it makes the line too long."* What this requirement asks for is that
 the player can see **that stopping is free and their work is safe**. Naming the route is one way to meet
 that and not the only one; it is no longer required.
+
+**Amendment A10 — the task line is literal (2026-09-23).** The Firefly's third playtest found that its
+instructions never said the notes had to reach the stones. Before its first playtest, *The Waking Woods*
+turned out to use "walk" for the melody, the drums and the whole song, and "footsteps" for both the
+melody and the drum opening. So the shell's text has two tiers:
+
+- **Task tier** — a phase's intention, the missing sentences, the editable line and the ways — is
+  literal. The melody is **notes** or a **tune**, the drums are the **beat** or **drum hits**, and the
+  dealt melody is the **ringed stones**. It keeps the names the prerequisites teach (A2), even when they
+  sound like story: `footsteps` teaches the eight-kick pattern as a **walk**, so "an even kick walk"
+  stays.
+- **Story tier** — world text, and a friend's heard lines — may use the quest's own words, provided the
+  subject is explicit ("The drum walked evenly…").
+
+The engine's own sentences are shown in every quest, so they use no quest's nouns at all: not path,
+crossing or walk, and not the quest's own name for offering. A test holds them to that.
 
 It must reuse the Studio's musical document, playback, mixer, undo behaviour and v3 save/share seam.
 It must **not fork a second composition editor.**

@@ -16,7 +16,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadQuestGame as loadGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { loadQuestGame as loadGame, completeDealtSong, loadNoLoopWoods } from "./helpers/quest-fixtures.mjs";
 
 const g = loadGame();
 
@@ -325,15 +325,16 @@ const credit = (g2, runId, versionId, sessionId) => {
 };
 
 test("the second commission is data: a different land, different powers, no engine branch", () => {
-  // MUTATION: hard-code anything about the Firefly in the envelope, the shell or the home surface.
-  // QUESTS.md Q9's acceptance test. The Waking Woods deliberately shares nothing structural with the
-  // first quest except the kind: another land, another friend, other prerequisites, a workspace with
-  // no loop, and routes carried by the pulse analyzers rather than the contour ones.
+  // MUTATIONS: reuse Firefly's envelope or features, force loop on/off, or retain the previous loop.
+  // Q9 still proves another land, cast, prerequisites and analyzers. Loop defaults now agree in
+  // official data; a uniquely named no-loop clone supplies the contrasting workspace through JSON.
   const w = g.QUEST_DEFINITIONS["waking-woods"], f = g.QUEST_DEFINITIONS["firefly-crossing"];
   assert.notStrictEqual(w.presentation.regionId, f.presentation.regionId);
   assert.notStrictEqual(w.presentation.themeId, f.presentation.themeId);
   assert.deepEqual(w.capabilityIds, ["melody-making", "steady-pulse"]);
-  assert.deepEqual(w.workspace.controlIds, ["drums"], "no loop button in this one");
+  assert.deepEqual(w.workspace.controlIds, ["drums", "loop"], "Woods starts with looping on");
+  assert.deepEqual(w.cast, [{ regionId: "pulse-woods", capabilityId: "steady-pulse" }]);
+  assert.notDeepEqual(w.cast, f.cast);
   assert.deepEqual(w.prerequisites.earnedByPackageIds, ["intro", "footsteps"]);
   // no contour analyzer anywhere in it: the routes are carried by a different pair of primitives
   const analyzers = w.phases.flatMap(p => p.challenge ? p.challenge.routes.flatMap(
@@ -344,12 +345,19 @@ test("the second commission is data: a different land, different powers, no engi
 
   // the envelope the generic controller builds is the SECOND quest's, not the first's
   const g2 = loadGame({ fresh: true });
-  const r = g2.startQuestRun("waking-woods");
-  assert.strictEqual(r.ok, true, r.code);
+  const noLoopId = loadNoLoopWoods(g2);
+  assert.deepEqual(g2.QUEST_CATALOG_ERRORS, []);
+  for (const [id, loop] of [["firefly-crossing", true], [noLoopId, false], ["waking-woods", true]]) {
+    const r = g2.startQuestRun(id);
+    assert.strictEqual(r.ok, true, id + ": " + r.code);
+    assert.deepEqual([...g2.scopeFeatures()].sort(), loop ? ["drums", "loop"] : ["drums"], id);
+    assert.strictEqual(g2.currentLevel().loop, loop, id + " envelope");
+    assert.strictEqual(g2.looping, loop, id + " transport default");
+  }
   const L = g2.currentLevel();
   assert.deepEqual(L.steps.map(s => s.id), ["wake-the-woods", "walk-it-again", "choose-the-walk"]);
   for (const st of L.steps) assert.strictEqual(st.goals, undefined, st.id + " must have no goals");
-  assert.strictEqual(L.loop, false, "the workspace granted no loop, so the level opens none");
+  assert.strictEqual(L.loop, true, "the official Woods envelope starts looping");
   assert.strictEqual(L.drums, true);
   assert.strictEqual(g2.scopeVisualRegion(), "pulse-woods",
     "a quest is tinted by the land its presentation names");

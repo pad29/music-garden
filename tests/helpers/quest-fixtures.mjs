@@ -13,6 +13,18 @@ export function loadQuestGame(options) {
   return g;
 }
 
+// Both official quests now start with looping on. Keep a real catalog entry that does not,
+// so copying the first quest's controls cannot pass the workspace tests by coincidence.
+export function loadNoLoopWoods(g) {
+  const catalog = JSON.parse(g.BUILTIN_QUEST_CATALOG_JSON);
+  const woods = JSON.parse(JSON.stringify(catalog.definitions.find(d => d.id === "waking-woods")));
+  woods.id = "test-woods-without-loop";
+  woods.workspace.controlIds = ["drums"];
+  catalog.definitions.push(woods);
+  g.loadQuestCatalog(JSON.stringify(catalog), "official");
+  return woods.id;
+}
+
 // Complete the dealt task independently of questSetupCompletion/readiness. Preserve the fixture's
 // beat and metadata; retain the opening and add a continuation without naming a pulse.
 // Only early phases need adapting. Comparison edits deliberately remain free under Q6.

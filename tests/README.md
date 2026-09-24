@@ -84,6 +84,7 @@ node tests/questsetup-mutations.mjs
 node tests/questsetup-mutations.mjs --e6-only
 node tests/questsetup-mutations.mjs --playtest-only
 node tests/questsetup-mutations.mjs --fragments-only
+node tests/questsetup-mutations.mjs --g-only
 ```
 
 `quest-fragments.test.mjs` covers step F's opening drum fragment: the pool grammar and the refusal of a
@@ -95,8 +96,33 @@ wiring on `.dcell` pads. `completeDealtSong` restores the dealt opening and adds
 that names no pulse family, so fixtures written to be unmatched stay unmatched — it completes the task
 the player is held to rather than loosening it. `helpers/quest-fragment-mutations.mjs` supplies the faults.
 
+Step G extends both authoring workspace tests with `loadNoLoopWoods`: a uniquely named Woods clone,
+loaded alongside the official definitions through `loadQuestCatalog`. The tests enter Firefly, the
+clone, then Woods (loop on → off → on), checking scope features, the level envelope and the actual
+loop default. Official land, cast, prerequisites and analyzer checks remain. Both tests are audited
+against a copied Firefly envelope/features, forced loop booleans and retained loop state.
+
+`quest-g.test.mjs` tests the shared missing/editable vocabulary boundary without snapshotting its
+sentences, including an explicit drum-hit subject for the missing-opening notice. Every old sentence
+has a restoration fault. Woods' individual intention wording remains **content review**: keyword
+presence cannot establish clear instructions, and the generic boundary does not apply to authored
+story nouns in every quest. The reviewed lines name notes/tune and beat without footsteps/walk;
+taught "even kick walk" and friends' story-tier descriptions are deliberately outside this check.
+
+The second G test drives loop booking/clock events through the real completion session and receipt
+sink in Woods: partial laps earn nothing, complete laps count at audible time, both auditions are
+needed, and replaying an edited held version restores offer without re-hearing its sibling. Its audio
+start boundary is replaced, so this does **not** prove scheduler wiring or audible playback. The
+existing finale effect test now runs for both official quests with their actual loop-on defaults;
+a Firefly-only loop reset is an audited fault. Narration still uses the existing both-quest envelope
+test, with the two Woods "Keep" → "Move" mutation anchors updated. `helpers/quest-g-mutations.mjs`
+joins the full audit; `--g-only` runs just these new faults.
+
+Step G verification (2026-09-23): **510 tests pass; 406 mutations caught across 133 green tests**,
+including 22 step G mutations across five tests. No game or design source was edited by this tester.
+
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
-flags select commit 6 or the A7/A8 playtest faults. Each fault must have a green unmodified test and
+flags select commit 6, the A7/A8 playtest, fragment, or step G faults. Each fault must have a green unmodified test and
 make that exact test fail. Mutations affect the harness's script string in memory only. Syntax errors,
 initialization failures, ambiguous source anchors, and missing test titles fail the audit rather than
 counting as caught faults.
