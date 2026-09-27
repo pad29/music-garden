@@ -261,6 +261,12 @@ recorded (the run stores it). Compare **listening, revision, unwanted repetition
 different the offered songs are** — not completion time alone. A shorter quest that children listen to
 and revise is better evidence than a longer one produced by refusals.
 
+*Settled 2026-09-26, by the owner: option 1 stays, and option 2 is not built.* The owner played the
+opening in both quests over three rounds and was satisfied with it. They closed the comparison rather
+than run the second arm. So the protocol above was **not** carried out, and nothing here claims that
+option 1 beat option 2 under it. It is recorded in case the question reopens, for example if children in
+a wider playtest turn out to repeat the opening instead of developing it.
+
 **Reason:** One contour plus one pulse is a three-minute task. Composing once, transforming the
 same material, comparing both and choosing an artifact creates the promised middle session while
 teaching revision rather than first-pass correctness. The shipped *Calm Reply, Bold Reply* step
