@@ -17,6 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { loadQuestGame as loadGame, completeDealtSong, loadNoLoopWoods } from "./helpers/quest-fixtures.mjs";
+import { withBeatNotes } from "./helpers/quest-h-fixtures.mjs";
 
 const g = loadGame();
 
@@ -316,7 +317,7 @@ test("the same music gets the same sentence, whichever quest asked", t => {
 
 const runOf = (g2, runId) => g2.QUEST_RUNS[runId];
 const alwaysStop = (t, g2) => t.after(() => { try { if (g2.playing) g2.stop(); } catch (e) { /* down */ } });
-function edit(g2, s) { g2.applySong(completeDealtSong(g2, s)); g2.noteEdit("test-edit"); }
+function edit(g2, s) { g2.applySong(withBeatNotes(completeDealtSong(g2, s))); g2.noteEdit("test-edit"); }
 const credit = (g2, runId, versionId, sessionId) => {
   const v = runOf(g2, runId).versions[versionId];
   const r = g2.transactQuestRun(runId, [{ type: "completePass", versionId, editRev: v.editRev,
@@ -340,7 +341,7 @@ test("the second commission is data: a different land, different powers, no engi
   const analyzers = w.phases.flatMap(p => p.challenge ? p.challenge.routes.flatMap(
     r => r.observations.map(o => o.analyzerId)) : []);
   assert.strictEqual(analyzers.some(a => a.startsWith("contour.")), false);
-  assert.strictEqual(analyzers.some(a => a === "phrase.minimum-onsets"), true,
+  assert.strictEqual(analyzers.some(a => a === "phrase.on-every-beat"), true,
     "and it uses a primitive the first quest never touched");
 
   // the envelope the generic controller builds is the SECOND quest's, not the first's

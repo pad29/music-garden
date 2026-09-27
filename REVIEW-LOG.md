@@ -2358,3 +2358,85 @@ Re-run here, not taken from the tester's report: **510 tests pass; 406 mutations
 tests, none survived**, including 22 new step G faults. The harness loads the catalog with zero errors,
 and Woods starts with `looping` on. **Not browser-verified**: the wording and the loop default are the
 owner's playtest to see and hear first.
+
+## Step H — *The Waking Woods* asks for a tune on the beat (2026-09-26, branch `quests`)
+
+The owner's first Woods playtest: *"There is currently no instruction on what kind of melody the quest is
+asking to create. The instruction make it seem like it is 'anything'. I have to open the 'ways it could
+work' to learn what to do, and even then I'm not clear..."* This was item 4 of step G, deferred to this
+playtest. The melody clause was the redundant "enough notes to make a phrase", and melody-making had no
+heard sentences, so nothing named the tune or answered it.
+
+I offered two ideas the prerequisites teach: **on the beat** (`footsteps`, "Heartbeat & Melody") and
+**come home** (`intro`). The owner chose on the beat. See `QUESTS.md` A11.
+
+### Astra's review — one High, the rest Medium and Low
+
+- **High, taken: the guide would have lit nothing.** *"`renderStage` returns through its quest branch
+  before reaching `setBeatGuide`. `questPaintField` clears decorations, loads the song, and marks
+  landmarks—but never applies stage decorations."* It verified this with an in-memory envelope carrying
+  `beatGuide:true`: entering Woods called `setBeatGuide(false)` only. `questPaintField` now applies stage
+  decoration after `applySong`.
+- **Medium, taken — a shipped defect in both quests:** *"`restoreSnapshot` rebuilds cells and reapplies
+  stage decorations, but never restores landmark classes."* One undo stripped the rings from the dealt
+  stones and the drum opening, so the given notes read as the player's own. `applyStageDecor` now
+  re-rings in a quest scope, so every rebuild that re-tints also re-rings.
+- **Medium, taken: scope the proof.** A reach construction proves the clause it was written for. It is
+  not *"a complete search for every current-subject melody observation"*. Run over every melody clause,
+  it would have refused a reachable `phrase.minimum-onsets(64)` deal. The construction now lives on the
+  primitive that supplies it.
+- **Medium, taken: option (i)**, `taughtByPackageIds`, checked as `analyzer-not-taught`. Its reason:
+  this separates *"what musical capability is being observed from which prerequisite teaches this
+  particular idea"*.
+- **Low, taken: wording.** "The tune walked in time, with a note on every beat" became *"The tune landed
+  on every beat."* Its point: *"A between-beat tune can also be perfectly in time."* "Moved between"
+  became "landed between", so all three sentences describe placement. The task lines say "opening drum
+  hits" and "carry the drums on", so "beat" no longer does two jobs in one sentence. Phase 2 lost
+  "still", because A7 allows reaching it with a version A that never covered the beats.
+- **Low, taken:** count distinct beat columns, since two notes stacked on one beat are one beat. Fixed
+  in the evidence.
+- **CSS:** combined selectors are needed, with the ring given priority. Whether both cues can actually
+  be told apart is a browser question, and it has not been answered yet.
+
+Its read-only probe built completing, beat-covered songs for 2,000 deals at widths 16 and 32 with no
+failures. It found 1,136 regions containing no beat column, which is why notes between the beats have
+to stay allowed.
+
+### The tester — one more High defect, left red and then fixed
+
+*"switching comparison versions calls `applySong` without reapplying decorations. Both quests lose
+melody/drum rings; Woods also loses its beat guide."* The pick path reloads the field for the other
+version, and it was the one quest rebuild that the stage-decoration fix above did not reach. So the rings
+have been dropping off in the last phase of both quests since the path toggle landed in step E. The tester
+left its regression red and confirmed that an in-memory `applyStageDecor()` after the load makes it pass.
+That is the fix now. The test is green and audited, with faults that skip the redecoration, apply it only
+to the Firefly, or apply it before the rebuild.
+
+It also migrated the six stale fixtures with an opt-in `withBeatNotes` helper. The shared
+`completeDealtSong` is unchanged, because adding beat notes there would have moved the Firefly's
+contours. It added `quest-h.test.mjs`, which covers:
+
+- **Evidence:** distinct columns, stacked notes, the 16-column floor, 17 and 32 columns, and every beat
+  subset.
+- **Descriptions:** exclusive, and confined to the declared tokens.
+- **Voices:** melody sentences travel through real receipts to the garden, and Hopper keeps the drums.
+- **Teaching rule:** `analyzer-not-taught`, isolated from capability earning by an authored
+  melody+contour quest.
+- **The old primitive:** `phrase.minimum-onsets` still validates with no guide and no reach proof.
+- **Reach:** the construction is checked over all 9,360 legal stone-column layouts and openings at widths
+  16 and 32; 2,928 of them have a region with no beat column. Each proof obligation also has its own
+  refusal fault.
+- **Guides:** derived from declared observations on every phase, and applied on entry, resume and phase
+  change.
+- **Rings:** re-applied after undo and redo in both quests.
+- **Leaving:** leaving for a lesson or the Studio turns the guide off.
+
+### Verification
+
+I re-ran everything after the fix rather than taking the tester's numbers. **523 tests pass. 472 mutations
+were caught across 146 green tests, and none survived**; the switch regression added three faults and one
+green test. In the harness, the stage flag is on in Woods and off in the Firefly, and 2,000 generated
+Woods deals prove reachable. The harness DOM does not keep classes, so the tests check calls and
+arguments, not what gets drawn. **Not browser-verified.** The preview pane serves the main checkout, so
+the owner's playtest is the first to see the glowing columns, whether a ringed stone on a glowing column
+still reads as both, and the new sentences read aloud.

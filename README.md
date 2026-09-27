@@ -133,8 +133,8 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 **Quests shipped:** **Kind 1**, in two quests (see `QUESTS.md`). A quest is a cross-package commission
 rather than a lesson: compose a path, make a second version of it, compare the two and offer the one you
 choose. ***The Firefly Crossing*** asks for a shape over a steady pulse once `follow-the-fireflies` and
-`footsteps` are complete; ***The Waking Woods*** asks for a phrase over a walking beat once `intro` and
-`footsteps` are. One appears as a calm card below the world map and the rest sit on the quest trail, and
+`footsteps` are complete; ***The Waking Woods*** asks for a tune that lands on the beat — Footsteps' own
+melody idea, with the beat columns glowing — once `intro` and `footsteps` are. One appears as a calm card below the world map and the rest sit on the quest trail, and
 each saves an ordinary v3 song you own. Quests are **declarative data** — the definition is validated
 JSON with no executable callbacks anywhere, and **every id it writes resolves against a closed engine
 registry**, so an author cannot name a control, tool, transition, payoff or theme the engine does not

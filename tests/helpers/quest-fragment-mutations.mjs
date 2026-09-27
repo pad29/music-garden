@@ -12,6 +12,8 @@ const routes="every shipped route has ready playable songs preserving every open
 const schema="v3 owns its schema and rejects malformed common and nested fields";
 const rings="landmark wiring addresses and clears every dealt drum pad";
 const faults=(title,pairs)=>pairs.map(([from,to])=>[title,from,to]);
+// Step H adds the same observation traversal for field guides. Keep these faults on the drum proof.
+const proofLoop='.filter(ev=>ev.valid && !questDrumMissing({ hits:frag }, ev).length);\n    for(const p of def.phases) if(p.challenge) for(const r of p.challenge.routes) for(const o of r.observations){';
 export const fragmentMutations=[
   ...faults(grammar,[
     ['lane:QT.int(0,2), c:QT.int(0,QUEST_FRAGMENT_SPAN-1)','lane:QT.int(-1,2), c:QT.int(0,QUEST_FRAGMENT_SPAN-1)'],
@@ -29,7 +31,7 @@ export const fragmentMutations=[
   ]),
   ...faults(proof,[
     ['(rule.fragments||[]).forEach((frag,index)=>{','(rule.fragments||[]).slice(0,1).forEach((frag,index)=>{'],
-    ['for(const p of def.phases) if(p.challenge) for(const r of p.challenge.routes) for(const o of r.observations){','for(const p of def.phases) if(p.challenge) for(const r of p.challenge.routes) for(const o of r.observations.slice(0,1)){'],
+    [proofLoop,proofLoop.replace('r.observations','r.observations.slice(0,1)')],
     ['if(!reachable) out.push({ index, routeId:r.id, analyzerId:o.analyzerId });','if(false) out.push({ index, routeId:r.id, analyzerId:o.analyzerId });'],
   ]),
   ...faults(predicates,[
@@ -42,7 +44,7 @@ export const fragmentMutations=[
     ['evs.some(c=>prim.evaluate(c, null, np.value).ok===true)','evs.some(c=>c.steadyPulseFamilies.length>0)'],
   ]),
   ...faults(filters,[
-    ['for(const p of def.phases) if(p.challenge) for(const r of p.challenge.routes) for(const o of r.observations){', 'for(const p of def.phases) if(p.challenge) for(const r of p.challenge.routes.slice(0,1)) for(const o of r.observations){'],
+    [proofLoop,proofLoop.replace('p.challenge.routes','p.challenge.routes.slice(0,1)')],
     ['.filter(ev=>ev.valid && !questDrumMissing({ hits:frag }, ev).length);','.filter(ev=>ev.valid);'],
     ['.filter(ev=>ev.valid && !questDrumMissing({ hits:frag }, ev).length);',';'],
   ]),

@@ -85,6 +85,7 @@ node tests/questsetup-mutations.mjs --e6-only
 node tests/questsetup-mutations.mjs --playtest-only
 node tests/questsetup-mutations.mjs --fragments-only
 node tests/questsetup-mutations.mjs --g-only
+node tests/questsetup-mutations.mjs --h-only
 ```
 
 `quest-fragments.test.mjs` covers step F's opening drum fragment: the pool grammar and the refusal of a
@@ -122,10 +123,47 @@ Step G verification (2026-09-23): **510 tests pass; 406 mutations caught across 
 including 22 step G mutations across five tests. No game or design source was edited by this tester.
 
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
-flags select commit 6, the A7/A8 playtest, fragment, or step G faults. Each fault must have a green unmodified test and
+flags select commit 6, the A7/A8 playtest, fragment, step G, or step H faults. Each fault must have a green unmodified test and
 make that exact test fail. Mutations affect the harness's script string in memory only. Syntax errors,
 initialization failures, ambiguous source anchors, and missing test titles fail the audit rather than
 counting as caught faults.
+
+## Step H testing (2026-09-26)
+
+The six stale Woods tests now use an explicit `withBeatNotes` fixture after readiness construction.
+`completeDealtSong` is unchanged, so shared Firefly contours and deliberately unmatched fixtures retain
+their meaning. The playable-route search keeps an independent on-beat melody after contour deduplication
+and still executes the full route conjunction, workspace check, and readiness. Woods' authoring assertion
+now names `phrase.on-every-beat`. Existing narration faults track the two new Woods task sentences;
+three older mutation anchors are narrowed to distinguish the new loops from the original drum proofs.
+
+`quest-h.test.mjs` covers distinct projected beat columns, duplicate/stacked notes, empty melody,
+between-beat notes, stones on beats, sustained tails, the 16-column evidence floor, and 17/32-column
+spans. All beat subsets at 16/32 are checked. Descriptions are exclusive, remain within declared token
+ids, and travel through real receipts to the garden while Hopper keeps the drum descriptions.
+
+An authored melody+contour quest isolates `analyzer-not-taught` from capability prerequisites: without
+Footsteps its only errors are the new teaching errors; adding Footsteps accepts it. The old minimum-onset
+primitive still accepts a no-task quest without Footsteps or a beat guide and has no reach construction.
+Reach tests execute the constructor over all 9,360 legal stone-column-layout/opening combinations at
+widths 16 and 32, using representative legal rows (not every pitch assignment); 2,928 cases have a region
+without a beat column. Separate faults remove workspace, evidence, readiness, parameter, and analyzer
+checks. Dispatch is exercised for every Woods route, including transform routes.
+
+Guide tests inspect declared observations, renamed definitions, every phase including comparison,
+entry/resume/stage painting, undo/redo, and leaving for an ordinary lesson or Studio. Landmark effect
+spies verify both melody coordinates and drum coordinates. These assert calls and arguments, not visible
+classes, CSS shadow order, rendered rings, or audible narration. Browser verification remains necessary.
+
+**A source regression, found red and then fixed:** switching A/B versions in comparison called
+`applySong` directly and never reapplied decorations. Both quests lost their melody/drum rings, and Woods
+also lost its beat guide. The tester left the test red, recording both switch directions in both quests,
+and did not edit `index.html`. The pick now calls `applyStageDecor()` after its load. The test is green
+and audited: faults skip the redecoration, run it only for the Firefly, or run it before the rebuild.
+
+The tester's own run, before the fix, was **522 passing and 1 failing**, and its complete audit caught
+**469 mutations across 145 green tests**. The re-run after the fix is recorded in `REVIEW-LOG.md`
+§ Step H.
 
 `questavailability.test.mjs` retains all five non-fork guarantees from the former
 `questconfirm.test.mjs`: readiness/declared-gate sweeps, comparison-offer gate sweeps,

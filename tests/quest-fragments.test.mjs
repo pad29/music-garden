@@ -3,6 +3,7 @@ import assert from "node:assert";
 import vm from "node:vm";
 import { loadGame } from "./harness.mjs";
 import { launch, clone } from "./helpers/quest-e6-fixtures.mjs";
+import { withBeatNotes } from "./helpers/quest-h-fixtures.mjs";
 
 const fresh = () => loadGame({fresh:true});
 const defOf = g => clone(g.QUEST_DEFINITIONS["firefly-crossing"]);
@@ -280,6 +281,9 @@ test("every shipped route has ready playable songs preserving every opening", ()
       melodies.push(s);
     }
     const distinct=[...new Map(melodies.map(s=>[JSON.stringify(analyze(s).contourFamilies),s])).values()];
+    // An independent on-beat candidate, kept AFTER contour deduplication: equal contours need not
+    // cover equal beats. The checks below still execute readiness and the complete route conjunction.
+    distinct.push(withBeatNotes(g.questSetupCompletion(d,inst)));
     const candidates=distinct.flatMap(m=>g.questFragmentProbes(d,pool[index]).map(dr=>{
       const s=clone(m);s.tracks[1]=clone(dr.tracks[1]);const ev=analyze(s);
       assert.deepEqual(g.QUEST_READINESS.waypoints.missing(d,inst,ev),[]);

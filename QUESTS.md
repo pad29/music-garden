@@ -556,6 +556,36 @@ melody and the drum opening. So the shell's text has two tiers:
 The engine's own sentences are shown in every quest, so they use no quest's nouns at all: not path,
 crossing or walk, and not the quest's own name for offering. A test holds them to that.
 
+**Amendment A11 — a task line names a musical idea (2026-09-26).** Played for the first time, *The
+Waking Woods* read as "anything". Its melody clause, "enough notes to make a phrase", was already
+guaranteed by readiness, and nothing ever said anything about the tune, so the owner had to open the
+ways and still could not tell what was wanted. So each half of a commission's music has to name **one
+idea its prerequisites taught**: in its ways, and in something that answers the child when they play. The
+melody half of Woods had neither. It is still an invitation. A7 and Q6 stand, and no route gates
+anything. The Firefly names its shapes in the ways and in Flutter's voice, but not in its task line.
+Three playtests have not found that to be a problem, so it stays as it is. It is recorded here as the
+difference to watch.
+
+For *The Waking Woods* the idea is **on the beat**, as `footsteps` teaches it: *"Plant seeds RIGHT ON
+the glowing beat columns so your melody walks in time."* The owner chose it over the intro package's
+ending on a home row, because it ties the tune to the drums, and that tie is what this quest is about.
+
+- `phrase.on-every-beat` matches when every main beat of the song (every fourth column) has a melody
+  onset. A stone on a beat counts. Notes between the beats neither help nor hurt: readiness asks for a
+  note in every stretch, and some stretches contain no beat at all.
+- The garden, not Hopper, describes it: "The tune landed on every beat", "on some of the beats", or
+  "between the beats". This is placement, not a judgment of timing.
+- The beat columns glow for the whole quest. The analyzer declares the guide, and the quest lights it
+  on every phase whose routes name it.
+- The idea is melody-making, which `intro` earns, but `footsteps` teaches it. So a definition whose
+  prerequisites never taught it may not name it (`analyzer-not-taught`). A capability says what is
+  being observed; this says which lesson made the idea the child's own.
+- It carries its own proof of reachability. The engine's completing song, plus a note on each empty
+  beat, is held to the workspace and to readiness, and then the real analyzer is run on it.
+
+`phrase.minimum-onsets` stays in the registry for quests with no dealt task, where it can fail. No
+official quest uses it any more.
+
 It must reuse the Studio's musical document, playback, mixer, undo behaviour and v3 save/share seam.
 It must **not fork a second composition editor.**
 

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { launch, compare, completed, clone, failEdit } from "./helpers/quest-e6-fixtures.mjs";
 import { loadQuestGame, completeDealtSong } from "./helpers/quest-fixtures.mjs";
+import { withBeatNotes } from "./helpers/quest-h-fixtures.mjs";
 
 const modelKeys = ["paths", "reflectionPrompt", "questId", "title", "phaseId", "steps",
   "exitText", "statusText", "unsaved", "worldText", "intentionText", "ways", "missing",
@@ -39,6 +40,8 @@ test("equal tokens make matched and unmatched songs indistinguishable throughout
       base.selection=phase===2 ? "B" : null;
       const vid=phase ? "B" : "A";
       // Both keep the same complete melody and receipts. Only the pulse family changes.
+      if (questId === "waking-woods") for (const v of Object.values(base.versions))
+        v.song = withBeatNotes(v.song);
       base.versions.A.song.tracks[1].hits=[...clone(base.setup.fragment.hits),...beats(0,4)];
       base.versions.B.song.tracks[1].hits=[...clone(base.setup.fragment.hits),...beats(0,2)];
       for(const p of def.phases) {
@@ -92,7 +95,9 @@ test("matched and unmatched paths advance once and receive identical completion 
       for(const phase of [0,1]) {
         const vid=run().draft, s=clone(run().versions[vid].song);
         s.tracks[1].hits=matched ? beats(0,phase ? 2 : 4) : [{lane:1,c:phase+1}];
-        g.applySong(completeDealtSong(g, s)); g.noteEdit("A7-real-edit"); receipt(vid);
+        const ready = completeDealtSong(g, s);
+        g.applySong(original === "waking-woods" ? withBeatNotes(ready) : ready);
+        g.noteEdit("A7-real-edit"); receipt(vid);
         const ev=g.questEvaluateRun(run(),d);
         assert.strictEqual(ev.musical.matchedRouteIds.length>0,matched);
         assert.strictEqual(g.questShellModel(run(),d).actions[0].enabled,true);
