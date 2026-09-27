@@ -77,7 +77,7 @@ function makeStorage() {
 
 // The regular DOM proxy intentionally ignores state.  Tempo is the one control whose native
 // range semantics are data-model behaviour: assigning an out-of-range famous/song tempo clamps
-// before stepDur(), snapshots, and saveProgress() can read it.  Keep this deliberately narrow;
+// before stepDur(), snapshots, and saveUserSettings() can read it.  Keep this deliberately narrow;
 // rendering and the rest of the controls remain outside this harness's remit.
 function tempoRangeFromHtml(html) {
   const tag = html.match(/<input\b[^>]*\bid=["']tempo["'][^>]*>/i)?.[0];
@@ -87,6 +87,27 @@ function tempoRangeFromHtml(html) {
     return m ? Number(m[1] ?? m[2] ?? m[3]) : fallback;
   };
   return { min: attr("min", 0), max: attr("max", 100), value: attr("value", 50), step: attr("step", 1) };
+}
+
+// A <select> that actually remembers what it was set to. Same reasoning as the tempo range above and
+// the same narrow remit: the generic stub swallows `value` writes and always reads "", which means a
+// control's own change handler cannot be exercised at all — and a test that pokes the module variable
+// instead is a false oracle. That is exactly how the click preference's persistence bug hid: it is
+// written from the Studio, where the old saveProgress() returned immediately, so only driving the real
+// handler and then reading Store can tell you whether it works.
+// Wire another control in here when you need to test ITS handler, not by default.
+function makeSelect(initial) {
+  let current = initial;
+  return {
+    get value() { return current; },
+    set value(next) { current = String(next); },
+    innerHTML: "",
+    options: [],
+    appendChild() {}, removeChild() {},
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    style: {},
+    addEventListener() {}, removeEventListener() {},
+  };
 }
 
 function makeTempoRange({ min, max, value, step }) {
@@ -193,9 +214,12 @@ export function loadGame({ fresh = false } = {}) {
   const src = match[1];
 
   const tempoInput = makeTempoRange(tempoRangeFromHtml(html));
+  const clickSelect = makeSelect("off");        // its handler is the only way its persistence is testable
   const stubDoc = makeStub("document");
   Object.defineProperty(stubDoc, "getElementById", {
-    value: (id) => (id === "tempo" ? tempoInput : makeStub(`document#${id}`)),
+    value: (id) => (id === "tempo" ? tempoInput
+                  : id === "click" ? clickSelect
+                  : makeStub(`document#${id}`)),
   });
   const sandbox = {
     console,

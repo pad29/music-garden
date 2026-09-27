@@ -936,6 +936,153 @@ player's behalf.
 
 ---
 
+## 2026-09-05 — count-in and metronome: design review (branch `count-in`)
+
+`gpt-5.6-sol`, fresh thread, read-only. **Verdict: REPLACE.** Its summary, verbatim: *"The timestamp
+arithmetic is usable, but the design built around it is not. It mishandles pickups, fires count-ins for
+mid-song bar ranges, cannot persist its Studio-only preference reliably, and has no coherent policy for
+tempo changes during pre-roll. The central claim — 'only move `anchorTime`; nothing else changes' — is
+false."*
+
+**The thing that failed last round passed this one.** All 15 line numbers in the fact table were valid for
+`f7ca1b5`. GPT: *"No cited line number is stale. That part survived."* The discipline fix from the
+dance-grooves round held; the remedy was simply to collect the numbers at drafting time against a named
+commit rather than reuse them from memory.
+
+**[Critical] The count-in ignored `originTick` — it would land the child on the wrong beat.** I positioned
+clicks relative to transport tick 0 while bars are phased on the origin. Measured: pickup 1 gives
+`[-336,-240,-144,-48]` where my design gave `[-384,-288,-192,-96]` — out by exactly one column, half a
+beat. §17(4) made `originTick` mandatory to prevent precisely this, and a count-in that lands you on the
+wrong beat has no other job to fail at. My §5 arithmetic contained no origin term at all.
+
+**[Critical] The design contradicted itself about bar ranges, and `start()` has four callers.** §5's prose
+said no count-in when resuming mid-song; its rule was `step===loopA()`, which is true for *every* selected
+range, because a range overrides the cursor. GPT resolved it by suppressing the count-in there. **I
+resolved it the other way and the owner agreed:** counting a child into a bar loop they deliberately chose
+is exactly what a count-in is for, and a loop is where it earns its keep on every repeat. The prose goes,
+the rule stays. Separately and accepted without reservation: `start()` is called by ▶, Jam, a scripted
+reveal and the Jukebox, so count-in intent must be **passed by the caller**, not inferred inside `begin()`.
+
+**[High] The Studio-only preference cannot persist, and my proposed test would have passed anyway.**
+`saveProgress()` returns immediately when `currentPkg==="studio"` — the one place the control lives. GPT:
+*"A test that directly mutates and restores `progress.settings` would be another false oracle."* That is
+exactly the test I had written into §6. **Second round running that my proof could not have caught my
+bug**, and it answers §8: yes, the self-assessment missed the real weak point again.
+
+**[High] Two paths assume playback starts immediately.** `playhead.style.left` has exactly one writer,
+inside `paintCol`, so during a count-in the playhead sits lit at wherever the last run stopped. I disagreed
+with the second half — GPT claimed level-completion could fire during pre-roll, which is unreachable today
+since no level can be metered and the Studio has no goals; right shape, wrong reach.
+
+**[High, mine] The count-in can be nine seconds long.** The tempo floor is 40, so a column is 750 ms: 4/4
+is 6.0 s and 6/8's two-bar minimum is 9.0 s. Combined with the frozen playhead and §7 deferring the visual,
+a child presses ▶ and nothing visible happens for up to nine seconds. **§7's deferral is defensible at 108
+BPM and indefensible at 40, so the visual count-in is not deferrable.** §8 worried the *3-click minimum*
+was "a number in a rule"; the number that bites is the tempo floor, which the rule never consults.
+
+**[High] `retime()` during pre-roll yields an old-tempo count into a new-tempo song.** My §6 said I would
+"measure it rather than reason about it". GPT: *"'Measure later' is not a design."* Accepted — it is a
+policy hole, decidable on paper, and nothing desynchronises: it is a **lie about tempo**, which is worse
+for a feature whose whole job is to state the tempo.
+
+**[Medium] `drumBus` routing was a label argument, twice over.** Source calls `drumBus` *"the player's
+drum sequencer"* while the band's own percussion goes to `jamBus`, so "a click is percussion" does not
+place it. Worse, the reason I called *the important one* — free cancellation via `bookColumn`'s bus swap —
+**does not apply to the count-in at all**, which is booked outside `bookColumn`. I conflated two routing
+decisions and gave the weaker one the strong reason.
+
+Also accepted: `meterLayout` derives marks from `beats[]` and never reads `pulse`, so calling it "the one
+source of truth for pulses" was false; it also clips to `c>=0 && c<cols` and so **cannot describe a
+count-in at all**. Gating on `meterAt()` alone does not guarantee no level ever clicks — it silently ships
+a level feature with no level UI, so the gate must be `studio && meterAt()`. And the `colGains` FIFO
+invariant breaks if a count-in is appended behind a stale hidden-tab entry (Low: no sound is affected,
+only a stalled `shift()`).
+
+**Two errors in GPT's own evidence**, held to the same standard: it cited `index.html:1006` for a
+`drumBus` comment (1006 is `voiceBus`; the real evidence is 1007 + 1167) and `1166` for jam percussion
+routing (a section header; the routing is at 1170/1174/1181). Neither changes a conclusion.
+
+**Cost:** in=1,990,451 (cached 1,853,312) / out=25,926, Sol, fresh thread — up from 1.28M and 1.77M on the
+two previous fresh Sol reviews.
+
+### Same day — PR 1 of 2: the pulse planner seam
+
+Split at GPT's seam, which matches the one that worked for the grooves: a behaviour-preserving pure
+function first, the feature second.
+
+`pulsesIn(m, fromTick, toTick)` yields every `{tick, kind, bar}` the meter puts in a tick range — **in
+ticks rather than columns, defined for negative ticks, and phased on the downbeat.** Those are the three
+properties `meterLayout` could not offer, and the third is the one that matters: bar phase now has a
+single owner, so the pickup defect is structurally impossible rather than patched. `meterLayout` is a
+projection of it; `beatColSet` became `beatColMap` carrying `kind`, since an accent has to tell a barline
+from a beat, and `pulseKindAt(c)` is the metronome's future reader.
+
+**`tests/pulses.test.mjs` keeps a verbatim copy of the shipped `meterLayout` as its oracle** and compares
+against it for **every preset × pickup 0–3 × field lengths 1–64 — 1,024 layouts**, plus the assertions the
+planner exists for: that it reaches back before tick 0 where `meterLayout` sees nothing, and that
+count-in phase follows the origin (with the naive tick-zero version asserted *different* for every
+non-zero pickup). Browser-verified that the drawn picture is unchanged for all four presets and pickups
+0–2, matching the figures recorded in §17's built entry mark for mark.
+
+**One thing the test caught that is worth carrying into PR 2:** `-960 % 48` is `-0`, and
+`strictEqual(-0, 0)` is false. A column derived from a pre-song tick can be `-0`, so anything keying a Map
+or Set on one has to normalise it. The assertion now states the real claim (`Number.isInteger`).
+
+**Suite: 145 pass** (137 → 145). No sound, no UI, no groove or meter data changed.
+
+---
+
+### Same branch — PR 2 of 2: the click itself
+
+Every finding from the design review is answered; nothing deferred except what §17 already defers.
+
+**The count is phased on the downbeat**, by asking `pulsesIn` rather than counting back from the song's
+first column. Measured live at 120 BPM: 4/4 four clicks 500 ms apart, 3/4 three, **6/8 two clicks 750 ms
+apart** — a jig counted in its dotted-quarter pulse — first accented, and the song's first note exactly one
+beat after the last click. **The nastier half, verified at all four pickups: a TWO-column pickup shifts by
+a whole beat, so the click TIMES coincide with the naive version and only the ACCENT moves** (to the second
+click at pickups 2 and 3). A naive count-in sounds almost right there while being wrong about where "one"
+is, which is the harder bug to notice. The unit test asserts the accent, not the tick list, for that reason.
+
+**Persistence, the finding I would rank hardest.** `saveSettings()` is its own writer, because
+`saveProgress()` returns immediately in the Studio — the only place the control appears. The test drives
+the control's real `onchange` and reads `Store`, never `progress.settings`. **This required extending the
+harness:** its generic DOM stub swallows `value` writes and always reads `""`, so the handler could not be
+exercised at all — the same gap that once made both tempo bugs invisible. `makeSelect` joins `makeTempoRange`
+as a narrow, purposeful stub, documented in `tests/README.md`.
+
+**Count-in intent is passed, never inferred** — `start(opts)`, and only ▶ asks. Jam, the scripted reveal and
+the Jukebox all call `start()` and none of them counts anyone in.
+
+**The visual is in, and it was my own finding that put it there.** At the 40 BPM floor a bar is six seconds,
+and the playhead has exactly one writer inside `paintCol`, so it sat lit wherever the last run stopped. It
+is parked at the start column now and the count appears on screen. The same finding killed my "two bars when
+one gives fewer than three clicks" rule — which made 6/8 nine seconds — in favour of **one bar exactly**,
+removing the number from the rule rather than tuning it.
+
+**Tempo mid-count re-lays the count.** Measured: 500 ms gaps re-laid as 1000 ms on a change to 60 BPM. GPT
+was right that *"'Measure later' is not a design"*; the failure is a policy hole and it is a **lie about
+tempo**, which is worse than a glitch for a feature whose whole job is to state one.
+
+**The metronome books at the unswung tick**, verified with a swinging groove playing: the music leans, the
+clicks stay exactly 500 ms apart. It also surfaced a **pre-existing Jam phase bug** rather than causing one
+— with a one-column pickup every 4/4 beat is on an odd column, exactly where jam swing lives — recorded and
+asserted rather than hidden by swinging the click.
+
+**Routing** is a quiet `clickBus` of its own under `master`; `clickBus` joins `bookColumn`'s per-column swap
+so ■ cuts the metronome, while the count-in uses one gain of its own rather than the `colGains` ledger whose
+FIFO order an early-`when` entry would break.
+
+**Verified beyond the suite:** golden A re-captured **byte-identical with the preference set to "both"**,
+since unmetered can have no pulse; a level never clicks whatever the preference says; ■ during a count
+releases the gain; the metronome lands on the drawn beat marks with a pickup (columns 1,3,5,7 against marks
+1,3,5,7).
+
+**Suite: 156 pass** (145 → 156). No hard invariant touched: no assets, no narration, no `FAMOUS` content, no
+stable IDs, no `netlify.toml`.
+
+---
+
 ## 2026-09-06 — quests get a document, and the first seams under it (branch `quests`)
 
 **Two design-review rounds before a line of code.** GPT's round 1 returned **11 blocking findings** on a
@@ -2440,3 +2587,34 @@ Woods deals prove reachable. The harness DOM does not keep classes, so the tests
 arguments, not what gets drawn. **Not browser-verified.** The preview pane serves the main checkout, so
 the owner's playtest is the first to see the glowing columns, whether a ringed stone on a glowing column
 still reads as both, and the new sentences read aloud.
+
+## Merging `main` into `quests`, before `quests` goes to production (2026-09-26)
+
+`main` had two commits that `quests` lacked, both from 2026-09-05: bar phase (`130e0c5`) and the Studio
+count-in with its click preference (`6ea930f`). Four conflicts:
+
+- **The beat tint:** main's per-kind `beatColMap` beside quests' pure `projRowIn`. Both kept.
+- **`start()`:** it takes one `opts`. That feeds `beginCompletionSession` for a quest, and `countIn` for
+  `Transport.begin`, which only the Studio can use.
+- **Settings:** quests' split by owner stays. `saveUserSettings()` gains `click`, and the click control
+  calls it.
+- **This log:** main's 09-05 section is placed before the quest sections.
+
+main's `click.test.mjs` faked the Studio by writing `currentPkg`, which `quests` no longer lets anything
+write, and it called the removed `saveProgress` and `saveSettings`. It now uses the `setPlayScope` helper
+from `dance.test.mjs` and `saveUserSettings`. The Studio persistence test's second half now asserts that
+a save which is not about settings (`savePlayerName`) keeps the stored click. Removing `click` from
+`saveUserSettings` fails two click tests.
+
+**Astra, on the resolution:** *"No merge-induced defects found."* Its probes, run in memory:
+
+- The count-in gate (Studio only) and the completion-session gate (quest only) are mutually exclusive.
+- A forced count-in beside a quest session credited nothing during pre-roll, or before the full span's
+  audible boundary.
+- Entering a quest during a Studio count cancels it.
+
+One issue already on main, **Low**, recorded and not fixed here: `applyProgress` keeps the live click
+preference when an incoming cloud profile has no `settings.click`, so a live "both" survives an older
+profile. A fresh page correctly defaults to "off".
+
+**542 tests pass. 472 mutations caught across 146 green tests, none survived.**

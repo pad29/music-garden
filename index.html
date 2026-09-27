@@ -697,6 +697,15 @@
         <option value="2">2 steps</option>
         <option value="3">3 steps</option>
       </select></label>
+    <!-- Three states in ONE control, and in the settings row rather than the transport: that row is pinned
+         on a phone and already carries ▶ ↻ 🎸 🥁, and Bars set the precedent that a set-once choice
+         belongs here. Not a single on/off, because "count me in but do not tick over my music" is the
+         common case. Shown only where it can work — alongside Pick-up, which needs a meter too. -->
+    <label class="ctl" id="clickCtl">Click <select id="click" title="A count-in before ▶, and an optional tick on every beat">
+        <option value="off">Off</option>
+        <option value="in">Count me in</option>
+        <option value="both">Count in + tick</option>
+      </select></label>
   </div>
   <!-- The quest's progress line, directly under Voice and Tempo and directly above the field: what is
        still missing is about the FIELD, and it was being read (if at all) in a card off to the side. -->
@@ -1064,7 +1073,7 @@ let toolboxOwner=null;   // scopeKey() of the bag we hold: pkg:<id>, studio, or 
 let activeTool=null;     // {offs, midis} currently picked up
 
 // ---------- Audio (unchanged engine) ----------
-let actx, master, limiter, reverb, voiceBus, jamBus, drumBus;
+let actx, master, limiter, reverb, voiceBus, jamBus, drumBus, clickBus;
 // the mixer: three player-controllable buses (×base gain) under master — Melody / Band / Drums
 let mix={voice:1, band:1, drums:1};
 function applyMix(){ if(!actx) return;
@@ -1090,6 +1099,12 @@ function initAudio(){
   voiceBus=actx.createGain(); voiceBus.connect(master);   // player melody / previews / echo
   jamBus=actx.createGain(); jamBus.connect(master);       // jam band: bass + chords + jam's own drums
   drumBus=actx.createGain(); drumBus.connect(master);     // the player's drum sequencer
+  // The click gets its own bus rather than riding the drums. A first draft put it on drumBus because "a
+  // click is percussion" — a label argument: source calls drumBus "the player's drum sequencer" and the
+  // band's own kit goes to jamBus, so the Drums slider means "my pads", not "all percussion". A child who
+  // asked to be counted in should not be silenced by muting their own drums. Quiet by design instead of
+  // by mixer, and deliberately NOT a fourth slider.
+  clickBus=actx.createGain(); clickBus.gain.value=0.35; clickBus.connect(master);
   applyMix();
   reverb=actx.createConvolver();
   const len=actx.sampleRate*1.6, buf=actx.createBuffer(2,len,actx.sampleRate);
@@ -1462,35 +1477,64 @@ const barCols=()=>{ const P=meterPreset(); return P ? barTicks(P)/TICKS_PER_COL 
 //   segs  = the strip's chips, CLIPPED TO COLS. A 16-column waltz's last bar really is 4 columns wide, and
 //           an unclipped chip would push .scroller's scrollable area past the grid, desyncing the camera.
 //   marks = {c,kind} for both overlays AND the drum pad tint, so three renderers cannot disagree.
+// EVERY PULSE THE METER PUTS IN A TICK RANGE. Pure, in TICKS rather than columns, defined for NEGATIVE
+// ticks, and phased on the DOWNBEAT rather than on tick 0 — the three properties a count-in needs and
+// meterLayout could not offer, since it clips to `c>=0 && c<cols` and so cannot describe the region
+// before a song starts at all.
+//
+// **Phased on originTick, and that is the whole point.** A first draft of the count-in positioned its
+// clicks relative to transport tick zero while the bars are phased on the origin, which for a one-column
+// pickup counts you in exactly half a beat wrong — a count-in landing you on the wrong beat has no other
+// job to fail at. §17(4) made originTick mandatory for precisely this class of error; bar phase now has
+// ONE owner, and meterLayout below is a projection of it rather than a second opinion.
+function pulsesIn(m, fromTick, toTick){
+  const P=m && meterDef(m.preset); if(!P) return [];
+  const bt=barTicks(P), o=m.originTick||0;
+  const out=[];
+  // start at the bar CONTAINING fromTick — floor, so it is the bar at or before it even when negative
+  for(let i=Math.floor((fromTick-o)/bt); ; i++){
+    const barAt=o+i*bt;
+    if(barAt>=toTick) break;                                  // its beats are later still, so nothing is missed
+    if(barAt>=fromTick) out.push({tick:barAt, kind:"bar", bar:i+1});   // bar 1 starts at the origin
+    let t=0;
+    for(let k=0;k<P.beats.length-1;k++){ t+=P.beats[k];       // beat 1 IS the barline; emit 2..n
+      const at=barAt+t;
+      if(at>=fromTick && at<toTick) out.push({tick:at, kind:"beat", bar:i+1}); } }
+  return out;
+}
 function meterLayout(cols, m){
   const P=m && meterDef(m.preset); if(!P) return {segs:[], marks:[]};
   const bc=barTicks(P)/TICKS_PER_COL, oc=Math.round(m.originTick/TICKS_PER_COL);
-  const segs=[], marks=[];
   // The pickup is bar 0 and goes UNNUMBERED: a child counting "one" on the downbeat has to be right, and
   // a chip labelled "0" teaches the opposite. §17(4) makes originTick mandatory precisely because Moldau's
   // downbeat is at column 1 and Amazing Grace and Taps open with pickups — without an origin the barlines
   // are wrong even when the signature is right.
+  const segs=[];
   if(oc>0) segs.push({n:0, c0:0, cols:Math.min(oc,cols), pickup:true});
-  // Walk from one bar BEFORE the origin so a pickup shows the beats it actually contains, then clip at 0.
-  for(let c0=oc-bc, i=0; c0<cols; c0+=bc, i++){
-    if(c0>=0){ if(i>0) segs.push({n:i, c0, cols:Math.min(bc,cols-c0), partial:c0+bc>cols});
-               marks.push({c:c0, kind:"bar"}); }
-    let t=0;
-    for(let k=0;k<P.beats.length-1;k++){ t+=P.beats[k];        // beat 1 IS the barline; emit 2..n
-      const c=c0+t/TICKS_PER_COL; if(c>=0 && c<cols) marks.push({c, kind:"beat"}); } }
+  for(let c0=oc, i=1; c0<cols; c0+=bc, i++)
+    segs.push({n:i, c0, cols:Math.min(bc,cols-c0), partial:c0+bc>cols});
+  // …and the marks are simply the pulses of the field's own tick span, projected onto columns. Every
+  // preset's bar and beat lengths are whole multiples of TICKS_PER_COL, which is what makes that a
+  // division rather than a rounding — asserted rather than assumed, because 6/16 would break it.
+  const marks=pulsesIn(m, 0, cols*TICKS_PER_COL).map(u=>({c:u.tick/TICKS_PER_COL, kind:u.kind}));
   return {segs, marks};
 }
-// Which columns carry the pulse. Memoised because buildDrums asks once PER PAD — three lanes × COLS.
-let _tintKey=null, _tintSet=null;
-function beatColSet(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.originTick : "";
-  if(key!==_tintKey){ _tintKey=key; _tintSet = m ? new Set(meterLayout(COLS,m).marks.map(k=>k.c)) : null; }
-  return _tintSet; }
+// Which columns carry the pulse, AND which kind. Memoised because buildDrums asks once PER PAD — three
+// lanes × COLS — and a metronome will ask once per column inside the booking loop. A Map rather than a
+// Set because an accent needs to know a barline from a beat; `has` reads the same either way.
+let _tintKey=null, _tintMap=null;
+function beatColMap(){ const m=meterAt(), key=m ? COLS+"|"+m.preset+"|"+m.originTick : "";
+  if(key!==_tintKey){ _tintKey=key;
+    _tintMap = m ? new Map(meterLayout(COLS,m).marks.map(k=>[k.c,k.kind])) : null; }
+  return _tintMap; }
+const beatColSet=beatColMap;                       // the old name, for anything that only asks `has`
+function pulseKindAt(c){ const t=beatColMap(); return t ? (t.get(c)||null) : null; }
 // The pads have tinted every 4th column since the rhythm packages shipped, and UNMETERED that stays
 // exactly, byte-identically true on every level. Metered, the tint follows the bar's own authored pulse —
 // because the Studio opens with drums ON, so melody beat marks every 2 columns beside a pad tint every 4
 // would put BOTH conventions on one screen, which is precisely what §17's first review round killed a
 // draft for. Only the Studio can set a meter, so no shipped level reaches the metered branch.
-const beatTintAt=c=>{ const s=beatColSet(); return s ? s.has(c) : c%4===0; };
+const beatTintAt=c=>{ const t=beatColMap(); return t ? t.has(c) : c%4===0; };
 // row for a pitch in a GIVEN palette's pitch set: exact match, else nearest.
 // Pure: the caller supplies the ladder, so a saved song can be projected under the palette it was
 // written in rather than whichever one happens to be loaded.
@@ -7943,7 +7987,7 @@ function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/
   // on this path redraws them. Measured leaking into `stepping-stones` straight from a 4/4 Studio: the
   // model came back unmetered while the picture stayed in 4/4, bars and all. This is the claim a design
   // review said resetTransient could not carry on its own, and it was right.
-  if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pad-tint memo is keyed on the meter
+  if(doc.meterMap.length){ doc.meterMap.length=0; _tintKey=null;   // the pulse memo is keyed on the meter
     syncMeterUI(); rebuildField(); }                               // controls + overlays, then the pads, which bake their tint at build time
   // …and the GROOVE, which is session-global and was walking straight through this quarantine: a Studio
   // waltz stayed selected into a level, where a scripted runReveal({jam:true}) would have played it on a
@@ -8356,6 +8400,49 @@ const time2tick=s=>anchorTick+(s-anchorTime)/anchorSPT;     // note already book
 let bookTick=0, bookCol=0, endTime=Infinity;
 const paintQ=[], colGains=[], litEls=[];
 const GC_TAIL=3;      // seconds a sampled voice can still ring PAST its own note (conditionSample's ceiling is ~2.88s)
+// ---------- The click: a count-in, and a metronome (§12 R12) ----------
+// "off" | "in" (count-in only) | "both". A PLAYER PREFERENCE, not song state: it is not in snapState, not
+// in currentSong, and not in a share link — a way of listening, like the field zoom and the loop range.
+let clickMode="off";
+// Both need a declared pulse, and unmetered there is not one: the pads tint every 4 columns while the
+// tempo box treats a column as an eighth. Picking one would answer §17 §5's still-open question audibly,
+// on every shipped level. So the click needs a meter — AND the Studio, because gating on the meter alone
+// would ship a level feature with no level UI the moment a package gains one.
+const clickOn      = () => inStudio() && !!meterAt() && clickMode!=="off";
+const metronomeOn  = () => clickOn() && clickMode==="both";
+// A short pitched blip, higher and louder on a barline — an accent is what makes a metronome say WHERE you
+// are and not merely how fast. Deliberately not `hat`, which is the drum lane's own hi-hat: a click that
+// can be mistaken for the child's pattern is no use to them.
+function clickAt(t, accent){
+  bTone(t, accent?1600:1100, 0.045, "square", accent?0.30:0.17, 0.002, clickBus); }
+// The count-in, in ticks RELATIVE to the song's first column. One bar, phased on the downbeat by asking
+// the planner rather than counting back from tick zero — with a one-column pickup those differ by half a
+// beat, and a count-in that lands you on the wrong beat has no other job to fail at.
+// One bar exactly, never two: an earlier rule said "two bars when one gives fewer than three clicks",
+// which at the 40 BPM floor made a 6/8 count-in NINE SECONDS long. A bar is however long a bar is.
+function countInPulses(){
+  const m=meterAt(), P=m&&meterDef(m.preset); if(!P) return [];
+  const startTick=step*TICKS_PER_COL, bt=barTicks(P);
+  return pulsesIn(m, startTick-bt, startTick).map(u=>({rel:u.tick-startTick, kind:u.kind}));
+}
+let countInGain=null, countInTimers=[];
+function clearCountIn(){
+  if(countInGain){ try{ countInGain.gain.setValueAtTime(0, nowSec()); }catch(e){} countInGain=null; }
+  countInTimers.forEach(clearTimeout); countInTimers.length=0; }
+// Booked through ONE gain of its own rather than pushed into colGains: appending an entry whose `when` is
+// earlier than a stale hidden-tab booking would break that ledger's FIFO order, and this needs no ledger.
+function bookCountIn(pre){
+  countInGain=actx.createGain(); countInGain.connect(clickBus);
+  const was=clickBus; clickBus=countInGain;                     // clickAt reads clickBus at call time
+  try{ pre.forEach((u,i)=>{
+    const t=tick2time(u.rel);
+    clickAt(t, u.kind==="bar");
+    // …and the same count on screen. NOT optional: at the 40 BPM floor a bar is six seconds, and the
+    // playhead cannot move yet because paintCol is its only writer and no column has sounded.
+    const label=pre.slice(0,i+1).map((_,k)=>k+1).join(" · ");
+    countInTimers.push(setTimeout(()=>{ if(playing) setStatus("🥁 Counting you in… <b>"+label+"</b>"); },
+      Math.max(0,(t-nowSec())*1000))); }); }
+  finally{ clickBus=was; } }
 // Swing is a PLAYBACK LENS — it never touches note.startTick (§4b). Same branch order as the old tick(),
 // so the jam/levelSwing overlap resolves identically and tools/goldens/playback.json holds by construction.
 function swingTicks(col){
@@ -8376,18 +8463,22 @@ const holdOf=(r,c)=>{ const n=gridNote[r]&&gridNote[r][c];
 function bookColumn(col,tk){
   const t=tick2time(tk+swingTicks(col));
   step=col;                                                  // detectors + the goldens harness read bare `step`
-  const V=voiceBus,J=jamBus,D=drumBus,R=reverb;
-  const gv=actx.createGain(),gj=actx.createGain(),gd=actx.createGain(),gr=actx.createGain();
-  gv.connect(V); gj.connect(J); gd.connect(D); gr.connect(R);
-  voiceBus=gv; jamBus=gj; drumBus=gd; reverb=gr;
+  const V=voiceBus,J=jamBus,D=drumBus,R=reverb,C=clickBus;
+  const gv=actx.createGain(),gj=actx.createGain(),gd=actx.createGain(),gr=actx.createGain(),gc=actx.createGain();
+  gv.connect(V); gj.connect(J); gd.connect(D); gr.connect(R); gc.connect(C);
+  voiceBus=gv; jamBus=gj; drumBus=gd; reverb=gr; clickBus=gc;
   try{                                                       // same ORDER as the old tick() — golden event order
+    // The metronome marks the TRUE beat, so it books at the UNSWUNG tick. `t` above may be swung — jam
+    // pushes odd columns, levelSwing delays 2/6/10/14 — and a swung click is not a metronome, it is a
+    // third rhythm arguing with the other two.
+    if(metronomeOn()){ const k=pulseKindAt(col); if(k) clickAt(tick2time(tk), k==="bar"); }
     if(jamMode) jamStep(col,t);
     for(let r=0;r<ROWS;r++) if(grid[r][col]) playRow(r,t,holdOf(r,col));
     if(revealHarm) for(let r=0;r<ROWS;r++) if(grid[r][col]){ const h=r+2;
       if(h<ROWS) bTone(t+0.02, midiToFreq(MIDI[h]), 0.5, "triangle", 0.14, 0.03); }
     if(drumsOn) for(let d=0;d<DRUMS.length;d++) if(drumG[d][col]) DRUMS[d].play(t);
-  } finally{ voiceBus=V; jamBus=J; drumBus=D; reverb=R; }     // ALWAYS restore: applyMix and every preview read these live
-  colGains.push({when:t, g:[gv,gj,gd,gr]});
+  } finally{ voiceBus=V; jamBus=J; drumBus=D; reverb=R; clickBus=C; }   // ALWAYS restore: applyMix and every preview read these live
+  colGains.push({when:t, g:[gv,gj,gd,gr,gc]});
 }
 
 function pump(){
@@ -8464,11 +8555,21 @@ function paintCol(col,stale){
 }
 function paintLoop(){ if(!playing){ paintRaf=0; return; } paintDue(nowSec()); paintRaf=requestAnimationFrame(paintLoop); }
 const Transport={ timer:null,
-  begin(){ this.end();
+  begin(countIn){ this.end();
     bookCol=Math.max(0,Math.min(COLS-1,step)); bookTick=0; endTime=Infinity;   // start() has already decided WHERE — booking must not re-derive it from the cursor, which no longer always agrees
-    anchorTick=0; anchorSPT=secPerTick(); anchorTime=nowSec()+ANCHOR_PAD;
+    anchorTick=0; anchorSPT=secPerTick();
+    this.anchor(countIn ? countInPulses() : []);
     pump(); if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop); },
+  // A count-in is just the tick region BEFORE the song, so the only thing that changes is that tick 0
+  // happens later. tick2time is a straight line with no clamp at zero, so no other part of the transport
+  // has to know this feature exists — pump() simply finds its horizon short of tick 0 and books nothing
+  // until the count is nearly over.
+  anchor(pre){
+    const preTicks = pre.length ? -pre[0].rel : 0;
+    anchorTime=nowSec()+ANCHOR_PAD+preTicks*anchorSPT;
+    if(pre.length) bookCountIn(pre); },
   end(){ clearTimeout(this.timer); this.timer=null;
+    clearCountIn();                                           // ■ during a count stops the count
     if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; }
     if(actx){ const ct=nowSec();                              // 120ms of sound is ALREADY booked; without this, ■ Stop
       for(const e of colGains) if(e.when>ct)                  // plays on for a beat and a level change bleeds the old
@@ -8477,6 +8578,13 @@ const Transport={ timer:null,
   // Tempo (per slider pixel) / groove mid-play: re-anchor at the next UNBOOKED column. Nothing past bookTick
   // is booked, so there is nothing to cancel, ticks stay integral, and no column can re-fire.
   retime(){ if(!playing) return;
+    // A tempo change DURING the count would otherwise count you in at one tempo and start the song at
+    // another. Nothing desynchronises — it is worse than that: the count-in's whole job is to state the
+    // tempo, so a stale count is a LIE about the one thing it exists to say. While the song has booked
+    // nothing, lay the count out again at the new tempo; once a column is booked the count is over and
+    // the ordinary re-anchor applies. (An earlier draft said it would "measure this rather than reason
+    // about it" — but it is a policy hole, and policy is decidable on paper.)
+    if(bookTick===0 && countInGain){ clearCountIn(); anchorSPT=secPerTick(); this.anchor(countInPulses()); return; }
     anchorTime=tick2time(bookTick); anchorTick=bookTick; anchorSPT=secPerTick(); } };
 document.addEventListener("visibilitychange",()=>{            // spike: hidden tabs throttle timers to ≥1s unless
   look=document.hidden?LOOK_HID:LOOK_ON;                      // audibly playing — stretch the horizon anyway
@@ -8485,7 +8593,7 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } camStop(); }   // …and drop any camera tween: it cannot advance while hidden
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
-function start(playOpts){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
+function start(opts){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   // ▶ starts at the cursor only if it was put there DELIBERATELY; otherwise at the loop's start. This replaces
   // 2d's `if(growPkg() && cursorCol!==0) setCursor(0)` walk-home, which is deleted rather than generalized:
   // that hack had ▶ DRAG the cursor to 0, so planting a seed and pressing 🌿 Grow afterwards grew whatever
@@ -8495,9 +8603,14 @@ function start(playOpts){ initAudio(); actx.resume(); stopSpeech(); clearFamousT
   step = rangeOn() ? loopA() : Math.max(0,Math.min(COLS-1, cursorPinned?cursorCol:loopStart));
   const fromTop=step===0;                                                      // capture BEFORE tick() advances the step
   playBtn.textContent="■ Stop"; playhead.classList.add("on");
+  playhead.style.left=(10+step*38)+"px";   // AT the start column: paintCol is its only other writer and it
+  // cannot run until a column actually sounds, which behind a count-in is a whole bar away — without this
+  // the playhead sits lit wherever the last run happened to stop.
   CAM.yielded=false; camEnsure(step,{instant:true});          // ▶ is a deliberate act: take the wheel back and cut to the start
-  beginCompletionSession(playOpts);                           // quest scope only; every other scope gets null
-  Transport.begin();   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
+  beginCompletionSession(opts);                               // quest scope only; every other scope gets null
+  // Count-in intent is PASSED, never inferred: start() is called by ▶, by Jam turning playback on, by a
+  // scripted reveal and by the Jukebox, and only the first of those is a child asking to be counted in.
+  Transport.begin(!!(opts&&opts.countIn) && clickOn());   // no synchronous first tick — begin() books it, and end() inside begin() would erase a pre-paint anyway
   if(fromTop){ ev.played=true; ev[levelSwing?"playedSwing":"playedStraight"]=true; }   // Off the Path L4 tracks hearing BOTH feels; a partial play from mid-field earns NO listen-goal credit
   checkLevel();
   // Refusing credit for a partial listen is honest, but silence about it is not: a child who parked the stake
@@ -8514,7 +8627,7 @@ function stop(){ cancelCompletionSession("stop"); playing=false; Transport.end()
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
 }
-playBtn.onclick=()=> playing?stop():start();
+playBtn.onclick=()=> playing?stop():start({countIn:true});
 document.getElementById("undoBtn").onclick=undoEdit;
 document.getElementById("redoBtn").onclick=redoEdit;
 loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
@@ -8555,7 +8668,16 @@ document.getElementById("clear").onclick=()=>{ tx("clear",()=>{ wipe(); if(drums
 const moreBtn=document.getElementById("more"); moreBtn.onclick=()=>addColumns(barCols());
 const lessBtn=document.getElementById("less"); lessBtn.onclick=()=>removeColumns(barCols());
 const meterEl=document.getElementById("meter"), meterCtlEl=document.getElementById("meterCtl"),
-      pickupEl=document.getElementById("pickup"), pickupCtlEl=document.getElementById("pickupCtl");
+      pickupEl=document.getElementById("pickup"), pickupCtlEl=document.getElementById("pickupCtl"),
+      clickEl=document.getElementById("click"), clickCtlEl=document.getElementById("clickCtl");
+if(clickEl) clickEl.onchange=()=>{ clickMode=clickEl.value;
+  // The settings sink, not a package save: this control only ever appears in the Studio, which has no
+  // package to save, and the old package save returned there without persisting anything.
+  saveUserSettings();                                        // an explicit change: the player chose this
+  if(clickMode==="off") setStatus("Click off 🌱");
+  else setStatus(clickMode==="both"
+    ? "🥁 A count-in before ▶, then a tick on every beat."
+    : "🥁 A count-in before ▶ — listen for the beat, then come in."); };
 function setMeter(preset, originCols){
   // normalizeGroove runs INSIDE the transaction on purpose: grooveIdx is part of snapState, so a fallback
   // journalled outside it would let undo restore the old meter beside the new groove.
@@ -8575,6 +8697,8 @@ function syncMeterUI(){ const m=meterAt(),
   if(pickupCtlEl) pickupCtlEl.style.display = (studio && m) ? "" : "none";   // a pick-up is meaningless with no bars to come before
   if(meterEl)  meterEl.value  = m ? m.preset : "";
   if(pickupEl) pickupEl.value = m ? String(Math.round(m.originTick/TICKS_PER_COL)) : "0";
+  if(clickCtlEl) clickCtlEl.style.display = (studio && m) ? "" : "none";   // a click needs a beat to sit on
+  if(clickEl) clickEl.value = clickMode;
   renderGrooveOptions();                   // …and the band, which not every meter can borrow
   syncJamForMeter(); syncPatchCopy(); renderBars(); }
 if(meterEl)  meterEl.onchange =()=>setMeter(meterEl.value, +pickupEl.value||0);
@@ -8716,8 +8840,11 @@ function commitProgress(){
 // The ONLY function that snapshots the settings controls. Call it from an explicit player action and
 // NOWHERE else — not a render, not a scope entry, not applyRegionInstrument or setVoice, not a groove
 // or a famous-tune tempo loan, not song loading, not a package save.
+// The Studio's click is a player preference like the others, and it comes through here from its own
+// change handler. It could never have reached the store through the old package save, which returned
+// early in the Studio, where the click control lives.
 function saveUserSettings(){
-  progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn};
+  progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn, click:clickMode};
   commitProgress(); }
 
 function savePlayerName(name){ progress.name=name; commitProgress(); }
@@ -9285,6 +9412,7 @@ function applyProgress(){   // re-apply the progress object to the running game
   ensureInstruments();   // cloud progress may predate the gradual reveal — derive/refresh the unlocked set
   if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
+    if(progress.settings.click) clickMode=progress.settings.click;
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
   toolbox.length=0; toolboxOwner=null;   // force a per-scope toolbox reload on the renderLevel below
   restoreLastPackage();
@@ -9351,6 +9479,7 @@ ensureInstruments();   // derive the unlocked-instrument set for saves that pred
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
+if(progress.settings && progress.settings.click) clickMode=progress.settings.click;
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
 loadQuestCatalog(BUILTIN_QUEST_CATALOG_JSON, "official");   // all-or-nothing: a bad definition publishes an EMPTY registry
 hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at
