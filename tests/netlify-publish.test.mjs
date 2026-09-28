@@ -9,40 +9,13 @@
 // Scope, deliberately narrow: the page's static local <script src> files (as tests/helpers/game-scripts.mjs
 // reads them) and index.html itself. It does not cover folders the game loads at run time by other means
 // (samples/ through script tags it creates, voice/ through Audio elements), and it does not run the
-// command — it reads its `cp` steps, which is how this build is written.
+// command — tests/helpers/netlify-publish.mjs reads its `cp` steps, which is how this build is written.
 import { test } from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gameScripts, ROOT } from "./helpers/game-scripts.mjs";
-
-/** The `cp` steps of netlify.toml's build command, as { src, dst, recursive } (dst relative to site/). */
-function publishCopies(toml) {
-  const m = toml.match(/^[ \t]*command[ \t]*=[ \t]*"([^"]*)"/m);   // a real line, never a # comment
-  if (!m) return null;
-  return m[1].split("&&").map((s) => s.trim())
-    .map((s) => s.match(/^cp\s+(-r\s+)?(\S+)\s+site\/(\S+)$/))
-    .filter(Boolean)
-    .map((c) => ({ src: c[2], dst: c[3], recursive: !!c[1] }));
-}
-
-/**
- * What the publish dir would lack: every path the page needs that no `cp` step puts at the SAME path
- * under site/. A local script is covered by copying its top folder recursively (js → site/js), or by
- * copying the file itself when it sits at the root.
- */
-function publishGaps(toml, scripts) {
-  const copies = publishCopies(toml);
-  if (!copies) return ["netlify.toml has no build command"];
-  const at = (path, dir) => copies.some((c) => c.src === path && c.dst === path && c.recursive === dir);
-  const gaps = [];
-  if (!at("index.html", false)) gaps.push("index.html");
-  for (const s of scripts.filter((s) => !s.inline)) {
-    const [top, ...rest] = s.name.split("/");
-    if (!(rest.length ? at(top, true) : at(top, false))) gaps.push(s.name);
-  }
-  return [...new Set(gaps)];
-}
+import { publishGaps } from "./helpers/netlify-publish.mjs";
 
 const REAL_TOML = readFileSync(join(ROOT, "netlify.toml"), "utf8");
 
@@ -70,5 +43,17 @@ test("the publish check refuses a dropped folder, a wrong destination, and a dro
   // the page itself missing.
   assert.deepEqual(publishGaps(variant("cp index.html site/index.html && ", ""), scripts), ["index.html"]);
   // a commented-out command is no command.
-  assert.deepEqual(publishGaps(REAL_TOML.replace(/^([ \t]*)command/m, "$1# command"), scripts), ["netlify.toml has no build command"]);
+  assert.deepEqual(publishGaps(REAL_TOML.replace(/^([ \t]*)command/m, "$1# command"), scripts), ["netlify.toml has no [build] command"]);
+});
+
+// A [context.*] command REPLACES [build]'s for that deploy context, so a production or deploy-preview
+// override that forgets js/ breaks exactly that context while [build] still looks fine. Mutation: read
+// [build]'s command alone — this test then reports nothing for the override and fails.
+test("a context command that replaces [build]'s must publish the scripts too", () => {
+  const { scripts } = gameScripts();
+  const external = scripts.filter((s) => !s.inline);
+  const override = (cmd) => REAL_TOML + `\n[context.production]\n  command = "${cmd}"\n`;
+  assert.deepEqual(publishGaps(override("mkdir -p site && cp index.html site/index.html && cp -r js site/js"), scripts), []);
+  assert.deepEqual(publishGaps(override("mkdir -p site && cp index.html site/index.html"), scripts),
+    external.map((s) => "[context.production] " + s.name));
 });

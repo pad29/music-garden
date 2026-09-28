@@ -25,7 +25,20 @@ into an earlier one, so load-time code that calls ahead throws here exactly wher
 browser. Never concatenate them to run. `tests/game-scripts.test.mjs` covers the loader itself with
 small throwaway pages. `tests/netlify-publish.test.mjs` checks that `netlify.toml`'s build command
 copies `index.html` and every folder the page loads a script from to the same path under `site/` — a
-file left out is served as `index.html` in production, and the game never starts.
+file left out is served as `index.html` in production, and the game never starts. The checker is
+`helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
+override) and honours a shell `#` comment.
+
+**The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
+*probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
+throws nowhere and simply behaves differently from one big script. `load-order-review.test.mjs` runs
+the real harness under `helpers/load-order-observer.mjs`, which watches it through `node:vm` (a logging
+global object, plus the Inspector to learn which script introduced each lexical name) and fails on any
+load-time lookup of a later script's name. It sees only paths that run synchronously under the
+harness's stubs — lexical reads, branches that don't run and browser callbacks are outside it.
+`split-contract-review.test.mjs` pins that every `js/` file is loaded exactly once, and that the
+goldens' wrappers still intercept `playRow`, `voice`, `jamStep` and `bookColumn` (turning one into a
+`const` would silently hide it from them).
 
 That makes the **pure logic** testable — and that's most of the interesting code:
 
