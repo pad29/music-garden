@@ -2618,3 +2618,75 @@ preference when an incoming cloud profile has no `settings.click`, so a live "bo
 profile. A fresh page correctly defaults to "off".
 
 **542 tests pass. 472 mutations caught across 146 green tests, none survived.**
+
+## Meter, bars and note lengths for the famous tunes (2026-09-27, branch `famous-meter`)
+
+The owner opened the Moldau from the Jukebox expecting bars and held notes; the pass had only been a paper
+proposal. Built on a branch so he can review each tune in the game rather than from tables. Twelve Jukebox
+songs gain a hand-entered meter and pick-up plus note lengths from the scores; taps, joy, charleston and
+bachprelude stay free (a 16th-grid unit or a drifting phrase spacing — no preset describes them honestly).
+Capstone rewards stay bar-less (§17), and stay FLAT: the vine rule now lives in code — `placeFamous` honours
+lengths only when the package owning the reveal is `two-kinds-of-walking` or transitively requires it, and
+nothing does, so only swinglow's reveal holds a note. Six entries share one `mel` between reveal and
+Jukebox, which is why the rule could no longer be enforced by nobody writing lengths.
+
+### Astra's design review — one High, two Medium, one Low
+
+1. **High — the default loop broke the declared meter for five tunes.** *"Partial bars render correctly, but
+   that does not make the repeat metrically continuous."* Measured across Moldau's wrap: four columns between
+   clicks instead of three. **Agreed, and I had it backwards** — my paper pass had suggested trimming the
+   Moldau to 49 columns, which would have been worse. The loop keeps time iff COLS is a whole number of bars
+   (the pick-up cancels out). Fixed in the DATA, not by padding COLS (§17(6)): moldau 52→54, bigben 52→56,
+   amazinggrace.jukebox 98→96, chopsticks.jukebox 100→102, swinglow.jukebox 66→72 — each only moves the
+   silence after the last note, and each awaits the owner's per-tune review. Moldau's and Big Ben's
+   reveals widen too, since they share the block.
+2. **Medium — true lengths are model durations, not audible releases.** A one-column note keeps its natural
+   ring; the music box has a 1.1 s floor. **Agreed, no change** — it is the standing "a vine extends, never
+   truncates" rule. Told the owner so he does not listen for rests.
+3. **Medium — the tests could pass with the feature broken.** Driving `placeFamous` directly could not see
+   `playFamous` forgetting the gate; nothing proved lengths survive the load. **Agreed.** The reveal test now
+   goes through `playFamous`, and the `I_famous_sweep` golden (re-captured by hand, never checked by the
+   suite) is replayed inside a test with `voice()` intercepted: 15 notes, 7 held, identical.
+4. **Low — "bar-less by construction" overstates.** `placeFamous` never writes a meter but does not clear
+   one; the guarantee is `resetTransient` at the level boundary. **Agreed** — reworded, and the test says what
+   it does and does not prove.
+
+### Astra's test pass — no defects
+
+Ten integration tests plus a mutation audit (19 faults, all caught). **Kept eight**: the real Jukebox
+buttons through `start()`, slot-8 share round-trips, old saves not silently upgraded, undo around a loaded
+held song, count-in phase on each pick-up, clicks and accents continuous across two loops through the real
+scheduler, and entering every owning level clearing a Jukebox meter before its reveal. **Deleted two**:
+SHA-256 checksums of the pre-change tunes and of four packed songs — the owner is about to correct these
+tunes against his scores, and each legitimate correction would fail them without saying what changed. Their
+one unique fault (a null slot 8 on unmetered songs) is re-homed to the share-link test. Also replaced
+hard-coded groove indices 5/6 with the Waltz and Jig by name.
+
+Rendering checked in the preview: Moldau shows a one-column pick-up chip, bars 1–8 six columns wide, bar 9
+five (its sixth eighth is the wrapped pick-up), beat lines every three columns, and 15 stems matching the
+data. No console errors. Audio not listened to.
+
+**564 tests pass. 18 mutations caught across 8 green tests, none survived; my own four hand mutations each
+turned the intended case red.**
+
+### The owner's review, tune by tune (2026-09-27)
+
+Played in the game, not read from tables. **Nine confirmed as proposed** (Moldau, Ode to Joy, Swing Low,
+Amazing Grace, Shave, Chopsticks, Pachelbel, Big Ben, and Goin' Home's notes), including all five field-length
+changes the High finding forced. **Corrections:** Goin' Home 60 → 66 BPM, *"a little bit faster"* (shared with
+its Tiny Motifs reward); Mary ends on a whole note, not the dotted half my reading of the old comment gave it;
+**I Got Rhythm was missing a note in bar 6 since it shipped** — a high G5 at column 45, with the D5 before
+it shortened to a quarter (it also reaches the Off the Path reward, which shares the tune); and **Bo Diddley
+moves to the unmetered 16th-grid group**, which I had proposed as 4/4 and then flagged as probably wrong —
+the owner's reference notation puts its onsets at 16ths 0, 3, 6, 10, 12, one bar.
+
+**A pre-existing Scoop bug, found during the review:** after ✕ Done the picked seed lost its outline but
+its held-note stem kept one. `renderVines` bakes the stem highlight in from `traySel`; `exitTray` emptied
+`traySel` and stripped `.cell.tsel` by hand without redrawing the stems. One line: `exitTray` now calls
+`renderVines()`. Reproduced in the preview before the fix and gone after it; a new test asserts the redraw
+happens from an already-empty pick, and fails with the line removed. `renderVines` reads only row/column
+arithmetic, never `cells`, so it is safe from every `exitTray` caller including the level-change path.
+
+**No further GPT round for this batch, deliberately:** the data changes are the owner's own score
+corrections, and the fix is a one-line redraw with a mutation-proven test. GPT's audit re-run unchanged:
+18 faults caught across 8 tests. **565 tests pass.**

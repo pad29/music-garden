@@ -249,3 +249,18 @@ placement, collapsed ways, and gradient tiling still require real-browser observ
 The owner supplied the layout verification; this tests-only round does not re-certify it or the
 unheard/unseen audio and paint changes. No game, design, generated asset, or review-history file was
 edited, and nothing was committed or pushed.
+
+## Famous-tune meter mutation audit
+
+```bash
+node tests/famous-meter-mutations.mjs
+```
+
+`famous-meter.test.mjs` pins the data contract (each declared meter, whole-bar fields so the Jukebox loop
+keeps time, lengths that never run into the next note, reveals flat except where the vine is taught);
+`famous-meter-integration.test.mjs` drives the real paths — the Jukebox buttons, share links, old saves,
+the count-in on a pick-up, the scheduler across two loops, and entering each level that owns a reveal. The
+audit re-runs each integration case against an in-memory fault (18 of them, reusing the quest audit's hook)
+and requires a behavioural assertion failure, not a crash. Deliberately NOT here: any frozen checksum of the
+tunes themselves. The owner corrects them against his scores, and a hash would fail every legitimate
+correction without saying what changed — content is reviewed in `git diff`, not by a test.
