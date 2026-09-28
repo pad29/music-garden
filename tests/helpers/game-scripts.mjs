@@ -32,19 +32,31 @@ function attrs(tag) {
 
 const lineAt = (text, index) => text.slice(0, index).split("\n").length;
 
+// One left-to-right pass over the page, matching whichever comes first: an HTML comment, an element
+// whose content is text rather than markup (so a "<script>" written inside a <style> or <textarea>
+// is not a script), or a <script> element. An attribute value may contain ">", and "<script-notes>"
+// is not a script.
+const TAG_END = `(?=[\\s/>])((?:[^>"']|"[^"]*"|'[^']*')*)>`;
+const PAGE_TOKENS = new RegExp(
+  "<!--[\\s\\S]*?(?:-->|$)" +
+  `|<(style|textarea|title|xmp|iframe|noembed|noframes|noscript)${TAG_END}[\\s\\S]*?(?:<\\/\\1\\s*>|$)` +
+  `|<script${TAG_END}([\\s\\S]*?)<\\/script\\s*>`, "gi");
+
 /**
  * index.html's scripts in document order: `{ html, scripts }`, each script `{ name, src, inline, line }`.
  * `line` is the 1-based line in `name` where `src` starts (pass `lineOffset: line - 1` to vm).
- * HTML comments are skipped in the same left-to-right pass, so a commented-out tag is not loaded and
- * a `<!--` inside a script body is left alone. Every src is CRLF-normalised.
+ * HTML comments and text-only elements (<style>, <textarea>, …) are skipped in the same left-to-right
+ * pass, so a commented-out tag is not loaded and a `<!--` inside a script body is left alone. Local
+ * src paths must be plain (no %-escapes or &-references). Every src is CRLF-normalised.
  */
 export function gameScripts(root = ROOT, page = "index.html") {
   const html = readFileSync(join(root, page), "utf8").replace(/\r\n/g, "\n");
   const scripts = [];
   let inlineCount = 0;
-  for (const m of html.matchAll(/<!--[\s\S]*?(?:-->|$)|<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-    if (m[0].startsWith("<!--")) continue;
-    const a = attrs(m[1]);
+  for (const m of html.matchAll(PAGE_TOKENS)) {
+    if (m[0].startsWith("<!--") || m[1]) continue; // a comment, or a text-only element
+    const a = attrs(m[3]);
+    const body = m[4];
     const where = `${page}:${lineAt(html, m.index)}`;
     const src = a.src;
     if (src !== undefined && /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(src.trim())) continue; // CDN, not ours
@@ -56,6 +68,9 @@ export function gameScripts(root = ROOT, page = "index.html") {
     if (src !== undefined) {
       const rel = src.trim().replace(/[?#].*$/, "");
       if (!rel) throw new Error(`${where}: empty src`);
+      // We write index.html: script paths are plain. Refuse rather than half-decode URL escapes or
+      // HTML character references and read a different file than the browser would.
+      if (/[%&]/.test(rel)) throw new Error(`${where}: src "${src}" is encoded — use a plain relative path`);
       const file = resolve(root, dirname(page), rel);
       let text;
       try { text = readFileSync(file, "utf8"); }
@@ -63,8 +78,8 @@ export function gameScripts(root = ROOT, page = "index.html") {
       scripts.push({ name: rel, src: text.replace(/\r\n/g, "\n"), inline: false, line: 1 });
     } else {
       inlineCount++;
-      const bodyStart = m.index + m[0].indexOf(">") + 1;
-      scripts.push({ name: inlineCount === 1 ? page : `${page}#${inlineCount}`, src: m[2], inline: true,
+      const bodyStart = m.index + "<script".length + m[3].length + 1; // past the opening tag's ">"
+      scripts.push({ name: inlineCount === 1 ? page : `${page}#${inlineCount}`, src: body, inline: true,
         line: lineAt(html, bodyStart) });
     }
   }

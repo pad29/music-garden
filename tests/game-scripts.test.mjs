@@ -59,6 +59,17 @@ test("a <!-- inside a script body is code, not an HTML comment", () => {
   });
 });
 
+test("a <script> written inside <style> is CSS text, and a quoted > in an attribute keeps the line right", () => {
+  const html = ["<html><style>", "/* <script>throw 1;</script> */", "</style>", TEMPO,
+    '<script data-note="a > b">', "const LINE = 5;", "</script></html>"].join("\n");
+  page(html, {}, (dir) => {
+    const { scripts } = gameScripts(dir);
+    assert.equal(scripts.length, 1);
+    assert.equal(scripts[0].src, "\nconst LINE = 5;\n");
+    assert.equal(scripts[0].line, 5);
+  });
+});
+
 test("script types and attributes that break document order are refused, not skipped", () => {
   const cases = [
     ['<script type="module" src="js/a.js"></script>', /module/],
