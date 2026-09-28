@@ -19,13 +19,14 @@ the ticket or in a file the ticket names. "As discussed" and "the approach we ag
 
 - Team **Tune Garden**, state **Backlog**. Never Todo: moving a ticket to Todo is the owner's decision,
   and the order of Todo is the order of work.
-- **One area label:** `audio` (scheduler, voices, mixer), `editor` (field, tools, gestures, Studio),
+- **One label from the `Area` group** (Linear allows only one): `audio` (scheduler, voices, mixer), `editor` (field, tools, gestures, Studio),
   `content` (levels, packages, famous tunes, narration), `quests`, `infra` (tests, tooling, build,
   deploy, repo structure), `docs`.
 - **`needs-owner`** when only the owner can validate the result: anything musical (score-checked tunes,
   feel, sound), a design decision with more than one defensible answer, or a change to player-facing
   pacing. A ticket session stops at a proposal on these and asks.
-- **`bug`** when something shipped behaves wrongly; otherwise it is a feature or a chore.
+- **One type label:** `Bug` when something shipped behaves wrongly, `Feature` for something new, `Improvement`
+  for making something that exists better — a refactor or a chore is an `Improvement`.
 - **Blocked by**: link any ticket that must land first (the file-split refactor blocks most
   `index.html` work while it is in flight).
 
