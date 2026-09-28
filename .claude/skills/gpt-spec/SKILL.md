@@ -3,7 +3,8 @@ name: gpt-spec
 description: Have GPT write requirements for a feature, then critique them.
 ---
 
-Use `gpt-author` to produce requirements for: $ARGUMENTS
+Have GPT produce requirements, using the author brief (`.claude/agents/gpt-author.md`) and calling
+`ask.sh` yourself as `CLAUDE.md` § Calling GPT describes. The requirements are for: $ARGUMENTS
 
 Tell it to include functional requirements, non-functional requirements, edge cases, and open
 questions — and to read `README.md`, `REQUIREMENTS.md`, and (for anything about levels or

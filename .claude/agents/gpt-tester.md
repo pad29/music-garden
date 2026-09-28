@@ -35,7 +35,7 @@ predicted ones.
 **3. Run:**
 
 ```bash
-.claude/gpt/ask.sh thread workspace-write gpt-5.6-terra .claude/gpt/prompt.txt
+.claude/gpt/ask.sh thread workspace-write gpt-6-astra .claude/gpt/prompt.txt
 ```
 
 `workspace-write` is deliberate: a reviewer that can't write a test file can't test much.

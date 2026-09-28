@@ -10,11 +10,11 @@ First run `git status --short` and `git diff` (plus `git diff --staged`) so you 
 actually changed. If the diff is large, summarize the shape of it rather than pasting all of
 it — GPT can read the files itself.
 
-Then use `gpt-design-reviewer`, framing the prompt as a review of work already done rather
+Then run GPT's design review yourself (`CLAUDE.md` § Calling GPT, the design-reviewer brief), framing the prompt as a review of work already done rather
 than a plan: what changed, why, and what you're unsure about. Point it at the specific files.
 
 Report its findings as a numbered list with severity, saying for each whether you agree and
 why. Fix nothing until the owner has seen the findings.
 
 This is the ad-hoc gate — it doesn't replace the default loop in `CLAUDE.md`. If this review
-turns up something substantive, append it to `REVIEW-LOG.md`.
+turns up something substantive, record it in the ticket's `reviews/` file (see `reviews/README.md`).
