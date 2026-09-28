@@ -2308,6 +2308,8 @@ function enterTray(){ if(trayMode) return; trayMode=true; initAudio(); actx.resu
 }
 function exitTray(){ if(!trayMode) return; trayMode=false; traySel=[]; trayDrag=null; trayPlace=null; trayPtrs.clear();
   clearGhosts(); document.querySelectorAll(".cell.tsel").forEach(e=>e.classList.remove("tsel"));
+  renderVines();   // a stem's highlight is baked in from traySel when it is drawn, so emptying the pick must redraw them
+                   // too — stripping .cell.tsel alone left a held note's stem outlined after ✕ Done
   document.querySelectorAll(".dcell.tband").forEach(e=>e.classList.remove("tband"));
   if(trayMarqEl){ trayMarqEl.remove(); trayMarqEl=null; }
   trayBtn.classList.remove("on"); trayBtn.textContent="🧺 Scoop"; document.body.classList.remove("scooping");

@@ -180,3 +180,21 @@ test("a direct placeFamous call without the gate is flat too", () => {
   assert.ok(g.melTrack().notes.every(n => n.durationTicks === TPC));
 });
 
+// ---------------------------------------------------------------- the Scoop's stem highlight
+
+// Found by the owner while correcting I Got Rhythm: after ✕ Done the picked seed lost its outline but its
+// held-note stem kept one. A stem's highlight is baked in from traySel when renderVines draws it, and
+// exitTray emptied traySel without redrawing. The harness DOM keeps no classes, so assert on the redraw:
+// it must happen, and it must happen AFTER the pick is empty.
+test("leaving the Scoop redraws the stems from an empty pick", () => {
+  const G = loadGame({ fresh: true });
+  G.openStudioWith(G.famousToSong("igotrhythm"));
+  G.enterTray();
+  const held = G.melTrack().notes.find(n => n.durationTicks > TPC);
+  G.traySel.push(held.id); G.trayPaint();
+  const seen = [], orig = G.renderVines;
+  G.renderVines = () => { seen.push(G.traySel.length); return orig(); };
+  try { G.exitTray(); } finally { G.renderVines = orig; }
+  assert.ok(seen.length > 0, "Done must redraw the stems");
+  assert.strictEqual(seen.at(-1), 0, "…from a pick that is already empty");
+});
