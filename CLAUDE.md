@@ -64,6 +64,8 @@ in the same `index.html`, so shipping either meant hand-splitting the file. A br
 that by convention; a worktree per session stops it physically. The main checkout
 (`C:\Claude\MusicTheory`) stays on `main` and is never edited. Worktrees live in
 `.claude/worktrees/<name>`. If a session did not start in one, `EnterWorktree` before touching a file.
+The preview pane still serves the main checkout; a worktree is at
+`/.claude/worktrees/<name>/index.html` on the same server (details in the `work-ticket` skill).
 
 **Work is tracked in Linear** (team *Tune Garden*):
 **Backlog → Todo → In Progress → Needs Input / In Review → Done.**

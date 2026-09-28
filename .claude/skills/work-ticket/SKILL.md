@@ -42,9 +42,16 @@ Never work in the main checkout (`C:\Claude\MusicTheory`); it stays on `main`, u
   `reviews/<ID>-<slug>.md` (see `reviews/README.md`), not in `REVIEW-LOG.md`.
 - **Decisions already made** in the ticket are not yours to reopen. If the work shows one is wrong, that
   is a Needs Input question, not a quiet change.
-- Verify in the browser as `CLAUDE.md` and `AGENTS.md` require. Check that the preview serves THIS
-  worktree (look for a string you changed); if it serves the main checkout instead, say so in your report.
-  Don't burn turns fighting it.
+- Verify in the browser as `CLAUDE.md` and `AGENTS.md` require. **The preview server serves the main
+  checkout**, even after `EnterWorktree` (measured 2026-09-27) — but worktrees live inside it, so this
+  worktree is at **`http://localhost:<port>/.claude/worktrees/<name>/index.html`**, and its relative
+  assets (`samples/`, `voice/`) resolve to the worktree's own copies. `preview_start` with the
+  `music-garden` config, then `navigate` there. If that path 404s, the server is this worktree's own
+  (a session the app launched inside it): use `/`. Either way, confirm with something only this branch
+  has before trusting what you see.
+- Every preview shares one origin, so **`localStorage` — saves, progress, settings — is shared** with
+  the main checkout's preview and every other worktree's. A ticket that changes stored data must test on
+  a clean profile and say so; never clear storage the owner may be using.
 
 ## 5. Stop for the owner when you should — Needs Input
 
