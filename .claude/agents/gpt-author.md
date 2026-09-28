@@ -17,7 +17,7 @@ is what a package spec is judged against), `DESIGN.md` for the engine and the vi
 **2. Run:**
 
 ```bash
-.claude/gpt/ask.sh fresh read-only gpt-5.6-sol .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
 ```
 
 `fresh`, not `thread` — authored work should not be coloured by a running review

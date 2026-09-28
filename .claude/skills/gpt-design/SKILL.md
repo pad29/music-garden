@@ -3,7 +3,8 @@ name: gpt-design
 description: Have GPT design a solution, then critique it.
 ---
 
-Use `gpt-author` to produce a design for: $ARGUMENTS
+Have GPT produce a design, using the author brief (`.claude/agents/gpt-author.md`) and calling
+`ask.sh` yourself as `CLAUDE.md` § Calling GPT describes. The design is for: $ARGUMENTS
 
 Tell it to cover the approach, the alternatives it rejected and why, the files it would
 touch, and the risks — and to read `README.md` plus the relevant design doc first

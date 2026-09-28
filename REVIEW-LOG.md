@@ -1,5 +1,9 @@
 # Review log
 
+> **Archive — closed 2026-09-27. Do not append.** New reviews go in [`reviews/`](reviews/README.md), one
+> file per ticket, because parallel ticket sessions appending to one file conflict on every merge. This
+> file stays as the history the design reviewer reads for anything older.
+
 What GPT flagged during cross-model review, and what was done about it. Newest last.
 
 The design reviewer reads this before every review, so past findings carry forward instead of

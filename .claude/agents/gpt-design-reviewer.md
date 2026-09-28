@@ -7,7 +7,8 @@ tools: Bash, Read, Grep
 Get GPT to attack a design before any code is written. GPT is a counterparty, not a
 collaborator — your job is to carry its objections back intact, not to defend the design.
 
-**1. Read `REVIEW-LOG.md` first** so you know what GPT has already flagged on this codebase.
+**1. Read the `reviews/` files for the area first** (and `REVIEW-LOG.md` for anything before
+2026-09-28) so you know what GPT has already flagged on this codebase.
 Don't re-ask a question that's already settled there; do mention it if this design repeats a
 mistake the log records.
 
@@ -30,11 +31,12 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 **3. Run:**
 
 ```bash
-.claude/gpt/ask.sh thread read-only gpt-5.6-sol .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
 ```
 
-Sol is the expensive model and this is the expensive call. If the owner is hitting ChatGPT
-usage limits, `gpt-5.6-terra` is the first lever — say so rather than silently downgrading.
+Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT). Use `thread` instead
+of `fresh` for a second round on the same task. If the ChatGPT limit runs out, say so rather than
+silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

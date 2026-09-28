@@ -56,8 +56,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **The crafting toolbox is per-package, never global.**
 - **Any new runtime asset folder must be added to the `netlify.toml` build command**, or it
   silently 404s in production — the game's fallbacks hide the failure.
-- **Never commit or push unless the owner explicitly asks.** Every push to `main` deploys to
-  production.
+- **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main`
+  deploys to production. A Claude session may commit and push its own `claude/…` branch and open PRs.
 
 ## Where to find things
 
@@ -72,6 +72,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - Audio-scheduler playback goldens and the console-capture procedure → `tools/goldens/README.md`
+- What GPT flagged in each review and what was done → `reviews/` (one file per ticket; older history
+  in `REVIEW-LOG.md`, closed 2026-09-27)
 
 Read the relevant doc before designing. Don't infer intent from code alone — the rationale
 lives in these docs, not in `index.html`.
@@ -113,4 +115,4 @@ Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior ver
 browser (and on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text
 changed → the design docs
 (`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed → reported to
-the owner. Committing and pushing happen only on the owner's explicit request.
+the owner. Merging to `main` happens only on the owner's explicit request.
