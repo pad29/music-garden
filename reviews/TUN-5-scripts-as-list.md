@@ -1,6 +1,6 @@
 # TUN-5 — Make the tests and tools load the game's scripts as a list
 
-Branch `claude/tun-5-scripts-as-list` · PR (see below)
+Branch `claude/tun-5-scripts-as-list` · PR #78
 
 ## Design review (Astra)
 
