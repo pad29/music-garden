@@ -4,7 +4,7 @@
 *.docx
 /archive/
 
-# Generated Netlify deploy copy (regenerate with: cp index.html site/index.html)
+# Generated Netlify deploy copy (regenerate with netlify.toml's build command — it needs js/ too)
 /site/
 
 # AWS SAM build artifacts

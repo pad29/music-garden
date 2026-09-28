@@ -139,6 +139,9 @@ test("TUN-5 audit: questsetup G faults are caught when their game source lives i
   assert.ok(inline && opening >= 0 && closing > opening);
   assert.strictEqual(html.slice(opening + 8, closing), inline.src);
   put(root, "js/game.js", inline.src);
+  // The page's own external scripts (js/palettes.js … since TUN-6) come along unchanged, or the
+  // temporary checkout could not load the game at all.
+  for (const s of scripts) if (!s.inline) put(root, s.name, s.src);
   put(root, "index.html", html.slice(0, opening) + '<script src="js/game.js"></script>' + html.slice(closing + 9));
   const result = child(root, { args: ["tests/questsetup-mutations.mjs", "--g-only"], timeout: 120000 });
   assert.strictEqual(result.status, 0, result.output);

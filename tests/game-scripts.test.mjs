@@ -1,7 +1,7 @@
 // The script loader itself: tests/helpers/game-scripts.mjs and the way loadGame() runs its list.
-// With index.html still one inline script, the rest of the suite barely exercises either, so these
-// build tiny throwaway pages in a temp directory and load them the way the game will be loaded once
-// its code moves into js/ files: several classic scripts, in document order, in one context.
+// The real page is only one arrangement (since TUN-6: js/ files, then the inline script), so these
+// build tiny throwaway pages in a temp directory to reach the rest: several classic scripts, in
+// document order, in one context, including the orders and failures the game itself never has.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -156,7 +156,7 @@ test("applyPatches finds an anchor in whichever file holds it and requires it on
   assert.equal(countAcross(scripts, "shared()"), 2);
 });
 
-test("the real page loads as a list today: one inline script, and __script is exactly it", () => {
+test("the real page loads as a list: every local script in order, and __script is them joined", () => {
   const g = loadGame();
   const { scripts } = gameScripts();
   assert.ok(scripts.length >= 1);

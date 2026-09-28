@@ -1,14 +1,14 @@
 # AGENTS.md — Tune Garden
 
 A browser game that teaches music theory through play ("Minecraft for music") — aimed at
-kids 8+ but meant to appeal broadly. The whole app is one dependency-free file,
-`index.html` (~500 KB: vanilla JS + Web Audio, no framework, no build step), plus two
-runtime asset folders it loads at startup: `voice/` (narration mp3s) and `samples/`
+kids 8+ but meant to appeal broadly. The whole app is `index.html` plus the classic scripts
+in `js/` that it loads (vanilla JS + Web Audio, no dependencies, no framework, no build step),
+plus two runtime asset folders it loads at startup: `voice/` (narration mp3s) and `samples/`
 (instrument packs). Live at https://tunegarden.game — every push to `main` deploys.
 
 ## Commands
 
-There is **no build step** — `index.html` is the artifact.
+There is **no build step** — `index.html` and `js/` are the artifact.
 
 Syntax-check every script the game loads — the inline one and any local `<script src>` file (run
 after every edit to the game):
@@ -18,7 +18,9 @@ node tools/check-syntax.mjs
 ```
 
 The game's scripts are **synchronous classic scripts, never ES modules** (`file://`). Every tool reads
-them through `tests/helpers/game-scripts.mjs`, in document order.
+them through `tests/helpers/game-scripts.mjs`, in document order. Initialization may use only
+already-initialized bindings and functions declared in the current or an earlier script; deferred
+calls may use later scripts once loaded.
 
 Run the tests (zero dependencies, Node's built-in runner — nothing to install):
 
@@ -58,15 +60,16 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **`FAMOUS` melodies are score-validated.** Never "fix" one by ear. Shortening a piece is
   allowed; rewriting it is not.
 - **The crafting toolbox is per-package, never global.**
-- **Any new runtime asset folder must be added to the `netlify.toml` build command**, or it
-  silently 404s in production — the game's fallbacks hide the failure.
+- **Any new runtime asset folder must be added to the `netlify.toml` build command**, or it is
+  missing in production: an asset folder fails silently behind the game's fallbacks, and a `js/`
+  file is served as `index.html` by the catch-all rewrite, which stops the game from starting.
 - **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main`
   deploys to production. A Claude session may commit and push its own `claude/…` branch and open PRs.
 
 ## Where to find things
 
-- What the game is, how `index.html` is sectioned (data model / engine / audio / detectors /
-  progression), repo map, conventions → `README.md` — **read this first, always**
+- What the game is, how its code is sectioned across `js/` and `index.html` (data model / engine /
+  audio / detectors / progression), repo map, conventions → `README.md` — **read this first, always**
 - Product requirements and pillars → `REQUIREMENTS.md`
 - Vision, the "musical physics" engine, dated feature log, palette architecture → `DESIGN.md`
 - Package catalog + dependency DAG, spec template, shared vocabularies → `PACKAGES.md`
@@ -80,7 +83,7 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
   in `REVIEW-LOG.md`, closed 2026-09-27)
 
 Read the relevant doc before designing. Don't infer intent from code alone — the rationale
-lives in these docs, not in `index.html`.
+lives in these docs, not in the code.
 
 ## Current reality vs. what the docs describe
 

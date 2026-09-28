@@ -9,8 +9,8 @@ Nothing to install.
 
 ## What this can and can't test
 
-The game is `index.html`'s scripts — today one inline `<script>`, soon several classic
-`<script src>` files too (TUN-5 → TUN-7) — and they do a lot of DOM wiring the moment they load.
+The game is `index.html`'s scripts — the classic `<script src>` files in `js/` (since TUN-6), then
+its inline `<script>` (which TUN-7 empties) — and they do a lot of DOM wiring the moment they load.
 `harness.mjs` runs them inside a `node:vm` context with stubbed browser globals, then hands back
 every top-level binding they declared (~690 of them).
 
@@ -23,7 +23,9 @@ normalised), and the harness, both mutation audits, `tools/gen-voice.mjs` and
 top-level `const`/`let` reach later files, but a function declared in a later file is *not* hoisted
 into an earlier one, so load-time code that calls ahead throws here exactly where it throws in the
 browser. Never concatenate them to run. `tests/game-scripts.test.mjs` covers the loader itself with
-small throwaway pages.
+small throwaway pages. `tests/netlify-publish.test.mjs` checks that `netlify.toml`'s build command
+copies `index.html` and every folder the page loads a script from to the same path under `site/` — a
+file left out is served as `index.html` in production, and the game never starts.
 
 That makes the **pure logic** testable — and that's most of the interesting code:
 
@@ -212,8 +214,8 @@ mutant syntax are checked before the sweep starts.
 The harness exposes `__script`, every script it compiled joined in document order (including
 in-memory audit mutations), and `__scripts`, the same as a per-file `{ name, src }` list. `__script`
 is for slicing and searching only. `questcast.test.mjs` slices it from `const QUEST_DESCRIPTOR_CAPABILITY=`
-to `// GROOVES is an array`, so a split that puts those two in different files, or reorders them,
-has to move that test to a per-file lookup.
+to `// GROOVES is an array` (both still in the inline script after TUN-6), so a split that puts those
+two in different files, or reorders them, has to move that test to a per-file lookup.
 The collision test executes the actual descriptor-index initializer with synthetic primitives in an
 isolated VM. It does not copy the indexing algorithm or change the production registry. Finale tests
 spy on the transport/confetti boundaries and invoke navigation with explicit input; they do not prove
