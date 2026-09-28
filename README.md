@@ -18,9 +18,9 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
   # then open http://localhost:8377
   ```
   (A `.claude/launch.json` is included so the Claude Code preview tool serves it on :8377.)
-- **Syntax-check the inline script** (the fastest check — run after every edit):
+- **Syntax-check the game's scripts** (the fastest check — run after every edit):
   ```bash
-  node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('syntax OK')"
+  node tools/check-syntax.mjs
   ```
 - **Run the tests** (zero dependencies — Node's built-in runner, nothing to install):
   ```bash
@@ -46,7 +46,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 | **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **Kind 1 ships**, in two quests (*The Firefly Crossing*, *The Waking Woods*) — reachable from the world map. Kinds 2–9 are still intent. |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
-| **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS). |
+| **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS), `check-syntax.mjs` (syntax-checks every script the game loads). |
 | **`backend/`** | AWS SAM backend (Cognito auth + per-user progress API + cloud songs API on DynamoDB). `template.yaml`, `src/*.mjs`, `README.md` (deploy guide), `samconfig.toml`. |
 | **`netlify.toml`** | Git-based deploy config: copies `index.html` + `voice/` + `samples/` into a clean publish dir. **Add any new runtime asset folder here too.** |
 | **`reviews/`** | One file per ticket: what GPT flagged in cross-model review, and what was done. See `reviews/README.md`. |
@@ -191,7 +191,7 @@ See `backend/README.md` for first-time setup. Remaining pre-launch TODO: AWS bud
 ## Dev workflow we use
 
 1. Edit `index.html`.
-2. Syntax-check the inline script (command above).
+2. Syntax-check the game's scripts (command above).
 3. Verify behavior in a browser / the preview tool (no automated tests yet; we test via runtime inspection). **Also test the file:// path** for anything that loads assets.
 4. If narration text changed: `node tools/gen-voice.mjs`. If samples changed: `node tools/build-samples.mjs`.
 5. Commit & push **only when the owner asks** — every push deploys to production.
