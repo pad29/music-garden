@@ -20,7 +20,8 @@ you disagree, **the disagreement is the product** — surface it, don't resolve 
    `reviews/README.md`. (`REVIEW-LOG.md` is the closed archive; never append to it.)
 7. Review the docs — see **§ Docs**. The capability isn't done until they describe it.
 8. Commit and push **this session's own branch**, open a PR, and report — in the PR, on the ticket,
-   and to the owner. **Never merge and never push `main`** unless the owner says so in this session:
+   and to the owner — using the hand-off formats in the `work-ticket` skill, **playtest checklist
+   included**, even in a session that has no ticket. **Never merge and never push `main`** unless the owner says so in this session:
    every push to `main` deploys to production.
 
 Trivial changes — typos, comments, formatting — skip this. **When in doubt, run the loop.**

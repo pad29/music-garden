@@ -58,8 +58,8 @@ Stop when either is true:
 Then:
 1. Commit what you have and push the branch. Open a **draft** PR against `main`, so Netlify builds a
    deploy preview the owner can try on the phone.
-2. Comment on the ticket: what is done; each question with its options and your recommendation; and
-   exactly how to try it — the Netlify preview URL, and this worktree's `index.html` for `file://`.
+2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats), and post the same text
+   in this session.
 3. Move the ticket to **Needs Input** and end your turn.
 
 The owner answers either here, in this session, or on the ticket, moving it back to Todo. Either way,
@@ -74,10 +74,104 @@ work continues on the same branch.
 3. Commit in the repo's style (a short imperative subject that says what changes for the player, a body
    that says why), push, and open the PR against `main`, or mark the draft ready. Put the ticket ID in the
    title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*.
-4. The PR body: what changes for the player; what GPT flagged and what you did, including any
-   disagreement verbatim; tests; what is still unverified; how to try it.
-5. Wait for Netlify's deploy preview (`gh pr checks`). Comment on the ticket with the PR link, the preview
-   URL and a three-line summary. Move it to **In Review**. Report the same in this session.
+4. Write the PR body in the **PR** format (§ Hand-off formats).
+5. Wait for Netlify's deploy preview (`gh pr checks`), then comment on the ticket in the **In Review**
+   format, with the preview URL filled in. Move the ticket to **In Review**, and post the same comment
+   in this session as your report.
+
+## Hand-off formats
+
+Every hand-off goes to three places: the ticket, the PR and this session. Use these shapes exactly,
+headings included, so the owner always knows where to look. Leave a section out only when the template
+says it may be left out.
+
+### The playtest checklist — the heart of every hand-off
+
+This is how the owner spends his time, so it must be honest and short.
+
+- **Each item is where → do → expect**, and "expect" names something the owner could see or hear go
+  WRONG: *"three clicks a bar, the first one accented"*, never *"it works"* or *"check the bars"*.
+- **Build it from three sources, in this order:**
+  1. each *Done looks like* criterion in the ticket that the tests cannot judge;
+  2. everything you could not verify yourself: sound by ear, the phone, touch gestures, feel, pacing;
+  3. one or two **regression** checks on neighbouring features the diff touched.
+- **Leave out anything a test or your browser check already proved.** Padding the list teaches the owner
+  to skim it. If nothing needs his eyes or ears, say so in one line instead of inventing items.
+- Tag each item 📱 phone, 🖥 desktop or 👆 touch where the device matters. Most important first; about
+  eight items at most. If there are more, the ticket was too big — say so.
+- Give each item a step count or a time ("~2 min") only when it is long.
+
+```markdown
+- [ ] **Jukebox → The Moldau**, Click set to *Count in + tick*, press ▶ — expect two clicks, then the
+      low E pick-up landing on the last eighth; the bar chips read 1–9, with 9 five columns wide.
+- [ ] 📱 **Same, on the phone preview** — expect the bar chips not to overlap the pads at the smallest zoom.
+- [ ] **Regression: Stepping Stones' reward** — finish level 1; expect Mary to play flat and without bars,
+      exactly as before.
+```
+
+### In Review — the ticket comment
+
+```markdown
+**Ready for review** · PR #<n> · Preview: <netlify deploy-preview URL> · Session: <session link>
+
+**What changed for you**
+- One to three bullets, in the player's terms.
+
+**Please playtest**
+<the checklist>
+
+**Choices I made that you might overrule**
+- Anything you decided that the ticket did not settle, one line each, with the alternative.
+  (May be left out when there were none.)
+
+**Review and tests**
+- GPT: one line per finding — severity, the finding, agreed or disagreed, what you did. Full record:
+  `reviews/<ID>-<slug>.md`.
+- Verified: N/N tests; what you checked in the browser.
+- Not verified: what you could not reach.
+```
+
+### Needs Input — the ticket comment
+
+```markdown
+**Needs your input** · Draft PR #<n> · Preview: <URL> · Session: <session link>
+
+**Where it stands**
+Two or three lines: what is done, what is waiting on you.
+
+**Questions**
+1. The question, answerable in a word or a line.
+   - **A)** … · **B)** … — **I'd pick A**, because …
+2. …
+
+**Try this first**
+<the checklist — only what informs the answers; may be left out when the questions need no playtest>
+
+**How to answer:** reply here — "1A, 2: keep it" is enough — then move the ticket back to **Todo**, and
+the next session picks it up where this one stopped. Or answer in the session linked above, if it is
+still open.
+```
+
+### The PR body
+
+```markdown
+Closes <ID>.
+
+## What changes for the player
+One short paragraph, or bullets.
+
+## Please playtest
+<the same checklist as the ticket>
+
+## Review
+GPT's findings with severity and your verdict, including any disagreement in GPT's own words. Which of
+GPT's test files were kept or deleted, and why.
+
+## Tests
+N/N pass; mutation audits run; what the browser check covered; what remains unverified.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
 
 ## Never
 
