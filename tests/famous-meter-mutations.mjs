@@ -1,13 +1,13 @@
 // Optional proof audit: node tests/famous-meter-mutations.mjs
-// Reuses the repository's in-memory hook. Never changes index.html or the harness on disk.
+// Reuses the repository's in-memory hook. Never changes index.html, a script file or the harness on disk.
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { gameScripts, applyPatches, countAcross, checkSyntax } from "./helpers/game-scripts.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const source = readFileSync(new URL("../index.html", import.meta.url), "utf8")
-  .match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
+// The game's scripts, in document order. Anchors are unique across all of them and patched where they live.
+const { scripts } = gameScripts();
 const title = suffix => "famous review: " + suffix;
 const faults = [
   ["loaded songs survive slot-eight encoding and reopening without semantic drift",
@@ -56,12 +56,12 @@ const faults = [
     "n.durationTicks=Math.min(len, MAX_VINE)*TICKS_PER_COL;"],
 ];
 function run(name, patches = []) {
-  let candidate = source;
+  let candidate = scripts;
   for (const [from, to] of patches) {
-    assert.strictEqual(candidate.split(from).length, 2, "unique mutation anchor: " + from);
-    candidate = candidate.replace(from, to);
+    assert.strictEqual(countAcross(candidate, from), 1, "unique mutation anchor: " + from);
+    candidate = applyPatches(candidate, [[from, to]]);
   }
-  new Function(candidate);
+  checkSyntax(candidate);
   const pattern = "^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$";
   const result = spawnSync(process.execPath, ["--import", "./tests/helpers/questsetup-mutation-hook.mjs",
     "--test", "--test-reporter=tap", "--test-name-pattern=" + pattern,

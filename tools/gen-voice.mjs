@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Pre-bake the read-aloud narration clips with Amazon Polly.
 //
-// For every level STORY (the `intro:"..."` strings in index.html) this:
+// For every level STORY (the `intro:"..."` strings in the game's scripts — index.html's inline
+// script and every local <script src> file it loads) this:
 //   1. normalizes the text the same way the client does (toSpeech: arrows->"to", ▶->"Play", chord numerals->words, strip emoji),
 //   2. keys it by voiceHash (MUST match index.html so the client finds the file),
 //   3. synthesizes voice/<key>.mp3 via the AWS CLI — skipping any clip that already exists,
@@ -19,13 +20,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { gameScripts, ROOT } from "../tests/helpers/game-scripts.mjs";
 
 // ---- config ----
 const REGION   = "us-east-1";
 const ENGINE   = process.env.POLLY_ENGINE || "generative";    // generative = warm + expressive (chosen voice). neural = cheaper/flatter.
 const VOICE_ID = process.env.POLLY_VOICE  || "Joanna";        // warm, natural. Swap + re-run --force to change.
-const OUT_DIR  = "voice";
-const HTML     = "index.html";
+// The scripts it scans and the clips it prunes come from ONE root — this checkout's, wherever it is
+// run from — so it can never read one worktree's narration and prune another's clips.
+const OUT_DIR  = path.join(ROOT, "voice");
 
 const argv = new Set(process.argv.slice(2));
 const DRY = argv.has("--dry"), FORCE = argv.has("--force"), SAMPLES = argv.has("--samples");
@@ -62,18 +65,22 @@ if (SAMPLES) {
     try { synth(line, path.join(dir,label+".mp3"), voice, engine); console.log("  ✓ "+label); }
     catch (e) { console.error("  ✗ "+label+": "+String(e.stderr||e.message).slice(0,120)); }
   }
-  console.log("Samples in ./voice/samples/.");
+  console.log(`Samples in ${dir}.`);
   process.exit(0);
 }
 
 // ---- collect the unique narration strings ----
 // We bake two kinds of spoken line: each level's `intro` (the story) and each "Hear a famous one" `credit` (the explanation).
-const html = fs.readFileSync(HTML, "utf8");
-const intros  = [...html.matchAll(/\bintro:"([^"]*)"/g)].map(m => m[1]);
-const credits = [...html.matchAll(/\bcredit:"([^"]*)"/g)].map(m => m[1]);
+// Every script the page loads, in order: narration can live in any of them.
+const { scripts } = gameScripts(ROOT);
+const scan = re => scripts.flatMap(s => [...s.src.matchAll(re)].map(m => m[1]));
+const intros  = scan(/\bintro:"([^"]*)"/g);
+const credits = scan(/\bcredit:"([^"]*)"/g);
 const byKey = new Map();
 for (const raw of [...intros, ...credits]) { const spoken = toSpeech(raw); if (!spoken) continue;
   const key = voiceHash(spoken); if (!byKey.has(key)) byKey.set(key, spoken); }
+// A scan that found nothing is a broken read, not a game with no narration: pruning would delete every clip.
+if (byKey.size === 0) { console.error(`No narration found in ${scripts.map(s => s.name).join(", ")} — refusing to prune.`); process.exit(1); }
 
 console.log(`Found ${intros.length} stories + ${credits.length} credits → ${byKey.size} unique clips. Voice: ${VOICE_ID}/${ENGINE}.`);
 let made = 0, skipped = 0, failed = 0;

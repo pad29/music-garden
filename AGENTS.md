@@ -10,11 +10,15 @@ runtime asset folders it loads at startup: `voice/` (narration mp3s) and `sample
 
 There is **no build step** — `index.html` is the artifact.
 
-Syntax-check the inline script (run after every edit to `index.html`):
+Syntax-check every script the game loads — the inline one and any local `<script src>` file (run
+after every edit to the game):
 
 ```bash
-node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('syntax OK')"
+node tools/check-syntax.mjs
 ```
+
+The game's scripts are **synchronous classic scripts, never ES modules** (`file://`). Every tool reads
+them through `tests/helpers/game-scripts.mjs`, in document order.
 
 Run the tests (zero dependencies, Node's built-in runner — nothing to install):
 

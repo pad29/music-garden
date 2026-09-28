@@ -10,20 +10,22 @@ import { e6Mutations } from "./helpers/quest-e6-mutations.mjs";
 import { playtestMutations } from "./helpers/quest-playtest-mutations.mjs";
 import { gMutations } from "./helpers/quest-g-mutations.mjs";
 import { hMutations } from "./helpers/quest-h-mutations.mjs";
+import { gameScripts, applyPatches, countAcross, checkSyntax } from "./helpers/game-scripts.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const source = readFileSync(new URL("../index.html", import.meta.url), "utf8").match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\r\n/g, "\n");
+// The game's scripts, in document order. Anchors are unique across all of them and patched where they live.
+const { scripts } = gameScripts();
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const evidenceLoop = 'function questEvaluateRun(run, def){\n  const versions={};\n  for(const id of Object.keys(run.versions)) versions[id]=songEvidence(run.versions[id].song);';
 const testFiles = ["quest-h.test.mjs", "quest-g.test.mjs", "questauthoring.test.mjs", "questauthoring-d7-review.test.mjs", "quest-fragments.test.mjs", "questsetup.test.mjs", "questsetup-readiness.test.mjs", "questavailability.test.mjs", "quest-playtest.test.mjs", "questpick.test.mjs", "questcontroller.test.mjs", "questcontroller-d4-review.test.mjs", "questshell.test.mjs", "questshell-d5-review.test.mjs", "questfinale.test.mjs", "questcast.test.mjs", "quest-e6-review.test.mjs", "questlisten.test.mjs"]
   .map(name => ({ path: "tests/" + name, source: readFileSync(new URL("./" + name, import.meta.url), "utf8") }));
 function run(title, patches = []) {
-  let candidate = source;
+  let candidate = scripts;
   for (const [from, to] of patches) {
-    assert.strictEqual(candidate.split(from).length, 2, "unique mutation anchor: " + from);
-    candidate = candidate.replace(from, to);
+    assert.strictEqual(countAcross(candidate, from), 1, "unique mutation anchor: " + from);
+    candidate = applyPatches(candidate, [[from, to]]);
   }
-  new Function(candidate); // A syntax error is not a caught behavioral mutation.
+  checkSyntax(candidate); // A syntax error is not a caught behavioral mutation.
   const matches = testFiles.filter(f => f.source.includes('test("' + title + '"'));
   assert.ok(matches.length <= 1, "ambiguous mutation test: " + title);
   // questsetup also generates test titles in loops; the baseline TAP assertion below proves
@@ -340,8 +342,8 @@ const selectedMutations = process.argv.includes("--h-only") ? hMutations
   : process.argv.includes("--playtest-only") ? playtestMutations : mutations;
 // Catch stale anchors before spending minutes running the full sweep.
 for(const [,from,to] of selectedMutations){
-  assert.strictEqual(source.split(from).length,2,"unique mutation anchor: "+from);
-  new Function(source.replace(from,to));
+  assert.strictEqual(countAcross(scripts,from),1,"unique mutation anchor: "+from);
+  checkSyntax(applyPatches(scripts,[[from,to]]));
 }
 for (const [title, from, to] of selectedMutations) {
   if (!green.has(title)) {

@@ -1,5 +1,7 @@
-// Used only by ../questsetup-mutations.mjs. Mutate the script string in the harness's memory;
-// never write index.html, monkey-patch fs, or alter the ordinary test invocation.
+// Used only by the mutation audits (../questsetup-mutations.mjs, ../famous-meter-mutations.mjs).
+// Mutate the game's scripts in the harness's memory; never write index.html or a script file,
+// monkey-patch fs, or alter the ordinary test invocation. Each anchor must occur exactly once across
+// ALL of the game's scripts, and is patched in the file that holds it (applyPatches).
 import { registerHooks } from "node:module";
 
 registerHooks({
@@ -7,13 +9,10 @@ registerHooks({
     const result = nextLoad(url, context);
     if (!url.endsWith("/tests/harness.mjs")) return result;
     const source = String(result.source);
-    const needle = "const src = match[1];";
-    if (!source.includes(needle)) throw new Error("Harness source extraction changed; update the audit hook");
-    const replacement = `let src = match[1].replace(/\\r\\n/g, "\\n");
-      for (const [from, to] of JSON.parse(process.env.QUEST_SETUP_MUTATIONS || "[]")) {
-        if (src.split(from).length !== 2) throw new Error("Mutation anchor must occur once: " + from);
-        src = src.replace(from, to);
-      }`;
+    const needle = "const scripts = loaded;";
+    if (source.split(needle).length !== 2) throw new Error("Harness source extraction changed; update the audit hook");
+    const replacement =
+      'const scripts = applyPatches(loaded, JSON.parse(process.env.QUEST_SETUP_MUTATIONS || "[]"));';
     return { ...result, source: source.replace(needle, replacement) };
   },
 });

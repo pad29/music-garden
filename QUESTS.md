@@ -739,9 +739,9 @@ narrative costs are justified.
 
 ### Q19. Every quest change passes all applicable layers
 
-1. **Syntax** — after every `index.html` edit:
+1. **Syntax** — after every edit to the game's scripts:
    ```bash
-   node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]); console.log('syntax OK')"
+   node tools/check-syntax.mjs
    ```
 2. **Pure logic** — `node --test "tests/*.test.mjs"`. Schema validation, route normalization,
    evidence extraction, analyzer dispatch, evaluation, eligibility, snapshot comparison, tool

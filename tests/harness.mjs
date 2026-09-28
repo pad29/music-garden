@@ -1,15 +1,15 @@
 // Test harness for Tune Garden.
 //
-// The whole game lives in one <script> tag inside index.html, and that script does a lot of
-// top-level DOM wiring on load. So a test can't import it — the harness instead runs the
-// script inside a vm context with stubbed browser globals, then hands back every top-level
-// binding it declared.
+// The game is index.html's scripts — its inline <script> and any local <script src> files — and
+// they do a lot of top-level DOM wiring on load. So a test can't import them — the harness instead
+// runs them, in document order, inside one vm context with stubbed browser globals, then hands back
+// every top-level binding they declared. tests/helpers/game-scripts.mjs finds the scripts.
 //
 // Zero dependencies, on purpose: the game itself has none, and `node --test` is built in.
 //
 //   import { loadGame } from "./harness.mjs";
 //   const g = await loadGame();
-//   g.contourSeq([...]);      // any top-level function or const from index.html
+//   g.contourSeq([...]);      // any top-level function or const from any of the game's scripts
 //
 // The stubbed DOM absorbs anything (see makeStub) rather than emulating a browser. That makes
 // PURE logic testable — detectors, contour/motion math, chord and cadence helpers, the song
@@ -17,10 +17,10 @@
 // that do nothing. Don't write a test that asserts on what got drawn or what was heard; verify
 // that in a real browser (see AGENTS.md § "How changes are verified").
 
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import vm from "node:vm";
+import { gameScripts, applyPatches, joinScripts } from "./helpers/game-scripts.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -201,17 +201,20 @@ function topLevelNames(src) {
 let cached = null;
 
 /**
- * Run index.html's inline script in a stubbed browser and return its top-level bindings.
- * Cached — the script is ~5.5k lines and every test file would otherwise re-run it.
+ * Run the game's scripts in a stubbed browser and return their top-level bindings.
+ * Cached — the game is ~8.6k lines and every test file would otherwise re-run it.
  * Pass { fresh: true } for a test that needs an unmutated copy of the game's state.
+ * `root` loads the index.html in another directory instead (the loader's own tests use it); such a
+ * load is never cached.
  */
-export function loadGame({ fresh = false } = {}) {
-  if (cached && !fresh) return cached;
+export function loadGame({ fresh = false, root = ROOT } = {}) {
+  const shared = root === ROOT;
+  if (cached && !fresh && shared) return cached;
 
-  const html = readFileSync(join(ROOT, "index.html"), "utf8");
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error("No inline <script> found in index.html");
-  const src = match[1];
+  const { html, scripts: loaded } = gameScripts(root);
+  // The mutation audits' load hook (tests/helpers/questsetup-mutation-hook.mjs) rewrites this exact
+  // line to patch the scripts in memory — applyPatches is imported for it. Change them together.
+  const scripts = loaded;
 
   const tempoInput = makeTempoRange(tempoRangeFromHtml(html));
   const clickSelect = makeSelect("off");        // its handler is the only way its persistence is testable
@@ -283,13 +286,14 @@ export function loadGame({ fresh = false } = {}) {
 
   const ctx = vm.createContext(sandbox);
 
-  // vm keeps top-level const/let/function out of the context object, so append an explicit
-  // collector. Bindings are exposed as live getters, not copied values, so that reassignments
-  // made by the game (setPalette swaps MIDI/NAMES/ROWS wholesale) stay visible to the test.
-  // Names that fail to resolve — over-extracted from a destructuring pattern, say — are skipped.
-  const names = topLevelNames(src);
+  // vm keeps top-level const/let/function out of the context object, so run an explicit
+  // collector after the game. Bindings are exposed as live getters, not copied values, so that
+  // reassignments made by the game (setPalette swaps MIDI/NAMES/ROWS wholesale) stay visible to
+  // the test. Names that fail to resolve — over-extracted from a destructuring pattern, say — are
+  // skipped.
+  const names = [...new Set(scripts.flatMap((s) => topLevelNames(s.src)))];
   const collector =
-    "\n;globalThis.__api = {};\n" +
+    "globalThis.__api = {};\n" +
     names
       .map(
         (n) =>
@@ -298,24 +302,38 @@ export function loadGame({ fresh = false } = {}) {
       )
       .join("\n");
 
-  try {
-    vm.runInContext(src + collector, ctx, { filename: "index.html", timeout: 30000 });
-  } catch (err) {
-    throw new Error(
-      `index.html's script threw while loading in the harness: ${err.message}\n` +
-        "If this is a real bug, fix index.html. If the harness is missing a browser API, add a " +
-        "stub to tests/harness.mjs — do not weaken the game to satisfy the test."
-    );
+  // Each script is its own vm run, in document order, in the one context — as a browser runs
+  // separate classic scripts. Top-level const/let/class still reach later scripts (a context shares
+  // one global lexical scope), but a function declared in a LATER file is not hoisted into an
+  // earlier one. Never concatenate them: one big script would hoist across files and pass where the
+  // browser throws at load. A browser carries on after a script throws; the harness stops, naming it.
+  for (const s of scripts) {
+    try {
+      vm.runInContext(s.src, ctx, { filename: s.name, lineOffset: s.line - 1, timeout: 30000 });
+    } catch (err) {
+      throw new Error(
+        `${s.name} threw while loading in the harness: ${err.message}\n` +
+          "If this is a real bug, fix the game. If the harness is missing a browser API, add a " +
+          "stub to tests/harness.mjs — do not weaken the game to satisfy the test.",
+        { cause: err }
+      );
+    }
   }
+  vm.runInContext(collector, ctx, { filename: "harness-collector", timeout: 30000 });
 
   // Don't spread — that would evaluate the getters once and lose liveness.
   const api = sandbox.__api;
   // Let registry tests execute the actual compiled initializer against a synthetic collision.
-  // This is the same in-memory source used above, including mutation-audit patches.
-  Object.defineProperty(api, "__script", { value: src });
+  // This is the same in-memory source used above, including mutation-audit patches: __script is
+  // every script joined in order (for slicing and searching — never run it, it would hoist across
+  // files), __scripts the per-file list.
+  Object.defineProperty(api, "__script", { value: joinScripts(scripts) });
+  Object.defineProperty(api, "__scripts", {
+    value: Object.freeze(scripts.map(({ name, src }) => Object.freeze({ name, src }))),
+  });
   Object.defineProperty(api, "__window", { value: sandbox });
   Object.defineProperty(api, "__document", { value: stubDoc });
-  if (!fresh) cached = api;
+  if (!fresh && shared) cached = api;
   return api;
 }
 

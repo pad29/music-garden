@@ -9,9 +9,21 @@ Nothing to install.
 
 ## What this can and can't test
 
-The whole game is one `<script>` tag inside `index.html`, and that script does a lot of DOM
-wiring the moment it loads. `harness.mjs` runs it inside a `node:vm` context with stubbed
-browser globals, then hands back every top-level binding it declared (~690 of them).
+The game is `index.html`'s scripts — today one inline `<script>`, soon several classic
+`<script src>` files too (TUN-5 → TUN-7) — and they do a lot of DOM wiring the moment they load.
+`harness.mjs` runs them inside a `node:vm` context with stubbed browser globals, then hands back
+every top-level binding they declared (~690 of them).
+
+**The script list.** `helpers/game-scripts.mjs` is the one reader of the page: `gameScripts()` returns
+every local `<script src>` and inline `<script>` in document order (CDN tags skipped, CRLF
+normalised), and the harness, both mutation audits, `tools/gen-voice.mjs` and
+`tools/check-syntax.mjs` all go through it. Only synchronous classic scripts are allowed —
+`type="module"`, `async`, `defer`, `nomodule` or an unknown `type` make it throw rather than skip.
+`loadGame()` runs **each script as its own `vm.runInContext` call** in one context, as a browser does:
+top-level `const`/`let` reach later files, but a function declared in a later file is *not* hoisted
+into an earlier one, so load-time code that calls ahead throws here exactly where it throws in the
+browser. Never concatenate them to run. `tests/game-scripts.test.mjs` covers the loader itself with
+small throwaway pages.
 
 That makes the **pure logic** testable — and that's most of the interesting code:
 
@@ -133,7 +145,10 @@ including 22 step G mutations across five tests. No game or design source was ed
 
 Requires Node >=22.15 for the module loader hook. The default runs the complete audit; the optional
 flags select commit 6, the A7/A8 playtest, fragment, step G, or step H faults. Each fault must have a green unmodified test and
-make that exact test fail. Mutations affect the harness's script string in memory only. Syntax errors,
+make that exact test fail. Mutations affect the harness's scripts in memory only: the hook
+(`helpers/questsetup-mutation-hook.mjs`) rewrites the harness's `const scripts = loaded;` line to run
+`applyPatches`, which requires each anchor to occur **exactly once across all the game's script files**
+and patches it in the file that holds it. Syntax errors,
 initialization failures, ambiguous source anchors, and missing test titles fail the audit rather than
 counting as caught faults.
 
@@ -194,7 +209,11 @@ repair, pure models, and finale effect boundaries. `helpers/quest-e6-mutations.m
 its faults to the same default audit; `--e6-only` selects them while developing. All anchors and
 mutant syntax are checked before the sweep starts.
 
-The harness exposes `__script`, the exact script it compiled (including in-memory audit mutations).
+The harness exposes `__script`, every script it compiled joined in document order (including
+in-memory audit mutations), and `__scripts`, the same as a per-file `{ name, src }` list. `__script`
+is for slicing and searching only. `questcast.test.mjs` slices it from `const QUEST_DESCRIPTOR_CAPABILITY=`
+to `// GROOVES is an array`, so a split that puts those two in different files, or reorders them,
+has to move that test to a per-file lookup.
 The collision test executes the actual descriptor-index initializer with synthetic primitives in an
 isolated VM. It does not copy the indexing algorithm or change the production registry. Finale tests
 spy on the transport/confetti boundaries and invoke navigation with explicit input; they do not prove
