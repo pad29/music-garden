@@ -167,8 +167,8 @@ The visible things that move us out of the "toy" category: the **growing toolbox
 
 ## 10. Feature log (running; started 2026-06-07)
 
-A working, dependency-free, single-file browser game: `index.html` (vanilla Web Audio).
-**Live: https://tunegarden.game/** — git-based Netlify deploy (every push to `main` auto-builds; `netlify.toml` copies `index.html` + `voice/` + `samples/` into the publish dir). Backend (accounts/progress/songs) deployed on AWS. Validated: share-links open the exact melody on any device.
+A working, dependency-free browser game with no build step: `index.html` plus the classic scripts in `js/` it loads (vanilla Web Audio). It was a single file until 2026-09-28, when the first sections of its script moved into `js/` (TUN-6; TUN-7 moves the rest) so parallel work stops colliding in one file.
+**Live: https://tunegarden.game/** — git-based Netlify deploy (every push to `main` auto-builds; `netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Backend (accounts/progress/songs) deployed on AWS. Validated: share-links open the exact melody on any device.
 
 **Implemented:**
 - Pentatonic grid — horizontal = time, vertical = pitch; click to hear instantly.

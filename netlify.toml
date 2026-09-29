@@ -1,15 +1,21 @@
 # Netlify config for Tune Garden (https://tunegarden.game)
-# The app is a single static file (index.html). This build copies just that file
-# into a clean publish dir, so the docs/ and backend/ are NOT served publicly.
+# The app is static files: index.html plus the classic scripts in js/ it loads, and the runtime
+# asset folders below. This build copies just those into a clean publish dir, so the docs/ and
+# backend/ are NOT served publicly.
 # Connect this repo in Netlify (Add new site -> Import from Git); every push auto-deploys.
 
 [build]
-  # Copy the app + the pre-baked narration clips (voice/) + the instrument sample packs (samples/)
-  # into a clean publish dir. If you add a new asset folder the game loads at runtime, add it here.
-  command = "mkdir -p site && cp index.html site/index.html && cp -r voice site/voice && cp -r samples site/samples && cp -r spike site/spike"
+  # Copy the app (index.html + its js/ scripts) + the pre-baked narration clips (voice/) + the instrument
+  # sample packs (samples/) into a clean publish dir. If you add a new folder the game loads at runtime, add
+  # it here. A missing js/ file is not a 404: the rewrite below serves index.html in its place, the browser
+  # fails to parse it as JavaScript, and the game never starts.
+  command = "mkdir -p site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples && cp -r spike site/spike"
   publish = "site"
 
-# Single-page app: serve index.html for any path (harmless here, future-proof for routes).
+# Single-page app: serve index.html for any path that is not a real file (existing files win).
+# Not harmless at a NESTED path: at /a/ the page's relative js/, samples/ and voice/ URLs resolve under
+# /a/, get index.html back, and the game cannot start. The game lives at the root; TUN-68 decides what a
+# nested path should do instead.
 [[redirects]]
   from = "/*"
   to = "/index.html"

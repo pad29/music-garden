@@ -4,13 +4,13 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 **Live:** https://tunegarden.game/ (Netlify, auto-deploys from this repo on every push to `main`)
 
-> Status: working single-file game, in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), the first two **quests** (*The Firefly Crossing*, *The Waking Woods*), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
+> Status: working browser game (no dependencies, no build step), in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), the first two **quests** (*The Firefly Crossing*, *The Waking Woods*), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
 ---
 
 ## Quick start
 
-The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web Audio, no build step), plus two runtime asset folders (`voice/` narration clips, `samples/` instrument packs).
+The whole game is **`index.html`** and the classic scripts in **`js/`** that it loads (vanilla JS + Web Audio, no dependencies, no build step), plus two runtime asset folders (`voice/` narration clips, `samples/` instrument packs).
 
 - **Run it:** open `index.html` directly in a browser (file:// works — the game is built to survive it), **or** serve the folder:
   ```bash
@@ -28,7 +28,7 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
   ```
   A young suite: it covers detectors and pure logic by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
 - **Dev URL flags:** append `?dev` to reveal a level-jump dropdown, "🔒 Relock instruments" (replays the region discovery cards without touching progress), "🗝️ Unlock quests" (marks every quest's prerequisite packages complete, so its Home card appears without playing them) and "🧹 Clear quest runs" (deletes every quest run and completion record, so the quests are unplayed again); `?reset` wipes local progress.
-- **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`). Cloud APIs (https) are exempt.
+- **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`) — and the game's own code in `js/` is **classic scripts, never ES modules**, which do not load from file://. Cloud APIs (https) are exempt.
 
 ---
 
@@ -36,7 +36,8 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 
 | Path | What it is |
 |---|---|
-| **`index.html`** | The entire game (HTML + CSS + JS, ~3500 lines). The source of truth for the app. |
+| **`index.html`** | The page: markup, styles, and the part of the game's script not yet moved into `js/` (from `// ---------- Grid ----------` on). With `js/`, the source of truth for the app. |
+| **`js/`** | The game's code, moving out of `index.html` section by section: classic scripts that `index.html` loads with `<script src>` tags, in order, before its own inline script. See [How `index.html` is organized](#how-indexhtml-is-organized) for which sections live in which file. |
 | **`REQUIREMENTS.md`** | Product requirements & pillars. |
 | **`DESIGN.md`** | High-level design — the "musical physics" engine, crafting tree, play modes, the full feature log (everything built, dated). |
 | **`PACKAGES.md`** | The package **catalog / dependency graph (DAG)**: regions, capability clusters, the spec template, shared vocabularies, and the high-level package specs with build status. |
@@ -48,24 +49,36 @@ The whole game is one dependency-free file: **`index.html`** (vanilla JS + Web A
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
 | **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS), `check-syntax.mjs` (syntax-checks every script the game loads). |
 | **`backend/`** | AWS SAM backend (Cognito auth + per-user progress API + cloud songs API on DynamoDB). `template.yaml`, `src/*.mjs`, `README.md` (deploy guide), `samconfig.toml`. |
-| **`netlify.toml`** | Git-based deploy config: copies `index.html` + `voice/` + `samples/` into a clean publish dir. **Add any new runtime asset folder here too.** |
+| **`netlify.toml`** | Git-based deploy config: copies `index.html` + `js/` + `voice/` + `samples/` into a clean publish dir. **Add any new runtime asset folder here too** — a missing `js/` file is served as `index.html` and stops the game from starting (`tests/netlify-publish.test.mjs` checks the scripts). |
 | **`reviews/`** | One file per ticket: what GPT flagged in cross-model review, and what was done. See `reviews/README.md`. |
 | `REVIEW-LOG.md` | The same record for everything before 2026-09-28, in one file — closed, kept as history. |
 | `.claude/launch.json` | Dev-preview server config. |
 | `site/` *(gitignored)* | Netlify's build output dir (generated by the netlify.toml command). |
 | `archive/` *(gitignored)* | Feedback/brainstorm/brand source docs (`*.docx`) and finished hand-off briefs — decisions from them are folded into the `.md` files. Kept on disk, not in the repo. |
 
-**Read order for picking up development:** this README → `DESIGN.md` (vision + what's built) → `PACKAGES.md` (the map & conventions) → `PACKAGES-DETAILED.md` (as-built level specs) → `SAVE-SHARE.md` (song format) → `EDITOR-DESIGN.md` (where the editor is headed) → then the `index.html` sections you're touching.
+**Read order for picking up development:** this README → `DESIGN.md` (vision + what's built) → `PACKAGES.md` (the map & conventions) → `PACKAGES-DETAILED.md` (as-built level specs) → `SAVE-SHARE.md` (song format) → `EDITOR-DESIGN.md` (where the editor is headed) → then the sections you're touching, in `js/` or `index.html`.
 
 ---
 
 ## How `index.html` is organized
 
-It's one file, but cleanly sectioned. Key landmarks (search for these):
+The game's script is one run of sections, each opened by a `// ---------- … ----------` landmark (search for these). The first sections now live in classic script files in `js/`, which `index.html` loads **in this order** before its own inline `<script>`; the inline script holds everything from `// ---------- Grid ----------` on (TUN-7 moves the rest out):
+
+| File | Sections |
+|---|---|
+| `js/palettes.js` | Music model: palettes (`PALETTES`, `setPalette`, `MIDI`/`NAMES`, `COLS`/`ROWS`, `grid`) · Tools (`widthBand`, `stableMidis`, `pairMeta`, `toolMeta`) with their real note/interval/chord names (`chordName`, `intervalName`) · the toolbox state |
+| `js/audio.js` | The audio engine (`initAudio`, the mixer buses, `applyMix`) · sampled voices (`SAMPLED`, `loadSamples`, `sampleVoice`, `ringCeiling`) · `voice`, `playRow` |
+| `js/band.js` | Jam backing (`bTone`/`kick`/`snare`/`hat`, `GROOVES`, `grooveFits`, `normalizeGroove`) · the band as data (`groovePlan`, `jamStep`) |
+| `js/drums.js` | The drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `drumClick`, `placeDrums`) |
+| `js/doc-model.js` | The document model (`doc`, `freshDoc`, ticks and note IDs) · meter (`METERS`, `pulsesIn`, `meterLayout`, the beat tint) · the projection (`projectTracks`, `reproject`) · the undo journal (`tx`, `snapState`, `restoreSnapshot`, undo/redo) · model operations and time surgery · autosave |
+
+Every file is a classic script, so its top-level names are globals shared with every other script. **While loading, a script may use only what is already initialized and the functions declared in it or an earlier script; code that runs later, once everything has loaded, may call into any of them.** A load-time call ahead into a later file throws — in the browser and in the test harness alike (`tests/README.md`).
+
+Key landmarks:
 
 **Data model**
-- `PALETTES` / `setPalette()` — the per-package pitch sets. `pentatonic` (10 rows: C D E G A) is the default; `diatonic` (14 rows: adds F & B) is the widened world from the `two-new-colors` milestone. A package declares `palette:"diatonic"`; `setPalette` swaps the active `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid on entry. The physics reason in **real semitones**, so they work for any palette unchanged (see `DESIGN.md` §11 "Palette-system architecture").
-- `MIDI` / `NAMES` — the **active** palette's pitch set (reassigned by `setPalette`). The player thinks in even "ladder steps" even though the rungs are uneven in semitones (see `DESIGN.md` §7).
+- `PALETTES` / `setPalette()` (`js/palettes.js`) — the per-package pitch sets. `pentatonic` (10 rows: C D E G A) is the default; `diatonic` (14 rows: adds F & B) is the widened world from the `two-new-colors` milestone. A package declares `palette:"diatonic"`; `setPalette` swaps the active `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid on entry. The physics reason in **real semitones**, so they work for any palette unchanged (see `DESIGN.md` §11 "Palette-system architecture").
+- `MIDI` / `NAMES` (`js/palettes.js`) — the **active** palette's pitch set (reassigned by `setPalette`). The player thinks in even "ladder steps" even though the rungs are uneven in semitones (see `DESIGN.md` §7).
 - `PACKAGES = { <id>: { id, name, region, requires:[…], palette?, desc, levels:[…] } }` — the flat catalog keyed by **stable slug IDs**; dependencies form a DAG via `requires`. An optional `palette` widens that package's pitch set. `PACKAGES.studio` is a hidden non-DAG node (the free-play Studio).
 - A **level** is a data object: `{ name, intro, teach?, goals:[{id,label,chk,play}], hint, setup, power, … }`. Multi-step levels use `steps:[…]`. Levels can carry flags like `contour`, `beatGuide`, `phrase`, `density`, `colors:[…]` (staged F/B reveal), `rhythm`, `drums`, `mood` (sun/moon wash), `famous` (capstone reward), `unlock:[…]`, `loop`.
 - `REGIONS = { <id>: { name, friend:{name,stages} } }` — per-region companion creatures. `REGION_MAP` — the ordered player-facing region list (id, emoji, name, blurb, brand color) that drives the world map.
@@ -76,8 +89,8 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - Goals are **action-based**: `chk(state, ev)` reads what the player *did* (`ev` flags) or the grid state, never accidental state. A `play:true` goal only completes after all other goals are met **and** Play was pressed.
 
 **Audio** (Web Audio)
-- `initAudio()` builds three mixer buses under `master`: `voiceBus` (melody), `jamBus` (backing band), `drumBus` (drum sequencer). `applyMix()` applies the player's 🎚️ Mixer settings.
-- `voice(instr,freq,t)` plays one melody note. One synth voice remains player-facing (music box — the default & brand sound) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba + vibraphone + glockenspiel = VCSL, CC0; kalimba + guitar = FreePats, CC0; harp = Etherealwinds Harp II CE, CC-BY); the glockenspiel is a transposing voice (`up:24` — sounds 2 octaves above the grid, like real orchestration). Samples ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading (synth marimba backs marimba; synth pluck backs guitar). The "warm pad" and "pluck" voices were retired (old saves fall back via `setVoice`: pad → music box, pluck → guitar).
+- `initAudio()` (`js/audio.js`) builds three mixer buses under `master`: `voiceBus` (melody), `jamBus` (backing band), `drumBus` (drum sequencer). `applyMix()` applies the player's 🎚️ Mixer settings.
+- `voice(instr,freq,t)` (`js/audio.js`) plays one melody note. One synth voice remains player-facing (music box — the default & brand sound) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba + vibraphone + glockenspiel = VCSL, CC0; kalimba + guitar = FreePats, CC0; harp = Etherealwinds Harp II CE, CC-BY); the glockenspiel is a transposing voice (`up:24` — sounds 2 octaves above the grid, like real orchestration). Samples ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading (synth marimba backs marimba; synth pluck backs guitar). The "warm pad" and "pluck" voices were retired (old saves fall back via `setVoice`: pad → music box, pluck → guitar).
 - **Gradual instrument reveal**: `REGION_INSTR` maps each region to its instrument (Studio → guitar); on first entry `applyRegionInstrument()` unlocks it with a discovery card (`INSTR_INFO` — each `intro:` line is narrated, so re-run `gen-voice.mjs` after editing) and every package entry defaults the voice to its region's instrument. Unlocks persist in `progress.instruments` (`ensureInstruments()` migrates older saves from visited regions). Locked voices are *hidden* in the picker but still settable by code, so shared songs always play with their author's voice.
 - Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
 
@@ -85,8 +98,8 @@ It's one file, but cleanly sectioned. Key landmarks (search for these):
 - **Quests** (declarative, data-not-code — a quest is JSON, never a `chk` closure, so a player-facing Questmaker stays reachable): `loadQuestCatalog(json, sourceKind)` → the plain-JSON gate + closed v1 grammar + `questCrossRefs()` + `questSemantics()`; the closed registries every id resolves against — `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`, `QUEST_CAPABILITIES`, `QUEST_CONTROLS`, `QUEST_TOOLS`, `QUEST_TRANSITIONS`, `QUEST_COMPLETION_ACTIONS`, `QUEST_PAYOFFS`, `QUEST_THEMES`, `QUEST_GROOVES`; `songEvidence()` + `questWorkspaceMismatch()` → `evaluateQuest()`; `reduceQuestRun()` / `transactQuestRun()`; `enterQuestRun()` / `performQuestAction()`; `questShellModel()` + `renderQuestShell()` (the `#questCard` panel); `questEligibility()` / `surfaceQuest()` / `renderQuestHome()` (the one calm card below the map). See `QUESTS.md`.
 - **Contour** (melody shape): `contourSeqFromGrid()` (pure) with `contourSeq()` as its live-grid wrapper, `isRising/isFalling/isHovering/isArch/isTwoArcs/isJourney`, `extrema()` (prominence-based peak counting), the `#contourGhost` SVG target-path overlay.
 - **Motion**: `motionsOf()` + `isStepwise/isOneJump/isGentle/isBold/isStaircase/isLandSoftly` (steps vs. leaps).
-- **Pulse/rhythm**: the drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `placeDrums`), `gridNotesOnBeats()`, `setBeatGuide()`, density detectors (`drumHits/isBreathing/isSyncopated`) + the `#densityMeter`.
-- **Harmony**: `widthBand()` pair personalities (close/bright/open), `stableMidis` towers, tension (`craftedTense/craftedClash/craftedTritone/tensionThenRest`), major/minor (`countBrightChords/countWistfulChords`), and the **chord-progression machinery** (`CHORDS` I/IV/V/vi grid shapes, `placeProg`, `chordSyms`, `hasChordRun`, `startsOnDegree/endsOnDegree`, `leadingToneResolves`) behind the Weather of Wanting packages.
+- **Pulse/rhythm**: the drum sequencer (`DRUMS`, `drumG`, `buildDrums`, `placeDrums` — `js/drums.js`), `gridNotesOnBeats()`, `setBeatGuide()`, density detectors (`drumHits/isBreathing/isSyncopated`) + the `#densityMeter`.
+- **Harmony**: `widthBand()` pair personalities (close/bright/open) and `stableMidis` towers (both `js/palettes.js`), tension (`craftedTense/craftedClash/craftedTritone/tensionThenRest`), major/minor (`countBrightChords/countWistfulChords`), and the **chord-progression machinery** (`CHORDS` I/IV/V/vi grid shapes, `placeProg`, `chordSyms`, `hasChordRun`, `startsOnDegree/endsOnDegree`, `leadingToneResolves`) behind the Weather of Wanting packages.
 - **Phrase**: the call/answer timeline split (`setPhraseGuide`, `answerEndsHome/answerEndsOpen`), cadence detectors (`endPC/approachPC`, `fullArrival/halfClose`).
 - **Compare pickers** (the recognition pattern): `showChoices` (melodies), `showPairChoices` (intervals/chords), `showDrumChoices`/`showPatternChoices` (rhythm), `showProgChoices` (progressions). All require **auditioning all options** before a pick counts.
 - **Crafting**: `fuse()` (combine seeds → interval/chord tools), `stampTool()`, the 🎒 Toolbox — **per-package** (each package has its own bag; don't reintroduce a global one).
@@ -182,15 +195,15 @@ See `backend/README.md` for first-time setup. Remaining pre-launch TODO: AWS bud
 
 ## Deployment
 
-**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `voice/` + `samples/` into the publish dir). Domain: **https://tunegarden.game** (site name `music-garden.netlify.app` — infra IDs keep the old working name; branding is Tune Garden).
+**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Domain: **https://tunegarden.game** (site name `music-garden.netlify.app` — infra IDs keep the old working name; branding is Tune Garden).
 
-⚠️ If you add a runtime asset folder, **add it to the `netlify.toml` build command** or it silently won't exist in production (the game's fallbacks can mask this — e.g. missing samples just means the synth voice plays).
+⚠️ If you add a runtime asset folder, **add it to the `netlify.toml` build command** or it silently won't exist in production (the game's fallbacks can mask this — e.g. missing samples just means the synth voice plays). Code is not silent: the catch-all rewrite serves `index.html` in place of a missing `js/` file, the browser cannot parse it, and the game never starts. The game also expects to live at the site root — at a nested path like `/a/` its relative `js/` URLs miss in the same way.
 
 ---
 
 ## Dev workflow we use
 
-1. Edit `index.html`.
+1. Edit `index.html`, or the `js/` file that holds the section you're changing.
 2. Syntax-check the game's scripts (command above).
 3. Verify behavior in a browser / the preview tool (no automated tests yet; we test via runtime inspection). **Also test the file:// path** for anything that loads assets.
 4. If narration text changed: `node tools/gen-voice.mjs`. If samples changed: `node tools/build-samples.mjs`.

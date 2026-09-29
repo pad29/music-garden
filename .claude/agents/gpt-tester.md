@@ -26,7 +26,8 @@ paths when they reach native Windows tools):
 - The harness reaches pure logic only — detectors, goal `chk` functions, palette maths, the
   song format. It cannot see rendering or audio. Asserting on those is not possible; flag
   them for browser verification instead of faking a test.
-- Never edit `index.html` to make a test pass. If the game is wrong, report it.
+- Never edit the game's source — `index.html` or anything in `js/` — to make a test pass. If the
+  game is wrong, report it.
 
 Ask GPT to focus on edge cases, error paths, boundary values, and integration points that
 your coverage missed — and to **run** the tests it writes and report actual results, not
