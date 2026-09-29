@@ -3,7 +3,7 @@
 // saveProgress() used to snapshot the global controls AND advance the package AND serialise, in one
 // call. The snapshot was the bug: a control's live value is often something the game set — a package
 // entry default, a groove's tempo, the Studio's unconditional guitar — and any later package save
-// wrote it into progress.settings as though the player had chosen it. `tempoOnLoan` in index.html is
+// wrote it into progress.settings as though the player had chosen it. `tempoOnLoan` in js/playback.js is
 // a scar from that exact failure.
 //
 // These tests pin the property that replaces it: only saveUserSettings() may read a live control, and

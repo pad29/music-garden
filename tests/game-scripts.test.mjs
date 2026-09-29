@@ -1,5 +1,5 @@
 // The script loader itself: tests/helpers/game-scripts.mjs and the way loadGame() runs its list.
-// The real page is only one arrangement (since TUN-6: js/ files, then the inline script), so these
+// The real page is only one arrangement (since TUN-7: js/ files only, no inline script), so these
 // build tiny throwaway pages in a temp directory to reach the rest: several classic scripts, in
 // document order, in one context, including the orders and failures the game itself never has.
 import { test } from "node:test";

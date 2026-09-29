@@ -77,7 +77,7 @@ UserPoolClientId  xxxxxxxxxxxxxxxxxxxxxxxxxx
 ApiUrl            https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com
 ```
 
-Those four values are *public* identifiers (the kind that ship inside any web app), safe to commit — unlike your IAM secret key, which stays on your machine. They're already wired into the client (the `AUTH` object in `index.html`); if you ever recreate the stack, update `AUTH` with the new outputs.
+Those four values are *public* identifiers (the kind that ship inside any web app), safe to commit — unlike your IAM secret key, which stays on your machine. They're already wired into the client (the `AUTH` object in `js/cloud.js`); if you ever recreate the stack, update `AUTH` with the new outputs.
 
 ---
 

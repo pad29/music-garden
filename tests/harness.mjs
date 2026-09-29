@@ -1,7 +1,7 @@
 // Test harness for Tune Garden.
 //
-// The game is index.html's scripts — its inline <script> and any local <script src> files — and
-// they do a lot of top-level DOM wiring on load. So a test can't import them — the harness instead
+// The game is index.html's scripts — the local <script src> files in js/ (and any inline <script>,
+// though since TUN-7 there is none) — and they do a lot of top-level DOM wiring on load. So a test can't import them — the harness instead
 // runs them, in document order, inside one vm context with stubbed browser globals, then hands back
 // every top-level binding they declared. tests/helpers/game-scripts.mjs finds the scripts.
 //

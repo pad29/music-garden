@@ -130,21 +130,16 @@ registerHooks({load(url, context, nextLoad) {
 
 test("TUN-5 audit: questsetup G faults are caught when their game source lives in an external file", t => {
   const root = checkout(t, true);
-  // Relocate the page's first inline script, unchanged, into an external file. (Once TUN-6/7 have
-  // moved the G quest code out of index.html already, this still holds — it just proves less.)
+  // Until TUN-7 this relocated the page's inline script into js/game.js first. Since TUN-7 every game
+  // script IS an external js/ file, so the real page is the arrangement under test: copy it and its
+  // scripts unchanged, run the G audit there, and require that the audit left every one of them alone.
   const { html, scripts } = gameScripts(REPO);
-  const inline = scripts.find(s => s.inline);
-  const opening = html.indexOf("<script>");
-  const closing = html.indexOf("</script>", opening);
-  assert.ok(inline && opening >= 0 && closing > opening);
-  assert.strictEqual(html.slice(opening + 8, closing), inline.src);
-  put(root, "js/game.js", inline.src);
-  // The page's own external scripts (js/palettes.js … since TUN-6) come along unchanged, or the
-  // temporary checkout could not load the game at all.
-  for (const s of scripts) if (!s.inline) put(root, s.name, s.src);
-  put(root, "index.html", html.slice(0, opening) + '<script src="js/game.js"></script>' + html.slice(closing + 9));
+  assert.deepStrictEqual(scripts.filter(s => s.inline).map(s => s.name), [], "the page has no inline script left");
+  for (const s of scripts) put(root, s.name, s.src);
+  put(root, "index.html", html);
+  const before = new Map(["index.html", ...scripts.map(s => s.name)].map(n => [n, readFileSync(join(root, n), "utf8")]));
   const result = child(root, { args: ["tests/questsetup-mutations.mjs", "--g-only"], timeout: 120000 });
   assert.strictEqual(result.status, 0, result.output);
   assert.match(result.stdout, /\n[1-9]\d* mutations caught across [1-9]\d* green tests\. No source files changed\./);
-  assert.strictEqual(readFileSync(join(root, "js/game.js"), "utf8"), inline.src);
+  for (const [name, text] of before) assert.strictEqual(readFileSync(join(root, name), "utf8"), text, name);
 });

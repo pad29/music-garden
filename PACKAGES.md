@@ -1,8 +1,8 @@
 # Tune Garden — Package Catalog
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
-*This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `index.html`. Keep it out of code.*
-Last updated: 2026-08-13 — **20 packages are BUILT** (every Wave A–D package; **Wave A, Pulse Woods, Stone Chorus Canyon and Wave C are COMPLETE**); statuses and as-built prereqs marked per package below. `index.html`'s `PACKAGES` object is the runtime truth; `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+*This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `js/packages.js`. Keep it out of code.*
+Last updated: 2026-08-13 — **20 packages are BUILT** (every Wave A–D package; **Wave A, Pulse Woods, Stone Chorus Canyon and Wave C are COMPLETE**); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -144,7 +144,7 @@ Tag every rhythm-touching package with the tier it needs.
 | 9 | **Story Mountain** (future) | Story | diatonic (+ section system) | not started |
 | 10 | **Atlas of Styles** (future) | Travel | varies (reuses groove system) | not started |
 
-> The player-facing map is now a **hand-drawn continent** (one land per region, one territory per package — DESIGN §10); adding a package re-splits its region's land, adding a region adds a land. Region ids/names in code: `REGION_MAP` in `index.html`.
+> The player-facing map is now a **hand-drawn continent** (one land per region, one territory per package — DESIGN §10); adding a package re-splits its region's land, adding a region adds a land. Region ids/names in code: `REGION_MAP` in `js/level-engine.js`.
 
 ---
 

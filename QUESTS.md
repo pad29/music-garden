@@ -5,7 +5,8 @@
 > **Kind 1 ships, in two quests. Kinds 2–9 are still intent.** *The Firefly Crossing* and *The
 > Waking Woods* are playable from the world map: the sealed catalog, the analyzer and descriptor
 > registries, the semantic validator, the evaluator, the QuestRun, the phase controller, the shell
-> and the Home card all exist in `index.html`. Everything below about the later kinds states intent,
+> and the Home card all exist in the game's `js/` files (`js/completion.js` and `js/quest-*.js`; the
+> map is `README.md` § How the game's code is organized). Everything below about the later kinds states intent,
 > the way `EDITOR-DESIGN.md` does; `README.md` § Current status remains the record of what ships.
 >
 > The engine was built in six steps (D1–D6) against this document, each one design-reviewed,
@@ -214,8 +215,8 @@ path feels more like the journey you wanted?"* — whose answer does not affect 
 #### Phase implementation
 
 Quest phases must **reuse or extract the existing general `steps:` behaviour** — indexed stages,
-per-phase intro, phase counter, generic advancement (`curStage()`, `index.html:4783`; counter at
-`:4891`; advancement in `stageComplete()`, `:4953`). They must not be Firefly-specific screen
+per-phase intro, phase counter, generic advancement (`curStage()` in `js/play-scope.js`; the counter
+in `renderStage()` and advancement in `stageComplete()`, both `js/level-engine.js`). They must not be Firefly-specific screen
 branches. Unlike package `goals[]`, quest phases consume declarative challenge routes and preserve
 version snapshots in the QuestRun.
 
@@ -458,7 +459,7 @@ behaviour.
 
 **Now:** versioned QuestDefinition schema; pure validator and evaluator; stable analyzer and
 descriptor registries; declarative route and phase support; QuestRun persistence through the
-existing `Store` seam (`index.html:5560`); JSON export/import tests even without an import UI;
+existing `Store` seam (`js/persistence.js`); JSON export/import tests even without an import UI;
 bounded whitelisted primitives; a generic quest renderer that knows no individual quest IDs;
 official quests authored only through that schema.
 
@@ -512,8 +513,8 @@ into the tray; copying must never establish shared mutable inventory.
 The first quest needs no crafted stamps but must use this workspace scope, so later cross-package
 quests need no architectural rewrite.
 
-**Reason:** The shipped toolbox is an owner-keyed scope (`toolboxOwner`, `loadScopeToolbox` at
-`index.html:5577`), not a technical wall — Studio already proves a non-package scope exists. A quest
+**Reason:** The shipped toolbox is an owner-keyed scope (`toolboxOwner` in `js/palettes.js`,
+`loadScopeToolbox` in `js/persistence.js`), not a technical wall — Studio already proves a non-package scope exists. A quest
 becomes another scope key.
 
 **Verification:** Fresh-VM tests snapshot two package bags, open and mutate a quest tray, finish and
@@ -771,7 +772,7 @@ narrative costs are justified.
 - `AGENTS.md` § Where to find things — add a pointer to this file.
 
 **Dead code.** Remove the root `toolbox:[]` property from **both** progress-default literals:
-`index.html:5563` and the `?reset` path at `index.html:6130`. Nothing reads it; live tools are at
+the `progress` default (now in `js/persistence.js`) and the `?reset` path (now in `js/boot.js`). Nothing reads it; live tools are at
 `progress.packages[id].toolbox`. Therefore: no progress-version bump or data transformation; loading
 an old profile deletes the dead root property from the in-memory object; the next normal save drops
 it from storage and cloud state; cleanup must not force a cloud write merely to remove it; all

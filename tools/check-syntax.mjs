@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Syntax-check every script the game loads — index.html's inline <script> and each local
-// <script src> file — as a classic script, without running any of it. Run after every edit:
+// Syntax-check every script the game loads — each local <script src> file index.html names (and any
+// inline <script>, though since TUN-7 there is none) — as a classic script, without running any of
+// it. Run after every edit:
 //
 //   node tools/check-syntax.mjs
 //

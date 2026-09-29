@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Pre-bake the read-aloud narration clips with Amazon Polly.
 //
-// For every level STORY (the `intro:"..."` strings in the game's scripts — index.html's inline
-// script and every local <script src> file it loads) this:
+// For every level STORY (the `intro:"..."` strings in the game's scripts — every local
+// <script src> file index.html loads) this:
 //   1. normalizes the text the same way the client does (toSpeech: arrows->"to", ▶->"Play", chord numerals->words, strip emoji),
-//   2. keys it by voiceHash (MUST match index.html so the client finds the file),
+//   2. keys it by voiceHash (MUST match js/play-scope.js so the client finds the file),
 //   3. synthesizes voice/<key>.mp3 via the AWS CLI — skipping any clip that already exists,
 //   4. prunes orphaned clips (voice/*.mp3 whose story no longer exists).
 //
@@ -33,7 +33,7 @@ const OUT_DIR  = path.join(ROOT, "voice");
 const argv = new Set(process.argv.slice(2));
 const DRY = argv.has("--dry"), FORCE = argv.has("--force"), SAMPLES = argv.has("--samples");
 
-// ---- keep these IDENTICAL to index.html (toSpeech + voiceHash) ----
+// ---- keep these IDENTICAL to js/play-scope.js (toSpeech + voiceHash) ----
 const SPEAK_CHORD = {I:"the one chord",II:"the two chord",III:"the three chord",IV:"the four chord",V:"the five chord",VI:"the six chord",VII:"the seven chord"};
 const toSpeech = s => (s||"")
   .replace(/\s*(?:->|→|➜|➡|⟶)\s*/g," to ")

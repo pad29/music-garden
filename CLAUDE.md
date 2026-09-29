@@ -83,7 +83,8 @@ integration links the PR and closes the ticket on merge. Ad-hoc work without a t
 `claude/<slug>`. A session may commit, push its own branch and open PRs. **`main` is the deploy branch**:
 only the owner merges — or a session does, when the owner says so in that session. Merge when the
 owner says the work is done, not when the code compiles. Before a PR is finished, merge `origin/main`
-into it and re-run the suite: parallel tickets collide in `index.html`.
+into it and re-run the suite: parallel tickets still collide in the `js/` files they share —
+`js/packages.js` above all.
 
 ## Docs
 
