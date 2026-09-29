@@ -47,9 +47,16 @@ game script that failed; `js/boot.js` (the last) asks it before doing anything. 
 pins the order, runs the gate's logic against `EventTarget` stand-ins, checks that every kind of
 input listener wired anywhere in the game is gated (a new one fails the test until it is listed or
 declared not-input), and boots the real game through the harness with a failure recorded. The harness
-stops at a load error rather than carrying on the way a browser does, so the gate's real effect —
-swallowed clicks, a broken load that never saves — was checked in a browser (see
-`reviews/TUN-7-rest-of-script.md`).
+itself stops at a load error, so `load-gate-continuation-review.test.mjs` (GPT's test pass) wraps it in
+a loader that carries on the way a browser does: a missing, HTML-served or throwing file at the start,
+middle or end of the list must stop boot with nothing written to storage and input still held; it
+also fires the automatic callbacks (resize, scroll, ResizeObserver, voiceschanged, timers, promise
+jobs) between files, walks the URL and stored-profile branches, and checks every input listener that
+actually registers, which catches computed event names the static scan cannot. One exception is
+accepted and pinned there: if `js/load-gate.js` itself never runs, input is not held, but boot still
+refuses before any write. `load-gate-url-review.test.mjs` pins which errors count as the game's own.
+The gate's real effect in a browser — swallowed clicks, a broken load that never saves — was checked
+on the deploy preview (see `reviews/TUN-7-rest-of-script.md`).
 
 That makes the **pure logic** testable — and that's most of the interesting code:
 
