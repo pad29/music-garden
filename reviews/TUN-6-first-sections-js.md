@@ -101,6 +101,11 @@ such a script isn't copied.
 - **Found, not caused:** the `?dev` package list's "Studio" throws `setPlayScope: not a package: studio`
   on production too → **TUN-69**.
 
-**Not verified:** `file://` and a local http server — this unattended scheduled run may not start a dev
-server, and the browser pane refused `file://` (as it did for TUN-5); Firefox and Safari; the phone;
-anything by ear.
+**Not verified by me:** `file://` and a local http server — this unattended scheduled run may not start a
+dev server, and the browser pane refused `file://` (as it did for TUN-5); Firefox and Safari; the phone;
+anything by ear. The owner's playtest below covered `file://`, desktop and the phone.
+
+## Owner's review
+
+The owner went through the playtest checklist on 2026-09-28 — *"everything worked fine on both file://,
+desktop, and phone."* No corrections.
