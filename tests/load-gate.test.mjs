@@ -21,7 +21,8 @@ const BASE = "https://tunegarden.test/js/";
 function gate({ href = "https://tunegarden.test/index.html?dev#s=abc" } = {}) {
   const window = new EventTarget(), document = new EventTarget();
   document.currentScript = null;
-  const ctx = vm.createContext({ window, document, location: { href } });
+  document.baseURI = href;                  // no <base> element: the base URL is the page's own address
+  const ctx = vm.createContext({ window, document });
   vm.runInContext(GATE, ctx, { filename: "js/load-gate.js" });
   const api = vm.runInContext(`({ LOAD_GATE_EVENTS, isGameScriptError, gameScriptsLoaded, openLoadGate,
     get failed(){ return gameScriptFailed; }, get open(){ return loadGateOpen; } })`, ctx);
@@ -72,7 +73,8 @@ test("load gate: input is swallowed before the game's own handlers until the gat
 
 // Mutations: count every error (the Cognito CDN's, an extension's, a sample pack's); ignore document.currentScript
 // (a throw on file:// arrives with its filename hidden); ignore a <script> element's own load error; compare
-// against the site root instead of the page's folder. Each fails here.
+// against the site root instead of the page's folder; take the folder from location.href rather than the
+// document's base URL. Each fails here.
 test("load gate: only an error from one of the game's own js/ files counts as a failed load", () => {
   const g = gate();
   assert.strictEqual(g.isGameScriptError({ target: { tagName: "SCRIPT", src: BASE + "grid.js" } }), true, "a file that never arrived");
@@ -90,6 +92,10 @@ test("load gate: only an error from one of the game's own js/ files counts as a 
   assert.strictEqual(nested.isGameScriptError({ target: { tagName: "SCRIPT", src: BASE + "grid.js" } }), false, "not this page's js/");
   const local = gate({ href: "file:///C:/Claude/MusicTheory/index.html" });
   assert.strictEqual(local.isGameScriptError({ target: { tagName: "SCRIPT", src: "file:///C:/Claude/MusicTheory/js/boot.js" } }), true, "file://");
+  // A <base href> (or a srcdoc document) moves where "js/…" resolves, away from the page's own address.
+  const based = gate({ href: "https://assets.tunegarden.test/app/" });
+  assert.strictEqual(based.isGameScriptError({ target: { tagName: "SCRIPT", src: "https://assets.tunegarden.test/app/js/grid.js" } }), true, "the base URL's js/");
+  assert.strictEqual(based.isGameScriptError({ target: { tagName: "SCRIPT", src: BASE + "grid.js" } }), false, "not the page address's js/");
 });
 
 // Mutations: open the gate on DOMContentLoaded whatever the flag says; open it before boot has asked; keep

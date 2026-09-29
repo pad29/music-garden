@@ -20,9 +20,10 @@ function loadGateSwallow(e){ e.stopImmediatePropagation(); }
 for(const t of LOAD_GATE_EVENTS) window.addEventListener(t, loadGateSwallow, {capture:true, passive:true});
 // Which script an error came from: a <script> that failed to load is the event's target; a script that threw
 // while running is still document.currentScript while its error is reported, which also covers file://, where
-// an error from another file has its details (and its filename) hidden.
+// an error from another file has its details (and its filename) hidden. The page's js/ folder is taken from
+// the document's base URL, which is what the <script src> paths themselves resolve against.
 function isGameScriptError(e){
-  const base=location.href.replace(/[?#].*$/,"").replace(/[^/]*$/,"")+"js/";
+  const base=document.baseURI.replace(/[?#].*$/,"").replace(/[^/]*$/,"")+"js/";
   const t=e.target, cs=document.currentScript;
   const src=(t && t.tagName==="SCRIPT") ? t.src : ((cs && cs.src) || e.filename || "");
   return typeof src==="string" && src.startsWith(base); }
