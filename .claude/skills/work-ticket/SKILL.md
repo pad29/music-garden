@@ -76,8 +76,8 @@ work continues on the same branch.
 
 1. Update the docs, per `CLAUDE.md` § Docs.
 2. **Bring the branch up to date:** merge `origin/main` into it, resolve conflicts, and re-run the syntax
-   check and the whole suite. Parallel tickets mostly collide in `index.html`, so resolve those by reading
-   both sides, never by picking one.
+   check and the whole suite. Parallel tickets mostly collide in the `js/` files they share (`js/packages.js`
+   above all, since every new level lands there), so resolve those by reading both sides, never by picking one.
 3. Commit in the repo's style (a short imperative subject that says what changes for the player, a body
    that says why), push, and open the PR against `main`, or mark the draft ready. Put the ticket ID in the
    title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*.

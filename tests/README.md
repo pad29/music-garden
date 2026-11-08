@@ -9,10 +9,10 @@ Nothing to install.
 
 ## What this can and can't test
 
-The game is `index.html`'s scripts — the classic `<script src>` files in `js/` (since TUN-6), then
-its inline `<script>` (which TUN-7 empties) — and they do a lot of DOM wiring the moment they load.
-`harness.mjs` runs them inside a `node:vm` context with stubbed browser globals, then hands back
-every top-level binding they declared (~690 of them).
+The game is the classic `<script src>` files in `js/` that `index.html` loads — since TUN-7 the page
+holds no script of its own — and they do a lot of DOM wiring the moment they load. `harness.mjs`
+runs them inside a `node:vm` context with stubbed browser globals, then hands back every top-level
+binding they declared (about a thousand of them).
 
 **The script list.** `helpers/game-scripts.mjs` is the one reader of the page: `gameScripts()` returns
 every local `<script src>` and inline `<script>` in document order (CDN tags skipped, CRLF
@@ -39,6 +39,24 @@ harness's stubs — lexical reads, branches that don't run and browser callbacks
 `split-contract-review.test.mjs` pins that every `js/` file is loaded exactly once, and that the
 goldens' wrappers still intercept `playRow`, `voice`, `jamStep` and `bookColumn` (turning one into a
 `const` would silently hide it from them).
+
+**The load gate (TUN-7).** A browser runs other work between two classic scripts — including player
+input — and carries on past a script that failed, neither of which one inline script allowed.
+`js/load-gate.js` (the first game script) swallows input until the page has loaded and records a
+game script that failed; `js/boot.js` (the last) asks it before doing anything. `load-gate.test.mjs`
+pins the order, runs the gate's logic against `EventTarget` stand-ins, checks that every kind of
+input listener wired anywhere in the game is gated (a new one fails the test until it is listed or
+declared not-input), and boots the real game through the harness with a failure recorded. The harness
+itself stops at a load error, so `load-gate-continuation-review.test.mjs` (GPT's test pass) wraps it in
+a loader that carries on the way a browser does: a missing, HTML-served or throwing file at the start,
+middle or end of the list must stop boot with nothing written to storage and input still held; it
+also fires the automatic callbacks (resize, scroll, ResizeObserver, voiceschanged, timers, promise
+jobs) between files, walks the URL and stored-profile branches, and checks every input listener that
+actually registers, which catches computed event names the static scan cannot. One exception is
+accepted and pinned there: if `js/load-gate.js` itself never runs, input is not held, but boot still
+refuses before any write. `load-gate-url-review.test.mjs` pins which errors count as the game's own.
+The gate's real effect in a browser — swallowed clicks, a broken load that never saves — was checked
+on the deploy preview (see `reviews/TUN-7-rest-of-script.md`).
 
 That makes the **pure logic** testable — and that's most of the interesting code:
 
@@ -227,7 +245,7 @@ mutant syntax are checked before the sweep starts.
 The harness exposes `__script`, every script it compiled joined in document order (including
 in-memory audit mutations), and `__scripts`, the same as a per-file `{ name, src }` list. `__script`
 is for slicing and searching only. `questcast.test.mjs` slices it from `const QUEST_DESCRIPTOR_CAPABILITY=`
-to `// GROOVES is an array` (both still in the inline script after TUN-6), so a split that puts those
+to `// GROOVES is an array` (both in `js/quest-engine.js` since TUN-7), so a change that puts those
 two in different files, or reorders them, has to move that test to a per-file lookup.
 The collision test executes the actual descriptor-index initializer with synthetic primitives in an
 isolated VM. It does not copy the indexing algorithm or change the production registry. Finale tests

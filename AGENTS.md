@@ -1,8 +1,9 @@
 # AGENTS.md — Tune Garden
 
 A browser game that teaches music theory through play ("Minecraft for music") — aimed at
-kids 8+ but meant to appeal broadly. The whole app is `index.html` plus the classic scripts
-in `js/` that it loads (vanilla JS + Web Audio, no dependencies, no framework, no build step),
+kids 8+ but meant to appeal broadly. The whole app is `index.html` (markup and styles) plus the
+classic scripts in `js/` that it loads, which hold all of its code (vanilla JS + Web Audio, no
+dependencies, no framework, no build step),
 plus two runtime asset folders it loads at startup: `voice/` (narration mp3s) and `samples/`
 (instrument packs). Live at https://tunegarden.game — every push to `main` deploys.
 
@@ -10,8 +11,8 @@ plus two runtime asset folders it loads at startup: `voice/` (narration mp3s) an
 
 There is **no build step** — `index.html` and `js/` are the artifact.
 
-Syntax-check every script the game loads — the inline one and any local `<script src>` file (run
-after every edit to the game):
+Syntax-check every script the game loads — each local `<script src>` file (run after every edit
+to the game):
 
 ```bash
 node tools/check-syntax.mjs
@@ -20,7 +21,8 @@ node tools/check-syntax.mjs
 The game's scripts are **synchronous classic scripts, never ES modules** (`file://`). Every tool reads
 them through `tests/helpers/game-scripts.mjs`, in document order. Initialization may use only
 already-initialized bindings and functions declared in the current or an earlier script; deferred
-calls may use later scripts once loaded.
+calls may use later scripts once loaded. `js/load-gate.js` stays the first game script and
+`js/boot.js` the last (`README.md` § How the game's code is organized says why).
 
 Run the tests (zero dependencies, Node's built-in runner — nothing to install):
 
@@ -68,8 +70,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 
 ## Where to find things
 
-- What the game is, how its code is sectioned across `js/` and `index.html` (data model / engine /
-  audio / detectors / progression), repo map, conventions → `README.md` — **read this first, always**
+- What the game is, which `js/` file holds which section of its code (a file → sections map), repo
+  map, conventions → `README.md` — **read this first, always**
 - Product requirements and pillars → `REQUIREMENTS.md`
 - Vision, the "musical physics" engine, dated feature log, palette architecture → `DESIGN.md`
 - Package catalog + dependency DAG, spec template, shared vocabularies → `PACKAGES.md`
@@ -93,7 +95,7 @@ The design docs state intent alongside fact. Where they differ, this is the real
   duration/dynamics editing, multi-voice, and sections are **not built**. Today the grid is
   column-based, single-voice, fixed 8th-note steps.
 - `PACKAGES.md` catalogs packages that are specced but not yet built. Only the packages
-  listed as shipped in `README.md` § "Current status" exist in `index.html`.
+  listed as shipped in `README.md` § "Current status" exist in the game (`js/packages.js`).
 - `README.md` says "no test suite yet" and calls the syntax check "the smoke test we run after
   every edit". A real `tests/` suite now exists (see § Commands) — but it is young and covers
   only detectors, so the syntax check plus browser verification is still the floor, not the

@@ -62,8 +62,9 @@ Gotchas that have each cost a round:
   `window.<name>` really does intercept them. `stepDur` and `tick2time` are `const` arrows and are
   **not** on `window` — those you can only read the results of, never intercept.
 - That holds across the game's script files, and the recipe does not care which file a function is
-  in: since TUN-6 `playRow` and `voice` live in `js/audio.js`, `jamStep` in `js/band.js` and `DRUMS`
-  in `js/drums.js`, while `bookColumn` is still inline. A classic script puts every top-level
+  in: `playRow` and `voice` live in `js/audio.js`, `jamStep` in `js/band.js`, `DRUMS` in
+  `js/drums.js` (all since TUN-6) and `bookColumn` in `js/playback.js` (since TUN-7), the scheduler's
+  file, next to `step`, `tempoEl` and `start()`/`stop()`. A classic script puts every top-level
   function declaration on `window`, and calls between the files resolve through it. Turning one of
   them into a `const` would hide it from the wrappers without breaking anything else — keep them
   declarations.
