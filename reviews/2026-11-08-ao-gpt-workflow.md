@@ -100,6 +100,18 @@ review, isolated browser profiles, explicit pushes.
    on this one**: AO session `music-garden-3` builds it on `claude/ao-launch-json`. The owner, relayed by
    the orchestrator, 2026-11-09. This PR keeps `work-ticket` § 6's measured http-server route, which works
    either way.
+4. *Does GPT's test pass resume the design thread?* — **No: it starts fresh** (`ask.sh fresh
+   workspace-write`), with a prompt that hands GPT its own design and Claude's critique verbatim from the
+   reviews file. The owner, relayed by the orchestrator, 2026-11-09. The reason: this change's resumed
+   test pass read 1.78M of its ~2.2M GPT input tokens, and the ChatGPT 5-hour limit has become the
+   bottleneck. Applied to `CLAUDE.md`, `work-ticket` § 6, `gpt-design`, the tester and author briefs —
+   and, since nothing resumes the design thread for testing any more, `gpt-review` and the
+   design-reviewer brief go back to `fresh`, with `thread` only for a second round.
+5. *At what effort does AO's reviewer run?* — **High, not ultra.** The owner, relayed by the orchestrator,
+   2026-11-09; the orchestrator changed the project config to Codex, `gpt-6-astra`, effort high.
+   Sessions keep the reviewer settings they were spawned with, so this one passes `--effort high`
+   explicitly; `CLAUDE.md` § Calling GPT and `work-ticket` § 8 now say to pass changed settings when the
+   orchestrator reports them, and never settings of one's own.
 
 ## Test pass (Astra)
 
@@ -168,6 +180,11 @@ the reset it answered (2026-11-09): request it once more on the next head, same 
 runs did prove the documented poll: it caught the terminal run on its first poll, and its exit woke the
 worker. That poll, and the way to tell a limit failure from another, went into § 8 before any review
 had completed, so they cost no extra round.
+
+The third run, on `2216b63` at 15:04Z (`98e55751`, same reviewer, effort ultra), failed the same way.
+The § 8.5 check said why: the limit had run out again — *"try again at 2:04 PM"*, 20:04Z — though this
+session had made no ChatGPT call since the reset. Needs Input again, and a stop, as the orchestrator
+had asked. The owner then decided 4 and 5 above; the next request runs at effort high.
 
 ## Verification
 

@@ -47,8 +47,7 @@ Branch `claude/tun-12-sixteenth-grid` · PR #14
    listed, marked **open**.)
 
 ## Test pass (Astra)
-What it tested, what it found, which of its test files were kept or deleted and why — and whether it
-resumed the design thread or started fresh.
+What it tested, what it found, which of its test files were kept or deleted and why.
 
 ## PR review (AO: Codex, Astra)
 Round 1:

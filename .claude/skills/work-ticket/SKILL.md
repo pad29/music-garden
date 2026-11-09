@@ -84,8 +84,9 @@ Not for a resumed ticket: its design exists (§ 7, *Continuing*).
 
 - Read the whole ticket and its comments, then `AGENTS.md`, `CLAUDE.md`, everything its **Read first**
   names, and the `reviews/` files for the area.
-- Run the **`gpt-design`** skill with the ticket ID. GPT designs (`ask.sh fresh`: the thread § 6's test
-  pass resumes), you critique, and both go into `reviews/<ID>-<slug>.md`, separate and verbatim.
+- Run the **`gpt-design`** skill with the ticket ID. GPT designs (`ask.sh fresh`), you critique, and
+  both go into `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back
+  to GPT.
 - **Decisions already made** in the ticket bind GPT's design and your critique alike.
 - No code yet.
 
@@ -141,12 +142,12 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
   - Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
     deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
     `https://deploy-preview-82--tunegarden.netlify.app`).
-- **GPT's test pass** — the tester brief, `ask.sh thread workspace-write`. The prompt must stand alone
-  (`CLAUDE.md` § Calling GPT): point GPT at the reviews file and the ticket's *Done looks like*, say what
-  you tested and what you could not reach, and list **where the build departs from its design, and
-  why**, so it tests the departures as deliberate — and can object to them. If `ask.sh` reports that the
-  resume failed, GPT worked from the prompt alone: say so in the record. Review every file it adds before
-  keeping it. Fix what it found, and re-run everything the fixes touched.
+- **GPT's test pass** — the tester brief, `ask.sh fresh workspace-write`: a fresh thread, not the
+  design's (owner, 2026-11-09 — `CLAUDE.md` § Calling GPT). So the prompt hands GPT its own design and
+  your critique verbatim from the reviews file, with *Owner's decisions* and the ticket's *Done looks
+  like*; says what you tested and what you could not reach; and lists **where the build departs from
+  its design, and why**, so it tests the departures as deliberate — and can object to them. Review every
+  file it adds before keeping it. Fix what it found, and re-run everything the fixes touched.
 
 ## 7. Stop for the owner — Needs Input
 
@@ -188,7 +189,9 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
    format.
 4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after that
    — after a failed run too. If it answers that the head was already reviewed right after a push, wait a
-   few seconds and retry. Then wait for the verdict on the PR's **current head**. An approval posts no
+   few seconds and retry. The reviewer is the one the orchestrator configured (`CLAUDE.md` § Calling
+   GPT); if it tells you the settings changed since you were spawned, pass the new ones (`--model`,
+   `--effort`). Then wait for the verdict on the PR's **current head**. An approval posts no
    comment for you to notice, so run this as a background command; the harness wakes you when it exits,
    and it prints one line — `<status> <verdict> <run-id>` for the run on the current head, or `timeout`
    after about an hour:

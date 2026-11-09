@@ -34,9 +34,8 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 ```
 
 Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT). Use `thread` instead
-of `fresh` for a second round on the same task — and whenever this session's thread holds a
-ticket's design, because a `fresh` call replaces `.claude/gpt/.thread-id`. If the ChatGPT limit
-runs out, say so rather than silently switching models.
+of `fresh` only for a second round of the same review. If the ChatGPT limit runs out, say so
+rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

@@ -19,9 +19,9 @@ ticket, paste the ticket itself, verbatim.
 ```
 
 `fresh`, not `thread` — authored work should not be coloured by a running review
-conversation. In the default loop this call starts the thread that GPT's test pass resumes.
-Read-only is deliberate too: GPT returns text, *you* write any file. That keeps authorship
-traceable in the diff.
+conversation. In the default loop this call starts the thread that a revision of the design
+resumes; the test pass starts a thread of its own. Read-only is deliberate too: GPT returns
+text, *you* write any file. That keeps authorship traceable in the diff.
 
 **3. Return GPT's output verbatim, clearly marked as GPT's work.** Do not edit it, tighten
 it, or fold your own improvements into it — the owner wants to see what GPT actually

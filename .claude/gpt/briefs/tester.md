@@ -9,10 +9,9 @@ did and wastes the owner's usage limit.
 paths when they reach native Windows tools):
 
 - What changed: paths and a summary
-- **The spec, by path:** the ticket's `reviews/` file — GPT's own design, your critique, the
-  owner's decisions — and the ticket's *Done looks like*, pasted. **The prompt must stand on its
-  own.** It usually resumes the design thread, but `ask.sh` starts a fresh one when a resume
-  fails, a `fresh` call in between replaces the thread, and a new session never has it.
+- **The spec, verbatim:** GPT's own design and your critique, pasted from the ticket's `reviews/`
+  file as they stand there, with *Owner's decisions* and the ticket's *Done looks like*. The test
+  pass runs in a fresh thread, so this prompt is all GPT knows of its design.
 - **Where the build departs from GPT's design, and why** — so it tests the departures as
   deliberate rather than reporting them as bugs, and says plainly when it thinks one is wrong.
   Invite it to falsify its own design, not just to confirm that the code matches it.
@@ -40,11 +39,12 @@ and to **run** the tests it writes and report actual results, not predicted ones
 **3. Run:**
 
 ```bash
-.claude/gpt/ask.sh thread workspace-write gpt-6-astra .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt
 ```
 
-`thread` resumes the design thread when there is one. If `ask.sh` says on stderr that the resume
-failed, GPT started fresh and is working from the prompt alone — say so in the record.
+`fresh`, not `thread` (owner, 2026-11-09): resuming the design thread replays its whole transcript —
+one resumed test pass read 1.78M of a ticket's ~2.2M GPT input tokens — and the ChatGPT limit is
+the bottleneck. Use `thread` only for a second round of this same test pass.
 `workspace-write` is deliberate: a reviewer that can't write a test file can't test much.
 It's safe because the session is in its own AO worktree and everything lands in the diff
 before merge. This call also carries network access and the Polly-only AWS credentials — the
