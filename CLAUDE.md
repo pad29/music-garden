@@ -42,8 +42,8 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it. Wh
    `main` deploys to production.
 
 Show the owner both sides at every step: what GPT produced or flagged, and what you did with it.
-Trivial changes — typos, comments, formatting — skip steps 1–5; AO's review still runs on every PR.
-**When in doubt, run the loop.**
+Trivial changes — typos, comments, formatting — skip GPT's design and test pass and the review
+record (steps 1–6); AO's review still runs on every PR. **When in doubt, run the loop.**
 
 ## Explicit delegation
 

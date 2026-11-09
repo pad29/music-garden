@@ -41,7 +41,9 @@ Branch `claude/tun-12-sixteenth-grid` · PR #14
 2. **Low — …** **GPT's call stands** — why.
 
 ## Owner's decisions
-1. *The question, as asked* — **A**: the owner, on the ticket, 2026-11-09. (An unanswered one stays
+1. *Design checkpoint (`needs-owner`)* — **build it as designed**: the owner, on the ticket, 2026-11-09.
+   (A `needs-owner` ticket's first checkpoint is recorded here even when it raised no question.)
+2. *The question, as asked* — **A**: the owner, in the AO session, 2026-11-09. (An unanswered one stays
    listed, marked **open**.)
 
 ## Test pass (Astra)

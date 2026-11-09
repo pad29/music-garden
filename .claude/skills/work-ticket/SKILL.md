@@ -13,11 +13,17 @@ into Todo, and only the owner merges.
 **Whether to stop for the owner once the design exists is decided in one place: § 5, the design
 checkpoint.** § 7 says how to stop.
 
+**No ticket** — ad-hoc work the owner asked for: skip every Linear step (§§ 1–2, ticket comments, state
+moves) and the `Closes` line; the review record is `reviews/<date>-<slug>.md`, and hand-offs go to the
+PR and AO. **A trivial change** — a typo, a comment, formatting: skip §§ 4–5 and GPT's test pass, and
+write *"not required — trivial change"* in the hand-off's design and test lines. AO's review runs on
+every PR either way.
+
 ## 1. Choose the ticket
 
 - **A ticket was named** — in your spawn prompt, or by the owner. In Todo, claim it (§ 2). Already
-  **In Progress**: its claim comment names the AO session that holds it.
-  - **This session** (you are coming back to it): carry on.
+  **In Progress**: its live claim (§ 2) names the AO session that holds it.
+  - **This session** (you are coming back to it): carry on where you stopped.
   - **Another session, and your instructions say to take it over:** comment *"Taken over from
     `<old-session>` by AO session `<session-id>`"*, and continue it as a resumed ticket (§ 3).
   - **Another session, otherwise:** stop — `ao report --needs-input --note "<ID> is held by <session>"`.
@@ -33,8 +39,11 @@ there first: back to § 1. Otherwise move it to **In Progress** and comment *"Pi
 only inside the AO app, so the ID is what identifies you.
 
 **The comment is the lock — once you have checked it.** Two workers can both read Todo before either
-moves the ticket. So after posting, list the ticket's comments: if another session's claim came before
-yours, that session holds the ticket. Comment that you yield to it, and go back to § 1.
+moves the ticket. So after posting, list the ticket's comments and look for another session's **live**
+claim posted before yours. A claim stays live until its own session hands off (a Needs Input or In
+Review comment) or yields, or another session's takeover comment names it — so a session that stopped at
+Needs Input earlier does not block you. If there is one, that session holds the ticket: comment that you
+yield to it, `ao report --checkpoint --note "<ID>: yielded to <session>"`, and go back to § 1.
 
 Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose the ticket yourself,
 `ao session rename "$AO_SESSION_ID" "<ID> <title>"` so the owner's sidebar says what you are on.
@@ -49,25 +58,29 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   and the `Closes <ID>` line in its body. AO's branch tracks `origin/main`, so push with
   `git push -u origin HEAD` — never a bare `git push`.
 - **Resumed ticket** — it already has an open PR (the ticket's GitHub link, or
-  `gh pr list --state open --search "<ID> in:title"`) and you are a new session, because the orchestrator
-  could not bring the owner's answer back to the session that asked. Take the PR over without touching
-  that session's worktree, which may still have its branch checked out:
+  `gh pr list --state open --search "<ID> in:title"`), and you are a new session: the orchestrator could
+  not bring the owner's answer back to the session that asked. Take the PR over without touching that
+  session's worktree, which may still have its branch checked out — and only from an untouched branch:
   ```bash
   ao session claim-pr <pr-url> --no-takeover                # refuses if a live session owns it: stop there
-  git status --short                                        # must be empty: nothing of yours to lose
   gh pr view <n> --json headRefName,headRefOid              # the PR's branch and full head SHA
-  git fetch origin <headRefName>
+  git fetch origin main <headRefName>
+  git status --short                                        # must print nothing: no edits of yours
+  git merge-base --is-ancestor HEAD origin/main             # must succeed: no commits of yours either
   git switch -C "$(git branch --show-current)" <headRefOid> # this session's branch, moved to the PR head
   git status; git branch --show-current; git rev-parse HEAD # HEAD must equal headRefOid
   ```
-  Never check out `FETCH_HEAD`. Run the last line even when a command before it failed, and stop on
-  anything unexpected. From then on push with **`git push origin HEAD:<headRefName>`** — the PR's own
-  branch, the one exception to `git push -u origin HEAD`.
-  Then read every comment on the ticket and the PR, and the ticket's `reviews/<ID>-*.md`, before
-  anything else. You are continuing someone's work, not starting over: record the owner's answers (§ 7)
-  before you build.
+  If HEAD already equals `headRefOid`, the takeover is done: skip the commands. If a check fails, stop —
+  resetting would throw work away. Never check out `FETCH_HEAD`. Run the last line even when a command
+  before it failed, and stop on anything unexpected. From then on push with
+  **`git push origin HEAD:<headRefName>`** — the PR's own branch, the one exception to
+  `git push -u origin HEAD`.
+  Then read every comment on the ticket and the PR, and the ticket's `reviews/<ID>-*.md`. You are
+  continuing someone's work, not starting over: carry on from § 7, *Continuing* — not from § 4.
 
 ## 4. Design — GPT designs, you critique
+
+Not for a resumed ticket: its design exists (§ 7, *Continuing*).
 
 - Read the whole ticket and its comments, then `AGENTS.md`, `CLAUDE.md`, everything its **Read first**
   names, and the `reviews/` files for the area.
@@ -82,9 +95,10 @@ GPT's design and your critique exist; no code does. Decide here.
 
 **Stop at Needs Input (§ 7) if any of these holds:**
 
-1. **The ticket is labelled `needs-owner`**, and the questions it raises are not all answered under
-   *Owner's decisions* in its reviews file. Once they are, a later checkpoint stops only for a new
-   question.
+1. **The ticket is labelled `needs-owner` and has not been through a checkpoint with the owner yet.**
+   Every `needs-owner` ticket stops at its first checkpoint, whether or not it lists questions, and
+   *Owner's decisions* in the reviews file records the owner's answer. After that, it stops only for a
+   question still open there, or a new one.
 2. **The design or the critique raised a question that would have earned the ticket `needs-owner` had
    it been known at filing.** That is `file-ticket`'s test — only the owner can validate the result:
    anything musical (score-checked tunes, feel, sound), player-facing pacing, or a design decision with
@@ -107,11 +121,12 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
   ```bash
   PORT=$((8400 + ${AO_SESSION_ID##*-}))                # first candidate: music-garden-7 → 8407
   npx --yes http-server -p $PORT -c-1 -a 127.0.0.1 .   # background; if it can't bind, try the next port
-  curl -s http://127.0.0.1:$PORT/<a file this branch changed> | cmp - <that file>   # must match
+  ( set -o pipefail; curl -fsS "http://127.0.0.1:$PORT/<a file this branch changed>" | cmp - "<that file>" )
   ao browser open "http://127.0.0.1:$PORT/index.html?dev"
   ```
-  **A screenshot is not evidence unless you know which files produced it**: the port may be answered by
-  another session's server, which is what the byte comparison catches. Stop the server when you are done.
+  The `curl … | cmp` line must succeed. **A screenshot is not evidence unless you know which files
+  produced it**: the port may be answered by another session's server, which is what the byte comparison
+  catches. Stop the server when you are done.
   - AO redacts query values in the URLs it reports (`?dev=[redacted]`): judge the page, not `get url`.
   - **`file://` is out of reach** — AO's browser refuses it. A change that touches asset loading puts a
     `file://` check on the owner's playtest list and under *Not verified*.
@@ -123,8 +138,9 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
     progress, settings — starts with none of the owner's. To test against stored data, create it in this
     browser first (play to it, or use the `?dev` buttons) and say so. Never point the game at
     `ao browser target chrome`: that is the owner's own Chrome and profile.
-  - Once the PR exists, its Netlify deploy preview (`https://deploy-preview-<n>--tunegarden.netlify.app`)
-    opens the same way.
+  - Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
+    deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
+    `https://deploy-preview-82--tunegarden.netlify.app`).
 - **GPT's test pass** — the tester brief, `ask.sh thread workspace-write`. The prompt must stand alone
   (`CLAUDE.md` § Calling GPT): point GPT at the reviews file and the ticket's *Done looks like*, say what
   you tested and what you could not reach, and list **where the build departs from its design, and
@@ -134,26 +150,30 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
 
 ## 7. Stop for the owner — Needs Input
 
-**When:** § 5 says so. Or later in the work, when a decision turns out to be the owner's (§ 5's tests),
-or **the owner should try it before it is worth finishing**: music, feel, pacing, anything visual or
-audible that tests cannot judge. The standing rule holds at any point: a new fork where the readings lead
-to materially different work, or a decision already made in the ticket that the work shows is wrong, is
-a question for the owner, never a quiet change.
+**When:** § 5 says so; § 8's review loop ends here; or, later in the work, a decision turns out to be the
+owner's (§ 5's tests), or **the owner should try it before it is worth finishing**: music, feel, pacing,
+anything visual or audible that tests cannot judge. The standing rule holds at any point: a new fork
+where the readings lead to materially different work, or a decision already made in the ticket that the
+work shows is wrong, is a question for the owner, never a quiet change.
 
 Then:
 1. List each question under *Owner's decisions* in the reviews file, marked open. Commit what you have —
    at the design checkpoint, the reviews file alone — and push. Open a **draft** PR against `main` (or
-   keep the one you have): Netlify builds a preview for the phone, and a later session can claim the PR.
+   keep the PR you have): Netlify builds a preview for the phone, and a later session can claim the PR.
    **Never request AO's review on a draft.**
 2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats). File the same text with
-   `ao report --needs-input --note "<text>" --pr-created <url>`, and end with it as your last message.
+   `ao report --needs-input` — § Hand-off formats shows how to keep it literal — and end with it as your
+   last message.
 3. Move the ticket to **Needs Input** and end your turn.
 
-The owner answers in this AO session, or on the ticket, moving it back to Todo; the orchestrator brings
-the answer back to this session, or to a new one (§ 3). Either way, record each answer under *Owner's
-decisions* — the answer, and where and when it was given — and keep going on the same branch and PR. If
-an answer changes the design materially, have GPT revise it (`thread`), add the revision to the reviews
-file as a new section (never edit the original), critique it, and pass § 5 again.
+**Continuing.** The owner answers in this AO session, or on the ticket, moving it back to Todo; the
+orchestrator brings the answer back to this session, or to a new one (§ 3). Either way:
+1. Move the ticket back to **In Progress** — from Todo, claim it again as § 2 says — and record each
+   answer under *Owner's decisions*: the answer, and where and when it was given.
+2. Keep the design you have. Only if an answer changes it materially, have GPT revise it, with a prompt
+   that stands alone (the reviews file's design and *Owner's decisions*, and what changed); add the
+   revision to the reviews file as a new section — never edit the original — and critique it.
+3. Pass § 5 again, then carry on with § 6, on the same branch and PR.
 
 ## 8. Finish — the PR and AO's review
 
@@ -166,37 +186,55 @@ file as a new section (never edit the original), critique it, and pass § 5 agai
    that says why), push, and open the PR against `main` **ready for review** — or `gh pr ready` the draft.
    Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in the **PR**
    format.
-4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after
-   that. If it answers that the head was already reviewed right after a push, wait a few seconds and
-   retry. Then wait for the verdict on the PR's **current head**. An approval posts no comment, so
-   comments cannot tell you it came — poll `ao review ls --json` in the background (the harness wakes you
-   when the command exits) until the run for that head is finished, giving up after an hour. A verdict
-   for an older head, a missing run, or an error from `ao` is not an approval.
-5. **Each round:** the reviewer's inline comments arrive in this session. For each, **agree** → fix it;
-   **disagree** → reply on its thread with your reasoning and leave the thread open. Re-run whatever the
-   fixes touched, the browser included where it matters. Record the round in the reviews file **in the
-   same commit as the fixes** — a commit after an approval would be a new head, and another review. Push
-   once per round, resolve the threads you fixed (`ao pr resolve-comments <n> <comment-ids>`), and
-   request the next review.
-6. **How it ends:**
-   - **Approved on the current head** → hand off (step 7).
-   - **A round in which you disagreed with every finding** — nothing changed, so there is nothing new to
-     review → Needs Input (§ 7): the open findings quoted, against your reasons. The owner decides.
-   - **Three rounds without approval** → Needs Input: the defects you agreed with and have not fixed, the
-     disputed findings, and the decision you need. Not In Review, and not `--done`.
-   - **A run failed or was cancelled** → request it again, at most twice; then `ao report --stuck`. If it
-     failed on the ChatGPT limit, don't switch the reviewer's agent or model: `ao report --needs-input`.
-7. **Hand off.** Check that the approved head is still the PR's head (`gh pr view <n> --json
+4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after that;
+   if it answers that the head was already reviewed right after a push, wait a few seconds and retry.
+   Then wait for the verdict on the PR's **current head** — in the background, because an approval posts
+   no comment for you to notice: poll `ao review ls --json` about once a minute in a background command
+   that exits when the run for this head has finished, or after an hour (the harness wakes you when it
+   exits). A verdict for an older head, or an error from `ao`, is not an approval.
+5. **Read the verdict, then act:**
+   - **Approved on the current head** → step 6.
+   - **Failed or cancelled, no verdict within the hour, or no run for the head** → request the review
+     again. After two such retries, stop: `ao report --stuck` with what failed; the ticket stays In
+     Progress. A failure on the ChatGPT limit is not retried, and the reviewer's agent or model is never
+     switched: that is Needs Input (§ 7), and the owner decides whether to wait.
+   - **Changes requested** → its inline comments are in this session. Answer each: **agree** → fix it;
+     **disagree** → reply on its thread with your reasoning and leave the thread open. Then:
+     - **You disagreed with every finding:** nothing changed, so there is nothing new to review → Needs
+       Input (§ 7), with the open findings quoted against your reasons. The owner decides.
+     - **Otherwise:** re-run whatever the fixes touched, the browser included where it matters, and
+       record the round in the reviews file **in the same commit as the fixes** — a commit after an
+       approval would be a new head, and another review. Push once, and resolve the threads you fixed
+       (`ao pr resolve-comments <n> <comment-ids>`). **If that was the third round, stop** → Needs Input
+       (§ 7) without a fourth review: the fixes awaiting review, the disputed findings, and the decision
+       you need. Otherwise, back to step 4.
+
+   A review loop that ends in Needs Input is not In Review, and not `--done`.
+6. **Hand off.** Check that the approved head is still the PR's head (`gh pr view <n> --json
    headRefOid`). Edit the PR body's **Review** section to add the verdict — an edit is not a new head.
-   Wait for Netlify's deploy preview (`gh pr checks <n>`: `netlify/tunegarden/deploy-preview`), comment on
-   the ticket in the **In Review** format, move the ticket to **In Review**, then `ao report --done --note
-   "<the same text>" --pr-created <url>`, and end with the same text as your last message.
+   Wait for Netlify (`gh pr checks <n> --watch`) and take the preview URL from the deploy-preview check's
+   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, file the
+   same text with `ao report --done … --pr-created <url>`, and end with it as your last message.
 
 ## Hand-off formats
 
 Every hand-off goes to three places: the ticket, the PR, and AO — `ao report` and your last message in
 this session. Use these shapes exactly, headings included, so the owner always knows where to look. Leave
 a section out only when the template says it may be left out.
+
+The text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into a
+variable, then the variable:
+
+```bash
+note=$(cat <<'EOF'
+<the hand-off text>
+EOF
+)
+ao report --done --note "$note" --pr-created <url>
+```
+
+PR bodies the same way: `gh pr create … --body-file -` or `gh pr edit <n> --body-file -`, fed by a
+`<<'EOF'` heredoc.
 
 ### The playtest checklist — the heart of every hand-off
 
@@ -290,6 +328,8 @@ N/N pass; mutation audits run; what the browser check covered, on which head; wh
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
+
+With no ticket, leave out the `Closes` line.
 
 ## Never
 

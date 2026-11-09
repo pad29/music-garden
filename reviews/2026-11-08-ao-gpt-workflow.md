@@ -99,3 +99,80 @@ review, isolated browser profiles, explicit pushes.
 3. *Add `.ao/launch.json`, so `ao preview start` runs the dev server?* — **open**: with the owner via the
    orchestrator. Not added; `work-ticket` § 6 documents the measured http-server route, which works
    either way.
+
+## Test pass (Astra)
+
+Resumed the design-review thread (no "resume failed" on stderr). Docs only, so the test pass was an audit:
+scenario dry-runs against the text of `d59732f`, every command checked against AO's guides and `gh`'s
+installed help, and the riskiest shell steps reproduced in throwaway repositories. GPT changed no files
+and added no tests. Its verdict: *"Not ready to call complete. The ordinary path is clearer, but
+resumption and review termination still have defects."* All ten findings were taken.
+
+1. **High — historical claims blocked legitimate resumption.** *"Worker A claims a ticket, stops at Needs
+   Input, and disappears. The owner answers and returns it to Todo. Worker B claims it, reads A's earlier
+   comment, and must yield."* **Agreed** — only **live** claims count: a claim ends when its session hands
+   off or yields, or a takeover names it.
+2. **High — a `needs-owner` label no longer guaranteed the first checkpoint.** *"'Questions … not all
+   answered' can be false for an empty list, allowing implementation without the first stop."*
+   **Agreed** — every `needs-owner` ticket stops at its first checkpoint, questions or not, and *Owner's
+   decisions* records the answer (template updated).
+3. **Medium — the review procedure requested another review before checking whether to stop.**
+   **Agreed** — § 8 now reads the verdict first and dispatches: approved → hand off; failed → retry path;
+   changes requested → the all-disputed and third-round exits come before any new request.
+4. **Medium — the polling and operational-failure exits were incomplete.** **Agreed** — a timeout, a
+   missing run or a failed run takes the retry path (*two retries*, then `--stuck`, ticket stays In
+   Progress); a ChatGPT-limit failure goes through the full Needs Input procedure. **Still open:** the
+   exact `ao review ls --json` poll, filled in from this PR's first AO review run.
+5. **Medium — resumption fell through into designing the ticket again.** **Agreed** — § 3 and § 4 send a
+   resumed ticket to § 7's new *Continuing*: back to In Progress, record the answers, keep the design,
+   revise only on a material change (a self-contained prompt, now also in `gpt-design`), pass § 5 again.
+6. **Medium — report examples could alter verbatim findings through shell substitution.** *"I reproduced
+   this with a harmless mock: the received note differed from the supplied Markdown."* **Agreed** — the
+   hand-off formats now give the literal recipe: a `<<'EOF'` heredoc into a variable, then
+   `--note "$note"`; PR bodies through `--body-file -`.
+7. **Medium — a clean working status did not make the branch reset lossless.** *"`git status --short` is
+   empty, but `git switch -C … <headRefOid>` moves its branch backwards … I reproduced this."*
+   **Agreed** — the takeover also requires `git merge-base --is-ancestor HEAD origin/main` (no commits of
+   the session's own), and stops instead of resetting when either check fails.
+8. **Medium — the Netlify steps hard-coded a deployment identity that README contradicts.** **Agreed in
+   part.** The hard-coded values were measured, not guessed: PR #82's checks show
+   `netlify/tunegarden/deploy-preview` and `https://deploy-preview-82--tunegarden.netlify.app`, and today
+   `tunegarden.netlify.app` answers 200 while `music-garden.netlify.app` answers 404 — so README's site
+   name is the stale one. But reading the URL from the check's link is sturdier than building it, so the
+   skill now does that, and waits with `gh pr checks --watch` (bare `gh pr checks` does not wait). The
+   stale site name is pre-existing drift outside this change, and TUN-9 (*Correct stale claims in
+   AGENTS.md and README.md*) already owns that kind of fix: added there as a comment, with the dead
+   `music-garden.netlify.app` CORS origin in `backend/template.yaml` noted alongside.
+9. **Low — trivial and ticketless work had no executable exceptions.** **Agreed** — `work-ticket` opens
+   with both: no ticket skips the Linear steps and the `Closes` line; a trivial change skips §§ 4–5 and the
+   test pass and says *"not required — trivial change"*; AO's review runs either way.
+10. **Low — the byte comparison could pass on an HTTP failure.** *"I reproduced `curl -s … | cmp -
+    empty-file` exiting 0."* **Agreed** — `( set -o pipefail; curl -fsS "…" | cmp - "<file>" )`.
+
+GPT's verdict on the design-review findings as first implemented: 4 (takeover), 6, 7, 8 and 9 fixed; 10
+*"mostly fixed"*; 1, 2, 3 and 5 *partial* — their remaining parts are findings 1–5 above.
+
+**Cost:** 1,779,858 input tokens (1,639,168 cached), 17,394 out — the resumed thread replays the design
+review.
+
+## Verification
+
+- `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 636/636. No game code
+  changed, so this shows only that nothing broke.
+- A grep of every `*.md`, `*.sh` and `.gitignore` outside the history files for the old workflow's
+  terms (`.claude/agents`, the old brief names, `launch.json`, `EnterWorktree`, `preview_start`,
+  `get_session`, `MusicTheory`, the dispatcher, the preview pane, `.claude/worktrees`, subagents,
+  `claude/…` branches, "no automated tests"): what remains is the deliberate "never" lines.
+- `git check-ignore`: the briefs are tracked; `prompt.txt` and `.thread-id` stay ignored. Claude Code
+  re-read the skills' frontmatter after the edit.
+- **Not verified:** AO's review loop and the shape of `ao review ls --json`, until this PR's first
+  review run; `ao session claim-pr --no-takeover` and the § 3 takeover in a real second session (GPT ran
+  the git half in throwaway repositories); the § 2 claim race; Linear moves and comments in the new
+  formats; `ao report` with a multi-line note; whether a background poll's exit wakes the worker.
+
+## Follow-ups
+
+- **TUN-71** (Backlog, `needs-owner`) — a playback-goldens capture an AO worker can run.
+- **TUN-9** — comment: README's stale Netlify site name, and the dead CORS origin beside it.
+- For the orchestrator: the `needs-owner` label's description in Linear still says a session "stops at a
+  proposal"; and the `.ao/launch.json` question above.

@@ -30,3 +30,8 @@ GPT designs; you critique. Neither edits the other's words.
 
 **Do not merge the two**, and don't quietly fix its design while presenting it. In a ticket session the
 design checkpoint comes next: `work-ticket` § 5.
+
+**A revision** — the owner's answer changed the design (`work-ticket` § 7): run `ask.sh thread`, with a
+prompt that stands alone — the reviews file's design and *Owner's decisions*, and what changed — so it
+works even when the resume falls back to a fresh thread. Add the revision as a new section, never
+editing the original, and critique it the same way.
