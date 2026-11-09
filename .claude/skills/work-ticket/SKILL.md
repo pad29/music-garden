@@ -124,12 +124,13 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
   ```
   `ao preview start` returns once the server answers — no background command: AO runs `http-server` in
   this worktree on a loopback port it picks, a new one at every start, and a second start replaces the
-  running server. `ao preview status` shows the server's log, down to each file the browser fetched;
-  `ao preview stop` ends it, whole process tree included — do that when you are done. **Open the URL
-  yourself after every start**: only a session's first start moved the agent's tab, and a page whose
-  server has stopped goes on rendering (measured 2026-11-08). The `curl … | cmp` line must succeed — AO's
-  own readiness check passes on any HTTP answer, a 404 included. **A screenshot is not evidence unless you
-  know which files produced it.**
+  running server. Start it once: the server caches nothing (`-c-1`), so an edit needs only a reload.
+  `ao preview status` shows the server's log, down to each file the browser fetched; `ao preview stop`
+  ends it, whole process tree included — do that when you are done. **Open the URL yourself after every
+  start**: only a session's first start moved the agent's tab, and a page whose server has stopped goes
+  on rendering (measured 2026-11-08). The `curl … | cmp` line must succeed — AO's own readiness check
+  passes on any HTTP answer, a 404 included. **A screenshot is not evidence unless you know which files
+  produced it.**
   - **If `ao preview start` fails** — it exits non-zero and says why — serve the worktree yourself, as a
     background command, then run the `curl … | cmp` and `ao browser open` lines with its port:
     ```bash
@@ -148,7 +149,9 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
     `tools/goldens/README.md` — goes under *Not verified*, and on the owner's list when it matters.
   - **This worker's browser profile is its own** (AO isolates each worker's), so `localStorage` — saves,
     progress, settings — starts with none of the owner's. To test against stored data, create it in this
-    browser first (play to it, or use the `?dev` buttons) and say so. Never point the game at
+    browser first (play to it, or use the `?dev` buttons) and say so. Storage belongs to the origin, port
+    included, so what you made before a restart of `ao preview start` stays behind with the old port:
+    make it on the server you test it on (measured 2026-11-09). Never point the game at
     `ao browser target chrome`: that is the owner's own Chrome and profile.
   - Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
     deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was

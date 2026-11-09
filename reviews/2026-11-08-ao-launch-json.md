@@ -50,7 +50,8 @@ Every number below is from this session, on the config as committed unless a pro
 
 GPT did not design this one: the owner's brief fixed the shape (the old config's command, loopback, a
 port AO allocates), and the orchestrator held every GPT call until 05:45Z so that #85's review could use
-the reset ChatGPT limit first. So the build and the measurements came first, and GPT reviewed the result.
+the reset ChatGPT limit first. So the build and the measurements came first, and GPT was asked to review
+the result — a call the limit cut short (below).
 
 - **One configuration, `game`**: `npx --yes http-server -p ${PORT} -a 127.0.0.1 -c-1 .`, `cwd: "."`,
   `autoPort: true`, `targetKind: "app"`.
@@ -64,16 +65,47 @@ the reset ChatGPT limit first. So the build and the measurements came first, and
 ## Owner's decisions
 
 1. *Add `.ao/launch.json`, so `ao preview start` runs the dev server?* — **Yes, in a separate PR**: the
-   owner, relayed by the orchestrator, 2026-11-08 (it was decision 3, left open, in
-   `reviews/2026-11-08-ao-gpt-workflow.md`, which now records the answer).
+   owner, relayed by the orchestrator in this session's brief, 2026-11-08. It was decision 3 in
+   `reviews/2026-11-08-ao-gpt-workflow.md`, which records the answer as relayed to #85's session the next
+   day.
 
-## Review and test pass (Astra)
+## Review and test pass (Astra) — cut off by the ChatGPT limit
 
-*Pending — one `ask.sh` call after 05:45Z.*
+One `ask.sh thread workspace-write` call, briefed as the design review and the test pass at once, to spend
+the limit once (no thread existed, so it started fresh). #85's AO review started at 15:04Z and this call
+at 15:05Z; at 15:06Z GPT's turn failed: *"You've hit your usage limit … try again at 2:04 PM"* (20:04Z).
+No report came back, so GPT rated nothing, and `ask.sh` printed no token count. What it left, verbatim:
+
+1. *"The measurements support explicitly opening the URL after every start and retaining the byte
+   check."* — said in passing, before its report.
+2. *"I'm checking two remaining risks: how changing ports affects saved test data, and whether the
+   fallback instructions establish that the new server actually started."* The second it never concluded.
+3. *"The clearest gap is persistence testing: a new port means a new browser origin, so data created
+   before a preview restart will not appear afterward. The stored-data instructions omit that boundary."*
+   No severity given. **Agreed, and measured** (2026-11-09): Voice → Piano on port 53380 survived a
+   reload there; after `ao preview start` again, port 57153 opened on Music box. `work-ticket` § 6's
+   stored-data bullet now says storage stays behind with the old port, and its main text says to start
+   the server once — with `-c-1`, an edit needs only a reload.
+4. **`tests/ao-launch.test.mjs`** — a static contract on `.ao/launch.json`: one configuration; `npx --yes
+   http-server` with one `-p ${PORT}`, one `-a 127.0.0.1` and `-c-1`, serving `.` from `cwd: "."` with
+   `autoPort`; a url using `${PORT}` once, on `http://127.0.0.1`; `readyTimeoutMs`, if set, an integer in
+   0–55000. Its last test runs each check against faults on in-memory copies. **Kept**, after review: it
+   pins what the docs and AO's measured behaviour depend on — a second configuration breaks a bare
+   `ao preview start`, a bad `readyTimeoutMs` breaks every start, `-a 0.0.0.0` opens the worktree to the
+   network — and it says plainly that it proves nothing about AO itself. My audit on the real file: ten
+   faults written to `.ao/launch.json` one at a time (a second configuration, `-a 0.0.0.0`, no `-a`,
+   `-p 8377`, a fixed url port, a `localhost` url, `readyTimeoutMs: 60000`, no `-c-1`, `cwd: ".."`, no
+   `--yes`) — all ten red, the file restored to HEAD after each. `tests/README.md` now describes it.
+
+Never reached: the rest of the design review — the preferred-port, `?dev`, pinning and timeout choices,
+docs drift, security — and the scenario dry-runs. I finished the verification myself, as `CLAUDE.md`
+§ Cost says, but that is no substitute for GPT's independent review: AO's review of the PR is the check
+still to come.
 
 ## PR review (AO: Codex, Astra)
 
-*Pending.*
+**Not requested yet.** The orchestrator holds every GPT call — `ask.sh` and AO's review alike — until #85's
+AO review, next in line after the 20:04Z reset, has its verdict.
 
 ## Verification
 
