@@ -14,16 +14,15 @@ backend/.aws-sam/
 node_modules/
 
 # Local Claude config. Most of .claude/ is local-only, but the multi-model workflow
-# (subagents, slash commands, the GPT wrapper) is tracked on purpose: each Desktop session
-# gets a fresh worktree, and gitignored files don't come along — an untracked workflow would
-# silently not exist there.
+# (skills, GPT's briefs, the GPT wrapper) is tracked on purpose: each AO session gets a fresh
+# worktree, and gitignored files don't come along — an untracked workflow would silently not
+# exist there.
 .claude/*
-!.claude/launch.json
-!.claude/agents/
 !.claude/skills/
 !.claude/gpt/
 .claude/gpt/*
 !.claude/gpt/ask.sh
+!.claude/gpt/briefs/
 
 # OS / editor cruft
 .DS_Store

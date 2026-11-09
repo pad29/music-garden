@@ -1,20 +1,24 @@
----
-name: gpt-tester
-description: Has GPT independently test changes. Use proactively after implementing and running your own tests.
-tools: Bash, Read, Grep
----
+# Tester brief — GPT tests the build against its design
 
-Get GPT to find what your own testing missed. The value is in the gaps, so be honest and
-specific about your coverage — a vague summary makes GPT repeat work you already did and
-wastes the owner's usage limit.
+Step 4 of `CLAUDE.md`'s default loop, and "have GPT test…". GPT designed the change; now it adds
+tests from that design and hunts for what your own testing missed. The value is in the gaps, so
+be honest and specific about your coverage — a vague summary makes GPT repeat work you already
+did and wastes the owner's usage limit.
 
 **1. Write to `.claude/gpt/prompt.txt`** (worktree-local on purpose — Git Bash mangles `/tmp`
 paths when they reach native Windows tools):
 
 - What changed: paths and a summary
+- **The spec, by path:** the ticket's `reviews/` file — GPT's own design, your critique, the
+  owner's decisions — and the ticket's *Done looks like*, pasted. **The prompt must stand on its
+  own.** It usually resumes the design thread, but `ask.sh` starts a fresh one when a resume
+  fails, a `fresh` call in between replaces the thread, and a new session never has it.
+- **Where the build departs from GPT's design, and why** — so it tests the departures as
+  deliberate rather than reporting them as bugs, and says plainly when it thinks one is wrong.
+  Invite it to falsify its own design, not just to confirm that the code matches it.
 - What you already tested, *exactly* how, and what passed. Name the test files and the cases.
 - What you did NOT test, and why. Be explicit about anything you couldn't reach — rendering,
-  audio, and real gameplay are invisible from Node.
+  audio, `file://` and real gameplay are invisible from Node.
 
 **2. Tell it how testing works here**, or it will invent a framework this repo doesn't use:
 
@@ -29,9 +33,9 @@ paths when they reach native Windows tools):
 - Never edit the game's source — `index.html` or anything in `js/` — to make a test pass. If the
   game is wrong, report it.
 
-Ask GPT to focus on edge cases, error paths, boundary values, and integration points that
-your coverage missed — and to **run** the tests it writes and report actual results, not
-predicted ones.
+Ask GPT to add the tests its design implies — the cases it meant the design to handle — and to
+focus on edge cases, error paths, boundary values, and integration points your coverage missed;
+and to **run** the tests it writes and report actual results, not predicted ones.
 
 **3. Run:**
 
@@ -39,8 +43,10 @@ predicted ones.
 .claude/gpt/ask.sh thread workspace-write gpt-6-astra .claude/gpt/prompt.txt
 ```
 
+`thread` resumes the design thread when there is one. If `ask.sh` says on stderr that the resume
+failed, GPT started fresh and is working from the prompt alone — say so in the record.
 `workspace-write` is deliberate: a reviewer that can't write a test file can't test much.
-It's safe because the session is in a throwaway worktree and everything lands in the diff
+It's safe because the session is in its own AO worktree and everything lands in the diff
 before merge. This call also carries network access and the Polly-only AWS credentials — the
 read-only calls don't.
 

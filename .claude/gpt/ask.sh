@@ -4,14 +4,15 @@
 #   ask.sh <fresh|thread> <read-only|workspace-write> <model> <prompt-file>
 #
 #   fresh   start a new GPT thread
-#   thread  continue this worktree's thread (falls back to fresh if there isn't one)
+#   thread  continue this worktree's thread (falls back to fresh if there isn't one, or if the
+#           resume fails — it says so on stderr)
 #
-# This script owns thread continuity, sandbox policy, and credentials so the subagents don't
-# have to. GPT's reply goes to stdout; diagnostics (token usage, thread id, errors) go to
-# stderr, so `$(ask.sh ...)` captures only the answer.
+# This script owns thread continuity, sandbox policy, and credentials so the briefs that call
+# it (.claude/gpt/briefs/) don't have to. GPT's reply goes to stdout; diagnostics (token usage,
+# thread id, errors) go to stderr, so `$(ask.sh ...)` captures only the answer.
 #
-# Thread state lives beside this script, inside the worktree, so every session/branch gets
-# its own GPT thread automatically. Delete .thread-id when a task ships.
+# Thread state lives beside this script, inside the worktree, so every AO session gets its own
+# GPT thread automatically. Delete .thread-id before a session starts a second task.
 set -euo pipefail
 
 usage() { echo "usage: ask.sh <fresh|thread> <read-only|workspace-write> <model> <prompt-file>" >&2; exit 2; }

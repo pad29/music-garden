@@ -17,8 +17,9 @@ model, so its drift figure is model mismatch rather than jitter.
 
 ## Re-capturing
 
-Serve the app (`.claude/launch.json` → "music-garden", port 8377) or open `index.html` directly, then
-in the console:
+Serve the app (`npx http-server -p 8377 -c-1 .`) or open `index.html` directly, then in the browser's
+DevTools console. (An AO worker's browser cannot run console code — `work-ticket` § 6 — so this is a
+desktop-browser job.)
 
 ```js
 // 1. instrument — wrap every scheduling call so we see what got booked, and for when.
