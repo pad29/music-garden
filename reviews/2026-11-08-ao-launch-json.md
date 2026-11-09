@@ -72,8 +72,9 @@ the result — a call the limit cut short (below).
 ## Review and test pass (Astra) — cut off by the ChatGPT limit
 
 One `ask.sh thread workspace-write` call, briefed as the design review and the test pass at once, to spend
-the limit once (no thread existed, so it started fresh). #85's AO review started at 15:04Z and this call
-at 15:05Z; at 15:06Z GPT's turn failed: *"You've hit your usage limit … try again at 2:04 PM"* (20:04Z).
+the limit once (no thread existed, so it started fresh). This session had stopped at 05:16Z on the owner's
+Claude limit, so the call came only after that reset: #85's AO review started at 15:04Z and this call at
+15:05Z, and at 15:06Z GPT's turn failed: *"You've hit your usage limit … try again at 2:04 PM"* (20:04Z).
 No report came back, so GPT rated nothing, and `ask.sh` printed no token count. What it left, verbatim:
 
 1. *"The measurements support explicitly opening the URL after every start and retaining the byte
@@ -109,10 +110,15 @@ AO review, next in line after the 20:04Z reset, has its verdict.
 
 ## Verification
 
-- `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 636/636. No game code
-  changed, so this shows only that nothing broke.
-- `work-ticket` § 6 run as written, on the committed config: start, `curl | cmp` on `README.md` and
-  `.ao/launch.json`, `ao browser open`, the game with no page errors, stop, port refused.
+On `a7b0e5d` — this branch with #85's `2216b63` merged in. The only commit after it is this record's.
+
+- `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 641/641: the 636
+  before, which show only that nothing broke (no game code changed), and GPT's five.
+- `work-ticket` § 6 run as written: `ao preview start` → `ready game http://127.0.0.1:52029/index.html?dev`;
+  `curl | cmp` on `tests/ao-launch.test.mjs` and `.claude/skills/work-ticket/SKILL.md`; `ao browser
+  open`; the game with its dev bar and no page errors; `ao preview stop`; the port refused, no process
+  left. The first run of § 6, on `3b6aefd`, compared `README.md` and `.ao/launch.json` the same way.
 - **Not verified:** that AO stops the preview when a session ends without `ao preview stop` (it cannot
   be tried without ending this session); `ao preview start` on macOS or Linux; whether the owner's view
-  of the Browser panel follows a restart (only the agent's tab was observed).
+  of the Browser panel follows a restart (only the agent's tab was observed); everything GPT's
+  interrupted pass never reached (above).
