@@ -162,9 +162,8 @@ Then:
    at the design checkpoint, the reviews file alone — and push. Open a **draft** PR against `main` (or
    keep the PR you have): Netlify builds a preview for the phone, and a later session can claim the PR.
    **Never request AO's review on a draft.**
-2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats). File the same text with
-   `ao report --needs-input` — § Hand-off formats shows how to keep it literal — and end with it as your
-   last message.
+2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats), and end with the same text
+   as your last message. File its short form with `ao report --needs-input` (§ Hand-off formats).
 3. Move the ticket to **Needs Input** and end your turn.
 
 **Continuing.** The owner answers in this AO session, or on the ticket, moving it back to Todo; the
@@ -234,21 +233,26 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
 6. **Hand off.** Check that the approved head is still the PR's head (`gh pr view <n> --json
    headRefOid`). Edit the PR body's **Review** section to add the verdict — an edit is not a new head.
    Wait for Netlify (`gh pr checks <n> --watch`) and take the preview URL from the deploy-preview check's
-   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, file the
-   same text with `ao report --done … --pr-created <url>`, and end with it as your last message.
+   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, end with the
+   same text as your last message, and file its short form with `ao report --done … --pr-created <url>`.
 
 ## Hand-off formats
 
-Every hand-off goes to three places: the ticket, the PR, and AO — `ao report` and your last message in
-this session. Use these shapes exactly, headings included, so the owner always knows where to look. Leave
-a section out only when the template says it may be left out.
+Every hand-off goes in full to the ticket, the PR, and your last message in this session. Use these
+shapes exactly, headings included, so the owner always knows where to look. Leave a section out only
+when the template says it may be left out.
 
-The text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into a
-variable, then the variable:
+AO gets the short form: **`ao report` notes are capped at 1,000 characters** (a longer one is refused —
+measured 2026-11-09). So its note says in a few lines where things stand and what is needed — the
+questions, or the verdict — with the PR attached (`--pr-created <url>`); the full text is on the ticket
+and the PR.
+
+Hand-off text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into
+a variable, then the variable:
 
 ```bash
 note=$(cat <<'EOF'
-<the hand-off text>
+<the short form, under 1,000 characters>
 EOF
 )
 ao report --done --note "$note" --pr-created <url>

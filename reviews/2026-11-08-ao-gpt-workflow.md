@@ -186,6 +186,15 @@ The § 8.5 check said why: the limit had run out again — *"try again at 2:04 P
 session had made no ChatGPT call since the reset. Needs Input again, and a stop, as the orchestrator
 had asked. The owner then decided 4 and 5 above; the next request runs at effort high.
 
+On `7370181`, at effort high, with the limit reset: three more runs (`bfe6f81c`, then retries `26e9f2ef`
+and `23665af5`, 20:25–20:28Z) failed the same way, within a minute each. **This time the limit was not the
+cause**: the one-word `codex exec` answered at 20:26Z and 20:29Z, and so did one run inside this worktree
+at effort high, with `AGENTS.md` loaded. Codex works; AO's review run never reaches `ao review submit`, and
+the earlier failures may share that cause. After two retries § 8.5 says stop: reported **stuck**, no
+reviewer switch. That report found one more defect: `ao report` refuses a note over 1,000 characters,
+so `work-ticket` now sends AO a short form of each hand-off, and keeps the full text on the ticket, the PR
+and the last message.
+
 ## Verification
 
 - `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 636/636. No game code
