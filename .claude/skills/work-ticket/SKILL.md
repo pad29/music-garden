@@ -65,14 +65,15 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   gh pr view <n> --json headRefName,headRefOid              # the PR's branch and full head SHA
   ao session claim-pr <pr-url> --no-takeover &&             # refuses if a live session owns it
   git fetch origin main <headRefName> &&
-  if [ -n "$(git status --short)" ]; then echo "STOP: edits of your own; not resetting"
+  st=$(git status --short) &&                               # a status that fails stops it too
+  if [ -n "$st" ]; then echo "STOP: edits of your own; not resetting"
   elif ! git merge-base --is-ancestor HEAD origin/main; then echo "STOP: commits of your own; not resetting"
   else git switch -C "$(git branch --show-current)" <headRefOid>   # this branch, moved to the PR head
   fi
   git status; git branch --show-current; git rev-parse HEAD # HEAD must equal headRefOid
   ```
-  The reset runs only when the claim and the fetch succeeded, nothing is uncommitted, and the branch has
-  no commits of its own; otherwise stop — resetting would throw work away. If HEAD already equals
+  The reset runs only when the claim, the fetch and `git status` all succeeded, nothing is uncommitted,
+  and the branch has no commits of its own; otherwise stop — resetting would throw work away. If HEAD already equals
   `headRefOid`, the takeover is done: skip the block. Never check out `FETCH_HEAD`. The last line runs
   whatever happened before it; stop on anything unexpected. From then on push with
   **`git push origin HEAD:<headRefName>`** — the PR's own branch, the one exception to
@@ -261,7 +262,11 @@ AO's launch flags. Each such run spends the ChatGPT limit on a verdict that neve
 3. An approval counts only for the head it names, and that must still be the PR's head at step 6. Put the
    verdict, verbatim, in the PR body's **Review** section — a body edit, not a commit.
 
-**Remove this section**, and its mentions in step 4 and in `CLAUDE.md`, once an AO review run submits.
+**Once an AO review run submits, remove this section and every active reference to it:** step 4's
+pointer; step 5's note on 2026-11-09; the review lines of both hand-off templates (*In Review* and the
+PR body); in `CLAUDE.md`, the default loop's step 8, *Explicit delegation* and *Calling GPT*; and the
+design-reviewer brief's opening. `git grep -in temporar -- CLAUDE.md .claude/` lists them all. The
+review records keep their history.
 
 ## Hand-off formats
 

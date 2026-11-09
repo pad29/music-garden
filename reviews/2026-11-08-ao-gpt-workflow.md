@@ -246,6 +246,26 @@ verbatim:
    clean untouched branch moves to the PR head; uncommitted edits, a commit of the session's own, or a
    refused claim each leave HEAD where it was.
 
+**Fallback round 1 — GPT's PR review through `ask.sh`** (decision 6; a fresh read-only thread on the
+delta `7370181..01c1e2d`, told of its approval at `7370181`). Changes requested, two findings, both taken:
+
+1. **Medium — the cleanliness guard ignored `git status`'s exit status.** *"If it fails with empty stdout,
+   `[ -n "$(git status --short)" ]` evaluates false and the reset remains reachable. In-memory Bash mocks
+   confirmed `git switch -C` runs after a status failure; the other failed guards correctly block it, and
+   the clean case succeeds. **Fix:** capture status in an assignment whose success gates the remaining
+   checks, such as `takeover_status=$(git status --short) && if …`, then test its contents. Preserve the
+   final diagnostic commands."* **Agreed** — `st=$(git status --short) &&` now gates the `if`. Re-tested in
+   throwaway repositories with a mocked failing `git status --short`: the new block leaves HEAD alone, and
+   the previous block, run the same way, resets — GPT's finding reproduced. The clean, dirty, own-commit and
+   refused-claim cases still behave.
+2. **Low — the removal instruction's cleanup list was incomplete.** *"Following it leaves dangling
+   references in step 5, both hand-off templates, and the design-reviewer brief. The review record's
+   follow-up mentions the brief but still omits step 5 and the templates."* **Agreed** — the *Temporary*
+   section now lists every active reference, and `git grep -in temporar -- CLAUDE.md .claude/` finds them
+   all; the follow-up below points there.
+
+**Cost:** 242,477 input tokens (201,088 cached), 1,796 out.
+
 ## Verification
 
 - `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 636/636. No game code
@@ -271,7 +291,7 @@ verbatim:
 - **TUN-9** — comment: README's stale Netlify site name, and the dead CORS origin beside it.
 - **`.ao/launch.json`** — a separate PR stacked on this one, `claude/ao-launch-json` (owner's decision 3).
 - **AO's reviewer sandbox** (`gh` config access, `ao` on PATH, `ao doctor`'s `codex-launch-flags`) — for
-  the orchestrator. Once an AO review run submits, remove `work-ticket` § 8's *Temporary* section and its
-  mentions in `CLAUDE.md` and the design-reviewer brief.
+  the orchestrator. Once an AO review run submits, remove `work-ticket` § 8's *Temporary* section and
+  every active reference it lists (`git grep -in temporar -- CLAUDE.md .claude/`).
 - For the orchestrator: the `needs-owner` label's description in Linear still says a session "stops at a
   proposal".
