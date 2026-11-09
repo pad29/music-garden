@@ -37,8 +37,10 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it. Wh
    session's own branch**, and open the PR against `main`.
 8. **AO's review** (Codex, Astra): `ao review trigger`, fix, push, trigger again — until AO approves
    the PR's current head, or the review budget in `work-ticket` § 8 runs out, which is Needs Input.
-   Then hand off — in the PR, on the ticket, and through `ao report` — using the formats in the
-   `work-ticket` skill, **playtest checklist included**, even in a session that has no ticket.
+   **Temporarily**, until an AO review run submits, GPT reviews the PR through `ask.sh` instead, under
+   the same rules (`work-ticket` § 8, *Temporary*; owner, 2026-11-09). Then hand off — in the PR, on
+   the ticket, and through `ao report` — using the formats in the `work-ticket` skill, **playtest
+   checklist included**, even in a session that has no ticket.
    **Never merge and never push `main`** unless the owner says so in this session: every push to
    `main` deploys to production.
 
@@ -53,8 +55,9 @@ When the owner says any of these, route to GPT and do **not** do the work yourse
 - "ask GPT to…" / "have GPT write…" / "have GPT design…" → the author brief (`gpt-design`, `gpt-spec`)
 - "get GPT's take on…" → the design-reviewer brief (`gpt-review` for work already done)
 - "have GPT test…" → the tester brief
-- "have GPT review the PR" → for **this session's own PR**, `ao review trigger`. Any other PR is a
-  review-only job for a separate worker: ask the orchestrator for one. Never run `ao review trigger`
+- "have GPT review the PR" → for **this session's own PR**, `ao review trigger` (temporarily the
+  `ask.sh` PR review in `work-ticket` § 8). Any other PR is a review-only job for a separate worker: ask
+  the orchestrator for one. Never run `ao review trigger`
   or `ao session claim-pr` on someone else's PR.
 - "critique GPT's…" → the owner has given you GPT's output; review it as an adversary. Be as
   hard on it as GPT's reviews are on you.
@@ -71,13 +74,17 @@ GPT reaches this repo two ways, both on **Astra (`gpt-6-astra`)**:
   the orchestrator. You trigger it with `ao review trigger`; you never call it through `ask.sh`, and it
   never edits the branch. A session keeps the reviewer settings it was spawned with: if the orchestrator
   says they changed since, pass the new ones (`--model`, `--effort`) — never settings of your own.
+  **Temporarily out of service:** AO runs it in Codex's sandbox, where `gh` cannot read its config and
+  `ao` is not on PATH, so its runs end *"without submitting a result"* (and `ao doctor` warns
+  `codex-launch-flags` for codex-cli 0.155.1). Until an AO review run submits, GPT reviews PRs through
+  `ask.sh` (`work-ticket` § 8, *Temporary*); remove this note with that section.
 
 The three files in `.claude/gpt/briefs/` are the **brief formats** for `ask.sh` — what to put in the
 prompt, what to ask for, how to report back. Follow them; where their invocation disagrees with this
 section, this section wins.
 
 ```bash
-.claude/gpt/ask.sh fresh read-only       gpt-6-astra .claude/gpt/prompt.txt   # the design; an ad-hoc review
+.claude/gpt/ask.sh fresh read-only       gpt-6-astra .claude/gpt/prompt.txt   # the design; a review
 .claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt   # test pass (may write tests/)
 ```
 

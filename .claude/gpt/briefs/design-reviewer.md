@@ -1,7 +1,9 @@
 # Design-reviewer brief — GPT attacks a plan or finished work
 
 For ad-hoc reviews: the `gpt-review` skill and "get GPT's take on…". In the default loop GPT designs
-and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else.
+and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else — and,
+temporarily, for the PR review itself, while AO's reviewer cannot submit (`work-ticket` § 8,
+*Temporary*).
 
 Get GPT to attack the work. GPT is a counterparty, not a collaborator — your job is to carry its
 objections back intact, not to defend the design.
