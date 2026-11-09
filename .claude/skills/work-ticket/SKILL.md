@@ -190,10 +190,11 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
    format.
 4. **Request AO's review** — **temporarily replaced:** until an AO review run submits, GPT reviews the PR
    through `ask.sh` instead (*Temporary: GPT's PR review through `ask.sh`*, at the end of this section).
-   `ao review trigger --pr <url>` the first time, `ao review trigger` after that — after a failed run too. If it answers that the head was already reviewed right after a push, wait a
-   few seconds and retry. The reviewer is the one the orchestrator configured (`CLAUDE.md` § Calling
-   GPT); if it tells you the settings changed since you were spawned, pass the new ones (`--model`,
-   `--effort`). Then wait for the verdict on the PR's **current head**. An approval posts no
+   `ao review trigger --pr <url>` the first time, `ao review trigger` after that — after a failed run
+   too. If it answers that the head was already reviewed right after a push, wait a few seconds and
+   retry. The reviewer is the one the orchestrator configured (`CLAUDE.md` § Calling GPT); if it tells
+   you the settings changed since you were spawned, pass the new ones (`--model`, `--effort`). Then
+   wait for the verdict on the PR's **current head**. An approval posts no
    comment for you to notice, so run this as a background command; the harness wakes you when it exits,
    and it prints one line — `<status> <verdict> <run-id>` for the run on the current head, or `timeout`
    after about an hour:
