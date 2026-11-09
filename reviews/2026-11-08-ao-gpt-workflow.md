@@ -155,6 +155,18 @@ GPT's verdict on the design-review findings as first implemented: 4 (takeover), 
 **Cost:** 1,779,858 input tokens (1,639,168 cached), 17,394 out — the resumed thread replays the design
 review.
 
+## PR review (AO: Codex, Astra)
+
+**Round 0 — no review ran.** PR #85's first two runs on `7f03771` (`9f6e89fa`, `b9bafeb6`) each failed
+within a minute: *"reviewer Chat turn ended without submitting a result"*. That text does not say why; a
+one-word `codex exec` on `gpt-6-astra` did: *"You've hit your usage limit … try again at 11:25 PM"*
+(05:25Z) — the account-wide ChatGPT limit, from whose 5-hour window this change's two `ask.sh` calls had
+read 2.16M input tokens (1.95M cached). Following the rule this change writes (`work-ticket` § 8.5): no
+third run, no other reviewer agent, model or effort — reported to the orchestrator as Needs Input. Both
+runs did prove the documented poll: it caught the terminal run on its first poll, and its exit woke the
+worker. That poll, and the way to tell a limit failure from another, went into § 8 before any review
+had completed, so they cost no extra round.
+
 ## Verification
 
 - `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 636/636. No game code
@@ -165,10 +177,14 @@ review.
   `claude/…` branches, "no automated tests"): what remains is the deliberate "never" lines.
 - `git check-ignore`: the briefs are tracked; `prompt.txt` and `.thread-id` stay ignored. Claude Code
   re-read the skills' frontmatter after the edit.
-- **Not verified:** AO's review loop and the shape of `ao review ls --json`, until this PR's first
-  review run; `ao session claim-pr --no-takeover` and the § 3 takeover in a real second session (GPT ran
-  the git half in throwaway repositories); the § 2 claim race; Linear moves and comments in the new
-  formats; `ao report` with a multi-line note; whether a background poll's exit wakes the worker.
+- Measured on this PR: the shape of `ao review ls --json` (`reviews[].latestRun` with `targetSha`,
+  `status`, `verdict`, `body`); the § 8 poll, run from the skill's own text, catching a failed run; a
+  background command's exit waking the worker; a plain `ao review trigger` starting a new run after a
+  failed one; `ao report --needs-input` with a multi-line note from a quoted heredoc.
+- **Not verified:** a completed AO review — the status and verdict an approval or a change request
+  reports — until the limit resets; `ao session claim-pr --no-takeover` and the § 3 takeover in a real
+  second session (GPT ran the git half in throwaway repositories); the § 2 claim race; Linear moves and
+  comments in the new formats.
 
 ## Follow-ups
 

@@ -186,18 +186,36 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
    that says why), push, and open the PR against `main` **ready for review** — or `gh pr ready` the draft.
    Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in the **PR**
    format.
-4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after that;
-   if it answers that the head was already reviewed right after a push, wait a few seconds and retry.
-   Then wait for the verdict on the PR's **current head** — in the background, because an approval posts
-   no comment for you to notice: poll `ao review ls --json` about once a minute in a background command
-   that exits when the run for this head has finished, or after an hour (the harness wakes you when it
-   exits). A verdict for an older head, or an error from `ao`, is not an approval.
+4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after that
+   — after a failed run too. If it answers that the head was already reviewed right after a push, wait a
+   few seconds and retry. Then wait for the verdict on the PR's **current head**. An approval posts no
+   comment for you to notice, so run this as a background command; the harness wakes you when it exits,
+   and it prints one line — `<status> <verdict> <run-id>` for the run on the current head, or `timeout`
+   after about an hour:
+   ```bash
+   pr=<n>; head=$(gh pr view "$pr" --json headRefOid -q .headRefOid)
+   for i in $(seq 60); do
+     r=$(ao review ls --json 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+       try{const[pr,head]=process.argv.slice(1);const rv=(JSON.parse(d).reviews||[]).find(x=>String(x.prNumber)===pr);
+       const run=rv&&rv.latestRun;if(!run||run.targetSha!==head)return console.log("none");
+       console.log(run.status+" "+(run.verdict||"-")+" "+run.id)}catch{console.log("error")}})' "$pr" "$head")
+     case "$r" in running*|queued*|pending*|none|error|"") sleep 60 ;; *) echo "$r"; exit 0 ;; esac
+   done
+   echo timeout; exit 1
+   ```
+   `none` (no run on this head yet) and `error` (`ao` failed) keep it waiting. Neither is ever an
+   approval, and nor is a verdict for an older head. `ao review ls --json` holds the run's full record.
 5. **Read the verdict, then act:**
    - **Approved on the current head** → step 6.
-   - **Failed or cancelled, no verdict within the hour, or no run for the head** → request the review
+   - **Failed or cancelled, no verdict within the hour, or no run for the head** → first rule out the
+     ChatGPT limit. A failed run's `body` doesn't say why: on 2026-11-08 two runs failed within a minute
+     with *"reviewer Chat turn ended without submitting a result"*, and the limit was the cause. A
+     one-word call shows it — `codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply
+     with one word: ok"` answers *"You've hit your usage limit … try again at <time>"* when it is spent.
+     **At the limit** → Needs Input (§ 7), with the time it resets; no retry, and never another reviewer
+     agent, model or effort — the owner decides whether to wait. **Otherwise** → request the review
      again. After two such retries, stop: `ao report --stuck` with what failed; the ticket stays In
-     Progress. A failure on the ChatGPT limit is not retried, and the reviewer's agent or model is never
-     switched: that is Needs Input (§ 7), and the owner decides whether to wait.
+     Progress.
    - **Changes requested** → its inline comments are in this session. Answer each: **agree** → fix it;
      **disagree** → reply on its thread with your reasoning and leave the thread open. Then:
      - **You disagreed with every finding:** nothing changed, so there is nothing new to review → Needs
