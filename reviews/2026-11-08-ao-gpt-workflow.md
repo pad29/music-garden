@@ -96,8 +96,9 @@ review, isolated browser profiles, explicit pushes.
    `needs-owner` at filing, or when the standing Needs Input rule applies; smaller calls go under
    *Choices I made that you might overrule*; a GPT-vs-Claude disagreement is Claude's to resolve, with
    reasoning, unless it is itself an owner decision. Relayed 2026-11-08.
-3. *Add `.ao/launch.json`, so `ao preview start` runs the dev server?* — **open**: with the owner via the
-   orchestrator. Not added; `work-ticket` § 6 documents the measured http-server route, which works
+3. *Add `.ao/launch.json`, so `ao preview start` runs the dev server?* — **Yes, as a separate PR stacked
+   on this one**: AO session `music-garden-3` builds it on `claude/ao-launch-json`. The owner, relayed by
+   the orchestrator, 2026-11-09. This PR keeps `work-ticket` § 6's measured http-server route, which works
    either way.
 
 ## Test pass (Astra)
@@ -162,7 +163,8 @@ within a minute: *"reviewer Chat turn ended without submitting a result"*. That 
 one-word `codex exec` on `gpt-6-astra` did: *"You've hit your usage limit … try again at 11:25 PM"*
 (05:25Z) — the account-wide ChatGPT limit, from whose 5-hour window this change's two `ask.sh` calls had
 read 2.16M input tokens (1.95M cached). Following the rule this change writes (`work-ticket` § 8.5): no
-third run, no other reviewer agent, model or effort — reported to the orchestrator as Needs Input. Both
+third run, no other reviewer agent, model or effort — reported to the orchestrator as Needs Input; after
+the reset it answered (2026-11-09): request it once more on the next head, same reviewer. Both
 runs did prove the documented poll: it caught the terminal run on its first poll, and its exit woke the
 worker. That poll, and the way to tell a limit failure from another, went into § 8 before any review
 had completed, so they cost no extra round.
@@ -190,5 +192,6 @@ had completed, so they cost no extra round.
 
 - **TUN-71** (Backlog, `needs-owner`) — a playback-goldens capture an AO worker can run.
 - **TUN-9** — comment: README's stale Netlify site name, and the dead CORS origin beside it.
+- **`.ao/launch.json`** — a separate PR stacked on this one, `claude/ao-launch-json` (owner's decision 3).
 - For the orchestrator: the `needs-owner` label's description in Linear still says a session "stops at a
-  proposal"; and the `.ao/launch.json` question above.
+  proposal".
