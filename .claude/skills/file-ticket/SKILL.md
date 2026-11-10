@@ -1,12 +1,13 @@
 ---
 name: file-ticket
-description: File a Tune Garden work item in Linear, shaped so a ticket session that starts cold can act on it. Use in planning sessions, and whenever work turns up that should not be done now (a noted-not-fixed bug, a deferred idea, an out-of-scope finding).
+description: File a Tune Garden work item in Linear, shaped so an AO worker that starts cold can act on it. Use when planning (the AO orchestrator's job), and whenever work turns up that should not be done now (a noted-not-fixed bug, a deferred idea, an out-of-scope finding).
 ---
 
 File this as a Linear issue: $ARGUMENTS
 
-A ticket is read by a session that has **none of this conversation**. Everything it needs must be in
-the ticket or in a file the ticket names. "As discussed" and "the approach we agreed" are useless to it.
+A ticket is read by a worker that has **none of this conversation**, and pasted verbatim into the brief
+from which GPT designs the work. Everything they need must be in the ticket or in a file the ticket
+names. "As discussed" and "the approach we agreed" are useless to them.
 
 ## Before filing
 
@@ -24,11 +25,12 @@ the ticket or in a file the ticket names. "As discussed" and "the approach we ag
   deploy, repo structure), `docs`.
 - **`needs-owner`** when only the owner can validate the result: anything musical (score-checked tunes,
   feel, sound), a design decision with more than one defensible answer, or a change to player-facing
-  pacing. A ticket session stops at a proposal on these and asks.
+  pacing. A worker stops on these once GPT's design and its critique exist, and asks — and it applies
+  this same test to questions the design turns up (`work-ticket` § 5).
 - **One type label:** `Bug` when something shipped behaves wrongly, `Feature` for something new, `Improvement`
   for making something that exists better — a refactor or a chore is an `Improvement`.
-- **Blocked by**: link any ticket that must land first (the file-split refactor blocks most
-  `index.html` work while it is in flight).
+- **Blocked by**: link any ticket that must land first (a refactor of shared files blocks the work
+  that edits them while it is in flight).
 
 ## Title
 
@@ -47,12 +49,12 @@ What the player (or the owner, for tooling) experiences today, and what should c
 
 ## Read first
 - The doc sections that own this (`EDITOR-DESIGN.md` §17 "FAMOUS ENTRIES", `PACKAGES-DETAILED.md` …).
-- The functions and files involved (`famousToSong`, `placeFamous` in `index.html`).
+- The functions and files involved (`famousToSong` in `js/save-share.js`, `placeFamous` in `js/famous.js`).
 - Prior reviews: `reviews/TUN-…md` files or `REVIEW-LOG.md` entries on this area, by heading.
 
 ## Decisions already made
-Quote them, with who and when: *"Capstone rewards stay bar-less" — EDITOR-DESIGN §17, 2026-08*. A
-ticket session must not reopen these.
+Quote them, with who and when: *"Capstone rewards stay bar-less" — EDITOR-DESIGN §17, 2026-08*.
+Neither GPT's design nor the worker may reopen these.
 
 ## Constraints and traps
 The `AGENTS.md` invariants this touches (the `file://` rule, score-validated FAMOUS melodies, stable

@@ -54,7 +54,7 @@ sam --version          # expect: SAM CLI, version 1.x
 ## Deploy
 
 ```powershell
-cd c:\Claude\MusicTheory\backend
+cd backend   # from the repo root
 sam build
 sam deploy --guided
 ```
@@ -84,7 +84,7 @@ Those four values are *public* identifiers (the kind that ship inside any web ap
 ## Future deploys
 After any change to `template.yaml` or `src/`:
 ```powershell
-cd c:\Claude\MusicTheory\backend
+cd backend   # from the repo root
 sam build; sam deploy
 ```
 

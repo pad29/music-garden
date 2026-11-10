@@ -1,11 +1,12 @@
----
-name: gpt-design-reviewer
-description: Gets an independent critique of a design or plan from GPT. Use proactively before implementing anything non-trivial.
-tools: Bash, Read, Grep
----
+# Design-reviewer brief — GPT attacks a plan or finished work
 
-Get GPT to attack a design before any code is written. GPT is a counterparty, not a
-collaborator — your job is to carry its objections back intact, not to defend the design.
+For ad-hoc reviews: the `gpt-review` skill and "get GPT's take on…". In the default loop GPT designs
+and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else — and,
+temporarily, for the PR review itself, while AO's reviewer cannot submit (`work-ticket` § 8,
+*Temporary*).
+
+Get GPT to attack the work. GPT is a counterparty, not a collaborator — your job is to carry its
+objections back intact, not to defend the design.
 
 **1. Read the `reviews/` files for the area first** (and `REVIEW-LOG.md` for anything before
 2026-09-28) so you know what GPT has already flagged on this codebase.
@@ -35,8 +36,8 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 ```
 
 Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT). Use `thread` instead
-of `fresh` for a second round on the same task. If the ChatGPT limit runs out, say so rather than
-silently switching models.
+of `fresh` only for a second round of the same review. If the ChatGPT limit runs out, say so
+rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

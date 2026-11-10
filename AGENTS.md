@@ -66,7 +66,7 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
   missing in production: an asset folder fails silently behind the game's fallbacks, and a `js/`
   file is served as `index.html` by the catch-all rewrite, which stops the game from starting.
 - **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main`
-  deploys to production. A Claude session may commit and push its own `claude/…` branch and open PRs.
+  deploys to production. An agent session may commit and push its own branch and open PRs.
 
 ## Where to find things
 
@@ -81,8 +81,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - Audio-scheduler playback goldens and the console-capture procedure → `tools/goldens/README.md`
-- What GPT flagged in each review and what was done → `reviews/` (one file per ticket; older history
-  in `REVIEW-LOG.md`, closed 2026-09-27)
+- Each ticket's GPT design, what its reviews flagged, and what was done → `reviews/` (one file per
+  ticket; older history in `REVIEW-LOG.md`, closed 2026-09-27)
 
 Read the relevant doc before designing. Don't infer intent from code alone — the rationale
 lives in these docs, not in the code.
@@ -96,10 +96,6 @@ The design docs state intent alongside fact. Where they differ, this is the real
   column-based, single-voice, fixed 8th-note steps.
 - `PACKAGES.md` catalogs packages that are specced but not yet built. Only the packages
   listed as shipped in `README.md` § "Current status" exist in the game (`js/packages.js`).
-- `README.md` says "no test suite yet" and calls the syntax check "the smoke test we run after
-  every edit". A real `tests/` suite now exists (see § Commands) — but it is young and covers
-  only detectors, so the syntax check plus browser verification is still the floor, not the
-  ceiling.
 
 ## How changes are verified
 
@@ -124,4 +120,6 @@ Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior ver
 browser (and on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text
 changed → the design docs
 (`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed → reported to
-the owner. Merging to `main` happens only on the owner's explicit request.
+the owner. A required check you could not run (`file://`, the phone, sound by ear) is reported as
+pending, and stays the owner's to verify before merge. Merging to `main` happens only on the owner's
+explicit request.
