@@ -25,7 +25,8 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it. Wh
    sides verbatim — unless the disagreement is itself the owner's decision.
 3. **Implement.** Run the syntax check and `node --test "tests/*.test.mjs"`, and check the browser as
    `work-ticket` § 6 describes.
-4. **GPT's test pass** (the tester brief): what you tested, what you couldn't reach, and where the
+4. **GPT's test pass** (the tester brief), in a fresh GPT thread: hand it its own design and your
+   critique verbatim from the reviews file, what you tested, what you couldn't reach, and where the
    build departs from GPT's design and why. Review every file it adds before keeping it.
 5. **Fix what it found.** Re-run.
 6. **Write the review record** to `reviews/<TICKET-ID>-<slug>.md` — GPT's design, your critique, what
@@ -36,8 +37,10 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it. Wh
    session's own branch**, and open the PR against `main`.
 8. **AO's review** (Codex, Astra): `ao review trigger`, fix, push, trigger again — until AO approves
    the PR's current head, or the review budget in `work-ticket` § 8 runs out, which is Needs Input.
-   Then hand off — in the PR, on the ticket, and through `ao report` — using the formats in the
-   `work-ticket` skill, **playtest checklist included**, even in a session that has no ticket.
+   **Temporarily**, until an AO review run submits, GPT reviews the PR through `ask.sh` instead, under
+   the same rules (`work-ticket` § 8, *Temporary*; owner, 2026-11-09). Then hand off — in the PR, on
+   the ticket, and through `ao report` — using the formats in the `work-ticket` skill, **playtest
+   checklist included**, even in a session that has no ticket.
    **Never merge and never push `main`** unless the owner says so in this session: every push to
    `main` deploys to production.
 
@@ -52,8 +55,9 @@ When the owner says any of these, route to GPT and do **not** do the work yourse
 - "ask GPT to…" / "have GPT write…" / "have GPT design…" → the author brief (`gpt-design`, `gpt-spec`)
 - "get GPT's take on…" → the design-reviewer brief (`gpt-review` for work already done)
 - "have GPT test…" → the tester brief
-- "have GPT review the PR" → for **this session's own PR**, `ao review trigger`. Any other PR is a
-  review-only job for a separate worker: ask the orchestrator for one. Never run `ao review trigger`
+- "have GPT review the PR" → for **this session's own PR**, `ao review trigger` (temporarily the
+  `ask.sh` PR review in `work-ticket` § 8). Any other PR is a review-only job for a separate worker: ask
+  the orchestrator for one. Never run `ao review trigger`
   or `ao session claim-pr` on someone else's PR.
 - "critique GPT's…" → the owner has given you GPT's output; review it as an adversary. Be as
   hard on it as GPT's reviews are on you.
@@ -66,24 +70,33 @@ GPT reaches this repo two ways, both on **Astra (`gpt-6-astra`)**:
   may not use them, and a subagent spends Claude credits relaying. The owner's call (2026-09): Claude
   credits are the scarcer budget, so design authoring, test writing, review and mutation audits go to
   GPT, and Claude keeps critique, source edits, and reviewing what GPT produced.
-- **AO's native reviewer** — Codex on `gpt-6-astra` at effort ultra, configured by the orchestrator. You
-  trigger it with `ao review trigger`; you never call it through `ask.sh`, and it never edits the branch.
+- **AO's native reviewer** — Codex on `gpt-6-astra` at effort high (owner, 2026-11-09), configured by
+  the orchestrator. You trigger it with `ao review trigger`; you never call it through `ask.sh`, and it
+  never edits the branch. A session keeps the reviewer settings it was spawned with: if the orchestrator
+  says they changed since, pass the new ones (`--model`, `--effort`) — never settings of your own.
+  **Temporarily out of service:** AO runs it in Codex's sandbox, where `gh` cannot read its config and
+  `ao` is not on PATH, so its runs end *"without submitting a result"* (and `ao doctor` warns
+  `codex-launch-flags` for codex-cli 0.155.1). Until an AO review run submits, GPT reviews PRs through
+  `ask.sh` (`work-ticket` § 8, *Temporary*); remove this note with that section.
 
 The three files in `.claude/gpt/briefs/` are the **brief formats** for `ask.sh` — what to put in the
 prompt, what to ask for, how to report back. Follow them; where their invocation disagrees with this
 section, this section wins.
 
 ```bash
-.claude/gpt/ask.sh fresh  read-only       gpt-6-astra .claude/gpt/prompt.txt   # the design, ad-hoc reviews
-.claude/gpt/ask.sh thread workspace-write gpt-6-astra .claude/gpt/prompt.txt   # test pass (may write tests/)
+.claude/gpt/ask.sh fresh read-only       gpt-6-astra .claude/gpt/prompt.txt   # the design; a review
+.claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt   # test pass (may write tests/)
 ```
 
 Run it in the background; a call takes minutes. The thread lives in `.claude/gpt/.thread-id` inside
-the worktree, so every AO session starts without one and each ticket gets its own. The design's
-`fresh` call starts the thread the test pass resumes, so GPT tests with its own design in mind — but
-that is a bonus, not the channel: `ask.sh` falls back to a fresh thread when a resume fails (it says
-so on stderr), any other `fresh` call replaces `.thread-id`, and a new session has no thread at all.
-Every test-pass prompt must stand on its own, pointing GPT at the reviews file that holds its design.
+the worktree, so every AO session starts without one. **Each role starts fresh** — the design, the test
+pass, an ad-hoc review. `thread`, with the same sandbox, is only for a second round of the same
+conversation: a revision of the design, a re-review. The test pass used to resume the design thread,
+until one resumed pass read 1.78M of a ticket's ~2.2M GPT input tokens; it starts fresh since
+2026-11-09 (owner). So every prompt stands on its own, and the test pass hands GPT its own design and
+your critique verbatim from the reviews file. Nor would a `thread` call guarantee the context: `ask.sh`
+falls back to a fresh thread when a resume fails (it says so on stderr), and any `fresh` call in
+between has replaced `.thread-id`.
 
 Verify what GPT claims — re-run the suite and its mutation audits yourself — before reporting it as fact.
 
@@ -161,17 +174,17 @@ it was handed before the work could proceed.
 
 The ChatGPT limit is account-wide and per rolling 5-hour window, and everything GPT does here draws
 on it: every `ask.sh` call, **AO's reviewer**, and every parallel ticket session — as they all share
-the owner's Claude plan limits. AO's reviewer runs at effort ultra, once per PR head, so batch each
-round's fixes into one push, never request a review on a draft, and don't push after an approval
-without reason: a new head is a new review.
+the owner's Claude plan limits — and it is the bottleneck. AO's reviewer runs once per PR head, so
+batch each round's fixes into one push, never request a review on a draft, and don't push after an
+approval without reason: a new head is a new review.
 
 If a limit runs out mid-task, finish the verification yourself rather than stall, and say so. Never
 switch models silently — AO's reviewer included (`--agent`, `--model`): a review that fails on the
 limit is `ao report --needs-input`, and the owner decides.
 
 Resuming a thread replays the whole transcript, so review #5 costs more than review #1 (the
-famous-meter test pass read 3.4M tokens, mostly cached), and the test pass carries the design's
-transcript with it. `ask.sh` prints token usage to stderr — watch it. A session that moves on to a
-second task deletes `.claude/gpt/.thread-id` first.
+famous-meter test pass read 3.4M tokens, mostly cached) — which is why every role now starts fresh.
+`ask.sh` prints token usage to stderr — watch it. A session that moves on to a second task deletes
+`.claude/gpt/.thread-id` first.
 
 `AGENTS.md` rides along on **every** Codex call — `ask.sh`'s and AO's reviewer's. Keep it lean.

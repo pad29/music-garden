@@ -12,9 +12,8 @@ it — GPT can read the files itself.
 
 Then run GPT's review yourself, with the design-reviewer brief (`.claude/gpt/briefs/design-reviewer.md`;
 `CLAUDE.md` § Calling GPT), framing the prompt as a review of work already done rather than a plan:
-what changed, why, and what you're unsure about. Point it at the specific files. If this session's GPT
-thread holds a ticket's design, run it as `thread`, not `fresh` — a `fresh` call replaces the thread
-the test pass resumes.
+what changed, why, and what you're unsure about. Point it at the specific files. Run it `fresh`;
+`thread` only for a second round of the same review.
 
 Report its findings as a numbered list with severity, saying for each whether you agree and
 why. Fix nothing until the owner has seen the findings.

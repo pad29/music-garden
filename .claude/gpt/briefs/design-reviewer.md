@@ -1,7 +1,9 @@
 # Design-reviewer brief — GPT attacks a plan or finished work
 
 For ad-hoc reviews: the `gpt-review` skill and "get GPT's take on…". In the default loop GPT designs
-and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else.
+and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else — and,
+temporarily, for the PR review itself, while AO's reviewer cannot submit (`work-ticket` § 8,
+*Temporary*).
 
 Get GPT to attack the work. GPT is a counterparty, not a collaborator — your job is to carry its
 objections back intact, not to defend the design.
@@ -34,9 +36,8 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 ```
 
 Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT). Use `thread` instead
-of `fresh` for a second round on the same task — and whenever this session's thread holds a
-ticket's design, because a `fresh` call replaces `.claude/gpt/.thread-id`. If the ChatGPT limit
-runs out, say so rather than silently switching models.
+of `fresh` only for a second round of the same review. If the ChatGPT limit runs out, say so
+rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

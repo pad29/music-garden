@@ -62,17 +62,20 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   not bring the owner's answer back to the session that asked. Take the PR over without touching that
   session's worktree, which may still have its branch checked out — and only from an untouched branch:
   ```bash
-  ao session claim-pr <pr-url> --no-takeover                # refuses if a live session owns it: stop there
   gh pr view <n> --json headRefName,headRefOid              # the PR's branch and full head SHA
-  git fetch origin main <headRefName>
-  git status --short                                        # must print nothing: no edits of yours
-  git merge-base --is-ancestor HEAD origin/main             # must succeed: no commits of yours either
-  git switch -C "$(git branch --show-current)" <headRefOid> # this session's branch, moved to the PR head
+  ao session claim-pr <pr-url> --no-takeover &&             # refuses if a live session owns it
+  git fetch origin main <headRefName> &&
+  st=$(git status --short) &&                               # a status that fails stops it too
+  if [ -n "$st" ]; then echo "STOP: edits of your own; not resetting"
+  elif ! git merge-base --is-ancestor HEAD origin/main; then echo "STOP: commits of your own; not resetting"
+  else git switch -C "$(git branch --show-current)" <headRefOid>   # this branch, moved to the PR head
+  fi
   git status; git branch --show-current; git rev-parse HEAD # HEAD must equal headRefOid
   ```
-  If HEAD already equals `headRefOid`, the takeover is done: skip the commands. If a check fails, stop —
-  resetting would throw work away. Never check out `FETCH_HEAD`. Run the last line even when a command
-  before it failed, and stop on anything unexpected. From then on push with
+  The reset runs only when the claim, the fetch and `git status` all succeeded, nothing is uncommitted,
+  and the branch has no commits of its own; otherwise stop — resetting would throw work away. If HEAD already equals
+  `headRefOid`, the takeover is done: skip the block. Never check out `FETCH_HEAD`. The last line runs
+  whatever happened before it; stop on anything unexpected. From then on push with
   **`git push origin HEAD:<headRefName>`** — the PR's own branch, the one exception to
   `git push -u origin HEAD`.
   Then read every comment on the ticket and the PR, and the ticket's `reviews/<ID>-*.md`. You are
@@ -84,8 +87,9 @@ Not for a resumed ticket: its design exists (§ 7, *Continuing*).
 
 - Read the whole ticket and its comments, then `AGENTS.md`, `CLAUDE.md`, everything its **Read first**
   names, and the `reviews/` files for the area.
-- Run the **`gpt-design`** skill with the ticket ID. GPT designs (`ask.sh fresh`: the thread § 6's test
-  pass resumes), you critique, and both go into `reviews/<ID>-<slug>.md`, separate and verbatim.
+- Run the **`gpt-design`** skill with the ticket ID. GPT designs (`ask.sh fresh`), you critique, and
+  both go into `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back
+  to GPT.
 - **Decisions already made** in the ticket bind GPT's design and your critique alike.
 - No code yet.
 
@@ -156,12 +160,12 @@ reported verbatim — **unless the disagreement is itself one of the owner decis
   - Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
     deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
     `https://deploy-preview-82--tunegarden.netlify.app`).
-- **GPT's test pass** — the tester brief, `ask.sh thread workspace-write`. The prompt must stand alone
-  (`CLAUDE.md` § Calling GPT): point GPT at the reviews file and the ticket's *Done looks like*, say what
-  you tested and what you could not reach, and list **where the build departs from its design, and
-  why**, so it tests the departures as deliberate — and can object to them. If `ask.sh` reports that the
-  resume failed, GPT worked from the prompt alone: say so in the record. Review every file it adds before
-  keeping it. Fix what it found, and re-run everything the fixes touched.
+- **GPT's test pass** — the tester brief, `ask.sh fresh workspace-write`: a fresh thread, not the
+  design's (owner, 2026-11-09 — `CLAUDE.md` § Calling GPT). So the prompt hands GPT its own design and
+  your critique verbatim from the reviews file, with *Owner's decisions* and the ticket's *Done looks
+  like*; says what you tested and what you could not reach; and lists **where the build departs from
+  its design, and why**, so it tests the departures as deliberate — and can object to them. Review every
+  file it adds before keeping it. Fix what it found, and re-run everything the fixes touched.
 
 ## 7. Stop for the owner — Needs Input
 
@@ -176,9 +180,8 @@ Then:
    at the design checkpoint, the reviews file alone — and push. Open a **draft** PR against `main` (or
    keep the PR you have): Netlify builds a preview for the phone, and a later session can claim the PR.
    **Never request AO's review on a draft.**
-2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats). File the same text with
-   `ao report --needs-input` — § Hand-off formats shows how to keep it literal — and end with it as your
-   last message.
+2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats), and end with the same text
+   as your last message. File its short form with `ao report --needs-input` (§ Hand-off formats).
 3. Move the ticket to **Needs Input** and end your turn.
 
 **Continuing.** The owner answers in this AO session, or on the ticket, moving it back to Todo; the
@@ -201,9 +204,13 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
    that says why), push, and open the PR against `main` **ready for review** — or `gh pr ready` the draft.
    Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in the **PR**
    format.
-4. **Request AO's review:** `ao review trigger --pr <url>` the first time, `ao review trigger` after that
-   — after a failed run too. If it answers that the head was already reviewed right after a push, wait a
-   few seconds and retry. Then wait for the verdict on the PR's **current head**. An approval posts no
+4. **Request AO's review** — **temporarily replaced:** until an AO review run submits, GPT reviews the PR
+   through `ask.sh` instead (*Temporary: GPT's PR review through `ask.sh`*, at the end of this section).
+   `ao review trigger --pr <url>` the first time, `ao review trigger` after that — after a failed run
+   too. If it answers that the head was already reviewed right after a push, wait a few seconds and
+   retry. The reviewer is the one the orchestrator configured (`CLAUDE.md` § Calling GPT); if it tells
+   you the settings changed since you were spawned, pass the new ones (`--model`, `--effort`). Then
+   wait for the verdict on the PR's **current head**. An approval posts no
    comment for you to notice, so run this as a background command; the harness wakes you when it exits,
    and it prints one line — `<status> <verdict> <run-id>` for the run on the current head, or `timeout`
    after about an hour:
@@ -223,9 +230,10 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
 5. **Read the verdict, then act:**
    - **Approved on the current head** → step 6.
    - **Failed or cancelled, no verdict within the hour, or no run for the head** → first rule out the
-     ChatGPT limit. A failed run's `body` doesn't say why: on 2026-11-08 two runs failed within a minute
-     with *"reviewer Chat turn ended without submitting a result"*, and the limit was the cause. A
-     one-word call shows it — `codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply
+     ChatGPT limit. A failed run's `body` doesn't say why: *"reviewer Chat turn ended without submitting a
+     result"* came on 2026-11-08 with the limit spent, and on 2026-11-09 with it available, when the
+     reviewer had reviewed but could not submit (the temporary section below). A one-word call shows the
+     limit — `codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply
      with one word: ok"` answers *"You've hit your usage limit … try again at <time>"* when it is spent.
      **At the limit** → Needs Input (§ 7), with the time it resets; no retry, and never another reviewer
      agent, model or effort — the owner decides whether to wait. **Otherwise** → request the review
@@ -246,21 +254,52 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
 6. **Hand off.** Check that the approved head is still the PR's head (`gh pr view <n> --json
    headRefOid`). Edit the PR body's **Review** section to add the verdict — an edit is not a new head.
    Wait for Netlify (`gh pr checks <n> --watch`) and take the preview URL from the deploy-preview check's
-   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, file the
-   same text with `ao report --done … --pr-created <url>`, and end with it as your last message.
+   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, end with the
+   same text as your last message, and file its short form with `ao report --done … --pr-created <url>`.
+
+### Temporary: GPT's PR review through `ask.sh` (owner, 2026-11-09)
+
+**Until an AO review run submits a result, this replaces steps 4–5's AO review — don't request one.**
+AO's reviewer reviews but cannot submit here: its runs end with *"reviewer Chat turn ended without
+submitting a result"* while a one-word `codex exec` answers. AO runs it in Codex's sandbox, where `gh`
+cannot read its configuration (`C:\Users\pavel\AppData\Roaming\GitHub CLI\config.yml`: *Access is
+denied*) and `ao` is not on PATH; `ao doctor` also warns `codex-launch-flags` — codex-cli 0.155.1 rejects
+AO's launch flags. Each such run spends the ChatGPT limit on a verdict that never arrives.
+
+1. Write a self-contained prompt to `.claude/gpt/prompt.txt`, framed as a PR review in the
+   design-reviewer brief's manner: the PR's diff against `origin/main` — or, once GPT has approved an
+   earlier head, only the delta since that head, with that verdict quoted — plus the ticket and the
+   reviews file by path. Ask for the changes it requires, each with a severity, or an approval that names
+   the head SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`.
+2. Its answer is step 5's verdict, under all of step 5's rules: agree → fix; disagree → your reasoning;
+   the all-disputed and third-round exits; the round recorded in the reviews file with its fixes. The next
+   round reviews the new delta.
+3. An approval counts only for the head it names, and that must still be the PR's head at step 6. Put the
+   verdict, verbatim, in the PR body's **Review** section — a body edit, not a commit.
+
+**Once an AO review run submits, remove this section and every active reference to it:** step 4's
+pointer; step 5's note on 2026-11-09; the review lines of both hand-off templates (*In Review* and the
+PR body); in `CLAUDE.md`, the default loop's step 8, *Explicit delegation* and *Calling GPT*; and the
+design-reviewer brief's opening. `git grep -in temporar -- CLAUDE.md .claude/` lists them all. The
+review records keep their history.
 
 ## Hand-off formats
 
-Every hand-off goes to three places: the ticket, the PR, and AO — `ao report` and your last message in
-this session. Use these shapes exactly, headings included, so the owner always knows where to look. Leave
-a section out only when the template says it may be left out.
+Every hand-off goes in full to the ticket, the PR, and your last message in this session. Use these
+shapes exactly, headings included, so the owner always knows where to look. Leave a section out only
+when the template says it may be left out.
 
-The text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into a
-variable, then the variable:
+AO gets the short form: **`ao report` notes are capped at 1,000 characters** (a longer one is refused —
+measured 2026-11-09). So its note says in a few lines where things stand and what is needed — the
+questions, or the verdict — with the PR attached (`--pr-created <url>`); the full text is on the ticket
+and the PR.
+
+Hand-off text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into
+a variable, then the variable:
 
 ```bash
 note=$(cat <<'EOF'
-<the hand-off text>
+<the short form, under 1,000 characters>
 EOF
 )
 ao report --done --note "$note" --pr-created <url>
@@ -312,8 +351,9 @@ This is how the owner spends his time, so it must be honest and short.
 **Review and tests**
 - Design: GPT designed it; my critique — one line per point: severity, the point, what was built instead.
 - GPT's test pass: what it found, and which of its test files were kept.
-- AO's review (Codex, Astra): **approved** on `<short sha>` after N rounds — one line per finding:
-  severity, the finding, agreed or disagreed, what you did. Full record: `reviews/<ID>-<slug>.md`.
+- AO's review (Codex, Astra) — while § 8's temporary rule stands, GPT's PR review through `ask.sh`:
+  **approved** on `<short sha>` after N rounds — one line per finding: severity, the finding, agreed or
+  disagreed, what you did. Full record: `reviews/<ID>-<slug>.md`.
 - Verified: N/N tests; what you checked in the browser, on which head.
 - Not verified: what you could not reach — `file://` among them whenever asset loading changed.
 ```
@@ -353,8 +393,9 @@ One short paragraph, or bullets.
 
 ## Review
 GPT's design and my critique in brief (in full in the reviews file). GPT's test findings, and which of its
-test files were kept or deleted, and why. AO's review: each finding with severity and my verdict,
-including any disagreement in the reviewer's own words — and, once it lands, the verdict.
+test files were kept or deleted, and why. AO's review (or, while § 8's temporary rule stands, GPT's
+`ask.sh` PR review): each finding with severity and my verdict, including any disagreement in the
+reviewer's own words — and, once it lands, the verdict, verbatim.
 
 ## Tests
 N/N pass; mutation audits run; what the browser check covered, on which head; what remains unverified.

@@ -20,7 +20,8 @@ GPT designs; you critique. Neither edits the other's words.
    `EDITOR-DESIGN.md` for grid and editor architecture, `DESIGN.md` for the engine, `QUESTS.md` for
    quests).
 3. **Run** `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt` in the background.
-   This starts the thread that GPT's test pass resumes.
+   GPT's test pass later starts a thread of its own and learns the design only from the reviews file,
+   so step 5's verbatim record is what it will test against.
 4. **Present GPT's design verbatim**, then your own critique in a clearly separated section: where it
    is wrong, where it is over-engineered, what it missed about how this codebase actually works, and
    anything that violates a hard invariant in `AGENTS.md`. Give each point a severity and say what you

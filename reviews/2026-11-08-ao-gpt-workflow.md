@@ -100,6 +100,25 @@ review, isolated browser profiles, explicit pushes.
    on this one**: AO session `music-garden-3` builds it on `claude/ao-launch-json`. The owner, relayed by
    the orchestrator, 2026-11-09. This PR keeps `work-ticket` § 6's measured http-server route, which works
    either way.
+4. *Does GPT's test pass resume the design thread?* — **No: it starts fresh** (`ask.sh fresh
+   workspace-write`), with a prompt that hands GPT its own design and Claude's critique verbatim from the
+   reviews file. The owner, relayed by the orchestrator, 2026-11-09. The reason: this change's resumed
+   test pass read 1.78M of its ~2.2M GPT input tokens, and the ChatGPT 5-hour limit has become the
+   bottleneck. Applied to `CLAUDE.md`, `work-ticket` § 6, `gpt-design`, the tester and author briefs —
+   and, since nothing resumes the design thread for testing any more, `gpt-review` and the
+   design-reviewer brief go back to `fresh`, with `thread` only for a second round.
+5. *At what effort does AO's reviewer run?* — **High, not ultra.** The owner, relayed by the orchestrator,
+   2026-11-09; the orchestrator changed the project config to Codex, `gpt-6-astra`, effort high.
+   Sessions keep the reviewer settings they were spawned with, so this one passes `--effort high`
+   explicitly; `CLAUDE.md` § Calling GPT and `work-ticket` § 8 now say to pass changed settings when the
+   orchestrator reports them, and never settings of one's own.
+6. *AO's reviewer reviews but cannot submit — what now?* — **Option 2, with a temporary fallback**: take
+   the verdict the AO run on `7370181` reached (below), apply its hardening, and, until an AO review run
+   submits, have GPT review PRs through `ask.sh` instead — a fresh, read-only `gpt-6-astra` thread whose
+   self-contained prompt carries the PR's diff against `origin/main`, or the delta since GPT's last
+   approval; the verdict verbatim in the PR body, under § 8's approved-head checks. The owner, relayed by
+   the orchestrator, 2026-11-09. Written into `work-ticket` § 8 (*Temporary*), `CLAUDE.md` and the
+   design-reviewer brief, each marked temporary with its cause and the condition for removing it.
 
 ## Test pass (Astra)
 
@@ -158,7 +177,7 @@ review.
 
 ## PR review (AO: Codex, Astra)
 
-**Round 0 — no review ran.** PR #85's first two runs on `7f03771` (`9f6e89fa`, `b9bafeb6`) each failed
+**Round 0 — no verdict arrived.** PR #85's first two runs on `7f03771` (`9f6e89fa`, `b9bafeb6`) each failed
 within a minute: *"reviewer Chat turn ended without submitting a result"*. That text does not say why; a
 one-word `codex exec` on `gpt-6-astra` did: *"You've hit your usage limit … try again at 11:25 PM"*
 (05:25Z) — the account-wide ChatGPT limit, from whose 5-hour window this change's two `ask.sh` calls had
@@ -168,6 +187,84 @@ the reset it answered (2026-11-09): request it once more on the next head, same 
 runs did prove the documented poll: it caught the terminal run on its first poll, and its exit woke the
 worker. That poll, and the way to tell a limit failure from another, went into § 8 before any review
 had completed, so they cost no extra round.
+
+The third run, on `2216b63` at 15:04Z (`98e55751`, same reviewer, effort ultra), failed the same way.
+The § 8.5 check said why: the limit had run out again — *"try again at 2:04 PM"*, 20:04Z — though this
+session had made no ChatGPT call since the reset. Needs Input again, and a stop, as the orchestrator
+had asked. The owner then decided 4 and 5 above; the next request runs at effort high.
+
+On `7370181`, at effort high, with the limit reset: three more runs (`bfe6f81c`, then retries `26e9f2ef`
+and `23665af5`, 20:25–20:28Z) failed the same way, within a minute each. **This time the limit was not the
+cause**: the one-word `codex exec` answered at 20:26Z and 20:29Z, and so did one run inside this worktree
+at effort high, with `AGENTS.md` loaded. Codex works; AO's review run never reaches `ao review submit`, and
+the earlier failures may share that cause. After two retries § 8.5 says stop: reported **stuck**, no
+reviewer switch. That report found one more defect: `ao report` refuses a note over 1,000 characters,
+so `work-ticket` now sends AO a short form of each hand-off, and keeps the full text on the ticket, the PR
+and the last message.
+
+**What the runs actually did** (found in the Codex session files by the orchestrator, 2026-11-09):
+AO's reviewer *did* review. It runs in Codex's sandbox, where `gh` could not read
+`C:\Users\pavel\AppData\Roaming\GitHub CLI\config.yml` (*Access is denied*) and `ao` was not on PATH, so
+its verdicts never reached AO or GitHub; `ao doctor` also warns `codex-launch-flags` (codex-cli 0.155.1
+rejects AO's launch flags). So "within a minute" was the submission failing, not the review — and the
+15:04Z run on `2216b63` reviewed too, so the limit was not its whole story.
+
+The verdict on `7370181` (run `23665af5`, 20:28Z; `~/.codex/sessions/2026/11/08/rollout-2026-11-08T22-40-11-01a1be9b-4d7f-7430-b852-22cc5ee7ce74.jsonl`),
+verbatim:
+
+> Approved / ready: no required changes found in the reviewed diff from origin/main
+> (d8e389d81775e91e1ca0d9cfb3c0cafa9f76b6c5) to 73701816fb520c6a232d4bfd8a408fe5056ded44. The checkout
+> and target commit are unchanged since the completed static review. Reviewed ticket claiming and
+> continuation, current-head approval, retry and handoff behavior, moved briefs, and fresh-thread
+> test-pass instructions. Optional hardening: explicitly gate git switch -C in the takeover Bash block on
+> a clean status and successful ancestry check, so running the whole block enforces its stop-on-failure
+> prose. No project programs, tests, or builds were run; no checkout files were changed. Live PR metadata
+> could not be refreshed because GitHub CLI cannot read its configuration in this environment.
+
+followed by its note on the submission: *"GitHub submission failed before contacting the provider: access
+to the GitHub CLI configuration was denied. No review ID was created."*
+
+1. **Optional (not required) — gate the takeover reset.** **Agreed** — done, with the finding below.
+
+A sub-reviewer during the 15:05Z attempt on `2216b63` rated the same issue higher
+(`~/.codex/sessions/2026/11/09/rollout-2026-11-09T09-05-17-01a1c0d7-980f-7c83-a584-342fe17c18b9.jsonl`),
+verbatim:
+
+> **[P2] Make the takeover guards prevent the branch reset.** The Bash block runs `git switch -C`
+> unconditionally after `git status --short` and `git merge-base --is-ancestor`. In ordinary Bash, dirty
+> status output or the ancestry check returning 1 does not stop the following command. A worker running
+> the supplied block on a clean branch with its own unmerged commits therefore resets that branch despite
+> the documented protection. Check that status output is empty and explicitly gate the reset on both
+> successful checks.
+>
+> The surrounding prose says to stop on failed checks, which reduces confidence if these commands are
+> intended to run individually. No other high-confidence required changes found in §§1–5 or 7.
+
+2. **P2 — the takeover guards did not prevent the reset.** **Agreed** — `work-ticket` § 3's block now
+   runs `git switch -C` only inside `claim-pr && fetch && if …`: an empty `git status --short` and a
+   successful `merge-base --is-ancestor`, each failure printing why. Tested in throwaway repositories: a
+   clean untouched branch moves to the PR head; uncommitted edits, a commit of the session's own, or a
+   refused claim each leave HEAD where it was.
+
+**Fallback round 1 — GPT's PR review through `ask.sh`** (decision 6; a fresh read-only thread on the
+delta `7370181..01c1e2d`, told of its approval at `7370181`). Changes requested, two findings, both taken:
+
+1. **Medium — the cleanliness guard ignored `git status`'s exit status.** *"If it fails with empty stdout,
+   `[ -n "$(git status --short)" ]` evaluates false and the reset remains reachable. In-memory Bash mocks
+   confirmed `git switch -C` runs after a status failure; the other failed guards correctly block it, and
+   the clean case succeeds. **Fix:** capture status in an assignment whose success gates the remaining
+   checks, such as `takeover_status=$(git status --short) && if …`, then test its contents. Preserve the
+   final diagnostic commands."* **Agreed** — `st=$(git status --short) &&` now gates the `if`. Re-tested in
+   throwaway repositories with a mocked failing `git status --short`: the new block leaves HEAD alone, and
+   the previous block, run the same way, resets — GPT's finding reproduced. The clean, dirty, own-commit and
+   refused-claim cases still behave.
+2. **Low — the removal instruction's cleanup list was incomplete.** *"Following it leaves dangling
+   references in step 5, both hand-off templates, and the design-reviewer brief. The review record's
+   follow-up mentions the brief but still omits step 5 and the templates."* **Agreed** — the *Temporary*
+   section now lists every active reference, and `git grep -in temporar -- CLAUDE.md .claude/` finds them
+   all; the follow-up below points there.
+
+**Cost:** 242,477 input tokens (201,088 cached), 1,796 out.
 
 ## Verification
 
@@ -183,8 +280,8 @@ had completed, so they cost no extra round.
   `status`, `verdict`, `body`); the § 8 poll, run from the skill's own text, catching a failed run; a
   background command's exit waking the worker; a plain `ao review trigger` starting a new run after a
   failed one; `ao report --needs-input` with a multi-line note from a quoted heredoc.
-- **Not verified:** a completed AO review — the status and verdict an approval or a change request
-  reports — until the limit resets; `ao session claim-pr --no-takeover` and the § 3 takeover in a real
+- **Not verified:** an AO review run that submits — none can here yet (decision 6), so the status and
+  verdict fields of a submitted run are unseen; `ao session claim-pr --no-takeover` and the § 3 takeover in a real
   second session (GPT ran the git half in throwaway repositories); the § 2 claim race; Linear moves and
   comments in the new formats.
 
@@ -193,5 +290,8 @@ had completed, so they cost no extra round.
 - **TUN-71** (Backlog, `needs-owner`) — a playback-goldens capture an AO worker can run.
 - **TUN-9** — comment: README's stale Netlify site name, and the dead CORS origin beside it.
 - **`.ao/launch.json`** — a separate PR stacked on this one, `claude/ao-launch-json` (owner's decision 3).
+- **AO's reviewer sandbox** (`gh` config access, `ao` on PATH, `ao doctor`'s `codex-launch-flags`) — for
+  the orchestrator. Once an AO review run submits, remove `work-ticket` § 8's *Temporary* section and
+  every active reference it lists (`git grep -in temporar -- CLAUDE.md .claude/`).
 - For the orchestrator: the `needs-owner` label's description in Linear still says a session "stops at a
   proposal".
