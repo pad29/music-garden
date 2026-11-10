@@ -103,21 +103,25 @@ docs drift, security — and the scenario dry-runs. I finished the verification 
 § Cost says, but that is no substitute for GPT's independent review: AO's review of the PR is the check
 still to come.
 
-## PR review (AO: Codex, Astra)
+## PR review (GPT through `ask.sh`, Astra)
 
-**Not requested yet.** The orchestrator holds every GPT call — `ask.sh` and AO's review alike — until #85's
-AO review, next in line after the 20:04Z reset, has its verdict.
+AO's reviewer cannot submit on this machine, so GPT reviews the PR through `ask.sh` instead
+(`work-ticket` § 8, *Temporary*; owner, 2026-11-09): a fresh read-only thread whose prompt carries the
+PR's diff against its base, `origin/claude/ao-gpt-workflow`. The orchestrator released it once #85 was
+approved on `32a9beb`. The verdict lives in the PR body; a round that requires changes is recorded here,
+with its fixes.
 
 ## Verification
 
-On `a7b0e5d` — this branch with #85's `2216b63` merged in. The only commit after it is this record's.
+On `794802d` — this branch with #85's approved head, `32a9beb`, merged in. The only commit after it is
+this record's.
 
 - `node tools/check-syntax.mjs` OK (29 scripts); `node --test "tests/*.test.mjs"` 641/641: the 636
   before, which show only that nothing broke (no game code changed), and GPT's five.
-- `work-ticket` § 6 run as written: `ao preview start` → `ready game http://127.0.0.1:52029/index.html?dev`;
-  `curl | cmp` on `tests/ao-launch.test.mjs` and `.claude/skills/work-ticket/SKILL.md`; `ao browser
+- `work-ticket` § 6 run as written: `ao preview start` → `ready game http://127.0.0.1:62683/index.html?dev`;
+  `curl | cmp` on the merged `.claude/skills/work-ticket/SKILL.md` and on `.ao/launch.json`; `ao browser
   open`; the game with its dev bar and no page errors; `ao preview stop`; the port refused, no process
-  left. The first run of § 6, on `3b6aefd`, compared `README.md` and `.ao/launch.json` the same way.
+  left. Earlier runs on `3b6aefd` and `a7b0e5d` compared other files the same way.
 - **Not verified:** that AO stops the preview when a session ends without `ao preview stop` (it cannot
   be tried without ending this session); `ao preview start` on macOS or Linux; whether the owner's view
   of the Browser panel follows a restart (only the agent's tab was observed); everything GPT's
