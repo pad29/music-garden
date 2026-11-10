@@ -35,7 +35,8 @@ detectors; it loads the game into a stubbed-DOM vm context. **Read `tests/README
 writing a test** — it explains the harness, what it can't reach (rendering and audio), and the
 realm gotcha that makes `deepStrictEqual` fail on structurally identical arrays.
 
-Serve locally: `npx http-server -p 8377 -c-1 .` → http://localhost:8377
+Serve locally: `npx http-server -p 8377 -c-1 .` → http://localhost:8377 — in an AO session,
+`ao preview start` instead (`.ao/launch.json`: the worktree, on a loopback port AO picks).
 Dev URL flags: `?dev` (level-jump dropdown, "relock instruments", "unlock quests", "clear quest runs"), `?reset` (wipe progress).
 
 Regenerators — slow, overwrite generated files, run only when their inputs changed:

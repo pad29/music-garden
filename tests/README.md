@@ -29,6 +29,13 @@ file left out is served as `index.html` in production, and the game never starts
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
 override) and honours a shell `#` comment.
 
+**The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
+in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the
+worktree uncached, bound to `127.0.0.1` on AO's `${PORT}`; the url on that same origin; and
+`readyTimeoutMs`, if set, within AO's 0–55000 — one bad entry makes AO reject the whole file. It is a
+static check: that AO really starts, serves and stops the server was measured, in
+`reviews/2026-11-08-ao-launch-json.md`.
+
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
 throws nowhere and simply behaves differently from one big script. `load-order-review.test.mjs` runs
