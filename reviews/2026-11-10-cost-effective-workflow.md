@@ -1,7 +1,8 @@
 # 2026-11-10 — Size the workflow's loop and cut its token cost
 
 Branch `claude/cost-effective-workflow` · ad-hoc work the owner approved directly (no ticket), 2026-11-10 ·
-AO sessions `music-garden-4`, then `music-garden-6` (GPT's PR review and its fixes) · **Medium**
+AO sessions `music-garden-4`, then `music-garden-6` (GPT's PR review and its fixes), then
+`music-garden-7` (took the PR over 2026-11-11; GPT's round 2 and its fixes) · **Medium**
 under the new rules: my plan, GPT's design review, GPT's PR review; no separate test pass.
 
 Workflow docs only — `CLAUDE.md`, `AGENTS.md`, the skills, GPT's briefs, `reviews/README.md`,
@@ -346,6 +347,193 @@ under Git Bash.
     answers a design question without granting more rounds → `resume.md` § 2: the budget stays spent →
     the fix goes in, and the PR goes back to Needs Input for the owner to grant a fourth round or accept.
 
+## Takeover, round 2 (session `music-garden-7`)
+
+**Takeover** (2026-11-11): `ao session claim-pr 88` answered *claimed*; `ao session ls` then listed PR #88
+against `music-garden-7` only, none against `music-garden-6`. Takeover comment on the PR. I did not use
+`resume.md` § 1's block as written: I ran `git checkout -B claude/cost-effective-workflow <headRefOid>`,
+which Git refused because `music-garden-6`'s worktree still has that branch checked out — nothing
+changed — and then worked detached at `2b44a4c`, pushing `HEAD:claude/cost-effective-workflow`. The
+documented block (`git switch -C "$(git branch --show-current)" <headRefOid>`) moves the session's own
+branch instead, and would not have hit this.
+
+**Found on the takeover — the suite failed on this worktree.** `core.autocrlf=true` and `* text=auto` check
+the docs out with CRLF here; `music-garden-6`'s worktree had LF. `workflow-scripts.test.mjs`'s
+`` ```bash\n `` regex then missed `pr-review.md`'s poller block, the module threw at load, and its 12 lock
+and poller tests never ran: 646/647, one file-level failure, where `2b44a4c`'s record says 658/658. Fixed
+before GPT's round 2 (and shown to it): both workflow test files read the docs with CRLF normalised to LF.
+Then 658/658.
+
+### Round 2 on the delta `cee6a86..2b44a4c` — Changes requested
+
+Fresh, read-only, `ask.sh`, GPT lock taken (`acquired`) and released (`released`, then `free`); the delta
+plus the uncommitted CRLF fix; round 1's verdict quoted verbatim; the owner's decisions 3–5 below given as
+binding. **904k input tokens (816k cached), 10.1k out.**
+
+<details><summary>GPT's round-2 review, verbatim</summary>
+
+Reviewed `cee6a86..2b44a4c0e5e2a7d2a2e298d12642cad69e9288d5`, plus the working-tree CRLF fixes and recorded owner decisions. No files edited. The CRLF normalization is appropriate.
+
+**Round-1 findings**
+
+| # | Status | Assessment |
+|---|---|---|
+| 1 | Partly | Atomic acquisition fixes the original race; stale recovery still permits overlapping jobs. |
+| 2 | Partly | The owner-approved routing is preserved, but step 0 also matches the replacement’s own takeover comment. |
+| 3 | Partly | Malformed JSON now produces a nonzero poller result, and polling failure stops re-requesting; permanent errors still retry, and releasing an uncertain run’s lock breaks exclusivity. |
+| 4 | Resolved | M prompts explicitly require the complete ticket and owner answers. |
+| 5 | Resolved | The resume entry identifies PR records and explicitly skips Linear for ad-hoc work. |
+| 6 | Partly | Exit status and session-specific logs are fixed; diagnostics remain truncated. |
+| 7 | Resolved | `needs-owner` overrides triviality in both instructions and table. |
+| 8 | Resolved | S consistently has Claude’s short plan without GPT design review. |
+| 9 | Resolved | The cited repository paths and extracted section references are corrected. |
+
+**Round-1 missing tests**
+
+| # | Status | Assessment |
+|---|---|---|
+| 1 | Partly | Concurrent acquisition is tested, but stale recovery’s dangerous interleaving is not controlled or tested. |
+| 2 | Resolved | Walkthrough 10 covers the ownership cases and hour boundaries under the owner-approved policy. |
+| 3 | Resolved | Walkthrough 11 describes PR-based recovery without Linear operations. |
+| 4 | Resolved | Walkthrough 12 supplies the omitted binding decision independently. |
+| 5 | Resolved | Walkthrough 13 covers S and trivial `needs-owner` checkpoints. |
+| 6 | Partly | Basic failures are tested; permanent-error handling and exclusion across sessions after polling failure are missing. |
+| 7 | Partly | A manual failing-command check is recorded; complete diagnostics and simultaneous log isolation are untested. |
+| 8 | Resolved | Walkthrough 15 preserves the exhausted review budget. |
+| 9 | Partly | Tests cover paths and selected sections, but do not validate step numbers or all named procedure headings. |
+| 10 | Not resolved | CLI help is recorded, but the requested live ownership/retirement/push walkthrough is not demonstrated. |
+
+**Findings on the delta**
+
+1. **High — [gpt-lock.sh:43](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/.claude/gpt/gpt-lock.sh:43): stale recovery still breaks mutual exclusion.**  
+   Two contenders observe stale holder S. A removes S’s directory, acquires a new lock and starts GPT. B, acting on its earlier observation, moves **A’s live lock** aside. Before B restores it, C acquires the vacant path and starts GPT. The post-move ownership check detects the mistake only after exposing the gap. The admitted window therefore defeats the core guarantee. **Require recovery serialized with acquisition, or disable automatic breaking until recovery can safely exclude contenders.**
+
+2. **High — [pr-review.md:65](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/.claude/skills/work-ticket/pr-review.md:65): polling failure releases a potentially active job’s lock.**  
+   Worker A’s review remains running while `ao review ls` fails twice. The documented outcome releases A’s lock; waiting worker B can immediately acquire it and launch another GPT job. “Never request another review” constrains A, not B. The repeated-timeout path reaches the same outcome. **Keep the reservation until termination is established, or cancel and confirm termination before releasing; stopping observation is not job completion.**
+
+3. **Medium — [resume.md:59](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/.claude/skills/work-ticket/resume.md:59): the ownership check also rejects the replacement.**  
+   Section 1 requires `Taken over from old by AO session new`. That comment names **both** sessions. Step 0’s alternative condition—“a takeover comment … names you”—therefore matches `new`, even when AO correctly assigns it the PR. **Specify that the comment identifies this session as the relinquishing/replaced owner, not the acquiring owner.** This concerns step 0’s implementation, not the accepted late-reply policy.
+
+4. **Medium — [pr-review.md:47](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/.claude/skills/work-ticket/pr-review.md:47): permanent errors still receive an unconditional retry.**  
+   Authentication failure, permission denial or an unsupported command all enter the same `error:*` branch, sleep and retry. `CLAUDE.md` permits a retry only for a **clearly transient** failure. **Classify failures conservatively: stop immediately on permanent or unclassified errors; permit one retry for an identified transient error.** Round-1 finding 3 explicitly requested this distinction.
+
+5. **Medium — [CLAUDE.md:143](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/CLAUDE.md:143): the verification recipe still hides failure diagnostics.**  
+   `grep -A12` prints only twelve lines following each failure marker. A longer assertion diff or stack loses its remaining diagnostic content; `tail -n 8` generally supplies the suite summary, not that missing content. **Print the complete log on failure, retaining the saved exit status.** Extracting and testing this recipe would test behavior, just as extracting the poller already does.
+
+6. **Medium — [workflow-scripts.test.mjs:48](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/tests/workflow-scripts.test.mjs:48): the fake commands are not executable on POSIX.**  
+   `writeFileSync` creates `ao`, `gh` and `sleep` without executable permissions. The suite explicitly selects ordinary Bash on non-Windows systems, where these files cannot execute; command lookup selects installed commands or fails the sandbox assertion. **Create the fakes with executable permissions and verify that all three command lookups resolve to the expected fake files.**
+
+7. **Medium — [gpt-lock.sh:31](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-7/.claude/gpt/gpt-lock.sh:31): filesystem failures are reported as successful acquisition/release or ordinary contention.**  
+   Failure to write `owner` does not prevent `acquired`/exit 0. Failure of `rm -rf` at line 72 still ends with `released`/exit 0. A failed `mkdir` without an existing lock returns busy, potentially producing ninety minutes of retries for a filesystem error. **Check these operations, return a nonzero error for filesystem failures, and report acquisition only after publishing a valid claim.**
+
+**Missing tests required**
+
+1. **Automatable under `tests/`:** force two stale-recovery contenders and a third acquirer through finding 1’s ordering using barriers; assert that an active holder’s lock cannot be displaced and only one job starts.
+2. **Written walkthrough:** A’s review remains active after polling errors or repeated timeout; B attempts acquisition. B must remain blocked until A’s run is confirmed ended.
+3. **Written walkthrough:** after `Taken over from A by B`, A stops and B continues through step 0.
+4. **Automatable under `tests/`:** permanent error → one poll; identified transient error → at most two; malformed output → nonzero failure with the documented retry policy.
+5. **Automatable under `tests/`:** extract the trimming recipe; a failing command emits diagnostics longer than twelve lines, including a late sentinel. Require exit 1 and the sentinel; run two session IDs concurrently and verify separate logs.
+6. **Automatable under `tests/`:** execute the fake-command fixtures on POSIX as well as Git Bash; fail setup if path conversion or any fake-command lookup fails.
+7. **Automatable under `tests/`:** inject failed directory creation, owner-file publication and removal; require truthful nonzero results and preserved ownership information.
+8. **Automatable under `tests/`:** mutate a valid reference to `work-ticket § 8 step 99` and a nonexistent named procedure heading; require reference validation to fail.
+9. **Written live AO walkthrough:** demonstrate `--claim-pr` ownership transfer, retirement of the old owner and a push targeting the existing PR branch.
+
+Syntax checking passed. The full suite exited nonzero because this read-only sandbox denied temporary fixture creation (`EPERM`), including all twelve workflow shell tests; I cannot independently certify 658/658 here. No real GPT lock or AO session names were touched.
+
+**Changes requested**
+
+</details>
+
+### My answers to round 2
+
+1. **High — stale recovery still breaks mutual exclusion.** **Agreed.** The move-aside / check / put-back
+   acted on the path, not on the holder: a late breaker could move a live lock aside and open the gap.
+   Rebuilt: a break of holder S first takes `<lock>.break.S` (`mkdir`, atomic), then **re-reads the
+   holder under it** and removes the lock only if it is still S and AO still doesn't list S. While the key
+   is held nothing else can change the lock — S is dead, other breakers of S are shut out, acquirers fail
+   on the existing directory — so a session acting on an old view can no longer remove a lock taken since.
+   No move-aside, no put-back. Exposed as `gpt-lock.sh break <id>`, which `acquire` uses, so the late
+   breaker can be tested directly. **New residual, documented in the script:** a breaker that dies while
+   holding the key (a window of one `ao session ls`) leaves the key behind, and that lock stays
+   unbreakable until someone removes the key by hand; `status` shows it. It fails closed — waiters stay
+   busy — rather than letting two jobs run.
+2. **High — polling failure releases a lock a live run may still need.** **Agreed.** `pr-review.md`:
+   on **`error`**, keep the lock, report `--stuck` saying you hold it, and release only once
+   `ao review ls` shows the run ended (or `ao review cancel` ended it and `ao review ls` confirms); a
+   session that is ended instead stops being listed, so the next `acquire` breaks its lock. Failed /
+   cancelled / `timeout`: release once the run has ended, never while it may still run. `CLAUDE.md`
+   § Cost says the same.
+3. **Medium — step 0 also matches the replacement's own takeover comment.** **Agreed.** Step 0 now stops
+   only on a comment saying the PR was taken over *from* you, and says why being named as the new owner
+   is no reason to stop.
+4. **Medium — permanent errors still get an unconditional retry.** **Disagreed; not changed.** What the
+   poller retries is `ao review ls`, a local, side-effect-free status read: no GPT call, no review, no
+   write. One extra read 60 s later costs nothing, and after it the poller stops — it never loops. Telling
+   "permanent" from "transient" would mean matching `ao`'s error texts, which nothing documents and which
+   change with AO releases; GPT's own conservative rule ("stop on unclassified errors") would then stop
+   on every blip, and a stopped poller now means a `--stuck` session holding the GPT lock (finding 2) —
+   the costlier failure. I read `CLAUDE.md` § When something external breaks as aimed at actions that
+   spend or loop. If the owner reads it as covering this read too, the fix is one line (`fails -ge 1`).
+   Round 1's finding 3 asked for this distinction; round 1's answer said "Agreed" and did not build it —
+   this answer replaces that one for this part.
+5. **Medium — the recipe still truncates diagnostics.** **Agreed**, and with GPT's point that extracting
+   it makes it testable. `CLAUDE.md` § Working lean now prints it as a fenced block: on success the last
+   8 lines; on failure the whole log except passing (`✔`) lines — every diagnostic kept, the passing lines
+   dropped. Tested by running that block (missing test 5).
+6. **Medium — the fakes are not executable on POSIX.** **Agreed.** Written with mode `0755`, and the
+   sandbox now requires all three lookups to resolve, each to the fake (a missing one used to pass).
+   Not run on a POSIX machine: there is none here.
+7. **Medium — filesystem failures look like success or contention.** **Agreed.** `acquire`: a failed
+   owner write removes the lock and exits 1, and the owner file is read back before `acquired`; a `mkdir`
+   that fails twice with no lock present exits 1 with its error (so `wait` stops at once, not after 90
+   tries). `release` and a break exit 1 if the directory survives `rm -rf`. Also: on Git Bash the script
+   now converts the lock path with `cygpath -u`, so a `C:\…` `GPT_LOCK_DIR` globs correctly in `status`.
+
+### Missing tests, round 2
+
+1. **Stale-recovery interleaving — added**, automated: a breaker acting on an old view (`break
+   music-garden-3` after another session broke it and took the lock) → 75, the lock untouched and still
+   excluding a third session; a listed holder is never broken; a break already in progress → acquire busy,
+   `status` shows it, and the key is given back; six sessions breaking the same stale lock at once →
+   exactly one holds it (three rounds). The exact three-party timing GPT describes isn't reproducible
+   without hooks in the script; the late-breaker test is the step that interleaving needs, made directly.
+2. **Active review after polling errors — written walkthrough** 16.
+3. **Takeover comment A → B — written walkthrough** 17.
+4. **Permanent vs transient poll errors — not added** (answer 4).
+5. **Test-output recipe — added**, automated: the block extracted from `CLAUDE.md`, the suite replaced by a
+   fake that fails with 40 diagnostic lines and a late sentinel → exit 1, the sentinel printed, no passing
+   lines; a pass → at most 9 lines, exit 0; two sessions at once → separate logs, neither with the
+   other's output.
+6. **POSIX fakes — partly**: the setup now fails if any fake isn't the one found (answer 6); not run on
+   POSIX here.
+7. **Filesystem failures — partly**: a lock it can't create → `acquire` and `wait` exit 1 at once,
+   automated. A failed owner write and a failed removal are not injectable on Windows without ACL changes;
+   checked by reading.
+8. **Step numbers — added**, automated: every `work-ticket` § n step m (and m–k) must be a numbered step of
+   that section. Named procedure headings (*The limit*, *`error`*) are **not** validated.
+9. **Live AO takeover — partly, by this session**: the claim moved ownership (AO lists the PR against
+   `music-garden-7` only), the takeover comment was posted, and the push targets the existing PR branch.
+   Not shown: `ao spawn --claim-pr` itself (I claimed with `ao session claim-pr`), or a woken old session
+   running step 0.
+
+**Mutation audit** (each applied, run, reverted; files compared byte-for-byte after): no holder re-check
+under the break key → 1 test fails; a `mkdir` failure reported as busy → 1; no break key at all → 1; the
+recipe back to `grep -A12` → 1; the recipe losing its exit status → 2; a `work-ticket` § 8 step 9
+reference → 1.
+
+## Walkthroughs, round 2
+
+16. **A's review may still run when its poller fails.** A holds the lock and triggered AO's review;
+    `ao review ls` fails twice → `error:`, exit 1 → `pr-review.md` *`error`*: A keeps the lock and reports
+    `--stuck`, saying so. B runs `acquire` → busy (`held by A`), then `wait`. B gets the lock only when A
+    releases it after `ao review ls` shows the run ended, or when A is terminated and AO stops listing it —
+    then B's next try breaks the lock. If B gives up after 90 minutes it reports busy; the owner sees
+    `[GPT]` on A's name and A's `--stuck`.
+17. **Takeover comment A → B.** B posts *"Taken over from `A` by AO session `B`"* and claims the PR. The
+    owner messages A: step 0 — `ao session ls` lists the PR against B, and the comment says it was taken
+    over from A → A writes nothing and stops. The owner's answer reaches B: `ao session ls` lists the PR
+    against B; the comment names B only as the session it was taken over *by* → B continues.
+
 ## Owner's decisions
 
 1. *Medium = Claude plans, GPT reviews the plan* — **confirmed** by the owner, 2026-11-11 (relayed to
@@ -353,6 +541,19 @@ under Git Bash.
 2. *Wait for the limit to reset (02:49, 2026-11-11) and run the one GPT PR review, or hand off without
    it* — **A, run it** (owner, 2026-11-11, same relay). Run as round 1 above.
 3. *GPT's round 1 asked for changes, and they are fixed on a new head GPT has not seen — the lock script
-   above all. Run round 2 on the delta, or hand off as is?* — **open** (PR #88).
+   above all. Run round 2 on the delta, or hand off as is?* — **A, run it**: one fresh read-only `ask.sh`
+   review of the delta `cee6a86..2b44a4c` only, the GPT lock taken first; findings plus missing tests; at
+   the ChatGPT limit, no retry — stop and report (owner, 2026-11-11, relayed by the orchestrator in the
+   spawn prompt of session `music-garden-7`, which took the PR over from `music-garden-6`). Run as round 2
+   above.
 4. *The atomic GPT lock (`gpt-lock.sh`) replaces the `[GPT]` name marker you were asked to confirm; the
-   name prefix stays, for visibility* — **open** for the owner to confirm (PR #88).
+   name prefix stays, for visibility* — **confirmed**: the lock replaces the marker, and `[GPT]` stays as
+   a label (owner, 2026-11-11, same relay).
+5. *Round 1's finding 2 (a late direct reply can wake the retired worker), agreed only in part* — **stays
+   as built, no further change** (owner, 2026-11-11, same relay): *Continuing* step 0's ownership check,
+   no forced orchestrator routing.
+6. *GPT's round 2 asked for changes; they are fixed on a new head GPT has not seen — the stale-lock break
+   above all, rebuilt. Run round 3 on that delta (the last round the budget allows), or hand off as is?* —
+   **open** (PR #88).
+7. *Round 2's finding 4 — the poller retries any `ao review ls` failure once; GPT wants permanent errors
+   to stop at once — disputed (my answer 4)* — **open** (PR #88).

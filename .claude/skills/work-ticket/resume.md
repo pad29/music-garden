@@ -58,7 +58,8 @@ are on unless they match. Re-run the suite on the head you start from.
 
 0. **First, check the work is still yours.** Late answers go to a fresh session, which may own the PR
    by now. If `ao session ls` lists the PR against another session, or a takeover comment on the ticket
-   or PR names you, it isn't: write nothing, push nothing — `ao report --needs-input --note "<ID or PR>
+   or PR says it was *taken over from* you (the comment names both sessions: being the one it was taken over
+   *by* is no reason to stop), it isn't: write nothing, push nothing — `ao report --needs-input --note "<ID or PR>
    was taken over by <session>; the answer belongs there"`, and stop.
 1. Move the ticket back to **In Progress** — from Todo, claim it again as `work-ticket` § 2 says — and
    record each answer under *Owner's decisions*: the answer, and where and when it was given.

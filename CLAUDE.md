@@ -138,11 +138,16 @@ Every Claude call re-reads the whole context, so context size is the main Claude
 
 - **Search before reading:** Grep or Glob, then read the range you need, not the whole file.
   `work-ticket`'s procedure files are read only when their step comes up.
-- **Short output, exit status kept:** quiet flags, and a log of your own session's —
-  `log="${TMPDIR:-/tmp}/test-$AO_SESSION_ID.log"; node --test "tests/*.test.mjs" > "$log" 2>&1; s=$?;
-  tail -n 8 "$log"; [ $s -eq 0 ] || grep -n -A12 "^not ok\|✖" "$log"; echo "exit $s"; (exit $s)` —
-  the failures in full only when there are some, and the command still fails when the tests do. Never
-  trim GPT's findings. Don't re-derive what is already settled.
+- **Short output, exit status kept:** quiet flags, and a log of your own session's. On success the
+  summary; on failure the whole log but its passing lines, so no diagnostic is cut — and the command
+  still fails when the tests do (`tests/workflow-scripts.test.mjs` runs this block):
+
+  ```bash
+  log="${TMPDIR:-/tmp}/test-$AO_SESSION_ID.log"; node --test "tests/*.test.mjs" > "$log" 2>&1; s=$?
+  if [ $s -eq 0 ]; then tail -n 8 "$log"; else grep -v "^ *✔" "$log"; fi; echo "exit $s"; (exit $s)
+  ```
+
+  Never trim GPT's findings. Don't re-derive what is already settled.
 
 ## When something external breaks
 
@@ -189,7 +194,8 @@ shared across sessions the same way.
   `ao review trigger`, the one-word limit probe — run `.claude/gpt/gpt-lock.sh acquire`. It is atomic
   across worktrees (of two sessions asking at once, exactly one gets it) and puts `[GPT]` on your AO
   name while you hold it. Busy (exit 75) → run `gpt-lock.sh wait` in the background. When the job ends,
-  succeeded or failed — for AO's reviewer, when its verdict is in — `gpt-lock.sh release`. A lock whose
+  succeeded or failed, `gpt-lock.sh release` — for AO's reviewer, once its run has ended, never while it
+  may still be running (`pr-review.md`, *`error`*). A lock whose
   holder AO no longer lists is stale, and the next `acquire` breaks it.
 - AO's reviewer runs once per PR head: batch each round's fixes into one push, never request a review on
   a draft, and don't push after an approval without reason — a new head is a new review.

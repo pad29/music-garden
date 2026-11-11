@@ -56,9 +56,9 @@ case "$1 $2" in
     cat "$s/review$n.json" ;;
   *) echo "fake ao: unexpected $*" >&2; exit 2 ;;
 esac
-`);
-  writeFileSync(join(bin, "gh"), `#!/usr/bin/env bash\necho "\${FAKE_HEAD:-abc123}"\n`);
-  writeFileSync(join(bin, "sleep"), `#!/usr/bin/env bash\nexit 0\n`);
+`, { mode: 0o755 });
+  writeFileSync(join(bin, "gh"), `#!/usr/bin/env bash\necho "\${FAKE_HEAD:-abc123}"\n`, { mode: 0o755 });
+  writeFileSync(join(bin, "sleep"), `#!/usr/bin/env bash\nexit 0\n`, { mode: 0o755 });
   const env = {
     ...process.env,
     FAKE_BIN: posix(bin),
@@ -70,7 +70,9 @@ esac
   const sessions = ids => writeFileSync(join(state, "sessions.json"),
     JSON.stringify({ data: ids.map(id => ({ id, displayName: `name of ${id}`, status: "working" })), meta: {} }));
   const which = spawnSync(bash, ["-c", PRELUDE + "command -v sleep ao gh"], { env, encoding: "utf8" }).stdout;
-  assert.ok(which.split("\n").filter(Boolean).every(l => l.startsWith(env.FAKE_BIN + "/")), "fakes first on PATH: " + which);
+  // all three found, each the fake (on POSIX, a fake without its x bit would be passed over or missing)
+  const found = which.split("\n").filter(Boolean);
+  assert.ok(found.length === 3 && found.every(l => l.startsWith(env.FAKE_BIN + "/")), "fakes first on PATH: " + which);
   return { dir, state, env, sessions, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
@@ -79,8 +81,8 @@ esac
 const PRELUDE = 'PATH="$FAKE_BIN:$PATH"; ';
 const runScript = (script, ...args) => ["-c", PRELUDE + 'exec "$BASH" "$@"', "_", script, ...args];
 
-function lock(sb, session, cmd) {
-  const r = spawnSync(bash, runScript(lockScript, cmd), { env: { ...sb.env, AO_SESSION_ID: session }, encoding: "utf8" });
+function lock(sb, session, cmd, ...args) {
+  const r = spawnSync(bash, runScript(lockScript, cmd, ...args), { env: { ...sb.env, AO_SESSION_ID: session }, encoding: "utf8" });
   return { code: r.status, out: (r.stdout + r.stderr).trim() };
 }
 
@@ -158,6 +160,72 @@ test("gpt-lock: a lock held by a session AO no longer lists is broken; if ao fai
   } finally { sb.cleanup(); }
 });
 
+// A lock left by a dead session, as its acquire wrote it.
+const staleLock = (sb, holder) => {
+  mkdirSync(sb.env.GPT_LOCK_DIR);
+  writeFileSync(join(sb.env.GPT_LOCK_DIR, "owner"), `${holder} 2026-11-11T00:00:00Z\n`);
+};
+
+test("gpt-lock: a breaker acting on an old view never removes a lock taken since", { skip }, () => {
+  // GPT's round-2 interleaving: B saw music-garden-3's lock stale; A broke it and took the lock; B acts now.
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9"]);               // 3 terminated
+    staleLock(sb, "music-garden-3");
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0, "A breaks it and takes the lock");
+    const late = lock(sb, "music-garden-9", "break", "music-garden-3");
+    assert.strictEqual(late.code, 75, late.out);
+    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
+    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75, "and A's lock still excludes C");
+    assert.strictEqual(lock(sb, "music-garden-9", "break", "music-garden-6").code, 75, "a listed holder is never broken");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: while one break of a holder runs, no other session breaks or takes that lock", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);
+    staleLock(sb, "music-garden-3");
+    mkdirSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`);       // another session is mid-break
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75);
+    assert.match(lock(sb, "music-garden-6", "status").out, /held by music-garden-3 .*\nbreak in progress: music-garden-3/s);
+    rmSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`, { recursive: true });
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    assert.ok(!existsSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`), "the break key is given back");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: of many sessions breaking the same stale lock at once, exactly one ends up holding it", { skip }, async () => {
+  for (let round = 0; round < 3; round++) {
+    const sb = sandbox();
+    try {
+      const ids = Array.from({ length: 6 }, (_, i) => `music-garden-${10 + i}`);
+      sb.sessions(ids);
+      staleLock(sb, "music-garden-3");
+      const results = await Promise.all(ids.map(id => lockAsync(sb, id, "acquire")));
+      const winners = results.filter(r => r.code === 0);
+      assert.strictEqual(winners.length, 1, JSON.stringify(results));
+      assert.ok(results.every(r => r.code === 0 || r.code === 75), JSON.stringify(results));
+      assert.match(lock(sb, ids[0], "status").out, new RegExp(`^held by ${winners[0].session} `));
+    } finally { sb.cleanup(); }
+  }
+});
+
+test("gpt-lock: a lock it cannot create is an error, not contention — acquire and wait exit 1 at once", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);
+    sb.env.GPT_LOCK_DIR = join(sb.dir, "no-such-dir", "lock");
+    const r = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^error: could not create /);
+    sb.env.GPT_LOCK_TRIES = "3";
+    const w = lock(sb, "music-garden-6", "wait");
+    assert.strictEqual(w.code, 1, w.out);
+    assert.doesNotMatch(w.out, /gave up/);
+  } finally { sb.cleanup(); }
+});
+
 test("gpt-lock: wait acquires once the holder releases, and gives up busy after its tries", { skip }, () => {
   const sb = sandbox();
   try {
@@ -175,7 +243,8 @@ test("gpt-lock: wait acquires once the holder releases, and gives up busy after 
 // --- the review poller, as pr-review.md prints it ---
 
 const poller = (() => {
-  const doc = readFileSync(join(root, ".claude/skills/work-ticket/pr-review.md"), "utf8");
+  // autocrlf checks the doc out with CRLF on Windows; the block must still be found, and run as LF
+  const doc = readFileSync(join(root, ".claude/skills/work-ticket/pr-review.md"), "utf8").replace(/\r\n/g, "\n");
   const m = doc.match(/```bash\n(pr=<n>;[\s\S]*?)```/);
   assert.ok(m, "pr-review.md holds the poller block");
   return m[1].replace("pr=<n>;", "pr=88;");
@@ -236,4 +305,64 @@ test("poller: no run for the head within the hour times out with exit 1", { skip
   assert.ok(poller.includes("for i in $(seq 60); do"), "about an hour: 60 polls a minute apart");
   const short = poller.replace("seq 60", "seq 4");    // the same loop, shortened for speed
   assert.deepStrictEqual(poll([JSON.stringify({ reviews: [] })], short), { code: 1, out: "timeout", calls: 4 });
+});
+
+// --- the test-output recipe, as CLAUDE.md § Working lean prints it ---
+
+const recipe = (() => {
+  const doc = readFileSync(join(root, "CLAUDE.md"), "utf8").replace(/\r\n/g, "\n");
+  const m = doc.match(/```bash\n((?: *log="\$\{TMPDIR[\s\S]*?))```/);
+  assert.ok(m, "CLAUDE.md holds the test-output recipe");
+  const block = m[1].replace(/^ {2}/gm, "");
+  assert.ok(block.includes('node --test "tests/*.test.mjs"'), "the recipe runs the suite");
+  return block.replace('node --test "tests/*.test.mjs"', "fake_suite");
+})();
+
+// fake_suite: 30 passing lines, then (when FAKE_FAIL is set) a failure whose diagnostics run 40 lines
+// and end in a sentinel, then a summary; exit 1 on failure.
+const FAKE_SUITE = `fake_suite() {
+  for i in $(seq 30); do echo "✔ passing $i of $AO_SESSION_ID (1ms)"; done
+  if [ -n "\${FAKE_FAIL:-}" ]; then
+    echo "✖ the failing test"; for i in $(seq 40); do echo "  diagnostic line $i"; done
+    echo "  LATE-SENTINEL $AO_SESSION_ID"; echo "ℹ pass 30"; echo "ℹ fail 1"; return 1
+  fi
+  echo "ℹ pass 30"; echo "ℹ fail 0"
+}
+`;
+
+function runRecipe(sb, session, fail) {
+  return new Promise(resolve => {
+    const p = spawn(bash, ["-c", PRELUDE + FAKE_SUITE + recipe],
+      { env: { ...sb.env, AO_SESSION_ID: session, ...(fail ? { FAKE_FAIL: "1" } : {}) } });
+    let out = "";
+    p.stdout.on("data", d => out += d); p.stderr.on("data", d => out += d);
+    p.on("close", code => resolve({ code, out: out.trim() }));
+  });
+}
+
+test("test-output recipe: a failure prints every diagnostic line and fails; a pass prints the summary", { skip }, async () => {
+  const sb = sandbox();
+  try {
+    const bad = await runRecipe(sb, "music-garden-7", true);
+    assert.strictEqual(bad.code, 1, bad.out);
+    assert.match(bad.out, /diagnostic line 40\n {2}LATE-SENTINEL music-garden-7/);
+    assert.doesNotMatch(bad.out, /✔/, "passing lines are left out");
+    assert.match(bad.out, /exit 1$/);
+    const good = await runRecipe(sb, "music-garden-7", false);
+    assert.strictEqual(good.code, 0, good.out);
+    assert.ok(good.out.split("\n").length <= 9, good.out);
+    assert.match(good.out, /ℹ fail 0\nexit 0$/);
+  } finally { sb.cleanup(); }
+});
+
+test("test-output recipe: two sessions at once write separate logs", { skip }, async () => {
+  const sb = sandbox();
+  try {
+    const [a, b] = await Promise.all([runRecipe(sb, "music-garden-4", true), runRecipe(sb, "music-garden-6", false)]);
+    assert.deepStrictEqual([a.code, b.code], [1, 0]);
+    const logA = readFileSync(join(sb.dir, "test-music-garden-4.log"), "utf8");
+    const logB = readFileSync(join(sb.dir, "test-music-garden-6.log"), "utf8");
+    assert.ok(logA.includes("LATE-SENTINEL music-garden-4") && !logA.includes("music-garden-6"));
+    assert.ok(!logB.includes("LATE-SENTINEL") && !logB.includes("music-garden-4"));
+  } finally { sb.cleanup(); }
 });

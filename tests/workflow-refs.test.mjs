@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const rel = p => join(root, p);
-const read = p => readFileSync(rel(p), "utf8");
+const read = p => readFileSync(rel(p), "utf8").replace(/\r\n/g, "\n");   // CRLF checkouts (autocrlf)
 const mdIn = dir => readdirSync(rel(dir)).filter(f => f.endsWith(".md")).map(f => `${dir}/${f}`);
 
 const workTicket = ".claude/skills/work-ticket";
@@ -83,4 +83,23 @@ test("the GPT lock is what the docs tell sessions to take, and the old name mark
   for (const file of files) {
     assert.doesNotMatch(read(file), /`\[GPT\]` marker/, `${file} still says to take the [GPT] marker`);
   }
+});
+
+test("every `work-ticket` § n step m names a numbered step of that section", () => {
+  const skill = read(`${workTicket}/SKILL.md`);
+  const steps = n => {
+    const body = skill.split(/^## /m).find(s => s.startsWith(`${n}.`)) ?? "";
+    return [...body.matchAll(/^(\d+)\. /gm)].map(m => m[1]);
+  };
+  assert.ok(steps(8).includes("6"), "work-ticket § 8 keeps its numbered steps");
+  const bad = [];
+  let seen = 0;
+  for (const file of files) {
+    for (const m of flat(read(file)).matchAll(/`work-ticket`\s*§\s*(\d+),?\s+steps?\s+(\d+)(?:[–-](\d+))?/g)) {
+      seen++;
+      for (const s of [m[2], m[3]].filter(Boolean)) if (!steps(m[1]).includes(s)) bad.push(`${file}: § ${m[1]} step ${s}`);
+    }
+  }
+  assert.ok(seen >= 3, `the step references are found (${seen})`);
+  assert.deepStrictEqual(bad, []);
 });

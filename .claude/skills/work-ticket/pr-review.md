@@ -62,14 +62,18 @@ older head. `ao review ls --json` holds the run's full record. Then:
 - **Changes requested** → its inline comments are in this session; `work-ticket` § 8 step 5's rules
   apply. Reply on the thread of each finding you disagree with, and leave it open; after pushing the
   fixes, resolve the threads you fixed (`ao pr resolve-comments <n> <comment-ids>`).
-- **`error`** → the poller could not see the review, which may still be running: release the GPT lock,
-  and stop — `ao report --stuck`, quoting the error. **Never request another review** on a run you
-  could not see.
+- **`error`** → the poller could not see the review, which may still be running: **keep the GPT lock** —
+  released, it would let another session start a GPT job beside a run that may still be going — and
+  stop: `ao report --stuck`, quoting the error and saying you hold the lock. **Never request another
+  review** on a run you could not see. Release the lock only once `ao review ls --json` shows the run
+  ended — or `ao review cancel` ended it and `ao review ls` confirms; if the session is ended instead, AO
+  stops listing it and the next `acquire` breaks the lock.
 - **Failed or cancelled, or `timeout`** → `ao review ls --json` must show the head's run ended, or no
   run for it; if one is still running, keep the lock and run the poller once more, then stop as for
   `error`. Then rule out the limit (below). At the limit → Needs Input, with the reset time. Otherwise
   request the review again, **once**; if that fails too, stop: `ao report --stuck` with what failed and
-  the error. The ticket stays In Progress. Release the lock whichever way it ends.
+  the error. The ticket stays In Progress. Release the lock once the run has ended, whichever way —
+  never while it may still be running.
 
 ## The limit
 
