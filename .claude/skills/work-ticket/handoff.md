@@ -71,7 +71,8 @@ This is how the owner spends his time, so it must be honest and short.
 - Size: S / M / L (or trivial), and so which loop ran.
 - Design: L — GPT designed it; my critique, one line per point: severity, the point, what was built
   instead. M — my plan; GPT's design review, one line per finding: severity, the finding, agreed or
-  disagreed, what you did. S or trivial — "not required — <size>".
+  disagreed, what you did. S — "my short plan, no GPT design review — S". Trivial — "not required —
+  trivial change".
 - GPT's test pass: L — what it found, and which of its test files were kept. S/M — "not run — <size>";
   the missing tests GPT's PR review listed, and which you added.
 - AO's review (Codex, Astra) — temporarily (`work-ticket` § 8), GPT's PR review through

@@ -37,7 +37,9 @@ preview.
 no playtest>
 
 **How to answer:** reply here — "1A, 2: keep it" is enough — then move the ticket back to **Todo**; the
-work resumes where this stopped. Or answer in the AO session linked above, if it is still open.
+orchestrator takes it to the right session, and the work resumes where this stopped. Within the hour you
+may answer in the AO session linked above instead; after that, answer here — a fresh session may already
+own the PR.
 
 <details><summary>Resume state — for the session that picks this up</summary>
 

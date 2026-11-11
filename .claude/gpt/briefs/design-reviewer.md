@@ -16,6 +16,8 @@ mistake the log records.
 mangles `/tmp` paths when they reach native Windows tools). Frame it as:
 
 - The problem being solved — what the player experiences, not just the code change
+- For an M plan, the **whole ticket verbatim** and any owner answers (`work-ticket` § 4), so GPT
+  can catch what the plan left out
 - The proposed approach
 - Alternatives considered, and why they were rejected
 - Relevant file paths (GPT reads the repo itself — don't paste code it can open)
@@ -36,7 +38,7 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 
 Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT), and every call is
 `fresh` — a second round of the same review too: its prompt quotes the first round's findings and
-gives the delta. Take the `[GPT]` marker first (`CLAUDE.md` § Cost). If the ChatGPT limit runs out,
+gives the delta. Take the GPT lock first (`CLAUDE.md` § Cost). If the ChatGPT limit runs out,
 say so rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.

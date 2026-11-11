@@ -22,6 +22,7 @@ node_modules/
 !.claude/gpt/
 .claude/gpt/*
 !.claude/gpt/ask.sh
+!.claude/gpt/gpt-lock.sh
 !.claude/gpt/briefs/
 
 # OS / editor cruft

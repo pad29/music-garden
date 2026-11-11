@@ -25,9 +25,9 @@ names. "As discussed" and "the approach we agreed" are useless to them.
   deploy, repo structure), `docs`.
 - **`needs-owner`** when only the owner can validate the result: anything musical (score-checked tunes,
   feel, sound), a design decision with more than one defensible answer, or a change to player-facing
-  pacing. A worker stops on these at the design checkpoint, whatever the size — once the design (L) or
-  the plan and its review (S, M) exist — and asks; it applies this same test to questions the design
-  turns up (`work-ticket` § 5).
+  pacing. A worker stops on these at the design checkpoint, whatever the size — once GPT's design (L),
+  the plan and GPT's review of it (M), or the short plan (S) exist — and asks; it applies this same
+  test to questions the design turns up (`work-ticket` § 5).
 - **One type label:** `Bug` when something shipped behaves wrongly, `Feature` for something new, `Improvement`
   for making something that exists better — a refactor or a chore is an `Improvement`.
 - **Blocked by**: link any ticket that must land first (a refactor of shared files blocks the work

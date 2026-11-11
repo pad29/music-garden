@@ -1,8 +1,9 @@
 # Author brief — GPT writes, you critique
 
 The reverse flow: GPT writes, you critique. It is step 1 of `CLAUDE.md`'s loop for **L** tickets — GPT
-designs them, through the `gpt-design` skill (S and M tickets are planned by Claude, and GPT reviews the
-plan: the design-reviewer brief) — and it is what `gpt-spec` and "ask GPT to write…" use.
+designs them, through the `gpt-design` skill (S and M tickets are planned by Claude; on M, GPT reviews
+the plan with the design-reviewer brief, and S has no GPT design step) — and it is what `gpt-spec` and
+"ask GPT to write…" use.
 
 **1. Write the authoring brief to `.claude/gpt/prompt.txt`** (worktree-local on purpose —
 Git Bash mangles `/tmp` paths when they reach native Windows tools) with enough context to

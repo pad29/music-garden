@@ -27,7 +27,7 @@ with no ticket — is **M**. Small is still non-trivial. **Trivial** means typos
 | Step | Trivial | S | M | L |
 |---|---|---|---|---|
 | 1. Design — **no code yet** | — | Claude's short plan | Claude's plan; **GPT's design review** | **GPT designs** (`gpt-design`); Claude critiques |
-| 2. Design checkpoint (`work-ticket` § 5) | — | yes | yes | yes |
+| 2. Design checkpoint (`work-ticket` § 5) | `needs-owner` only | yes | yes | yes |
 | 3. Build; syntax check, suite, browser (`work-ticket` § 6); Claude's own tests | yes | yes | yes | yes |
 | 4. GPT's separate test pass (tester brief; `work-ticket` § 6) | — | — | — | yes |
 | 5. Fix, re-run | yes | yes | yes | yes |
@@ -74,7 +74,7 @@ Both routes run **Astra (`gpt-6-astra`)** at effort high:
   reviewer settings it was spawned with: if the orchestrator says they changed, pass the new ones
   (`--model`, `--effort`) — never settings of your own. **Temporarily out of service** — its runs end
   without submitting — so GPT reviews PRs through `ask.sh` (`work-ticket` § 8; diagnosis and exit
-  conditions in `work-ticket/pr-review.md`).
+  conditions in `.claude/skills/work-ticket/pr-review.md`).
 
 `.claude/gpt/briefs/` holds the **brief formats** for `ask.sh`: what to put in the prompt, what to ask
 for, how to report back. Where their invocation disagrees with this section, this wins.
@@ -115,8 +115,10 @@ no Linear support: every Linear read and state change is the agents' own, throug
 - **When the owner answers** within an hour of the Needs Input hand-off, the orchestrator takes the
   answer to the session that asked (`ao send`; `ao session restore` first if terminated). **Later** —
   waking it would re-save its expired cache — or if it can't be restored, it never routes to the old
-  session again: `ao spawn --claim-pr <pr-url> --name "<ID> <title> (resumed)" --prompt "Resume <ID>
-  from its Needs Input hand-off: work-ticket/resume.md"`, and a ticket comment naming both sessions.
+  session again: `ao spawn --claim-pr <pr-url> --name "<ID> <title> (resumed)" --prompt "Resume <ID or
+  PR #n> from its Needs Input hand-off: run the work-ticket skill, then follow
+  .claude/skills/work-ticket/resume.md; your spawn claimed the PR"`, and a comment naming both sessions
+  on the ticket (no ticket: on the PR).
 - Out-of-scope work found along the way becomes a Backlog ticket (`file-ticket`), not a detour.
 
 **Branches** come from AO (`work-ticket` § 3). A session may commit, push its own branch
@@ -136,9 +138,11 @@ Every Claude call re-reads the whole context, so context size is the main Claude
 
 - **Search before reading:** Grep or Glob, then read the range you need, not the whole file.
   `work-ticket`'s procedure files are read only when their step comes up.
-- **Short output, exit status kept:** quiet flags; `node --test "tests/*.test.mjs" > /tmp/t.log 2>&1;
-  echo "exit $?"; tail -n 8 /tmp/t.log`, failures in full only when there are some. Never trim GPT's
-  findings. Don't re-derive what is already settled.
+- **Short output, exit status kept:** quiet flags, and a log of your own session's —
+  `log="${TMPDIR:-/tmp}/test-$AO_SESSION_ID.log"; node --test "tests/*.test.mjs" > "$log" 2>&1; s=$?;
+  tail -n 8 "$log"; [ $s -eq 0 ] || grep -n -A12 "^not ok\|✖" "$log"; echo "exit $s"; (exit $s)` —
+  the failures in full only when there are some, and the command still fails when the tests do. Never
+  trim GPT's findings. Don't re-derive what is already settled.
 
 ## When something external breaks
 
@@ -181,12 +185,12 @@ The ChatGPT limit — account-wide, per rolling 5-hour window — is the bottlen
 AO's reviewer, every parallel session and the owner's own Codex use draw on it; Claude's plan limits are
 shared across sessions the same way.
 
-- **One GPT job at a time across sessions.** Before any GPT job — `ask.sh`, `ao review trigger`, the
-  one-word limit probe — run `ao session ls --project music-garden`. If another session's name starts
-  with `[GPT]`, wait (a background command re-checking every minute). Otherwise rename yours
-  `[GPT] <name>` (`ao session rename "$AO_SESSION_ID" …`) and re-check: if another `[GPT]` appeared
-  meanwhile, the lower-numbered session keeps the turn and the other drops its prefix and waits. Drop
-  the prefix when the job ends, succeeded or failed. A terminated `[GPT]` session is stale; ignore it.
+- **One GPT job at a time across sessions — the GPT lock.** Before any GPT job — `ask.sh`,
+  `ao review trigger`, the one-word limit probe — run `.claude/gpt/gpt-lock.sh acquire`. It is atomic
+  across worktrees (of two sessions asking at once, exactly one gets it) and puts `[GPT]` on your AO
+  name while you hold it. Busy (exit 75) → run `gpt-lock.sh wait` in the background. When the job ends,
+  succeeded or failed — for AO's reviewer, when its verdict is in — `gpt-lock.sh release`. A lock whose
+  holder AO no longer lists is stale, and the next `acquire` breaks it.
 - AO's reviewer runs once per PR head: batch each round's fixes into one push, never request a review on
   a draft, and don't push after an approval without reason — a new head is a new review.
 - **A limit mid-task** is § When something external breaks: finish your own verification, say so, stop

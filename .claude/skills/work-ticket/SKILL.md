@@ -21,7 +21,8 @@ ticket), `browser.md` (the browser check), `needs-input.md` (stopping for the ow
 moves) and the `Closes` line; size it M unless the owner gave a size; the review record is
 `reviews/<date>-<slug>.md`, and hand-offs go to the PR and AO. **A trivial change** — a typo, a comment,
 formatting: skip §§ 4–5, and write *"not required — trivial change"* in the hand-off's design and test
-lines. The PR review runs on every PR either way.
+lines — **unless the ticket is labelled `needs-owner`**: then § 5's rule 1 still stops it. The PR review
+runs on every PR either way.
 
 ## 1. Choose the ticket
 
@@ -72,8 +73,11 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back to GPT.
 - **M** — write your plan into the reviews file: the approach, the files and functions, the tests that
   would prove it, the risks, and every question only the owner can answer, with options. Then get GPT's
-  design review of it with the design-reviewer brief (`ask.sh fresh read-only`), and answer each
-  finding — agreed or disagreed, and why — under GPT's findings, verbatim and separate.
+  design review of it with the design-reviewer brief (`ask.sh fresh read-only`). The prompt carries the
+  **whole ticket verbatim** — *Done looks like*, *Decisions already made*, questions, exclusions — and
+  any owner answers, not just your plan: GPT checks the plan against the ticket, so it must see what the
+  plan might have left out. Answer each finding — agreed or disagreed, and why — under GPT's findings,
+  verbatim and separate.
 - **S** — a short plan in the reviews file (a few lines: approach, files, tests). No GPT call.
 
 ## 5. The design checkpoint — stop or build?
@@ -140,15 +144,15 @@ one when the owner answers after more than an hour. **When the answer comes:** `
    Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in `handoff.md`'s
    **PR** format.
 4. **The PR review — temporarily GPT's, through `ask.sh`** (owner, 2026-11-09; AO's reviewer cannot
-   submit — `pr-review.md` has the diagnosis, the AO route, and when this changes). Take the `[GPT]`
-   marker first (`CLAUDE.md` § Cost). Write a self-contained prompt to `.claude/gpt/prompt.txt`, framed as
+   submit — `pr-review.md` has the diagnosis, the AO route, and when this changes). Take the GPT lock
+   first (`CLAUDE.md` § Cost). Write a self-contained prompt to `.claude/gpt/prompt.txt`, framed as
    a PR review in the design-reviewer brief's manner: the PR's diff against `origin/main` — or, once GPT
    has reviewed an earlier head, only the delta since that head, with that verdict and its findings
    quoted — plus the ticket and the reviews file by path. Ask for the changes it requires, each with a
    severity, **the tests it finds missing**, each as a case to add, or an approval that names the head
-   SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`.
-   If the call fails: `CLAUDE.md` § When something external breaks; to tell a limit from a fault,
-   `pr-review.md`, *The limit*.
+   SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`, then
+   release the lock, whatever the outcome. If the call fails: `CLAUDE.md` § When something external
+   breaks; to tell a limit from a fault, `pr-review.md`, *The limit*.
 5. **Read the verdict, then act:**
    - **Approved on the current head, no missing tests** → step 6.
    - **Changes requested, or missing tests listed** (a list of missing tests is a change requested, not

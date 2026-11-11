@@ -9,6 +9,11 @@ instructions say to take over a ticket another session holds. You are continuing
 starting over: never re-run the design, and never touch the old session's worktree, which may still have
 the branch checked out.
 
+**No ticket** (ad-hoc work; the hand-off names a PR, not an ID): the PR is the record. Skip every Linear
+step below — state moves, *Done looks like*. Post the takeover comment on the PR; read the hand-off in
+the PR body or its last Needs Input comment, the owner's answer in the PR comments (or in your spawn
+prompt), and the decisions in the reviews file; record the answers there under *Owner's decisions*.
+
 ## 1. Take the PR over
 
 On the ticket, comment *"Taken over from `<old-session>` by AO session `<session-id>`"* — that retires the
@@ -45,11 +50,16 @@ reviews file, by section. **Recover documented facts before asking** — a hand-
 Input) only about a real gap: a decision nowhere recorded, or a state you cannot verify.
 
 Respect what the record says: the size and the loop it chose; the design checkpoint already passed; the
-review rounds already used (the third-round limit counts them); and an approval only for the SHA it
-names — never for the head you are on unless they match. Re-run the suite on the head you start from.
+review rounds already used (the third-round limit counts them — a spent budget stays spent unless the
+owner's answer grants more rounds); and an approval only for the SHA it names — never for the head you
+are on unless they match. Re-run the suite on the head you start from.
 
 ## Continuing — the owner answered
 
+0. **First, check the work is still yours.** Late answers go to a fresh session, which may own the PR
+   by now. If `ao session ls` lists the PR against another session, or a takeover comment on the ticket
+   or PR names you, it isn't: write nothing, push nothing — `ao report --needs-input --note "<ID or PR>
+   was taken over by <session>; the answer belongs there"`, and stop.
 1. Move the ticket back to **In Progress** — from Todo, claim it again as `work-ticket` § 2 says — and
    record each answer under *Owner's decisions*: the answer, and where and when it was given.
 2. Keep the design you have. Only if an answer changes it materially, revise it — by size: **S**, you
@@ -57,5 +67,5 @@ names — never for the head you are on unless they match. Re-run the suite on t
    GPT revises its design (`gpt-design`, *A revision*) and you critique it. Every GPT prompt stands alone
    (the reviews file's design and *Owner's decisions*, and what changed). Add the revision to the reviews
    file as a new section — never edit the original.
-3. Pass `work-ticket` § 5 again, then carry on with § 6 — or with § 8 if the PR review was under way — on
-   the same branch and PR.
+3. Pass `work-ticket` § 5 again, then carry on with `work-ticket` § 6 — or with `work-ticket` § 8 if the
+   PR review was under way — on the same branch and PR.

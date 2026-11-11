@@ -20,7 +20,7 @@ GPT designs; you critique. Neither edits the other's words.
    `EDITOR-DESIGN.md` for grid and editor architecture, `DESIGN.md` for the engine, `QUESTS.md` for
    quests).
 3. **Run** `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt` in the background,
-   with the `[GPT]` marker taken (`CLAUDE.md` § Cost). GPT's test pass later starts a thread of its own
+   with the GPT lock taken (`CLAUDE.md` § Cost). GPT's test pass later starts a thread of its own
    and learns the design only from the reviews file, so step 5's verbatim record is what it will test
    against.
 4. **Present GPT's design verbatim**, then your own critique in a clearly separated section: where it
@@ -33,7 +33,7 @@ GPT designs; you critique. Neither edits the other's words.
 **Do not merge the two**, and don't quietly fix its design while presenting it. In a ticket session the
 design checkpoint comes next: `work-ticket` § 5.
 
-**A revision** — the owner's answer changed the design (`work-ticket/resume.md`, *Continuing*): run
-`ask.sh fresh`, like every GPT call, with a prompt that stands alone — the reviews file's design and
+**A revision** — the owner's answer changed the design (`.claude/skills/work-ticket/resume.md`,
+*Continuing*): run `ask.sh fresh`, like every GPT call, with a prompt that stands alone — the reviews file's design and
 *Owner's decisions*, and what changed. Add the revision as a new section, never editing the original,
 and critique it the same way.

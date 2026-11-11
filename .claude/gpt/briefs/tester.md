@@ -45,7 +45,7 @@ and to **run** the tests it writes and report actual results, not predicted ones
 `fresh`, like every GPT call (owner, 2026-11-09 and 2026-11-10): resuming a thread replays its whole
 transcript — one resumed test pass read 1.78M of a ticket's ~2.2M GPT input tokens — and the ChatGPT
 limit is the bottleneck. A second round is fresh too, with the first round's results in its prompt.
-Take the `[GPT]` marker first (`CLAUDE.md` § Cost).
+Take the GPT lock first (`CLAUDE.md` § Cost).
 `workspace-write` is deliberate: a reviewer that can't write a test file can't test much.
 It's safe because the session is in its own AO worktree and everything lands in the diff
 before merge. This call also carries network access and the Polly-only AWS credentials — the
