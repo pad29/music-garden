@@ -1,8 +1,8 @@
 # Author brief — GPT writes, you critique
 
-The reverse flow: GPT writes, you critique. It is step 1 of `CLAUDE.md`'s default loop — GPT designs
-every non-trivial change, through the `gpt-design` skill — and it is what `gpt-spec` and "ask GPT to
-write…" use.
+The reverse flow: GPT writes, you critique. It is step 1 of `CLAUDE.md`'s loop for **L** tickets — GPT
+designs them, through the `gpt-design` skill (S and M tickets are planned by Claude, and GPT reviews the
+plan: the design-reviewer brief) — and it is what `gpt-spec` and "ask GPT to write…" use.
 
 **1. Write the authoring brief to `.claude/gpt/prompt.txt`** (worktree-local on purpose —
 Git Bash mangles `/tmp` paths when they reach native Windows tools) with enough context to
@@ -18,9 +18,9 @@ ticket, paste the ticket itself, verbatim.
 .claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
 ```
 
-`fresh`, not `thread` — authored work should not be coloured by a running review
-conversation. In the default loop this call starts the thread that a revision of the design
-resumes; the test pass starts a thread of its own. Read-only is deliberate too: GPT returns
+`fresh` — every GPT call is (`CLAUDE.md` § Calling GPT), and authored work should not be coloured by
+a running review conversation. A revision of the design is a fresh call too, with a prompt that
+stands alone. Read-only is deliberate too: GPT returns
 text, *you* write any file. That keeps authorship traceable in the diff.
 
 **3. Return GPT's output verbatim, clearly marked as GPT's work.** Do not edit it, tighten
