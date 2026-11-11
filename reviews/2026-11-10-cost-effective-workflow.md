@@ -159,3 +159,19 @@ planning, working-lean, stop-early and `[GPT]` rules added; `AGENTS.md` 7,335 �
 `needs-input.md`, `pr-review.md`, `handoff.md`) load only when their step comes up.
 
 ## PR review (Astra, through `ask.sh`)
+
+Round 1 on `dcc03fc` (fresh, read-only, `[GPT]` marker taken and released): **no verdict — the ChatGPT
+limit ran out mid-review.** The events file ends *"You've hit your usage limit … try again at Nov 11th,
+2026 2:49 AM."* GPT had read the review record and the diff (16 commands) and said it was checking
+"whether the `[GPT]` marker prevents overlapping jobs, whether a late reply can wake the old worker, and
+whether the poller stops within the retry limit" — no findings were emitted. Per the new rule: no retry,
+no other model; Needs Input with the reset time. Noticed on the way: `ask.sh` exited 1 with an **empty
+stderr**, though its failure branch echoes the last events there — the reason was only in
+`.claude/gpt/.last-events.jsonl`. Not investigated (out of scope; `ask.sh` unchanged).
+
+## Owner's decisions
+
+1. *Medium = Claude plans, GPT reviews the plan* — settled by Claude from the owner's wording; **open**
+   for the owner to confirm (PR #88).
+2. *Wait for the limit to reset (02:49, 2026-11-11) and run the one GPT PR review, or hand off without
+   it* — **open**.
