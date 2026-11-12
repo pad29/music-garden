@@ -39,3 +39,43 @@ stands); `EDITOR-DESIGN.md` §16 marks phases 0–2 `✅ BUILT`; `template.yaml`
 404. Nothing in the patch needed changing.
 
 **Tests:** syntax check (29 scripts) and the suite, 664/664 — docs only, no new test.
+
+## PR review — round 1 (Astra, `ask.sh`, on 14db8c8; one call reviewed this PR and TUN-70's #96)
+
+<details><summary>GPT's findings for this PR, verbatim</summary>
+
+**PR A — #94, head `14db8c83a00df50f51b78d3f8878eeefa5a6a248`**
+
+Changes required:
+
+1. **Should-fix — `PACKAGES.md:466`:** "What remains … is **meter/bars** … which still gates `march-and-waltz`…" This current dependency list contradicts the corrected package entry. Meter, bar controls, loop ranges and count-in already exist in `js/doc-model.js`, `js/cursor.js` and `js/playback.js`. Distinguish remaining teaching/content work from implemented engine features.
+
+2. **Should-fix — `README.md:173`:** The seven sampled voices are described as "revealed **gradually, one per region**." `REGION_INSTR` assigns six sampled voices to regions; the First Garden uses synthesized music box, and `openStudio()` gifts the seventh sampled voice, guitar. Correct this distribution.
+
+3. **Should-fix — `PACKAGES.md:443`:** "generalizes the existing **5-groove system**." `GROOVES` contains **seven** entries, including Waltz and Jig—the additions this PR expressly documents elsewhere.
+
+4. **Should-fix — `PACKAGES.md:469`:** "**World-map UI** … (current Home screen is package cards); separate workstream." The continent map already ships through `renderPkgs()` in `js/home.js`. This remains a false current-state dependency in a touched sibling document.
+
+Missing tests: **none**. These require prose corrections, not new runtime tests.
+
+Verified: 18 famous pieces, 16 Jukebox entries, 20 packages plus Studio, seven regions, 13 intro levels/four arcs, two quests, seven sampled voices, and 248 narration hashes with matching files. The harness's approximate line count is acceptable. AGENTS.md remains the same length in lines; its small wording expansion is not a concern.
+
+**Verdict: CHANGES REQUESTED**
+
+(On the pair: "Both patches merge cleanly in either order under read-only three-way merge inspection. Their nearest README hunks have three untouched lines between them.")
+
+</details>
+
+My answers — all four agreed, each checked against the code first:
+
+1. **Agreed.** `loopStart/loopEnd` and `applyRange()` (`js/cursor.js`) and `clickMode`'s count-in
+   (`js/playback.js`) ship. §8 item 1 now says meter and bars shipped (2026-08-28) and that what remains
+   is the `march-and-waltz` package; `rain-and-sun` waits on dynamics (its own entry says velocity),
+   Region 7 on sections.
+2. **Agreed.** `REGION_INSTR` gives the First Garden `musicbox`; `openStudio()` gifts the guitar.
+   README now says so.
+3. **Agreed.** `GROOVES` has five styles plus 💃 Waltz and 🍀 Jig. "7-groove system", naming them.
+4. **Agreed.** Struck through and marked resolved, as item 1 is; dated 2026-07-05 from `DESIGN.md`'s
+   continent-map entry.
+
+**Tests:** syntax check (29 scripts) and the suite, 664/664, after the fixes.

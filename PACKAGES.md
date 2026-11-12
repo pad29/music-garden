@@ -440,7 +440,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Patterns:** build_constraint, match_feel, arrange, restore. **Success:** broad.
 - **World hook:** *Prepare a village gathering*; share songs by the fire.
 - **Sandbox:** folk timbres; drone mode; campfire biome theme.
-- **System needs (M):** a **style preset** (palette + groove + instruments + form constraints) — generalizes the existing 5-groove system into the real Styles engine.
+- **System needs (M):** a **style preset** (palette + groove + instruments + form constraints) — generalizes the existing 7-groove system (five styles plus the 💃 Waltz and 🍀 Jig dances) into the real Styles engine.
 - **Why:** first proof that styles = physics presets; long-term retention engine.
 
 #### `city-lights` — City Lights  [AS-2]
@@ -463,8 +463,8 @@ Beyond the region/capability packages above, **constraint packages** are a first
 **Resolved (this round):** tool-transposition → phased hybrid (§1a); diatonic transition → progressive reveal (§1a); rhythm readiness → tiers R1–R4 (§2f).
 
 Still open:
-1. ~~**Bars & plots / duration editor (R3)**~~ — **RESOLVED 2026-08-13**: duration shipped as EDITOR-DESIGN Phase 2 (vines + 🌿 Grow/✂ Trim) and is taught by `two-kinds-of-walking`. What remains of the old item is **meter/bars** (dance feels, bar numbers, loop range, count-in), which still gates `march-and-waltz`, `rain-and-sun` and Region 7.
+1. ~~**Bars & plots / duration editor (R3)**~~ — **RESOLVED 2026-08-13**: duration shipped as EDITOR-DESIGN Phase 2 (vines + 🌿 Grow/✂ Trim) and is taught by `two-kinds-of-walking`. Meter and bars shipped too (2026-08-28): dance feels, bar numbers, the loop range and the count-in work in the Studio. What remains is content — the `march-and-waltz` package that teaches meter; `rain-and-sun` waits on dynamics (EDITOR-DESIGN Phase 3) and Region 7 on sections (Phase 5), not on meter.
 2. **Multi-voice system** — gates all of Region 6. Largest new system in this map.
 3. **Level-template / generator engine** — needed before 24 packages is realistic; validated by building `follow-the-fireflies` end-to-end first.
-4. **World-map UI** — the player-facing region map (current Home screen is package cards); separate workstream, driven by this DAG.
+4. ~~**World-map UI**~~ — **RESOLVED 2026-07-05**: the interactive continent map is the Home screen (`renderPkgs()`; `DESIGN.md` § the continent map), one territory per package, driven by this DAG.
 5. **Capability-awareness UI** *(from review)* — a lightweight panel/journal of earned "powers" (Voice ✓Shape ✓Motion ○Motif). Improves retention/identity/map-navigation **without** becoming a curriculum tree. Overlaps the existing power cards + world strip + companion — likely an aggregation of those rather than a new system. Near-term UI item, after the Fireflies pass.
