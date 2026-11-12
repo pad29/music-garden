@@ -30,6 +30,9 @@ names. "As discussed" and "the approach we agreed" are useless to them.
   test to questions the design turns up (`work-ticket` § 5).
 - **One type label:** `Bug` when something shipped behaves wrongly, `Feature` for something new, `Improvement`
   for making something that exists better — a refactor or a chore is an `Improvement`.
+- **One label from the `Size` group** (`S`, `M` or `L`; single-select, like `Area`): the same letter as the
+  ticket's `## Size` section (§ Size). When adding it to an existing ticket, use `addLabels`, never
+  `labels`: `labels` replaces the whole set and would strip `Area`, `needs-owner` and the type label.
 - **Blocked by**: link any ticket that must land first (a refactor of shared files blocks the work
   that edits them while it is in flight).
 
@@ -69,13 +72,17 @@ the ticket also gets `needs-owner`.
 What a session might be tempted to do alongside this and should not.
 
 ## Size
-S, M or L — one letter, then a line saying why.
+S, M or L — one letter, then a line saying why. The ticket's Size label carries the same letter.
 ```
 
 ## Size — it sets the worker's loop
 
-Every ticket gets a size; a ticket without one is worked as M. The size decides how much of the GPT loop
-it gets (`CLAUDE.md` § The loop, by size), so size by risk as well as by hours:
+Every ticket gets a size, set twice: the `## Size` section, whose line says why and goes into GPT's brief
+verbatim, and the matching `Size` label, which lets the owner filter and group Todo by size (§ Where it
+goes). A ticket with neither is worked as M, one with only one of them takes that size, and one whose
+label and section disagree is worked at the larger.
+The size decides how much of the GPT loop it gets (`CLAUDE.md` § The loop, by size), so size by risk as
+well as by hours (each line below is also its label's description in Linear):
 
 - **S** — an hour or two, one area, no new mechanism: Claude plans briefly and writes the tests; GPT's
   PR review lists missing tests.

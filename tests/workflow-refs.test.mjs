@@ -85,6 +85,25 @@ test("the GPT lock is what the docs tell sessions to take, and the old name mark
   }
 });
 
+test("a ticket's size is its Size label and its ## Size section, the larger when they disagree", () => {
+  // TUN-74: the label lets the owner filter Todo by size; the section carries the reason. A later edit that
+  // drops either, or the tie-break, would leave workers reading the size two ways.
+  const section = (file, name) => flat(read(file)).split(/(?:^| )## /).find(s => s.startsWith(name)) ?? "";
+  const loop = section("CLAUDE.md", "The loop, by size");
+  const opening = flat(read(`${workTicket}/SKILL.md`)).split(" ## 1.")[0];
+  const goes = section(".claude/skills/file-ticket/SKILL.md", "Where it goes");
+  const size = section(".claude/skills/file-ticket/SKILL.md", "Size — ");
+  for (const [where, text] of [["CLAUDE.md § The loop, by size", loop], ["work-ticket's opening", opening],
+                               ["file-ticket § Size", size]]) {
+    assert.match(text, /`Size` label/, `${where} names the Size label`);
+    assert.match(text, /`## Size` section/, `${where} names the ## Size section`);
+    assert.match(text, /larger/, `${where} says the larger size wins a disagreement`);
+    assert.match(text, /\bM\b/, `${where} keeps "no size is M"`);
+  }
+  assert.match(goes, /One label from the `Size` group/, "file-ticket § Where it goes requires a Size label");
+  assert.match(goes, /`addLabels`, never `labels`/, "file-ticket warns that `labels` replaces the set");
+});
+
 test("every `work-ticket` § n step m names a numbered step of that section", () => {
   const skill = read(`${workTicket}/SKILL.md`);
   const steps = n => {
