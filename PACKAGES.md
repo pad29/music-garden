@@ -253,7 +253,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Patterns:** classify, transform, match_feel, build_constraint. **Success:** broad/targeted.
 - **World hook:** *Waltz Garden / festival* — dance the correct step; gateway to folk/world styles.
 - **Sandbox:** movement-feel presets; dance-style groove families.
-- **System needs (M):** meter beyond fixed 4/4 (triple groupings) — a real grid/meter change. **Blocked on that engine work; file with the system-gated wave, NOT Wave A.**
+- **System needs (M) — BUILT:** meter beyond fixed 4/4 (triple groupings) shipped in EDITOR-DESIGN Phase 2 (2026-08-28): Studio meters march, waltz, jig and quick march, bar lines and beat marks, and the 💃 Waltz and 🍀 Jig grooves. What is left is the package itself, with its levels and the unlock that takes meter out of the Studio.
 - **Why:** makes rhythm *embodied*; bridges into the style worlds. Duration is a genuine prerequisite, not a consolation — a waltz's identity is ONE-two-three, a long stressed beat and two short ones, so a child needs to hear length before they can feel a triple grouping.
 - **Note when scheduling:** `regionStage()` caps a region friend at `stages.length-1`, and Hopper has five stages, so Pulse Woods' *fifth* package awards no companion growth. Acceptable (Stone Chorus Canyon already has that shape) but a stated decision, not a surprise.
 

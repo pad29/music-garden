@@ -4,7 +4,7 @@
 
 *v1 drafted 2026-07-16 (owner + Claude). **v2 2026-07-19**: revised after expert review (`Feedback 2026-07-19.docx`) and owner decisions — see §18 for the changelog. Verdict adopted from the review: proceed with the v1 architecture, but make the **foundation more musically general than the initial UI**.*
 
-**Status: DESIGN — nothing here is built yet.** Build phases in §16; each ships value on its own.
+**Status: phases 0–2 BUILT; phases 3–6 are still design.** Build phases in §16, each marked as it ships; each ships value on its own.
 
 ---
 
