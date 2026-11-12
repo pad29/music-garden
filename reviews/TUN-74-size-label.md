@@ -1,6 +1,6 @@
 # TUN-74 — Give every Tune Garden ticket a Size label the owner can filter on
 
-Branch `ao/size-label-docs/root` · PR (pending)
+Branch `ao/size-label-docs/root` · PR #95
 
 Started by `music-garden-11` (the plan, the Linear group and the labelling); taken over by
 `music-garden-14`, which verified the Linear side and finished the docs and the test.
