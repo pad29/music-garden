@@ -195,8 +195,10 @@ shared across sessions the same way.
   across worktrees (of two sessions asking at once, exactly one gets it) and puts `[GPT]` on your AO
   name while you hold it. Busy (exit 75) → run `gpt-lock.sh wait` in the background. When the job ends,
   succeeded or failed, `gpt-lock.sh release` — for AO's reviewer, once its run has ended, never while it
-  may still be running (`pr-review.md`, *`error`*). A lock is stale, and the next `acquire` breaks it,
-  once AO no longer lists its holder and shows every one of the holder's AO review runs ended.
+  may still be running (`pr-review.md`, *`error`*). A lock is never broken automatically: one whose
+  holder has died stays until the owner clears it by hand — `gpt-lock.sh status` (and a busy `acquire`
+  or `wait`) prints the holder and the command, to run once the holder is gone from `ao session ls` and
+  `ao review ls <holder>` shows no run still going.
 - AO's reviewer runs once per PR head: batch each round's fixes into one push, never request a review on
   a draft, and don't push after an approval without reason — a new head is a new review.
 - **A limit mid-task** is § When something external breaks: finish your own verification, say so, stop

@@ -42,23 +42,15 @@ function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), "wf-"));
   const bin = join(dir, "bin"), state = join(dir, "state");
   mkdirSync(bin); mkdirSync(state);
-  // ao session ls → $state/sessions.json (exit 1 if $state/ao-fails exists), after running $state/on-ls
-  // once if it exists (what other sessions do while this one waits on AO); ao session rename → log;
-  // ao review ls <id> --json (the lock's) → $state/reviews-<id>.json, else no reviews; .fail → exit 1;
+  // ao session ls → $state/sessions.json (exit 1 if $state/ao-fails exists); ao session rename → log;
   // ao review ls --json (the poller's) → $state/review<N>.json, N counting calls (the last one
   // repeats); *.fail → exit 1.
   writeFileSync(join(bin, "ao"), `#!/usr/bin/env bash
 s="$FAKE_STATE"
 case "$1 $2" in
-  "session ls")
-    [ -e "$s/on-ls" ] && { mv "$s/on-ls" "$s/on-ls.ran"; bash "$s/on-ls.ran"; }
-    [ -e "$s/ao-fails" ] && { echo "ao: daemon down" >&2; exit 1; }; cat "$s/sessions.json" ;;
+  "session ls") [ -e "$s/ao-fails" ] && { echo "ao: daemon down" >&2; exit 1; }; cat "$s/sessions.json" ;;
   "session rename") printf '%s|%s\\n' "$3" "$4" >> "$s/renames.log" ;;
   "review ls")
-    if [ "$3" != "--json" ]; then
-      [ -e "$s/reviews-$3.fail" ] && { echo "ao: review ls failed" >&2; exit 1; }
-      cat "$s/reviews-$3.json" 2>/dev/null || echo '{"reviews":[]}'; exit 0
-    fi
     n=$(( $(cat "$s/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$s/n"
     while [ $n -gt 1 ] && [ ! -e "$s/review$n.json" ] && [ ! -e "$s/review$n.fail" ]; do n=$((n-1)); done
     [ -e "$s/review$n.fail" ] && { cat "$s/review$n.fail" >&2; exit 1; }
@@ -129,7 +121,9 @@ test("gpt-lock: a session holding the lock keeps it against a later, lower-numbe
     const late = lock(sb, "music-garden-4", "acquire");
     assert.strictEqual(late.code, 75);
     assert.match(late.out, /held by music-garden-6/);
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0, "re-acquiring your own lock is a no-op");
+    const mine = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(mine.code, 0, "re-acquiring your own lock is a no-op");
+    assert.strictEqual(mine.out, "acquired (already yours)");
   } finally { sb.cleanup(); }
 });
 
@@ -152,217 +146,69 @@ test("gpt-lock: release gives it back, renames restore, and only the holder may 
   } finally { sb.cleanup(); }
 });
 
-test("gpt-lock: a lock held by a session AO no longer lists is broken; if ao fails, it is not", { skip }, () => {
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-3", "music-garden-6"]);
-    assert.strictEqual(lock(sb, "music-garden-3", "acquire").code, 0);
-    writeFileSync(join(sb.state, "ao-fails"), "");
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "ao down: the holder counts as live");
-    rmSync(join(sb.state, "ao-fails"));
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "holder still listed: busy");
-    sb.sessions(["music-garden-6"]);                       // 3 terminated
-    const r = lock(sb, "music-garden-6", "acquire");
-    assert.strictEqual(r.code, 0, r.out);
-    assert.match(r.out, /broke a stale lock held by music-garden-3/);
-    assert.match(lock(sb, "music-garden-6", "status").out, /held by music-garden-6 /);
-  } finally { sb.cleanup(); }
-});
-
-// A lock left by a dead session, as its acquire wrote it.
-const staleLock = (sb, holder) => {
+// A lock left by a session that died holding it, as its acquire wrote it.
+const deadLock = (sb, holder) => {
   mkdirSync(sb.env.GPT_LOCK_DIR);
   writeFileSync(join(sb.env.GPT_LOCK_DIR, "owner"), `${holder} 2026-11-11T00:00:00Z\n`);
 };
+const clearCommand = out => (out.match(/^ *(rm -rf ".*")$/m) || [])[1];
 
-test("gpt-lock: a breaker acting on an old view never removes a lock taken since", { skip }, () => {
-  // GPT's round-2 interleaving: B saw music-garden-3's lock stale; A broke it and took the lock; B acts now.
+test("gpt-lock: a dead holder's lock is never broken automatically; busy, status and wait print how to clear it", { skip }, () => {
   const sb = sandbox();
   try {
-    sb.sessions(["music-garden-6", "music-garden-9"]);               // 3 terminated
-    staleLock(sb, "music-garden-3");
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0, "A breaks it and takes the lock");
-    const late = lock(sb, "music-garden-9", "break", "music-garden-3");
-    assert.strictEqual(late.code, 75, late.out);
-    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
-    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75, "and A's lock still excludes C");
-    assert.strictEqual(lock(sb, "music-garden-9", "break", "music-garden-6").code, 75, "a listed holder is never broken");
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: a holder that releases and ends while a breaker asks AO never costs the next holder its lock", { skip }, () => {
-  // GPT's round-3 interleaving: B holds S's break key and is waiting on `ao session ls`; meanwhile S
-  // releases, A takes the lock and starts GPT, and S ends. AO then says S is gone.
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-3", "music-garden-6", "music-garden-9"]);
-    assert.strictEqual(lock(sb, "music-garden-3", "acquire").code, 0);
-    const after = JSON.stringify({ data: ["music-garden-6", "music-garden-9"].map(id => ({ id, displayName: id, status: "working" })) });
-    writeFileSync(join(sb.state, "on-ls"), `L=$(cygpath -u "$GPT_LOCK_DIR" 2>/dev/null || echo "$GPT_LOCK_DIR")
-rm -rf "$L"; mkdir "$L"; echo "music-garden-6 2026-11-11T00:00:00Z" > "$L/owner"
-printf '%s' '${after}' > "$FAKE_STATE/sessions.json"
-`);
-    const late = lock(sb, "music-garden-9", "break", "music-garden-3");
-    assert.ok(existsSync(join(sb.state, "on-ls.ran")), "the interleaving ran during the breaker's AO read");
-    assert.strictEqual(late.code, 75, late.out);
-    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
-    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75, "and A's lock still excludes C");
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: a dead holder's lock is not broken while a review run of its may still be going", { skip }, () => {
-  // GPT's round-3 finding 2: the session ended, but the AO review it asked for may still run.
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-6"]);                                  // 3 terminated
-    staleLock(sb, "music-garden-3");
-    const runs = status => writeFileSync(join(sb.state, "reviews-music-garden-3.json"),
-      JSON.stringify({ reviews: [{ prNumber: 88, status: "needs_review", latestRun: { id: "r1", status } }] }));
-    for (const s of ["running", "queued", "pending"]) {
-      runs(s);
-      assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, `a ${s} run keeps the lock`);
-    }
-    writeFileSync(join(sb.state, "reviews-music-garden-3.fail"), "");
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "ao review ls fails: the run counts as going");
-    rmSync(join(sb.state, "reviews-music-garden-3.fail"));
-    writeFileSync(join(sb.state, "reviews-music-garden-3.json"), "not json");
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "unreadable output: the run counts as going");
-    assert.match(lock(sb, "music-garden-6", "status").out, /^held by music-garden-3 /);
-    runs("failed");
-    const r = lock(sb, "music-garden-6", "acquire");
-    assert.strictEqual(r.code, 0, r.out);
-    assert.match(r.out, /broke a stale lock held by music-garden-3/);
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: a break key it cannot create is an error, not a break in progress", { skip }, () => {
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-6"]);
-    staleLock(sb, "music-garden-3");
-    writeFileSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`, "");   // a file in the key's way
-    const r = lock(sb, "music-garden-6", "acquire");
-    assert.strictEqual(r.code, 1, r.out);
-    assert.match(r.out, /error: could not create the key /);
+    sb.sessions(["music-garden-6"]);                                  // 3 has ended: AO no longer lists it
+    deadLock(sb, "music-garden-3");
+    const busy = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(busy.code, 75, busy.out);
+    assert.match(busy.out, /^busy: held by music-garden-3 2026-11-11T00:00:00Z\n  stuck\? once music-garden-3 is gone from `ao session ls` and `ao review ls music-garden-3` shows no run still going, clear it:\n  rm -rf "/);
+    const status = lock(sb, "music-garden-6", "status");
+    assert.match(status.out, /^held by music-garden-3 /);
+    assert.strictEqual(clearCommand(status.out), clearCommand(busy.out));
     sb.env.GPT_LOCK_TRIES = "3";
     const w = lock(sb, "music-garden-6", "wait");
-    assert.strictEqual(w.code, 1, w.out);
-    assert.doesNotMatch(w.out, /gave up/);
+    assert.strictEqual(w.code, 75, w.out);
+    assert.match(w.out, /rm -rf ".*"\ngave up after 3 tries$/);
+    assert.ok(existsSync(join(sb.env.GPT_LOCK_DIR, "owner")), "still there after every try");
+    // the owner clears it by hand, with the printed command
+    const rm = spawnSync(bash, ["-c", clearCommand(status.out)], { env: sb.env, encoding: "utf8" });
+    assert.strictEqual(rm.status, 0, rm.stderr);
+    assert.strictEqual(lock(sb, "music-garden-6", "status").out, "free");
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").out, "acquired");
   } finally { sb.cleanup(); }
 });
 
-test("gpt-lock: a holder restored during a break of its lock gets busy, never 'already yours'", { skip }, () => {
-  // GPT's round-4 interleaving: B holds S's key and has seen S gone; S is restored and asks for the lock
-  // it still holds, while B is still asking AO. S must not run GPT on a lock B is about to remove.
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-6", "music-garden-9"]);                // 3 terminated
-    staleLock(sb, "music-garden-3");
-    writeFileSync(join(sb.state, "on-ls"),
-      `AO_SESSION_ID=music-garden-3 bash "${posix(lockScript)}" acquire > "$FAKE_STATE/s.out" 2>&1; echo $? > "$FAKE_STATE/s.code"\n`);
-    const b = lock(sb, "music-garden-9", "break", "music-garden-3");
-    const s = { code: Number(readFileSync(join(sb.state, "s.code"), "utf8")), out: readFileSync(join(sb.state, "s.out"), "utf8") };
-    assert.strictEqual(s.code, 75, "the restored holder, mid-break: " + s.out);
-    assert.match(s.out, /^busy: a break of your lock is running/);
-    assert.strictEqual(b.code, 0, b.out);
-    assert.ok(!existsSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`), "the key is given back");
-    sb.sessions(["music-garden-3", "music-garden-6", "music-garden-9"]);
-    const again = lock(sb, "music-garden-3", "acquire");
-    assert.strictEqual(again.code, 0, again.out);
-    assert.match(again.out, /^acquired$/, "it takes the lock afresh");
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: while its key is held, a live holder can neither re-acquire nor release, and the lock stays", { skip }, () => {
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-3"]);
-    assert.strictEqual(lock(sb, "music-garden-3", "acquire").code, 0);
-    const key = `${sb.env.GPT_LOCK_DIR}.break.music-garden-3`;
-    mkdirSync(key);                                                   // a break of 3 is running
-    assert.strictEqual(lock(sb, "music-garden-3", "acquire").code, 75);
-    const rel = lock(sb, "music-garden-3", "release");
-    assert.strictEqual(rel.code, 1, rel.out);
-    assert.match(rel.out, /a break of your lock is running/);
-    assert.match(lock(sb, "music-garden-3", "status").out, /^held by music-garden-3 /);
-    rmSync(key, { recursive: true });
-    const mine = lock(sb, "music-garden-3", "acquire");
-    assert.strictEqual(mine.code, 0, mine.out);
-    assert.match(mine.out, /already yours/);
-    assert.ok(!existsSync(key), "already yours gives the key back");
-    assert.strictEqual(lock(sb, "music-garden-3", "release").code, 0);
-    assert.ok(!existsSync(key), "release gives the key back");
-    assert.strictEqual(lock(sb, "music-garden-3", "status").out, "free");
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: a dead holder's lock is broken only on review data that shows every run ended", { skip }, () => {
-  // GPT's round-4 finding 2: missing, malformed or unknown review data keeps the lock.
-  const keeps = ['{}', '{"reviews":null}', '{"reviews":{}}', '{"reviews":[5]}', '{"reviews":[{"latestRun":{}}]}',
-    '{"reviews":[{"latestRun":"failed"}]}', '{"reviews":[{"latestRun":{"status":"weird"}}]}',
-    '{"reviews":[{"latestRun":{"status":"running","verdict":"approved"}}]}',
-    '{"reviews":[{"latestRun":{"status":"failed"}},{"latestRun":{"status":"queued"}}]}'];
-  const breaks = ['{"reviews":[]}', '{"reviews":[{"prNumber":88}]}', '{"reviews":[{"latestRun":null}]}',
-    '{"reviews":[{"latestRun":{"status":"cancelled"}},{"latestRun":{"status":"failed"}}]}',
-    '{"reviews":[{"latestRun":{"status":"submitted","verdict":"approved"}}]}',
-    '{"reviews":[{"latestRun":{"status":"done","verdict":"changes_requested"}}]}'];
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-6"]);                                  // 3 terminated
-    for (const [json, want] of [...keeps.map(j => [j, 75]), ...breaks.map(j => [j, 0])]) {
-      rmSync(sb.env.GPT_LOCK_DIR, { recursive: true, force: true });
-      staleLock(sb, "music-garden-3");
-      writeFileSync(join(sb.state, "reviews-music-garden-3.json"), json);
-      const r = lock(sb, "music-garden-6", "acquire");
-      assert.strictEqual(r.code, want, `${json}: ${r.out}`);
-    }
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: a key it cannot give back is an error with its path", { skip }, () => {
-  const sb = sandbox();
-  try {
-    sb.sessions(["music-garden-6"]);                                  // 3 terminated
-    staleLock(sb, "music-garden-3");
-    // while the breaker asks AO, something lands in its key, so the key can't be removed
-    writeFileSync(join(sb.state, "on-ls"), `L=$(cygpath -u "$GPT_LOCK_DIR" 2>/dev/null || echo "$GPT_LOCK_DIR")
-touch "$L.break.music-garden-3/stray"
-`);
-    const r = lock(sb, "music-garden-6", "break", "music-garden-3");
-    assert.strictEqual(r.code, 1, r.out);
-    assert.match(r.out, /error: could not remove the key .*\.break\.music-garden-3; remove it by hand/);
-    assert.match(lock(sb, "music-garden-6", "status").out, /^free\nbreak in progress: music-garden-3$/);
-  } finally { sb.cleanup(); }
-});
-
-test("gpt-lock: while one break of a holder runs, no other session breaks or takes that lock", { skip }, () => {
+test("gpt-lock: a lock whose claim is not yet written reads as held, never free, and is not yours", { skip }, () => {
   const sb = sandbox();
   try {
     sb.sessions(["music-garden-6"]);
-    staleLock(sb, "music-garden-3");
-    mkdirSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`);       // another session is mid-break
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75);
-    assert.match(lock(sb, "music-garden-6", "status").out, /held by music-garden-3 .*\nbreak in progress: music-garden-3/s);
-    rmSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`, { recursive: true });
-    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
-    assert.ok(!existsSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`), "the break key is given back");
+    mkdirSync(sb.env.GPT_LOCK_DIR);                                   // mkdir done, owner not yet written
+    assert.match(lock(sb, "music-garden-6", "status").out, /^held by a session still writing its claim\n/);
+    const busy = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(busy.code, 75, busy.out);
+    assert.match(busy.out, /^busy: held by a session still writing its claim\n/);
+    assert.strictEqual(lock(sb, "music-garden-6", "release").code, 1);
   } finally { sb.cleanup(); }
 });
 
-test("gpt-lock: of many sessions breaking the same stale lock at once, exactly one ends up holding it", { skip }, async () => {
-  for (let round = 0; round < 3; round++) {
-    const sb = sandbox();
-    try {
-      const ids = Array.from({ length: 6 }, (_, i) => `music-garden-${10 + i}`);
-      sb.sessions(ids);
-      staleLock(sb, "music-garden-3");
-      const results = await Promise.all(ids.map(id => lockAsync(sb, id, "acquire")));
-      const winners = results.filter(r => r.code === 0);
-      assert.strictEqual(winners.length, 1, JSON.stringify(results));
-      assert.ok(results.every(r => r.code === 0 || r.code === 75), JSON.stringify(results));
-      assert.match(lock(sb, ids[0], "status").out, new RegExp(`^held by ${winners[0].session} `));
-    } finally { sb.cleanup(); }
-  }
+// Windows refuses to remove a directory that a running process has as its working directory.
+test("gpt-lock: a release that cannot remove the lock exits 1, and the lock still names its holder", {
+  skip: skip || (process.platform !== "win32" && "a busy directory blocks removal only on Windows"),
+}, async () => {
+  const sb = sandbox();
+  let squatter;
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    squatter = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { cwd: sb.env.GPT_LOCK_DIR, stdio: "ignore" });
+    await new Promise(r => squatter.once("spawn", r));
+    const r = lock(sb, "music-garden-6", "release");
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /error: could not remove .*; it is still held by music-garden-6/);
+    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
+    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75);
+    squatter.kill(); await new Promise(r => squatter.once("exit", r)); squatter = null;
+    assert.strictEqual(lock(sb, "music-garden-6", "release").code, 0, "and once nothing holds it open, it releases");
+  } finally { if (squatter) squatter.kill(); sb.cleanup(); }
 });
 
 test("gpt-lock: a lock it cannot create is an error, not contention — acquire and wait exit 1 at once", { skip }, () => {

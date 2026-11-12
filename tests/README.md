@@ -40,13 +40,12 @@ static check: that AO really starts, serves and stops the server was measured, i
 (one GPT job at a time, `CLAUDE.md` § Cost), the review poller printed in
 `.claude/skills/work-ticket/pr-review.md` and the test-output recipe in `CLAUDE.md` § Working lean — the
 last two taken from the docs, so the docs are what is tested — under Git Bash (or bash), with fake `ao`,
-`gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins, including six breaking
-the same stale lock; a stale lock is broken only when AO no longer lists its holder and shows every one
-of the holder's review runs ended (missing, malformed or unknown review data keeps it), and never by a
-session acting on an old view of it, even when the holder releases, or is restored and asks for the lock
-again, while the breaker waits on AO; a lock or key it can't create or give back is an error, not
-"busy"; the poller exits 1 after two failed or unreadable reads in a row; the recipe prints every
-diagnostic line of a failure and fails with it. Skipped where no bash is found. `workflow-refs.test.mjs` checks that the workflow docs'
+`gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins; a dead holder's lock
+is never broken automatically, and `status`, a busy `acquire` and `wait` print the command that clears
+it by hand, which works; a lock it can't create, or (on Windows, where a busy directory can't be
+removed) can't release, is an error that keeps the holder's name on the lock, not "busy" or "released";
+the poller exits 1 after two failed or unreadable reads in a row; the recipe prints every diagnostic line
+of a failure and fails with it. Skipped where no bash is found. `workflow-refs.test.mjs` checks that the workflow docs'
 file paths, `§` references and step numbers resolve, so a cold worker never follows a dead pointer.
 Both from GPT's PR review of PR #88 (`reviews/2026-11-10-cost-effective-workflow.md`).
 

@@ -793,6 +793,46 @@ without the key → 2 tests fail; `release` without the key → 1; round 3's loo
 status counted as ended → 1; a key-cleanup failure ignored → 1; no holder re-read under the key → 2.
 6/6 caught.
 
+## Decision 9 = C — automatic breaking removed (session `music-garden-8`)
+
+**Why removed instead of a round 5.** Every High GPT found from round 2 on was in the automatic
+stale-lock break: round 2's finding 1 (a move-aside break that exposed a live lock), round 3's findings 1
+and 2 (a release during a break; a worker ended while its review ran) and 3 (key errors), and round 4's
+findings 1 and 2 (a holder restored mid-break; review data read leniently). Each fix added machinery, and
+each round found a new interleaving in it. The owner chose to drop the path rather than review it again
+(decision 9, C).
+
+**What `gpt-lock.sh` is now** (on top of `59d924a`): atomic `mkdir` acquire, "already yours" for the
+same holder, `release`, `wait` and `status`. Removed: `break_stale`, the per-holder keys
+(`<lock>.break.<holder>`), the `break` subcommand, and the AO checks that existed only for breaking (the
+holder's liveness in `ao session ls`, and `no_run_left`'s review-data check). AO is still read for the
+holder's display name, for the `[GPT]` prefix. A lock whose holder has died stays: `status`, a busy
+`acquire` and `wait` print the holder and the exact `rm -rf "<lock>"` that clears it, to run once the
+holder is gone from `ao session ls` and `ao review ls <holder>` shows no run still going. Kept: the
+owner-file publication check (exit 1), creation failures as errors (exit 1, so `wait` stops at once), and
+removal failures in `release` (exit 1); a failed release now also puts the owner back, since `rm -rf` may
+have removed the owner file before failing on the directory. The poller rule is unchanged: the session
+keeps the lock until `ao review ls` shows its run ended (`pr-review.md`, *`error`*). `CLAUDE.md` § Cost,
+`pr-review.md` *`error`* and `tests/README.md` now describe clearing by hand. Walkthroughs 16 and 18's
+"the next `acquire` breaks the lock" steps no longer apply: the lock waits for the owner instead.
+
+**Tests.** The 11 break-specific tests are deleted, with the fake `ao`'s `on-ls` hook and per-holder
+`review ls`. Kept: the six-way acquire race, a later lower-numbered session, release and renames, a lock
+it can't create, and `wait`. Added: a dead holder's lock is never broken — `acquire` and `wait` stay busy
+and print the clear command, `status` prints the same one, and running it frees the lock; a lock whose
+claim is not yet written reads as held, never free; and, on Windows, a `release` that cannot remove the
+lock (a process has it as its working directory) exits 1 and the lock still names its holder. "Already
+yours" now checks its output. Owner-publication failure is not injectable here; checked by reading.
+
+**Mutation audit** (each applied, run, reverted; the script compared byte-for-byte after): non-atomic
+`mkdir -p` → 7 tests fail; no "already yours" → 1; anyone may release → 2; busy without the clear
+command → 2; a creation failure read as busy → 1; no owner put back after a failed release → 1; status
+without the clear command → 2. Dropping the `[ ! -e "$lock" ]` re-check after `rm -rf` → 0: an equivalent
+mutant here, because `rm -rf` itself exits nonzero on the busy directory; a release that ignores the
+`rm` failure altogether → 1. 8/9 caught, the survivor equivalent.
+
+**GPT has not reviewed the simplified script** — no round 5 (the owner chose C, not B).
+
 ## Owner's decisions
 
 1. *Medium = Claude plans, GPT reviews the plan* — **confirmed** by the owner, 2026-11-11 (relayed to
@@ -831,5 +871,11 @@ status counted as ended → 1; a key-cleanup failure ignored → 1; no holder re
    and stop at Needs Input: no round 5 without the owner (owner, 2026-11-11, relayed by the orchestrator
    `music-garden-5` to session `music-garden-8`).
 9. *GPT's round 4 (owner-granted) asked for changes (1 High, 1 Medium); both are agreed and fixed, on a head
-   GPT has not seen. No round 5 without the owner: grant one on round 4's fixes, or hand off as is?* —
-   **open** (PR #88).
+   GPT has not seen. No round 5 without the owner: hand off as is, grant a round 5 on round 4's fixes, or
+   drop automatic stale-lock breaking altogether?* — **C, drop automatic breaking, keep manual clearing**:
+   remove `break_stale`, the per-holder break keys, the `break` subcommand, and the AO liveness and
+   review-data checks that existed only for breaking; keep atomic acquire, release, wait and status, with
+   `status` and a busy `acquire` / `wait` showing the holder and how to clear a stuck lock by hand; keep
+   the CRLF fix, the filesystem errors exiting 1, "already yours", and the poller's keep-the-lock rule.
+   No GPT round 5; the PR says GPT has not reviewed the simplified script (owner, 2026-11-11, relayed by
+   the orchestrator `music-garden-5` to session `music-garden-8`). Done: *Decision 9 = C* above.

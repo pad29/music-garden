@@ -67,9 +67,9 @@ older head. `ao review ls --json` holds the run's full record. Then:
   stop: `ao report --stuck`, quoting the error and saying you hold the lock. **Never request another
   review** on a run you could not see. Release the lock only once `ao review ls --json` shows the run
   ended — or `ao review cancel` ended it and `ao review ls` confirms. If the session is ended instead,
-  its lock stays until AO stops listing the session **and** `ao review ls <session>` shows none of its
-  runs going (it must show each one ended; unreadable or unknown counts as going) — a run can outlive
-  its session; only then does the next `acquire` break the lock.
+  its lock stays: nothing breaks it automatically. The owner clears it by hand, with the command
+  `gpt-lock.sh status` prints, once `ao review ls <session>` shows none of its runs still going — a
+  run can outlive its session.
 - **Failed or cancelled, or `timeout`** → `ao review ls --json` must show the head's run ended, or no
   run for it; if one is still running, keep the lock and run the poller once more, then stop as for
   `error`. Then rule out the limit (below). At the limit → Needs Input, with the reset time. Otherwise
