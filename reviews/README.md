@@ -1,7 +1,8 @@
 # Reviews
 
-One file per ticket: GPT's design and Claude's critique of it, what GPT's test pass and AO's review of
-the PR flagged, what the owner decided, and what was done about each. This replaces appending to
+One file per ticket: the design — GPT's and Claude's critique (L), or Claude's plan and GPT's review of
+it (M), or Claude's short plan (S) — what GPT's test pass (L) and the PR review flagged, what the owner
+decided, and what was done about each. This replaces appending to
 `REVIEW-LOG.md`, which is kept as the archive of everything up to 2026-09-27.
 
 **Why a file per ticket:** tickets run in parallel AO sessions, each in its own worktree. A single
@@ -21,8 +22,18 @@ Keep entries short: the finding, its severity, the verdict, the outcome. Record 
 disagreements — "GPT was wrong, here's why" is more useful later than an entry that quietly drops the
 objection. Quote GPT's wording where the wording matters.
 
-The one long part is GPT's design, kept **verbatim** inside a `<details>` block so the file stays
-scannable. Never edit it afterwards: when GPT revises the design, the revision is a new section.
+The one long part is GPT's design (L) or GPT's design review (M), kept **verbatim** inside a
+`<details>` block so the file stays scannable. Never edit it afterwards: a revision is a new section.
+
+**Sections by size** (`CLAUDE.md` § The loop, by size) — the example below is an L ticket:
+
+- **L:** *Design (Astra)*, *Critique (Claude)*, *Test pass (Astra)*.
+- **M:** *Plan (Claude)*, *Design review (Astra)* — GPT's findings verbatim — and *My answers*, one per
+  finding: agreed or disagreed, and what was done.
+- **S:** *Plan (Claude)* — a few lines.
+- **Every size:** *Owner's decisions* (a `needs-owner` ticket's first checkpoint included), *PR review*
+  with the missing tests it listed and which were added, *Owner's review*, and the tests line with
+  whatever is still unverified.
 
 ```markdown
 # TUN-12 — Let the free tunes carry sixteenth-note bars
@@ -49,7 +60,7 @@ Branch `claude/tun-12-sixteenth-grid` · PR #14
 ## Test pass (Astra)
 What it tested, what it found, which of its test files were kept or deleted and why.
 
-## PR review (AO: Codex, Astra)
+## PR review (AO: Codex, Astra — temporarily GPT through `ask.sh`)
 Round 1:
 1. **Medium — …** *"quoted comment"* **Agreed** — fixed in `abc1234`.
 2. **Low — …** **Disagreed** — why, in a sentence or two.
@@ -60,7 +71,7 @@ What the owner corrected after playtesting, if anything.
 **N tests pass.** Anything still unverified (audio, phone, rendering, `file://`).
 ```
 
-The verdict that ends AO's review lives in the PR body and the hand-off, not here: a commit after an
+The verdict that ends the PR review lives in the PR body and the hand-off, not here: a commit after an
 approval would be a new head, and a new review.
 
 ## Reading them

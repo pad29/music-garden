@@ -1,9 +1,8 @@
 # Design-reviewer brief — GPT attacks a plan or finished work
 
-For ad-hoc reviews: the `gpt-review` skill and "get GPT's take on…". In the default loop GPT designs
-and you critique, and the PR is reviewed by AO's reviewer, so this brief is for everything else — and,
-temporarily, for the PR review itself, while AO's reviewer cannot submit (`work-ticket` § 8,
-*Temporary*).
+For GPT's design review of Claude's plan on **M** tickets (`work-ticket` § 4); for ad-hoc reviews — the
+`gpt-review` skill and "get GPT's take on…"; and, temporarily, for the PR review itself, while AO's
+reviewer cannot submit (`work-ticket` § 8 — the review that also lists missing tests).
 
 Get GPT to attack the work. GPT is a counterparty, not a collaborator — your job is to carry its
 objections back intact, not to defend the design.
@@ -17,6 +16,8 @@ mistake the log records.
 mangles `/tmp` paths when they reach native Windows tools). Frame it as:
 
 - The problem being solved — what the player experiences, not just the code change
+- For an M plan, the **whole ticket verbatim** and any owner answers (`work-ticket` § 4), so GPT
+  can catch what the plan left out
 - The proposed approach
 - Alternatives considered, and why they were rejected
 - Relevant file paths (GPT reads the repo itself — don't paste code it can open)
@@ -35,9 +36,10 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 .claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
 ```
 
-Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT). Use `thread` instead
-of `fresh` only for a second round of the same review. If the ChatGPT limit runs out, say so
-rather than silently switching models.
+Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT), and every call is
+`fresh` — a second round of the same review too: its prompt quotes the first round's findings and
+gives the delta. Take the GPT lock first (`CLAUDE.md` § Cost). If the ChatGPT limit runs out,
+say so rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

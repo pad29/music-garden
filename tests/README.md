@@ -36,6 +36,19 @@ worktree uncached, bound to `127.0.0.1` on AO's `${PORT}`; the url on that same 
 static check: that AO really starts, serves and stops the server was measured, in
 `reviews/2026-11-08-ao-launch-json.md`.
 
+**The workflow's scripts and cross-references.** `workflow-scripts.test.mjs` runs `.claude/gpt/gpt-lock.sh`
+(one GPT job at a time, `CLAUDE.md` § Cost), the review poller printed in
+`.claude/skills/work-ticket/pr-review.md` and the test-output recipe in `CLAUDE.md` § Working lean — the
+last two taken from the docs, so the docs are what is tested — under Git Bash (or bash), with fake `ao`,
+`gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins; a dead holder's lock
+is never broken automatically, and `status`, a busy `acquire` and `wait` print the command that clears
+it by hand, which works; a lock it can't create, or (on Windows, where a busy directory can't be
+removed) can't release, is an error that keeps the holder's name on the lock, not "busy" or "released";
+the poller exits 1 after two failed or unreadable reads in a row; the recipe prints every diagnostic line
+of a failure and fails with it. Skipped where no bash is found. `workflow-refs.test.mjs` checks that the workflow docs'
+file paths, `§` references and step numbers resolve, so a cold worker never follows a dead pointer.
+Both from GPT's PR review of PR #88 (`reviews/2026-11-10-cost-effective-workflow.md`).
+
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
 throws nowhere and simply behaves differently from one big script. `load-order-review.test.mjs` runs

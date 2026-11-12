@@ -1,31 +1,35 @@
 ---
 name: work-ticket
-description: Carry a Tune Garden Linear ticket from GPT's design to a pull request AO's reviewer has approved, as an AO worker. Use when given a ticket ("work on TUN-12"), or, with none named, to take the top of Todo.
+description: Carry a Tune Garden Linear ticket from its design to a pull request GPT's review has approved, as an AO worker. Use when given a ticket ("work on TUN-12"), or, with none named, to take the top of Todo.
 ---
 
 Ticket: $ARGUMENTS (empty means: take the top of Todo)
 
 You are an AO worker: AO made this worktree and its branch, the orchestrator spawned you, and the owner
-reads what you hand off. The whole lifecycle, in Linear states: **Todo → In Progress → (Needs Input ⇄
-In Progress) → In Review → Done.** You move a ticket as far as In Review. Only the owner moves tickets
-into Todo, and only the owner merges.
+reads what you hand off. In Linear states: **Todo → In Progress → (Needs Input ⇄ In Progress) → In
+Review → Done.** You move a ticket as far as In Review. Only the owner moves tickets into Todo, and only
+the owner merges.
 
-**Whether to stop for the owner once the design exists is decided in one place: § 5, the design
-checkpoint.** § 7 says how to stop.
+**The loop depends on the ticket's size** — the table in `CLAUDE.md` § The loop, by size. Whether to stop
+for the owner once the design exists is decided in one place: § 5. § 7 says how to stop.
+
+Files beside this one, read **only when their step comes up**: `resume.md` (taking over or resuming a
+ticket), `browser.md` (the browser check), `needs-input.md` (stopping for the owner), `pr-review.md`
+(AO's reviewer and the limit), `handoff.md` (the hand-off formats).
 
 **No ticket** — ad-hoc work the owner asked for: skip every Linear step (§§ 1–2, ticket comments, state
-moves) and the `Closes` line; the review record is `reviews/<date>-<slug>.md`, and hand-offs go to the
-PR and AO. **A trivial change** — a typo, a comment, formatting: skip §§ 4–5 and GPT's test pass, and
-write *"not required — trivial change"* in the hand-off's design and test lines. AO's review runs on
-every PR either way.
+moves) and the `Closes` line; size it M unless the owner gave a size; the review record is
+`reviews/<date>-<slug>.md`, and hand-offs go to the PR and AO. **A trivial change** — a typo, a comment,
+formatting: skip §§ 4–5, and write *"not required — trivial change"* in the hand-off's design and test
+lines — **unless the ticket is labelled `needs-owner`**: then § 5's rule 1 still stops it. The PR review
+runs on every PR either way.
 
 ## 1. Choose the ticket
 
 - **A ticket was named** — in your spawn prompt, or by the owner. In Todo, claim it (§ 2). Already
   **In Progress**: its live claim (§ 2) names the AO session that holds it.
   - **This session** (you are coming back to it): carry on where you stopped.
-  - **Another session, and your instructions say to take it over:** comment *"Taken over from
-    `<old-session>` by AO session `<session-id>`"*, and continue it as a resumed ticket (§ 3).
+  - **Another session, and your instructions say to take it over or resume it:** `resume.md`.
   - **Another session, otherwise:** stop — `ao report --needs-input --note "<ID> is held by <session>"`.
 - **None named:** list team **Tune Garden** issues in **Todo**, in Linear's own order (the owner's drag
   order), and take the first. If Todo is empty: `ao report --done --note "Nothing in Todo."` and stop.
@@ -54,146 +58,81 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   another worktree, never rename the branch, and never edit AO's project checkout
   (`C:\Users\pavel\ao\projects\music-garden`), which stays on `main`.
 - The branch is `claude/<id>-<slug>` when the orchestrator knew the ticket at spawn, otherwise AO's
-  default, `ao/<session-id>/root`. Either is fine: Linear links the PR through the ticket ID in its title
-  and the `Closes <ID>` line in its body. AO's branch tracks `origin/main`, so push with
-  `git push -u origin HEAD` — never a bare `git push`.
-- **Resumed ticket** — it already has an open PR (the ticket's GitHub link, or
-  `gh pr list --state open --search "<ID> in:title"`), and you are a new session: the orchestrator could
-  not bring the owner's answer back to the session that asked. Take the PR over without touching that
-  session's worktree, which may still have its branch checked out — and only from an untouched branch:
-  ```bash
-  gh pr view <n> --json headRefName,headRefOid              # the PR's branch and full head SHA
-  ao session claim-pr <pr-url> --no-takeover &&             # refuses if a live session owns it
-  git fetch origin main <headRefName> &&
-  st=$(git status --short) &&                               # a status that fails stops it too
-  if [ -n "$st" ]; then echo "STOP: edits of your own; not resetting"
-  elif ! git merge-base --is-ancestor HEAD origin/main; then echo "STOP: commits of your own; not resetting"
-  else git switch -C "$(git branch --show-current)" <headRefOid>   # this branch, moved to the PR head
-  fi
-  git status; git branch --show-current; git rev-parse HEAD # HEAD must equal headRefOid
-  ```
-  The reset runs only when the claim, the fetch and `git status` all succeeded, nothing is uncommitted,
-  and the branch has no commits of its own; otherwise stop — resetting would throw work away. If HEAD already equals
-  `headRefOid`, the takeover is done: skip the block. Never check out `FETCH_HEAD`. The last line runs
-  whatever happened before it; stop on anything unexpected. From then on push with
-  **`git push origin HEAD:<headRefName>`** — the PR's own branch, the one exception to
-  `git push -u origin HEAD`.
-  Then read every comment on the ticket and the PR, and the ticket's `reviews/<ID>-*.md`. You are
-  continuing someone's work, not starting over: carry on from § 7, *Continuing* — not from § 4.
+  default, `ao/<session-id>/root`. Either is fine: Linear
+  links the PR through the ticket ID in its title and the `Closes <ID>` line in its body. AO's branch
+  tracks `origin/main`, so push with `git push -u origin HEAD` — never a bare `git push`.
+- **A ticket that already has an open PR** — you are resuming someone's work: `resume.md`, not § 4.
 
-## 4. Design — GPT designs, you critique
+## 4. Design — by size
 
-Not for a resumed ticket: its design exists (§ 7, *Continuing*).
-
-- Read the whole ticket and its comments, then `AGENTS.md`, `CLAUDE.md`, everything its **Read first**
-  names, and the `reviews/` files for the area.
-- Run the **`gpt-design`** skill with the ticket ID. GPT designs (`ask.sh fresh`), you critique, and
-  both go into `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back
-  to GPT.
-- **Decisions already made** in the ticket bind GPT's design and your critique alike.
-- No code yet.
+- Read the whole ticket and its comments, its **Read first**, and the `reviews/` files for the area —
+  searching first, reading the sections that matter. **Decisions already made** in the ticket bind the
+  design, the plan and the critique alike. No code yet. If the ticket's size looks wrong once you have
+  read it, work it at the larger size and say why in the hand-off.
+- **L** — run the **`gpt-design`** skill: GPT designs (`ask.sh fresh`), you critique, and both go into
+  `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back to GPT.
+- **M** — write your plan into the reviews file: the approach, the files and functions, the tests that
+  would prove it, the risks, and every question only the owner can answer, with options. Then get GPT's
+  design review of it with the design-reviewer brief (`ask.sh fresh read-only`). The prompt carries the
+  **whole ticket verbatim** — *Done looks like*, *Decisions already made*, questions, exclusions — and
+  any owner answers, not just your plan: GPT checks the plan against the ticket, so it must see what the
+  plan might have left out. Answer each finding — agreed or disagreed, and why — under GPT's findings,
+  verbatim and separate.
+- **S** — a short plan in the reviews file (a few lines: approach, files, tests). No GPT call.
 
 ## 5. The design checkpoint — stop or build?
 
-GPT's design and your critique exist; no code does. Decide here.
+The design (L) or the plan (S, M) exists; no code does. Decide here, and settle every open policy
+question now — never halfway through the build.
 
 **Stop at Needs Input (§ 7) if any of these holds:**
 
-1. **The ticket is labelled `needs-owner` and has not been through a checkpoint with the owner yet.**
-   Every `needs-owner` ticket stops at its first checkpoint, whether or not it lists questions, and
-   *Owner's decisions* in the reviews file records the owner's answer. After that, it stops only for a
-   question still open there, or a new one.
-2. **The design or the critique raised a question that would have earned the ticket `needs-owner` had
-   it been known at filing.** That is `file-ticket`'s test — only the owner can validate the result:
-   anything musical (score-checked tunes, feel, sound), player-facing pacing, or a design decision with
-   more than one defensible answer.
+1. **The ticket is labelled `needs-owner` and has not been through a checkpoint with the owner yet** —
+   whatever its size. Every `needs-owner` ticket stops at its first checkpoint, whether or not it lists
+   questions, and *Owner's decisions* in the reviews file records the owner's answer. After that, it
+   stops only for a question still open there, or a new one.
+2. **The design, plan, critique or review raised a question that would have earned the ticket
+   `needs-owner` had it been known at filing.** That is `file-ticket`'s test — only the owner can validate
+   the result: anything musical (score-checked tunes, feel, sound), player-facing pacing, or a design
+   decision with more than one defensible answer.
 3. **§ 7's standing rule applies:** a new fork where the readings lead to materially different work, or
    a decision already made in the ticket that the work shows is wrong.
+4. **The work is larger than L** (`file-ticket` § Size): propose the split instead of building it whole.
 
 **Otherwise, build.** Smaller calls are yours: make them, and list each under *Choices I made that you
 might overrule* in the hand-off.
 
-**Where GPT's design and your critique disagree, you decide** — with your reasoning, and both sides
-reported verbatim — **unless the disagreement is itself one of the owner decisions above. Then stop.**
+**Where GPT and you disagree, you decide** — with your reasoning, and both sides reported verbatim —
+**unless the disagreement is itself one of the owner decisions above. Then stop.**
 
 ## 6. Build and test
 
-- Build GPT's design as your critique amended it. Syntax check and `node --test "tests/*.test.mjs"`
-  after every edit.
-- **The browser is AO's, serving this worktree.** `.ao/launch.json` makes the server one command:
-  ```bash
-  ao preview start     # first line: ready game http://127.0.0.1:<port>/index.html?dev
-  ( set -o pipefail; curl -fsS "http://127.0.0.1:<port>/<a file this branch changed>" | cmp - "<that file>" )
-  ao browser open "http://127.0.0.1:<port>/index.html?dev"
-  ```
-  `ao preview start` returns once the server answers — no background command: AO runs `http-server` in
-  this worktree on a loopback port it picks, a new one at every start, and a second start replaces the
-  running server. Start it once: the server caches nothing (`-c-1`), so an edit needs only a reload.
-  `ao preview status` shows the server's log, down to each file the browser fetched; `ao preview stop`
-  ends it, whole process tree included — do that when you are done. **Open the URL yourself after every
-  start**: only a session's first start moved the agent's tab, and a page whose server has stopped goes
-  on rendering (measured 2026-11-08). The `curl … | cmp` line must succeed — AO's own readiness check
-  passes on any HTTP answer, a 404 included. **A screenshot is not evidence unless you know which files
-  produced it.**
-  - **If `ao preview start` fails** — it exits non-zero and says why — serve the worktree yourself, as a
-    background command, then run the `curl … | cmp` and `ao browser open` lines with its port:
-    ```bash
-    PORT=$((8400 + ${AO_SESSION_ID##*-}))                # first candidate: music-garden-7 → 8407
-    npx --yes http-server -p $PORT -c-1 -a 127.0.0.1 .   # background; if it can't bind, try the next port
-    ```
-    Here the byte comparison also catches another session's server answering the port. Stop the server
-    when you are done.
-  - AO redacts query values in the URLs it reports (`?dev=[redacted]`): `get url` shows the port, but
-    judge the page by what it shows.
-  - **`file://` is out of reach** — AO's browser refuses it. A change that touches asset loading puts a
-    `file://` check on the owner's playtest list and under *Not verified*.
-  - **AO's browser cannot run JavaScript in the page** — there is no console input and no evaluate.
-    Verify through what the page shows (`snapshot`, `act`, `console`, `errors`) and prove logic in Node
-    tests. A check that needs page code — a `window.` probe, the playback goldens' console capture in
-    `tools/goldens/README.md` — goes under *Not verified*, and on the owner's list when it matters.
-  - **This worker's browser profile is its own** (AO isolates each worker's), so `localStorage` — saves,
-    progress, settings — starts with none of the owner's. To test against stored data, create it in this
-    browser first (play to it, or use the `?dev` buttons) and say so. Storage belongs to the origin, port
-    included, so what you made before a restart of `ao preview start` stays behind with the old port:
-    make it on the server you test it on (measured 2026-11-09). Never point the game at
-    `ao browser target chrome`: that is the owner's own Chrome and profile.
-  - Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
-    deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
-    `https://deploy-preview-82--tunegarden.netlify.app`).
-- **GPT's test pass** — the tester brief, `ask.sh fresh workspace-write`: a fresh thread, not the
-  design's (owner, 2026-11-09 — `CLAUDE.md` § Calling GPT). So the prompt hands GPT its own design and
-  your critique verbatim from the reviews file, with *Owner's decisions* and the ticket's *Done looks
-  like*; says what you tested and what you could not reach; and lists **where the build departs from
-  its design, and why**, so it tests the departures as deliberate — and can object to them. Review every
-  file it adds before keeping it. Fix what it found, and re-run everything the fixes touched.
+- Build the design as your critique amended it (L), or your plan as GPT's review amended it (M), or
+  your plan (S). Syntax check and the suite after every edit (`CLAUDE.md` § Working lean for short
+  output). Write the tests the change needs yourself — on S and M nobody else will until the PR review.
+- **The browser:** read `browser.md` before the first browser check of the session. AO's browser serves
+  this worktree through `ao preview start`; a screenshot is not evidence unless you know which files
+  produced it.
+- **L only — GPT's test pass:** the tester brief, `ask.sh fresh workspace-write`. The prompt hands GPT
+  its own design and your critique verbatim from the reviews file, with *Owner's decisions* and the
+  ticket's *Done looks like*; says what you tested and what you could not reach; and lists **where the
+  build departs from its design, and why**, so it tests the departures as deliberate — and can object
+  to them. Review every file it adds before keeping it. Fix what it found, and re-run everything the
+  fixes touched.
 
 ## 7. Stop for the owner — Needs Input
 
-**When:** § 5 says so; § 8's review loop ends here; or, later in the work, a decision turns out to be the
+**When:** § 5 says so; § 8's review loop ends here; an external tool broke on a limit
+(`CLAUDE.md` § When something external breaks); or, later in the work, a decision turns out to be the
 owner's (§ 5's tests), or **the owner should try it before it is worth finishing**: music, feel, pacing,
 anything visual or audible that tests cannot judge. The standing rule holds at any point: a new fork
 where the readings lead to materially different work, or a decision already made in the ticket that the
 work shows is wrong, is a question for the owner, never a quiet change.
 
-Then:
-1. List each question under *Owner's decisions* in the reviews file, marked open. Commit what you have —
-   at the design checkpoint, the reviews file alone — and push. Open a **draft** PR against `main` (or
-   keep the PR you have): Netlify builds a preview for the phone, and a later session can claim the PR.
-   **Never request AO's review on a draft.**
-2. Comment on the ticket in the **Needs Input** format (§ Hand-off formats), and end with the same text
-   as your last message. File its short form with `ao report --needs-input` (§ Hand-off formats).
-3. Move the ticket to **Needs Input** and end your turn.
+**How:** `needs-input.md`. Its hand-off must let a fresh session resume cold — the orchestrator starts
+one when the owner answers after more than an hour. **When the answer comes:** `resume.md`, *Continuing*.
 
-**Continuing.** The owner answers in this AO session, or on the ticket, moving it back to Todo; the
-orchestrator brings the answer back to this session, or to a new one (§ 3). Either way:
-1. Move the ticket back to **In Progress** — from Todo, claim it again as § 2 says — and record each
-   answer under *Owner's decisions*: the answer, and where and when it was given.
-2. Keep the design you have. Only if an answer changes it materially, have GPT revise it, with a prompt
-   that stands alone (the reviews file's design and *Owner's decisions*, and what changed); add the
-   revision to the reviews file as a new section — never edit the original — and critique it.
-3. Pass § 5 again, then carry on with § 6, on the same branch and PR.
-
-## 8. Finish — the PR and AO's review
+## 8. Finish — the PR and its review
 
 1. Update the docs, per `CLAUDE.md` § Docs.
 2. **Bring the branch up to date:** `git fetch origin`, merge `origin/main`, resolve conflicts, then re-run
@@ -202,215 +141,46 @@ orchestrator brings the answer back to this session, or to a new one (§ 3). Eit
    lands there), so resolve those by reading both sides, never by picking one.
 3. Commit in the repo's style (a short imperative subject that says what changes for the player, a body
    that says why), push, and open the PR against `main` **ready for review** — or `gh pr ready` the draft.
-   Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in the **PR**
-   format.
-4. **Request AO's review** — **temporarily replaced:** until an AO review run submits, GPT reviews the PR
-   through `ask.sh` instead (*Temporary: GPT's PR review through `ask.sh`*, at the end of this section).
-   `ao review trigger --pr <url>` the first time, `ao review trigger` after that — after a failed run
-   too. If it answers that the head was already reviewed right after a push, wait a few seconds and
-   retry. The reviewer is the one the orchestrator configured (`CLAUDE.md` § Calling GPT); if it tells
-   you the settings changed since you were spawned, pass the new ones (`--model`, `--effort`). Then
-   wait for the verdict on the PR's **current head**. An approval posts no
-   comment for you to notice, so run this as a background command; the harness wakes you when it exits,
-   and it prints one line — `<status> <verdict> <run-id>` for the run on the current head, or `timeout`
-   after about an hour:
-   ```bash
-   pr=<n>; head=$(gh pr view "$pr" --json headRefOid -q .headRefOid)
-   for i in $(seq 60); do
-     r=$(ao review ls --json 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
-       try{const[pr,head]=process.argv.slice(1);const rv=(JSON.parse(d).reviews||[]).find(x=>String(x.prNumber)===pr);
-       const run=rv&&rv.latestRun;if(!run||run.targetSha!==head)return console.log("none");
-       console.log(run.status+" "+(run.verdict||"-")+" "+run.id)}catch{console.log("error")}})' "$pr" "$head")
-     case "$r" in running*|queued*|pending*|none|error|"") sleep 60 ;; *) echo "$r"; exit 0 ;; esac
-   done
-   echo timeout; exit 1
-   ```
-   `none` (no run on this head yet) and `error` (`ao` failed) keep it waiting. Neither is ever an
-   approval, and nor is a verdict for an older head. `ao review ls --json` holds the run's full record.
+   Ticket ID in the title: *"TUN-12 Let the free tunes carry sixteenth-note bars"*. Body in `handoff.md`'s
+   **PR** format.
+4. **The PR review — temporarily GPT's, through `ask.sh`** (owner, 2026-11-09; AO's reviewer cannot
+   submit — `pr-review.md` has the diagnosis, the AO route, and when this changes). Take the GPT lock
+   first (`CLAUDE.md` § Cost). Write a self-contained prompt to `.claude/gpt/prompt.txt`, framed as
+   a PR review in the design-reviewer brief's manner: the PR's diff against `origin/main` — or, once GPT
+   has reviewed an earlier head, only the delta since that head, with that verdict and its findings
+   quoted — plus the ticket and the reviews file by path. Ask for the changes it requires, each with a
+   severity, **the tests it finds missing**, each as a case to add, or an approval that names the head
+   SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`, then
+   release the lock, whatever the outcome. If the call fails: `CLAUDE.md` § When something external
+   breaks; to tell a limit from a fault, `pr-review.md`, *The limit*.
 5. **Read the verdict, then act:**
-   - **Approved on the current head** → step 6.
-   - **Failed or cancelled, no verdict within the hour, or no run for the head** → first rule out the
-     ChatGPT limit. A failed run's `body` doesn't say why: *"reviewer Chat turn ended without submitting a
-     result"* came on 2026-11-08 with the limit spent, and on 2026-11-09 with it available, when the
-     reviewer had reviewed but could not submit (the temporary section below). A one-word call shows the
-     limit — `codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply
-     with one word: ok"` answers *"You've hit your usage limit … try again at <time>"* when it is spent.
-     **At the limit** → Needs Input (§ 7), with the time it resets; no retry, and never another reviewer
-     agent, model or effort — the owner decides whether to wait. **Otherwise** → request the review
-     again. After two such retries, stop: `ao report --stuck` with what failed; the ticket stays In
-     Progress.
-   - **Changes requested** → its inline comments are in this session. Answer each: **agree** → fix it;
-     **disagree** → reply on its thread with your reasoning and leave the thread open. Then:
+   - **Approved on the current head, no missing tests** → step 6.
+   - **Changes requested, or missing tests listed** (a list of missing tests is a change requested, not
+     an approval). Answer each finding: **agree** → fix it, or add the test; **disagree** → your
+     reasoning, recorded in the reviews file (on an AO review, a reply on its thread, left open). Then:
      - **You disagreed with every finding:** nothing changed, so there is nothing new to review → Needs
        Input (§ 7), with the open findings quoted against your reasons. The owner decides.
      - **Otherwise:** re-run whatever the fixes touched, the browser included where it matters, and
        record the round in the reviews file **in the same commit as the fixes** — a commit after an
-       approval would be a new head, and another review. Push once, and resolve the threads you fixed
-       (`ao pr resolve-comments <n> <comment-ids>`). **If that was the third round, stop** → Needs Input
-       (§ 7) without a fourth review: the fixes awaiting review, the disputed findings, and the decision
-       you need. Otherwise, back to step 4.
+       approval would be a new head, and another review. Push once. **If that was the third round,
+       stop** → Needs Input (§ 7) without a fourth review: the fixes awaiting review, the disputed
+       findings, and the decision you need. Otherwise, back to step 4, on the new delta.
 
    A review loop that ends in Needs Input is not In Review, and not `--done`.
-6. **Hand off.** Check that the approved head is still the PR's head (`gh pr view <n> --json
-   headRefOid`). Edit the PR body's **Review** section to add the verdict — an edit is not a new head.
-   Wait for Netlify (`gh pr checks <n> --watch`) and take the preview URL from the deploy-preview check's
-   link. Comment on the ticket in the **In Review** format, move the ticket to **In Review**, end with the
-   same text as your last message, and file its short form with `ao report --done … --pr-created <url>`.
-
-### Temporary: GPT's PR review through `ask.sh` (owner, 2026-11-09)
-
-**Until an AO review run submits a result, this replaces steps 4–5's AO review — don't request one.**
-AO's reviewer reviews but cannot submit here: its runs end with *"reviewer Chat turn ended without
-submitting a result"* while a one-word `codex exec` answers. AO runs it in Codex's sandbox, where `gh`
-cannot read its configuration (`C:\Users\pavel\AppData\Roaming\GitHub CLI\config.yml`: *Access is
-denied*) and `ao` is not on PATH; `ao doctor` also warns `codex-launch-flags` — codex-cli 0.155.1 rejects
-AO's launch flags. Each such run spends the ChatGPT limit on a verdict that never arrives.
-
-1. Write a self-contained prompt to `.claude/gpt/prompt.txt`, framed as a PR review in the
-   design-reviewer brief's manner: the PR's diff against `origin/main` — or, once GPT has approved an
-   earlier head, only the delta since that head, with that verdict quoted — plus the ticket and the
-   reviews file by path. Ask for the changes it requires, each with a severity, or an approval that names
-   the head SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`.
-2. Its answer is step 5's verdict, under all of step 5's rules: agree → fix; disagree → your reasoning;
-   the all-disputed and third-round exits; the round recorded in the reviews file with its fixes. The next
-   round reviews the new delta.
-3. An approval counts only for the head it names, and that must still be the PR's head at step 6. Put the
-   verdict, verbatim, in the PR body's **Review** section — a body edit, not a commit.
-
-**Once an AO review run submits, remove this section and every active reference to it:** step 4's
-pointer; step 5's note on 2026-11-09; the review lines of both hand-off templates (*In Review* and the
-PR body); in `CLAUDE.md`, the default loop's step 8, *Explicit delegation* and *Calling GPT*; and the
-design-reviewer brief's opening. `git grep -in temporar -- CLAUDE.md .claude/` lists them all. The
-review records keep their history.
-
-## Hand-off formats
-
-Every hand-off goes in full to the ticket, the PR, and your last message in this session. Use these
-shapes exactly, headings included, so the owner always knows where to look. Leave a section out only
-when the template says it may be left out.
-
-AO gets the short form: **`ao report` notes are capped at 1,000 characters** (a longer one is refused —
-measured 2026-11-09). So its note says in a few lines where things stand and what is needed — the
-questions, or the verdict — with the PR attached (`--pr-created <url>`); the full text is on the ticket
-and the PR.
-
-Hand-off text is full of backticks, which the shell would run. Pass it literally — a quoted heredoc into
-a variable, then the variable:
-
-```bash
-note=$(cat <<'EOF'
-<the short form, under 1,000 characters>
-EOF
-)
-ao report --done --note "$note" --pr-created <url>
-```
-
-PR bodies the same way: `gh pr create … --body-file -` or `gh pr edit <n> --body-file -`, fed by a
-`<<'EOF'` heredoc.
-
-### The playtest checklist — the heart of every hand-off
-
-This is how the owner spends his time, so it must be honest and short.
-
-- **Each item is where → do → expect**, and "expect" names something the owner could see or hear go
-  WRONG: *"three clicks a bar, the first one accented"*, never *"it works"* or *"check the bars"*.
-- **Build it from three sources, in this order:**
-  1. each *Done looks like* criterion in the ticket that the tests cannot judge;
-  2. everything you could not verify yourself: sound by ear, the phone, touch gestures, feel, pacing —
-     and `file://`, which AO's browser cannot open, whenever asset loading changed;
-  3. one or two **regression** checks on neighbouring features the diff touched.
-- **Leave out anything a test or your browser check already proved.** Padding the list teaches the owner
-  to skim it. If nothing needs his eyes or ears, say so in one line instead of inventing items.
-- Tag each item 📱 phone, 🖥 desktop or 👆 touch where the device matters. Most important first; about
-  eight items at most. If there are more, the ticket was too big — say so.
-- Give each item a step count or a time ("~2 min") only when it is long.
-
-```markdown
-- [ ] **Jukebox → The Moldau**, Click set to *Count in + tick*, press ▶ — expect two clicks, then the
-      low E pick-up landing on the last eighth; the bar chips read 1–9, with 9 five columns wide.
-- [ ] 📱 **Same, on the phone preview** — expect the bar chips not to overlap the pads at the smallest zoom.
-- [ ] **Regression: Stepping Stones' reward** — finish level 1; expect Mary to play flat and without bars,
-      exactly as before.
-```
-
-### In Review — the ticket comment
-
-```markdown
-**Ready for review** · PR #<n> · Preview: <netlify deploy-preview URL> · Session: ao://sessions/music-garden/<session-id>
-
-**What changed for you**
-- One to three bullets, in the player's terms.
-
-**Please playtest**
-<the checklist>
-
-**Choices I made that you might overrule**
-- Anything you decided that the ticket did not settle, one line each, with the alternative.
-  (May be left out when there were none.)
-
-**Review and tests**
-- Design: GPT designed it; my critique — one line per point: severity, the point, what was built instead.
-- GPT's test pass: what it found, and which of its test files were kept.
-- AO's review (Codex, Astra) — while § 8's temporary rule stands, GPT's PR review through `ask.sh`:
-  **approved** on `<short sha>` after N rounds — one line per finding: severity, the finding, agreed or
-  disagreed, what you did. Full record: `reviews/<ID>-<slug>.md`.
-- Verified: N/N tests; what you checked in the browser, on which head.
-- Not verified: what you could not reach — `file://` among them whenever asset loading changed.
-```
-
-### Needs Input — the ticket comment
-
-```markdown
-**Needs your input** · Draft PR #<n> · Preview: <URL> · Session: ao://sessions/music-garden/<session-id>
-
-**Where it stands**
-Two or three lines: what is done, what is waiting on you. At the design checkpoint, say there is no
-playable change yet, link GPT's design and my critique (`reviews/<ID>-<slug>.md` on the branch), and
-leave out the preview.
-
-**Questions**
-1. The question, answerable in a word or a line.
-   - **A)** … · **B)** … — **I'd pick A**, because …
-2. …
-
-**Try this first**
-<the checklist — only what informs the answers; may be left out when the questions need no playtest>
-
-**How to answer:** reply here — "1A, 2: keep it" is enough — then move the ticket back to **Todo**; the
-work resumes where this stopped. Or answer in the AO session linked above, if it is still open.
-```
-
-### The PR body
-
-```markdown
-Closes <ID>.
-
-## What changes for the player
-One short paragraph, or bullets.
-
-## Please playtest
-<the same checklist as the ticket>
-
-## Review
-GPT's design and my critique in brief (in full in the reviews file). GPT's test findings, and which of its
-test files were kept or deleted, and why. AO's review (or, while § 8's temporary rule stands, GPT's
-`ask.sh` PR review): each finding with severity and my verdict, including any disagreement in the
-reviewer's own words — and, once it lands, the verdict, verbatim.
-
-## Tests
-N/N pass; mutation audits run; what the browser check covered, on which head; what remains unverified.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-```
-
-With no ticket, leave out the `Closes` line.
+6. **Hand off** — read `handoff.md`. An approval counts only for the head it names: check it is still the
+   PR's head (`gh pr view <n> --json headRefOid`). Put the verdict, verbatim, in the PR body's **Review**
+   section — an edit is not a new head. Wait for Netlify (`gh pr checks <n> --watch`) and take the preview
+   URL from the deploy-preview check's link. Comment on the ticket in the **In Review** format, move the
+   ticket to **In Review**, end with the same text as your last message, and file its short form with
+   `ao report --done … --pr-created <url>`.
 
 ## Never
 
 - Never merge a PR or push to `main` — every push to `main` deploys to production. Merging happens
   only when the owner explicitly says so in this session.
 - Never move a ticket into Todo, or out of anyone else's In Progress.
-- Never request AO's review on a draft PR.
+- Never request a review on a draft PR.
 - Never delete a branch that holds unmerged work, and never remove or clean up AO worktrees or
   sessions — AO owns them.
 - Never force-push.
+- Never retry a broken external tool in a loop (`CLAUDE.md` § When something external breaks).

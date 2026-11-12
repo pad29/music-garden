@@ -1,6 +1,6 @@
 # Tester brief — GPT tests the build against its design
 
-Step 4 of `CLAUDE.md`'s default loop, and "have GPT test…". GPT designed the change; now it adds
+Step 4 of `CLAUDE.md`'s loop, for **L** tickets only, and "have GPT test…". GPT designed the change; now it adds
 tests from that design and hunts for what your own testing missed. The value is in the gaps, so
 be honest and specific about your coverage — a vague summary makes GPT repeat work you already
 did and wastes the owner's usage limit.
@@ -42,9 +42,10 @@ and to **run** the tests it writes and report actual results, not predicted ones
 .claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt
 ```
 
-`fresh`, not `thread` (owner, 2026-11-09): resuming the design thread replays its whole transcript —
-one resumed test pass read 1.78M of a ticket's ~2.2M GPT input tokens — and the ChatGPT limit is
-the bottleneck. Use `thread` only for a second round of this same test pass.
+`fresh`, like every GPT call (owner, 2026-11-09 and 2026-11-10): resuming a thread replays its whole
+transcript — one resumed test pass read 1.78M of a ticket's ~2.2M GPT input tokens — and the ChatGPT
+limit is the bottleneck. A second round is fresh too, with the first round's results in its prompt.
+Take the GPT lock first (`CLAUDE.md` § Cost).
 `workspace-write` is deliberate: a reviewer that can't write a test file can't test much.
 It's safe because the session is in its own AO worktree and everything lands in the diff
 before merge. This call also carries network access and the Polly-only AWS credentials — the
