@@ -137,3 +137,28 @@ limit message read (test 2); a string `error` ignored, or the error-item branch 
 `STATUS=0` dropped before the fallback (the existing thread test). Against `c8cece7`'s `ask.sh`, tests
 1–3 fail. Its reset regex is the "stops at the first period" mutation. Tests 4–8 pin behaviour
 `c8cece7` already had, so they pass on both.
+
+### Round 2 — on `67fb320`: no verdict, the ChatGPT limit ran out
+
+On 2026-11-12 at about 15:35 CST, `ask.sh fresh read-only` on the round-2 prompt (the delta
+`c8cece7..67fb320`, with round 1 quoted) exited **69**. Its whole stderr was this PR's own one-line
+report:
+
+```
+ask.sh: usage limit — try again at 8:25 PM (codex exit 1)
+```
+
+No retry (`CLAUDE.md` § When something external breaks). The round consumed no review, so the budget
+still stands at one round used of three.
+
+**It is also the first live run of the change, and it settles the open question about codex's event
+types.** The real `.last-events.jsonl` held `thread.started`, `turn.started`, then
+`{"type":"error","message":"You’ve hit your usage limit. Upgrade to Pro (…), visit … or try again at
+8:25 PM."}` and `{"type":"turn.failed","error":{"message":<the same>}}`. Those are the shapes the stub
+plays back. Codex writes a curly apostrophe ("You’ve"), which the `usage limit` match doesn't depend on.
+
+## Owner's decisions
+
+1. **Open** (2026-11-12, Needs Input): GPT's round-2 PR review hit the limit, which resets at 8:25 PM
+   CST, 2026-11-12. **A)** wait for the reset, then run round 2 on `67fb320` · **B)** hand off for
+   review without GPT's round 2. The owner reviews the round-1 fixes.
