@@ -54,6 +54,17 @@ Attempt 1, on `9b833b9` (2026-11-12): **no verdict.** `codex exec` stopped with 
 limit … try again at 8:25 PM"* (`.claude/gpt/.last-events.jsonl`); `ask.sh` exited 1 without printing
 it (TUN-73 fixes that). No findings, so no review round used.
 
-**665 tests pass** (`tools/check-syntax.mjs` clean). The new test was mutation-checked: dropping
-`CLAUDE.md`'s "larger wins" and `file-ticket`'s "`addLabels`, never `labels`" each fail it. Nothing
-in the game changed, so there is no browser check.
+## Owner's review
+
+1. **The size test's `M` and `larger` checks were vacuous** (owner, PR #95 review comment on
+   `tests/workflow-refs.test.mjs`, 2026-11-12): *"The word-bounded `M` check … is vacuous in all three
+   texts"* (the loop table, the S/M bullets, work-ticket's *No ticket* paragraph), and *"`/larger/` … is
+   vacuous for file-ticket § Size"* ("larger than L"); *"The mutation check in the PR body only covered
+   CLAUDE.md."* **Agreed** — each rule is now matched inside the clause that states it (`disagree … larger`,
+   `neither … M`, and, the same gap, `either alone` / `only one of them … size`, with no `.` or `;`
+   between). Six mutations asked for, nine run: removing each doc's tie-break, neither-is-M and
+   either-alone clause in turn fails the test every time, each on its own assertion.
+
+**665 tests pass** (`tools/check-syntax.mjs` clean). Mutation-checked: the nine clause removals above, and
+dropping `file-ticket`'s "`addLabels`, never `labels`". Nothing in the game changed, so there is no
+browser check.

@@ -97,8 +97,11 @@ test("a ticket's size is its Size label and its ## Size section, the larger when
                                ["file-ticket § Size", size]]) {
     assert.match(text, /`Size` label/, `${where} names the Size label`);
     assert.match(text, /`## Size` section/, `${where} names the ## Size section`);
-    assert.match(text, /larger/, `${where} says the larger size wins a disagreement`);
-    assert.match(text, /\bM\b/, `${where} keeps "no size is M"`);
+    // Each rule is matched inside the one clause that states it (no `.` or `;` between its words): a bare
+    // "M" or "larger" also occurs in the loop table, the size bullets and "larger than L".
+    assert.match(text, /disagree[^.;]*\blarger\b/, `${where} says the larger size wins a disagreement`);
+    assert.match(text, /\bneither\b[^.;]*\bM\b/, `${where} says a ticket with neither is M`);
+    assert.match(text, /(?:\b[Ee]ither alone|\bonly one of them)[^.;]*\bsize\b/, `${where} says either alone is the size`);
   }
   assert.match(goes, /One label from the `Size` group/, "file-ticket § Where it goes requires a Size label");
   assert.match(goes, /`addLabels`, never `labels`/, "file-ticket warns that `labels` replaces the set");
