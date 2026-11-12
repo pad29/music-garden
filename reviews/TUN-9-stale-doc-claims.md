@@ -79,3 +79,9 @@ My answers — all four agreed, each checked against the code first:
    continent-map entry.
 
 **Tests:** syntax check (29 scripts) and the suite, 664/664, after the fixes.
+
+## Owner's decisions
+
+1. *GPT's round-2 PR review hit the ChatGPT usage limit* (2026-11-12, 15:34 local: "You've hit your
+   usage limit … try again at 8:25 PM"). Wait for the reset and run round 2 then, or merge on round 1's
+   fixes without it? — **open**. Round 2 never ran, so one round of three is used.
