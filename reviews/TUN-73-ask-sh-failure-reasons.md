@@ -56,3 +56,84 @@ greedy reset-time capture, no last events on an unexplained failure. Syntax chec
 **Unverified:** codex's real error events. The repo records only the message text of the 2026-11-10
 limit failure, not its event types, so the stub uses `error` and `turn.failed`; the parser also accepts
 any event type naming an error or a failure, and prints the last events when it finds no message.
+
+## PR review (Astra, through `ask.sh`)
+
+`music-garden-13` took the PR over from `music-garden-10` at `c8cece7` (the earlier session went idle
+before its review).
+
+### Round 1 — on `c8cece7`: changes requested
+
+GPT, verbatim:
+
+> Required changes:
+>
+> 1. **Major — [.claude/gpt/ask.sh:145](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-13/.claude/gpt/ask.sh:145): Check a failed resume for the limit before starting fresh.** Every nonzero resume currently triggers another Codex call, including an explicit usage-limit failure. That call overwrites the resume’s events, potentially losing its reset time and returning an unrelated failure—or success. This contradicts the new header’s “Never retried” guarantee. Preserve the stale-thread fallback, but stop with 69 when the resume reports the limit.
+>
+> 2. **Minor — [.claude/gpt/ask.sh:110](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-13/.claude/gpt/ask.sh:110): Preserve reset information across messages and punctuation.** The parser selects only the first limit message. An initial `"You've hit your usage limit."` followed by a detailed `turn.failed` message incorrectly produces “codex gave no reset time.” Separately, `try again at 2:49 a.m. CST on November 11, 2026.` is truncated to `try again at 2:49 a.m`, losing the timezone and date. Both results were reproduced using the actual parser in memory. Examine subsequent limit messages and preserve the full supplied reset information.
+>
+> 3. **Minor — [.claude/skills/work-ticket/pr-review.md:84](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-13/.claude/skills/work-ticket/pr-review.md:84), [SKILL.md:155](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-13/.claude/skills/work-ticket/SKILL.md:155), and [design-reviewer.md:42](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-13/.claude/gpt/briefs/design-reviewer.md:42): Qualify the documented guarantees.** “Any other failure exits 1” excludes the script’s actual 2 and 127 paths; restrict that statement to other Codex failures. The skill and brief promise a reset time unconditionally, although the implementation explicitly supports its absence. Say “when Codex supplies one.” The `one-word` references otherwise correctly distinguish AO failures from `ask.sh` failures.
+>
+> Missing tests to add in `tests/workflow-scripts.test.mjs`:
+>
+> 1. **Limit during resume:** Seed `.thread-id=t-old`. Resume emits an `error` containing the limit and reset time, then exits 1; configure fresh to succeed if mistakenly invoked. Expect exit **69**, empty stdout, one limit diagnostic containing the reset and `codex exit 1`, and **exactly one invocation**.
+>
+> 2. **Reset supplied in a later event:** Fresh emits an `error` with `"You've hit your usage limit."`, then `turn.failed.error.message` with the full reset-bearing message; exits 7. Expect **69**, empty stdout, and one stderr line containing the reset and `codex exit 7`, without “no reset time.”
+>
+> 3. **Reset containing abbreviated time punctuation:** Fresh emits an error saying `"Usage limit reached. Please try again at 2:49 a.m. CST on November 11, 2026."`; exits 1. Expect **69**, empty stdout, and stderr retaining the complete time, timezone, and date.
+>
+> 4. **Additional supported error shapes:** Independently test `item.completed` with `{type:"error", message:…}` and an unfamiliar error-like event such as `{type:"request.failed", error:…}`. Use mixed-case `"Usage Limit reached. Try again in 3 hours."`, exit 7. Each must return **69**, empty stdout, and one diagnostic containing `try again in 3 hours` and `codex exit 7`. The current tests never exercise these parser branches.
+>
+> 5. **Multiple distinct errors and a partial answer:** Fresh writes `"partial answer"` to `-o`, emits two different error messages plus a duplicate and malformed JSONL, and exits 42. Expect **1**, empty stdout, and stderr naming exit 42 and both distinct messages exactly once. This verifies that failure never publishes an answer and that deduplication does not discard different errors.
+>
+> 6. **Unparseable or empty event stream:** Parameterize fresh failure with malformed/plain-text events and with no events; exit 3. Expect **1**, empty stdout, and the exit-3 fallback diagnostic. For nonempty input, assert the actual last five lines appear on stderr.
+>
+> 7. **Successful thread paths:** With `t-old`, resume emits usage and an answer, exits 0, and emits no `thread.started`. Expect **0**, answer-only stdout, usage on stderr, one resume invocation, and the existing ID preserved. With no saved ID, expect the corresponding successful fresh invocation and new ID saved.
+>
+> 8. **Codex absent:** Use an isolated PATH that cannot resolve the real Codex; supply a valid prompt. No stub runs. Expect **127**, empty stdout, and `ask.sh: codex CLI not on PATH` on stderr.
+>
+> Validation: Bash syntax passed. The requested test command encountered `EPERM` creating temporary directories in all 25 cases, so its assertions could not run. Parser probes and an isolated, mocked execution of the resume control flow confirmed the findings above. No repository files were changed; real Codex was never invoked.
+>
+> **Changes requested**
+
+**Claude's answers** — all agreed; fixed in the commit that records this round.
+
+1. *Major, a limit on resume starts a fresh call* — **agreed.** That fresh call is a retry at the limit,
+   which the header and `CLAUDE.md` § When something external breaks rule out. A failed resume now runs
+   `failure_report` on its own events first, and a limit there exits 69 (`fail`) before the stale-thread
+   fallback. Any other resume failure still falls back to a fresh call, as before.
+2. *Minor, the reset time* — **agreed, both halves.** `failure_report` now prefers a limit message
+   that names a reset time over one that doesn't, and the reset runs to the end of the message less one
+   final period, so `2:49 a.m. CST on November 11, 2026` stays whole. A trade-off: a sentence that
+   followed the time inside the same message would now ride along. Codex's recorded messages all end
+   with the time.
+3. *Minor, the docs over-promise* — **agreed.** `pr-review.md` now says *any other codex failure* exits
+   1, and names exit 2 and 127. `SKILL.md` and the design-reviewer brief say the reset time comes *when
+   codex gave one*. I also rejoined a line `pr-review.md` had left broken mid-sentence.
+
+Missing tests — all eight added to `tests/workflow-scripts.test.mjs`:
+
+1. Limit during resume → `a resume that hits the usage limit exits 69 without a fresh call`.
+2. Reset in a later event → `a reset time in a later limit message wins over an earlier one without it`.
+3. Abbreviated-time punctuation → `a reset time keeps its own periods, timezone and date`.
+4. Other error shapes → `the limit is found in an error item, and in an unfamiliar failure event, in any
+   case`. It covers `item.completed` with an error item, and `request.failed` with `error` both as a
+   string and as `{message}`.
+5. Distinct errors and a partial answer → `a failure prints each distinct error once, skips bad lines,
+   and never the partial answer` (exit 42).
+6. Unparseable or empty events → `a failure with unparseable or no events still says so, with the last
+   five lines`. It asserts that lines 3–7 of seven appear and lines 1–2 don't.
+7. Successful thread paths → `thread mode answers from a resume and keeps its id, or from a fresh call
+   and saves the new one`. `ask()` now returns the saved `.thread-id`.
+8. Codex absent → `with no codex on PATH it exits 127 and says so`. It runs on `PATH=/usr/bin:/bin` and
+   first asserts that no `codex` resolves there.
+
+On GPT's `EPERM`: its sandbox couldn't create temp directories, so it ran none of the tests. I ran
+them: the whole suite passes, 680 tests.
+
+**Mutation audit, round 1** (a script outside the repo mutates `ask.sh`, runs the `ask.sh:` tests and
+restores the file). Each mutation is caught: the resume limit check removed (test 1); only the first
+limit message read (test 2); a string `error` ignored, or the error-item branch removed (test 4);
+`STATUS=0` dropped before the fallback (the existing thread test). Against `c8cece7`'s `ask.sh`, tests
+1–3 fail. Its reset regex is the "stops at the first period" mutation. Tests 4–8 pin behaviour
+`c8cece7` already had, so they pass on both.

@@ -39,7 +39,7 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT), and every call is
 `fresh` — a second round of the same review too: its prompt quotes the first round's findings and
 gives the delta. Take the GPT lock first (`CLAUDE.md` § Cost). If the ChatGPT limit runs out —
-`ask.sh` exits 69 and names the reset time — say so rather than silently switching models.
+`ask.sh` exits 69, naming the reset time when codex gave one — say so rather than silently switching models.
 
 **4. Return findings as a numbered list with severity.** Fix nothing — report only.
 

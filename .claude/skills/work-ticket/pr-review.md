@@ -80,9 +80,10 @@ older head. `ao review ls --json` holds the run's full record. Then:
 ## The limit
 
 **A failed `ask.sh` call names the limit itself:** it exits **69** with one stderr line, *"ask.sh: usage
-limit — try again at <time> (codex exit N)"* (or *"codex gave no reset time"* and codex's message). Any
-other failure exits 1 with codex's exit status and its error messages — or, when codex left none, its
-last events — on stderr. Exit codes: `ask.sh`'s header comment. No probe needed.
+limit — try again at <time> (codex exit N)"*, or, when codex gave no reset time, *"codex gave no reset
+time"* and codex's message. Any other codex failure exits 1 with codex's exit status and its error
+messages — or, when codex left none, its last events — on stderr; a bad call exits 2, and no codex on
+PATH 127. Exit codes: `ask.sh`'s header comment. No probe needed.
 
 **A failed AO reviewer run doesn't say why:** its `body`, *"reviewer Chat turn ended without submitting
 a result"*, came on 2026-11-08 with the limit spent, and on 2026-11-09 with it available. A one-word call
@@ -93,6 +94,5 @@ codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply with 
 ```
 
 It answers *"You've hit your usage limit … try again at <time>"* when it is spent. At the limit, either
-way: no retry,
-and never another reviewer agent, model or effort — Needs Input, with the reset time; the owner decides
-whether to wait.
+way: no retry, and never another reviewer agent, model or effort — Needs Input, with the reset time; the
+owner decides whether to wait.

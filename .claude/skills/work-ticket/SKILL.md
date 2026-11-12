@@ -152,8 +152,8 @@ one when the owner answers after more than an hour. **When the answer comes:** `
    severity, **the tests it finds missing**, each as a case to add, or an approval that names the head
    SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`, then
    release the lock, whatever the outcome. If the call fails: `CLAUDE.md` § When something external
-   breaks. Exit 69 is the limit, with the reset time on stderr; anything else is a fault, its reason
-   on stderr (`pr-review.md`, *The limit*).
+   breaks. Exit 69 is the limit, with the reset time on stderr when codex gave one; anything else is a
+   fault, its reason on stderr (`pr-review.md`, *The limit*).
 5. **Read the verdict, then act:**
    - **Approved on the current head, no missing tests** → step 6.
    - **Changes requested, or missing tests listed** (a list of missing tests is a change requested, not

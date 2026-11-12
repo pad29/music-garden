@@ -107,9 +107,14 @@ failure_report() {  # $1 = codex's exit status
         if (/error|fail/i.test(String(o.type))) { add(o.message); add(o.error); add(o.error && o.error.message); }
         if (o.item && o.item.type === "error") add(o.item.message);
       }
-      const limit = msgs.find(m => /usage limit/i.test(m));
+      // The reset time runs to the end of the message, less a final period ("2:49 a.m. CST on
+      // November 11, 2026." keeps its own periods). A later message may carry the reset an earlier
+      // one left out, so a limit message that names one wins.
+      const resetOf = m => (m.match(/try again ((?:at|in) .*?)\.?\s*$/i) || [])[1];
+      const limits = msgs.filter(m => /usage limit/i.test(m));
+      const limit = limits.find(resetOf) || limits[0];
       if (limit) {
-        const reset = (limit.match(/try again ((?:at|in) .*?)(?:\.(?:\s|$)|$)/i) || [])[1];
+        const reset = resetOf(limit);
         const exit = `(codex exit ${process.argv[1]})`;
         console.log("LIMIT usage limit — " + (reset ? `try again ${reset} ${exit}` : `codex gave no reset time ${exit}: ${limit}`));
       } else msgs.forEach(m => console.log("ask.sh:   " + m));
@@ -143,7 +148,11 @@ fail() {  # $1 = codex's exit status (0: it exited cleanly but left no answer). 
 STATUS=0
 if [ "$MODE" = "thread" ] && [ -s "$ID_FILE" ]; then
   run_codex resume || {
+    STATUS=$?
+    # A resume that hit the usage limit is reported, never retried as a fresh call.
+    case "$(failure_report "$STATUS" < "$EVENTS")" in "LIMIT "*) fail "$STATUS" ;; esac
     echo "ask.sh: resume failed (stale thread id?) — starting a fresh thread" >&2
+    STATUS=0
     run_codex fresh || STATUS=$?
   }
 else
