@@ -43,11 +43,16 @@ None: every open ticket has a `## Size` section.
 
 ## Owner's decisions
 
-None needed: the ticket listed no open questions, and the build raised none.
+The ticket listed no open questions, and the build raised none.
+
+1. *The GPT PR review hit the ChatGPT usage limit (2026-11-12, reset "8:25 PM" local). Resume it after
+   the reset, or something else?* — **open**.
 
 ## PR review (temporarily GPT through `ask.sh`)
 
-(pending)
+Attempt 1, on `9b833b9` (2026-11-12): **no verdict.** `codex exec` stopped with *"You've hit your usage
+limit … try again at 8:25 PM"* (`.claude/gpt/.last-events.jsonl`); `ask.sh` exited 1 without printing
+it (TUN-73 fixes that). No findings, so no review round used.
 
 **665 tests pass** (`tools/check-syntax.mjs` clean). The new test was mutation-checked: dropping
 `CLAUDE.md`'s "larger wins" and `file-ticket`'s "`addLabels`, never `labels`" each fail it. Nothing
