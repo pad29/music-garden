@@ -528,11 +528,156 @@ reference → 1.
     `--stuck`, saying so. B runs `acquire` → busy (`held by A`), then `wait`. B gets the lock only when A
     releases it after `ao review ls` shows the run ended, or when A is terminated and AO stops listing it —
     then B's next try breaks the lock. If B gives up after 90 minutes it reports busy; the owner sees
-    `[GPT]` on A's name and A's `--stuck`.
+    `[GPT]` on A's name and A's `--stuck`. *(Round 3, finding 2: A being terminated is no longer
+    enough — walkthrough 18.)*
 17. **Takeover comment A → B.** B posts *"Taken over from `A` by AO session `B`"* and claims the PR. The
     owner messages A: step 0 — `ao session ls` lists the PR against B, and the comment says it was taken
     over from A → A writes nothing and stops. The owner's answer reaches B: `ao session ls` lists the PR
     against B; the comment names B only as the session it was taken over *by* → B continues.
+
+## Takeover, round 3 (session `music-garden-8`)
+
+**Takeover** (2026-11-11): spawned by the orchestrator with PR #88 already claimed (`ao session ls` listed
+#88 against `music-garden-8` only). Takeover comment on the PR. `resume.md` § 1's block as written, without
+the claim line: the session branch was untouched, so `git switch -C <session-branch> d755a98` moved it to
+the PR head; pushes go to `HEAD:claude/cost-effective-workflow`. Owner decisions 6 and 7 recorded below.
+On `d755a98`: syntax check passes, 665/665 tests (CRLF checkout).
+
+### Round 3 on the delta `2b44a4c..d755a98` — Changes requested
+
+Fresh, read-only, `ask.sh`, GPT lock taken (`acquired`) and released (`released`, then `free`); the delta
+plus the uncommitted record of decisions 6–7; round 2's verdict quoted verbatim; decisions 5–7 given as
+binding, finding 4 closed by the owner. **850k input tokens (770k cached), 6.3k out.** The last round the
+budget allows (decision 6).
+
+<details><summary>GPT's round-3 review, verbatim</summary>
+
+Reviewed only `2b44a4c..d755a98`, plus the uncommitted owner decisions. No files edited. Two exclusivity defects remain.
+
+Round-2 findings:
+
+| # | Status | Assessment |
+|---|---|---|
+| 1 | Partly | The break key serializes competing breakers, but a normal release can still replace the lock between the holder check and deletion. |
+| 2 | Partly | Polling errors now retain the lock; the session-termination exception still permits recovery without confirming the review ended. |
+| 3 | Resolved | Step 0 distinguishes the relinquishing owner (“from”) from the replacement (“by”). |
+| 4 | Closed by owner | Decision 7 accepts one retry. No further change or tests requested. |
+| 5 | Resolved | The recipe preserves exit status and removes the twelve-line diagnostic limit. |
+| 6 | Resolved | Fakes receive executable permissions, and setup requires all three command lookups. POSIX execution remains unverified. |
+| 7 | Partly | Acquisition/publication/removal errors are checked; errors creating or removing the new break key remain suppressed. |
+
+Round-2 missing tests:
+
+| # | Status | Assessment |
+|---|---|---|
+| 1 | Partly | Late-breaker, existing-key and concurrent-break tests exist; no barriers control an actual in-flight break, and release during its AO read is uncovered. |
+| 2 | Partly | Walkthrough 16 covers polling errors, but treats worker termination as sufficient recovery; repeated timeout is not traced explicitly. |
+| 3 | Resolved | Walkthrough 17 demonstrates A stopping and B continuing after the takeover comment. |
+| 4 | Closed by owner | Decision 7 applies. |
+| 5 | Resolved | Extracted recipe tests cover long diagnostics, late sentinel, exit status and concurrent session-log isolation. |
+| 6 | Partly | Executable fixtures and lookup checks are added; no POSIX run is recorded. |
+| 7 | Partly | Directory-creation failure is tested; publication and removal failures, including preservation of ownership information, are not. |
+| 8 | Partly | Step references are validated and a mutation is recorded; named procedure headings remain unchecked. |
+| 9 | Partly | Live claim transfer and branch-targeted push are recorded; the requested spawn path and a live old-owner retirement check are not demonstrated. |
+
+New findings on the delta:
+
+1. **High — [gpt-lock.sh:46](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-8/.claude/gpt/gpt-lock.sh:46): a release can invalidate the holder check under the break key.**
+
+   B acquires `.break.S` and reads holder S. B pauses before its AO query. S finishes, releases normally, and A acquires the lock and starts GPT. S then terminates. B’s AO query reports S absent, so line 49 deletes **A’s live lock**. Another acquisition can now start overlapping work.
+
+   The key excludes other breakers of S; `release` and fresh acquisition do not honor it. The comment that the holder is already dead when checked is therefore incorrect.
+
+   **Required fix:** establish S’s death before the final holder reread under the key, with no intervening path that can replace the validated lock, or serialize release, recovery and acquisition through a common guard. An additional reread without a valid exclusion argument is insufficient.
+
+   I reproduced the ordering using the actual extracted `break_stale` function with in-memory command doubles: it removed replacement owner A and returned success. No filesystem lock was touched.
+
+2. **High — [pr-review.md:69](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-8/.claude/skills/work-ticket/pr-review.md:69): ending the worker bypasses the terminal-review requirement.**
+
+   A starts an AO review, loses polling visibility, retains the lock and reports stuck. A is subsequently terminated. The newly documented exception lets B reclaim the reservation solely because AO no longer lists A. `break_stale` checks only session presence; it never checks the review run. If that review remains active, B starts overlapping GPT work.
+
+   Neither this implementation nor walkthrough 16 establishes that ending the requesting worker synchronously ends its reviewer. The explicit “run shown ended” requirement is therefore bypassed precisely when visibility is uncertain.
+
+   **Required fix:** preserve the reservation across worker termination until the associated run is confirmed terminal. Recovery needs sufficient job identity to perform that check and must fail closed when it cannot. Alternatively, establish and verify an AO lifecycle guarantee that terminates the reviewer before allowing this recovery path.
+
+3. **Low, non-blocking — [gpt-lock.sh:45](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-8/.claude/gpt/gpt-lock.sh:45): break-key filesystem errors still masquerade as contention.**
+
+   With a stale lock present, deny creation of its break key. `mkdir` fails although no competing key exists, but the script returns 75; `wait` repeats ordinary contention for up to ninety minutes. Likewise, failed key removal at line 54 is ignored and can leave recovery blocked.
+
+   **Fix requested:** distinguish an existing key from creation failure, and report unsuccessful key cleanup as an error with its path.
+
+The documented abandoned-key residual itself is acceptable: while the stale holder’s lock remains, an abandoned key prevents recovery and fails closed. It does not cause finding 1; the unguarded release does.
+
+Remaining tests for this delta:
+
+- **Automatable under `tests/`:** barrier-controlled break/release ordering from finding 1. Pause the AO lookup, release S, acquire A, remove S from the fake session list, then resume B; A must retain ownership and exclude another contender.
+- **Automatable plus written AO walkthrough:** keep a review active while its requesting session disappears. Recovery must remain blocked until terminal confirmation. Include repeated timeout, and verify any claimed AO termination guarantee live.
+- **Automatable:** inject owner-publication, lock-removal, break-key creation and cleanup failures. Assert truthful results and recoverable ownership information; command doubles can cover these without Windows ACL changes.
+- **Automatable:** reject a nonexistent named procedure heading.
+- **Execution/walkthrough still pending:** run fixtures on POSIX and complete the live spawn/takeover/old-owner-stop/push sequence.
+
+Verification: game syntax checking, `bash -n`, both changed test files’ `node --check`, and all six reference tests passed. The full suite reported **611 passed, 54 failed**, with failures reporting denied temporary-directory creation (`EPERM`), including all 18 workflow shell tests. I cannot independently certify the author’s 665/665 result or the live AO lifecycle behavior here.
+
+**Changes requested**
+
+</details>
+
+### My answers to round 3
+
+1. **High — a release can invalidate the holder check under the break key.** **Agreed.** Under the key,
+   the old code read the holder *before* asking AO whether it was dead; GPT's sequence (S releases, A
+   acquires, S ends, all during B's `ao session ls`) then removes A's live lock. The comment claiming the
+   holder was already dead at the re-read was wrong. Fixed by the order GPT asks for: under the key, first
+   establish that S is dead (AO no longer lists it, and finding 2's run check), **then** re-read the holder
+   and remove the lock only if it is still S. A dead S can no longer release, other breakers are shut out
+   by the key, and acquirers fail on the existing directory, so nothing can replace the validated lock
+   between the re-read and the `rm`. **Residual, documented in the script:** a holder *restored*
+   (`ao session restore`) inside that window of milliseconds could release in it; a restore takes far
+   longer.
+2. **High — ending the worker bypasses the terminal-review requirement.** **Agreed.** A break now also
+   requires `ao review ls <holder> --json` to show none of the holder's review runs queued, pending or
+   running (the poller's in-progress states). It fails closed: if `ao review ls` fails or its output
+   can't be read, the run counts as going and the lock stays. Checked live first: `ao review ls <id>
+   --json` answers for terminated and merged sessions (exit 0) and exits 1 for an unknown id. So
+   recovery is identified by the holder's session; no job identity needs storing in the lock.
+   `pr-review.md` *`error`*, `CLAUDE.md` § Cost and `tests/README.md` say the same. **Not addressed:**
+   whether ending a session kills an `ask.sh` (codex) process it started in the background. GPT did not
+   raise it, and AO has no record of such a job to check.
+3. **Low — break-key filesystem errors masquerade as contention.** **Agreed.** A key that can't be created
+   and isn't a directory already is `error: could not create the break key …`, exit 1, so `wait` stops at
+   once. A key that can't be removed afterwards is `error: could not remove the break key …; remove it by
+   hand`, exit 1.
+
+### Missing tests, round 3
+
+- **Break/release ordering — added, automated.** The fake `ao` now runs a one-shot hook during
+  `session ls`: while B (holding S's key) waits on AO, S releases, A takes the lock, and S drops out of
+  AO's list. B's break → 75, A still holds the lock and still excludes a third session.
+- **A review that outlives its session — added, automated:** a dead holder with a `running`, `queued` or
+  `pending` run, a failing `ao review ls`, or unreadable output → not broken; once the run has `failed` →
+  broken. **Written walkthrough 18** below, including the repeated `timeout`. Not verified live: that AO
+  keeps listing a run after its session ends.
+- **Filesystem failures — partly.** Break-key creation failure is automated: a file in the key's way →
+  `acquire` and `wait` exit 1 at once. Owner-publication, lock-removal and key-cleanup failures are not
+  injectable here without restructuring the script around command doubles; checked by reading.
+- **A nonexistent named procedure heading — not added** (named headings are still not validated).
+- **POSIX run and the live `ao spawn --claim-pr` takeover — not done.** There is no POSIX machine here;
+  this session was itself spawned with the PR claimed, so the claim side of the spawn path ran live, but
+  no old session was woken to run step 0.
+
+**Mutation audit** (each applied, run, reverted; the script compared byte-for-byte after): the holder re-read
+before the AO check, the old order → 1 test fails; no review-run check → 1; a break-key `mkdir` failure
+counted as a break in progress → 1; `running` not counted as in progress → 1. 4/4 caught.
+
+## Walkthroughs, round 3
+
+18. **A's session ends while its review may still run.** A holds the lock, triggered AO's review, and its
+    poller ended `error` (or `timeout` twice): A keeps the lock and reports `--stuck`. The owner ends A.
+    B runs `acquire`: AO no longer lists A, but `ao review ls A --json` shows A's run `running` → busy;
+    B's `wait` keeps trying. When the run ends (`ao review ls A` shows it `failed`, or approved), B's
+    next try breaks A's lock and takes it. If `ao review ls A` itself fails, the lock stays and B gives up
+    busy after 90 minutes. The owner then sees `held by A` in `gpt-lock.sh status`, and A's `--stuck`
+    note saying it holds the lock.
 
 ## Owner's decisions
 
@@ -554,6 +699,15 @@ reference → 1.
    no forced orchestrator routing.
 6. *GPT's round 2 asked for changes; they are fixed on a new head GPT has not seen — the stale-lock break
    above all, rebuilt. Run round 3 on that delta (the last round the budget allows), or hand off as is?* —
-   **open** (PR #88).
+   **A, run it**: one fresh read-only `ask.sh` review of the delta `2b44a4c..d755a98`, quoting round 2's
+   verdict and these decisions, the GPT lock taken first and released after; findings on the delta plus
+   missing tests; at the ChatGPT limit, no retry — stop and report. If it approves, hand off; if it asks for
+   changes, fix what is agreed, push once, and stop at Needs Input: the budget is spent (owner, 2026-11-11,
+   relayed by the orchestrator in the spawn prompt of session `music-garden-8`, which took the PR over from
+   `music-garden-7`).
 7. *Round 2's finding 4 — the poller retries any `ao review ls` failure once; GPT wants permanent errors
-   to stop at once — disputed (my answer 4)* — **open** (PR #88).
+   to stop at once — disputed (my answer 4)* — **A, keep the one retry as built, no change** (owner,
+   2026-11-11, same relay).
+8. *GPT's round 3 asked for changes (2 High, 1 Low); all three are agreed and fixed, on a head GPT has not
+   seen, and the review budget is spent. Grant a round 4 on round 3's fixes, or hand off as is?* —
+   **open** (PR #88).

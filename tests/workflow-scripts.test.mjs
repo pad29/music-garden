@@ -42,14 +42,23 @@ function sandbox() {
   const dir = mkdtempSync(join(tmpdir(), "wf-"));
   const bin = join(dir, "bin"), state = join(dir, "state");
   mkdirSync(bin); mkdirSync(state);
-  // ao session ls → $state/sessions.json (exit 1 if $state/ao-fails exists); ao session rename → log;
-  // ao review ls → $state/review<N>.json, N counting calls (the last one repeats); *.fail → exit 1.
+  // ao session ls → $state/sessions.json (exit 1 if $state/ao-fails exists), after running $state/on-ls
+  // once if it exists (what other sessions do while this one waits on AO); ao session rename → log;
+  // ao review ls <id> --json (the lock's) → $state/reviews-<id>.json, else no reviews; .fail → exit 1;
+  // ao review ls --json (the poller's) → $state/review<N>.json, N counting calls (the last one
+  // repeats); *.fail → exit 1.
   writeFileSync(join(bin, "ao"), `#!/usr/bin/env bash
 s="$FAKE_STATE"
 case "$1 $2" in
-  "session ls") [ -e "$s/ao-fails" ] && { echo "ao: daemon down" >&2; exit 1; }; cat "$s/sessions.json" ;;
+  "session ls")
+    [ -e "$s/on-ls" ] && { mv "$s/on-ls" "$s/on-ls.ran"; bash "$s/on-ls.ran"; }
+    [ -e "$s/ao-fails" ] && { echo "ao: daemon down" >&2; exit 1; }; cat "$s/sessions.json" ;;
   "session rename") printf '%s|%s\\n' "$3" "$4" >> "$s/renames.log" ;;
   "review ls")
+    if [ "$3" != "--json" ]; then
+      [ -e "$s/reviews-$3.fail" ] && { echo "ao: review ls failed" >&2; exit 1; }
+      cat "$s/reviews-$3.json" 2>/dev/null || echo '{"reviews":[]}'; exit 0
+    fi
     n=$(( $(cat "$s/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$s/n"
     while [ $n -gt 1 ] && [ ! -e "$s/review$n.json" ] && [ ! -e "$s/review$n.fail" ]; do n=$((n-1)); done
     [ -e "$s/review$n.fail" ] && { cat "$s/review$n.fail" >&2; exit 1; }
@@ -178,6 +187,67 @@ test("gpt-lock: a breaker acting on an old view never removes a lock taken since
     assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
     assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75, "and A's lock still excludes C");
     assert.strictEqual(lock(sb, "music-garden-9", "break", "music-garden-6").code, 75, "a listed holder is never broken");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a holder that releases and ends while a breaker asks AO never costs the next holder its lock", { skip }, () => {
+  // GPT's round-3 interleaving: B holds S's break key and is waiting on `ao session ls`; meanwhile S
+  // releases, A takes the lock and starts GPT, and S ends. AO then says S is gone.
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-3", "music-garden-6", "music-garden-9"]);
+    assert.strictEqual(lock(sb, "music-garden-3", "acquire").code, 0);
+    const after = JSON.stringify({ data: ["music-garden-6", "music-garden-9"].map(id => ({ id, displayName: id, status: "working" })) });
+    writeFileSync(join(sb.state, "on-ls"), `L=$(cygpath -u "$GPT_LOCK_DIR" 2>/dev/null || echo "$GPT_LOCK_DIR")
+rm -rf "$L"; mkdir "$L"; echo "music-garden-6 2026-11-11T00:00:00Z" > "$L/owner"
+printf '%s' '${after}' > "$FAKE_STATE/sessions.json"
+`);
+    const late = lock(sb, "music-garden-9", "break", "music-garden-3");
+    assert.ok(existsSync(join(sb.state, "on-ls.ran")), "the interleaving ran during the breaker's AO read");
+    assert.strictEqual(late.code, 75, late.out);
+    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
+    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75, "and A's lock still excludes C");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a dead holder's lock is not broken while a review run of its may still be going", { skip }, () => {
+  // GPT's round-3 finding 2: the session ended, but the AO review it asked for may still run.
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);                                  // 3 terminated
+    staleLock(sb, "music-garden-3");
+    const runs = status => writeFileSync(join(sb.state, "reviews-music-garden-3.json"),
+      JSON.stringify({ reviews: [{ prNumber: 88, status: "needs_review", latestRun: { id: "r1", status } }] }));
+    for (const s of ["running", "queued", "pending"]) {
+      runs(s);
+      assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, `a ${s} run keeps the lock`);
+    }
+    writeFileSync(join(sb.state, "reviews-music-garden-3.fail"), "");
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "ao review ls fails: the run counts as going");
+    rmSync(join(sb.state, "reviews-music-garden-3.fail"));
+    writeFileSync(join(sb.state, "reviews-music-garden-3.json"), "not json");
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 75, "unreadable output: the run counts as going");
+    assert.match(lock(sb, "music-garden-6", "status").out, /^held by music-garden-3 /);
+    runs("failed");
+    const r = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(r.code, 0, r.out);
+    assert.match(r.out, /broke a stale lock held by music-garden-3/);
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a break key it cannot create is an error, not a break in progress", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);
+    staleLock(sb, "music-garden-3");
+    writeFileSync(`${sb.env.GPT_LOCK_DIR}.break.music-garden-3`, "");   // a file in the key's way
+    const r = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /error: could not create the break key /);
+    sb.env.GPT_LOCK_TRIES = "3";
+    const w = lock(sb, "music-garden-6", "wait");
+    assert.strictEqual(w.code, 1, w.out);
+    assert.doesNotMatch(w.out, /gave up/);
   } finally { sb.cleanup(); }
 });
 
