@@ -21,3 +21,32 @@ Measured on `origin/main` 698210d: `speakLine()`, `fuse()` and `saveProgress()` 
 - **Overlap with TUN-9:** TUN-9's nearest README hunk (the `FAMOUS` landmark) is ten lines above these;
   no hunk touches or abuts another, so this branches from `origin/main`, not stacked.
 - **Tests:** docs only — syntax check and the suite. No new test.
+
+## PR review — round 1 (Astra, `ask.sh`, on 1efa9c7; one call reviewed this PR and TUN-9's #94)
+
+<details><summary>GPT's findings for this PR, verbatim</summary>
+
+**PR B — #96, head `1efa9c7512a2e445d21efd463b0e8ecefbeba703`**
+
+Changes required:
+
+1. **Should-fix — `README.md:141`:** "`commitProgress()` is the **only sink**." This repeats the persistence comment without accounting for `js/cloud.js:47`: `onSignedIn()` directly calls `Store.set("progress", progress)` when restoring cloud progress. Qualify the guarantee as the sink for gameplay progress mutations and document the cloud-restoration exception. This needs only a documentation correction.
+
+Missing tests: **none**. Function locations, crafting behavior and save ownership are verifiable directly from the implementation.
+
+The remaining narration/crafting descriptions, including `craftFromCells()` recording `ev.pairs`, match the code. Dev workflow already contains the test command and browser/`file://` checks.
+
+**Verdict: CHANGES REQUESTED**
+
+(On the pair: "Both patches merge cleanly in either order under read-only three-way merge inspection. Their nearest README hunks have three untouched lines between them.")
+
+</details>
+
+My answers:
+
+1. **Agreed, and it went further than GPT said.** `Store.set("progress", …)` is called directly in
+   three places besides `commitProgress()`: `onSignedIn()` (`js/cloud.js`, the one GPT named), and in
+   `js/boot.js` the `?reset` wipe and the `?dev` "🗝️ Unlock quests" tool. README now calls
+   `commitProgress()` the only sink *for gameplay writes* and names all three exceptions.
+
+**Tests:** syntax check (29 scripts) and the suite, 664/664, after the fix.
