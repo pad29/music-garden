@@ -41,9 +41,10 @@ static check: that AO really starts, serves and stops the server was measured, i
 `.claude/skills/work-ticket/pr-review.md` and the test-output recipe in `CLAUDE.md` § Working lean — the
 last two taken from the docs, so the docs are what is tested — under Git Bash (or bash), with fake `ao`,
 `gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins, including six breaking
-the same stale lock; a stale lock is broken only when AO no longer lists its holder and none of the
-holder's review runs is still going, and never by a session acting on an old view of it, even when the
-holder releases while the breaker waits on AO; a lock or break key it can't create is an error, not
+the same stale lock; a stale lock is broken only when AO no longer lists its holder and shows every one
+of the holder's review runs ended (missing, malformed or unknown review data keeps it), and never by a
+session acting on an old view of it, even when the holder releases, or is restored and asks for the lock
+again, while the breaker waits on AO; a lock or key it can't create or give back is an error, not
 "busy"; the poller exits 1 after two failed or unreadable reads in a row; the recipe prints every
 diagnostic line of a failure and fails with it. Skipped where no bash is found. `workflow-refs.test.mjs` checks that the workflow docs'
 file paths, `§` references and step numbers resolve, so a cold worker never follows a dead pointer.

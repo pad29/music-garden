@@ -679,6 +679,120 @@ counted as a break in progress → 1; `running` not counted as in progress → 1
     busy after 90 minutes. The owner then sees `held by A` in `gpt-lock.sh status`, and A's `--stuck`
     note saying it holds the lock.
 
+## Round 4 — owner-granted, beyond the budget (session `music-garden-8`)
+
+### Round 4 on the delta `d755a98..8e04005` — Changes requested
+
+A one-off round beyond the 3-round budget, **granted by the owner** (decision 8, B). Fresh, read-only,
+`ask.sh`, GPT lock taken (`acquired`) and released (`released`, then `free`); the delta plus the
+uncommitted record of decision 8; round 3's verdict quoted verbatim; decisions 5, 7 and 8 given as
+binding. **357k input tokens (293k cached), 3.7k out.**
+
+<details><summary>GPT's round-4 review, verbatim</summary>
+
+Reviewed only `d755a98..8e04005`, with owner decision 8 as context. No files edited. Two correctness gaps remain.
+
+Round 3 findings:
+
+| # | Status | Assessment at `8e04005` |
+|---|---|---|
+| 1 | Partly | Moving the holder reread fixes the reported release/replacement sequence, but restoration still invalidates the exclusion argument. |
+| 2 | Partly | Recovery checks the holder’s reviews and blocks on command/JSON errors, but incomplete or unrecognized review data permits recovery. |
+| 3 | Resolved | Break-key creation and cleanup failures now return 1 with the affected path; existing directories remain contention. |
+
+Round 3’s remaining tests:
+
+| Requested coverage | Status | Assessment |
+|---|---|---|
+| Controlled break/release ordering | Resolved | The synchronous `on-ls` hook deterministically inserts replacement during the AO read. It models filesystem effects rather than invoking actual release/acquire commands. |
+| Review outliving its session, repeated timeout, AO walkthrough | Partly | Busy states, command failure, invalid JSON and terminal recovery are covered; walkthrough 18 includes repeated timeout. Live post-termination run visibility remains unverified. |
+| Publication, lock removal, break-key creation and cleanup failures | Partly | Break-key creation is covered; publication, lock removal and cleanup failure injection remain absent. |
+| Nonexistent named procedure heading | Not resolved | No named-heading validation or negative test was added. |
+| POSIX execution and live spawn/takeover/old-owner-stop/push | Partly | Spawn with claim and branch-targeted pushing are recorded; POSIX execution and live old-owner retirement remain unverified. |
+
+The three new tests **would fail on the old code**: the ordering test receives success after deleting A’s lock; the active-review test acquires instead of returning busy; the key-creation test receives 75 instead of 1. I independently reproduced the first difference using extracted functions and in-memory command doubles. The reported 4/4 mutation audit does not cover cleanup errors.
+
+New findings on the delta:
+
+1. **High — [gpt-lock.sh:68–70](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-8/.claude/gpt/gpt-lock.sh:68): restoration defeats the revised exclusion argument.**
+
+   B takes S’s break key and observes S absent. While B’s review query is in flight, the owner restores S. After the query has captured an empty/terminal review list, S reacquires its existing reservation—the “already yours” path ignores the break key—and starts GPT. B receives the query result, rereads holder S, and removes S’s active reservation. Another worker can now acquire and overlap.
+
+   Restoration need not start and finish between the final reread and deletion. It can begin earlier and complete during the AO queries. The header’s “milliseconds versus restore duration” argument therefore does not establish exclusion.
+
+   With the actual extracted `break_stale` and command doubles, making S active before the final holder read still produced removal and exit 0. This is a modeled interleaving, not a live AO reproduction.
+
+   **Required fix:** serialize recovery with acquisition—including “already yours”—and release through a common guard. Ensure restored workers cannot resume using a reservation that recovery can revoke; use an incarnation/lease check if necessary. Another unsynchronized reread or timing assumption is insufficient.
+
+2. **Medium — [gpt-lock.sh:53](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-8/.claude/gpt/gpt-lock.sh:53): `no_run_left` fails open on structurally invalid or unknown review data.**
+
+   S disappears while its review remains active. If `ao review ls S --json` exits successfully with `{}`, `{"reviews":null}`, or `{"reviews":[{"latestRun":{}}]}`, the new parser returns 0. Recovery then removes the reservation despite having no usable evidence that the run ended. An unrecognized status also returns 0.
+
+   I executed the extracted parser against those inputs: all were accepted. Invalid JSON correctly returned 1. The recognized busy prefixes—`running`, `queued`, `pending`—match the poller exactly; the defect is treating everything else as sufficient terminal evidence.
+
+   **Required fix:** validate the response structure and run status. Accept an explicit empty review array and documented no-run representations; require recognized terminal states for existing runs. Missing, malformed or unknown values must retain the reservation. This concerns the new recovery parser, not the owner-accepted poller retry.
+
+Missing tests for this delta:
+
+- **Automatable under `tests/`:** restoration during recovery, including the existing-owner acquisition path; assert that no active reservation is removed.
+- **Automatable:** missing/null/wrong-type `reviews`, missing/unknown run status, mixed terminal and busy reviews, and documented terminal/no-run representations.
+- **Automatable:** break-key cleanup failure and the outstanding publication/removal failures, using command doubles; verify exit status, diagnostics and surviving ownership information.
+- **Automatable:** nonexistent named procedure headings.
+- **Live execution with a written record:** POSIX fixtures, AO run visibility after session termination, and old-owner retirement following takeover. The latter gaps remain outstanding verification, not additional delta findings.
+
+Verification: game syntax check, `bash -n`, both workflow test files’ `node --check`, and `git diff --check` passed. All six reference tests passed. All 21 shell tests failed during setup because the sandbox denied `mkdtemp` with `EPERM`; their assertions did not execute. I did not rerun the full suite or independently certify the author’s 668/668 result. No round 5 is authorized.
+
+**Changes requested**
+
+</details>
+
+### My answers to round 4
+
+1. **High — restoration defeats the revised exclusion argument.** **Agreed.** "Already yours" and
+   `release` ignored the break key, so a holder restored while a breaker held its key could re-acquire the
+   lock the breaker was about to remove. My round-3 "milliseconds against a restore" argument was a timing
+   assumption, as GPT says. Fixed with the common guard GPT asks for: every change to a held lock now goes
+   through its holder's key, `<lock>.break.<holder>`. That covers a break, and the holder's own "already
+   yours" and `release`, which try the key five times a second apart and otherwise answer busy (acquire,
+   75) or error (release, 1). While a breaker holds S's key, S cannot touch its lock, whether dead,
+   alive or restored; other breakers are shut out; acquirers fail on the existing directory. So the
+   exclusion no longer rests on S being dead — the dead-first order stays as a cheap extra. No incarnation
+   or lease was needed: a restored S that asks for the lock mid-break gets busy, then takes the lock afresh
+   once the break is done. **Residuals:** a session that dies holding a key now blocks the holder's own
+   release as well as breaks (it fails closed; `status` shows the key; removed by hand). And a restored
+   session that runs GPT *without* calling `acquire` is outside the lock, as before — the docs require
+   `acquire` before every GPT job.
+2. **Medium — `no_run_left` fails open on invalid or unknown review data.** **Agreed.** It now requires
+   `reviews` to be an array; a review with no run (`latestRun` absent or null) is fine; a run counts as
+   ended only if its status is a string, not queued/pending/running, and is `failed` or `cancelled` (the
+   end states AO's docs name) or the run carries a verdict (`approved`, `changes_requested`). Anything
+   else — `{}`, `reviews: null`, a non-object, a run with no status, an unknown status — keeps the lock.
+   The cost: if a submitted run reports a status this list doesn't know *and* no verdict, a dead holder's
+   lock stays until removed by hand. A submitted run's fields have never been seen here (AO's reviewer
+   can't submit; `reviews/2026-11-08-ao-gpt-workflow.md`), so this fails closed by design.
+
+### Missing tests, round 4
+
+- **Restoration during recovery — added, automated.** While B holds S's key and asks AO, the fake `ao`'s
+  hook runs the real `gpt-lock.sh acquire` as S: S gets 75 (`busy: a break of your lock is running`),
+  B's break succeeds, the key is given back, and S then acquires afresh. A second test: with S's key held,
+  live S can neither re-acquire nor release, and the lock stays; with it free, "already yours" and
+  `release` work and leave no key behind.
+- **Review data shapes — added, automated:** nine shapes that keep the lock (`{}`, null, wrong types, a run
+  with no or an unknown status, a busy status with a verdict, a mix of ended and queued) and six that let
+  it go (no reviews, no run, null run, cancelled + failed, a verdict with an unknown status).
+- **Key cleanup failure — added, automated:** something lands in the key while the breaker asks AO → exit
+  1, `could not remove the key …; remove it by hand`, and `status` shows the key left behind.
+- **Owner-publication and lock-removal failure injection — not added**; checked by reading.
+- **Named procedure headings — not added.**
+- **POSIX run, AO run visibility after termination, live old-owner retirement — not done** (no POSIX
+  machine; no live run can be made to outlive a session here).
+
+**Mutation audit** (each applied, run, reverted; the script compared byte-for-byte after): "already yours"
+without the key → 2 tests fail; `release` without the key → 1; round 3's loose parser → 1; an unknown
+status counted as ended → 1; a key-cleanup failure ignored → 1; no holder re-read under the key → 2.
+6/6 caught.
+
 ## Owner's decisions
 
 1. *Medium = Claude plans, GPT reviews the plan* — **confirmed** by the owner, 2026-11-11 (relayed to
@@ -710,4 +824,12 @@ counted as a break in progress → 1; `running` not counted as in progress → 1
    2026-11-11, same relay).
 8. *GPT's round 3 asked for changes (2 High, 1 Low); all three are agreed and fixed, on a head GPT has not
    seen, and the review budget is spent. Grant a round 4 on round 3's fixes, or hand off as is?* —
+   **B, grant round 4** — a one-off round beyond the 3-round budget, **owner-granted**: one fresh
+   read-only `ask.sh` review of the delta `d755a98..8e04005` only, quoting round 3's verdict and these
+   decisions, the GPT lock taken first and released after; findings on the delta plus missing tests; at
+   the ChatGPT limit, no retry — stop and report. If it asks for changes, fix what is agreed, push once,
+   and stop at Needs Input: no round 5 without the owner (owner, 2026-11-11, relayed by the orchestrator
+   `music-garden-5` to session `music-garden-8`).
+9. *GPT's round 4 (owner-granted) asked for changes (1 High, 1 Medium); both are agreed and fixed, on a head
+   GPT has not seen. No round 5 without the owner: grant one on round 4's fixes, or hand off as is?* —
    **open** (PR #88).
