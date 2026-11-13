@@ -157,8 +157,35 @@ types.** The real `.last-events.jsonl` held `thread.started`, `turn.started`, th
 8:25 PM."}` and `{"type":"turn.failed","error":{"message":<the same>}}`. Those are the shapes the stub
 plays back. Codex writes a curly apostrophe ("You’ve"), which the `usage limit` match doesn't depend on.
 
+### Round 2, second attempt — on `1527db0`: no verdict, the limit ran out again
+
+`music-garden-17` took the PR over from `music-garden-13` at `1527db0` on the owner's answer 1A.
+`origin/main` had not moved; the syntax check and the suite passed, 680/680. The GPT lock was held by
+`music-garden-18`; `gpt-lock.sh wait` got it at 03:10 UTC on 2026-11-13 (9:10 PM CST, 2026-11-12). One
+`ask.sh fresh read-only` call on the same round-2 prompt (the delta `c8cece7..HEAD`, round 1 quoted, the
+answers summarised) exited **69** after about a minute. Its last stderr line:
+
+```
+ask.sh: usage limit — try again at Nov 13th, 2026 2:02 AM (codex exit 1)
+```
+
+(Above it, four `codex_models_manager … failed to refresh available models: timeout` lines that codex
+writes to its own stderr; `ask.sh` passes them through.) The lock was released straight after. No
+retry. This attempt consumed no review either: **one round used of three**.
+
+**The second live run, and a new shape.** This time the limit hit **mid-turn**: the events hold
+`thread.started`, `turn.started`, GPT's opening `agent_message` and four `command_execution` items (it had
+begun reading the files), then the same `error` and `turn.failed` pair. The reset now carries a date,
+`Nov 13th, 2026 2:02 AM`, and `resetOf` kept it whole. No answer reached stdout, as designed. The window
+from the 8:25 PM reset was spent within about 45 minutes, most likely by other sessions' GPT jobs.
+
 ## Owner's decisions
 
-1. **Open** (2026-11-12, Needs Input): GPT's round-2 PR review hit the limit, which resets at 8:25 PM
+1. (2026-11-12, Needs Input): GPT's round-2 PR review hit the limit, which resets at 8:25 PM
    CST, 2026-11-12. **A)** wait for the reset, then run round 2 on `67fb320` · **B)** hand off for
    review without GPT's round 2. The owner reviews the round-1 fixes.
+   **Answer: A** — the owner, relayed by the orchestrator in `music-garden-17`'s spawn prompt on
+   2026-11-12, after the reset: run round 2 now. The attempt hit the limit again (above).
+2. **Open** (2026-11-12, Needs Input): round 2 hit the limit a second time; it resets at 2:02 AM,
+   2026-11-13. **A)** run round 2 after the reset, from a fresh worker, on the current head · **B)** hand
+   off for review without GPT's round 2; the owner reviews the round-1 fixes (`c8cece7..67fb320`).
