@@ -80,9 +80,9 @@ S, M or L — one letter, then a line saying why. The ticket's Size label carrie
 Every ticket gets a size, set twice: the `## Size` section, whose line says why and goes into GPT's brief
 verbatim, and the matching `Size` label, which lets the owner filter and group Todo by size (§ Where it
 goes). A ticket with neither is worked as M, one with only one of them takes that size, and one whose
-label and section disagree is worked at the larger.
-The size decides how much of the GPT loop it gets (`CLAUDE.md` § The loop, by size), so size by risk as
-well as by hours (each line below is also its label's description in Linear):
+label and section disagree is worked at the larger. The size decides how much of the GPT loop it gets
+(`CLAUDE.md` § The loop, by size), so size by risk as well as by hours. Each line below is also its
+label's description in Linear: change one, and change the other to match.
 
 - **S** — an hour or two, one area, no new mechanism: Claude plans briefly and writes the tests; GPT's
   PR review lists missing tests.

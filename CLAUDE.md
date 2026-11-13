@@ -22,8 +22,8 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it:
 
 Size is the ticket's `Size` label and its `## Size` section (`file-ticket`): **S**, **M** or **L**. Either
 alone is the size; where the two disagree, the larger wins, and the hand-off says so. No size — neither
-set, or work with no ticket — is **M**. Small is still non-trivial. **Trivial** means typos, comments, formatting;
-**when in doubt, it is not trivial: run the loop.**
+set, or work with no ticket — is **M**. Small is still non-trivial. **Trivial** means typos, comments,
+formatting; **when in doubt, it is not trivial: run the loop.**
 
 | Step | Trivial | S | M | L |
 |---|---|---|---|---|

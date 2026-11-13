@@ -68,7 +68,8 @@ This is how the owner spends his time, so it must be honest and short.
   (May be left out when there were none.)
 
 **Review and tests**
-- Size: S / M / L (or trivial), and so which loop ran.
+- Size: S / M / L (or trivial), and so which loop ran — and, if the `Size` label and the `## Size`
+  section disagree or the size looked wrong, the larger one worked and why.
 - Design: L — GPT designed it; my critique, one line per point: severity, the point, what was built
   instead. M — my plan; GPT's design review, one line per finding: severity, the finding, agreed or
   disagreed, what you did. S — "my short plan, no GPT design review — S". Trivial — "not required —

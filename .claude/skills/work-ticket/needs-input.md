@@ -43,7 +43,8 @@ own the PR.
 
 <details><summary>Resume state — for the session that picks this up</summary>
 
-- **Branch:** `<headRefName>` at `<full head SHA>`; everything committed and pushed. Size: S / M / L.
+- **Branch:** `<headRefName>` at `<full head SHA>`; everything committed and pushed. Size: S / M / L
+  (the larger, and why, if label and section disagree).
 - **Phase:** design checkpoint · building · PR review round N of 3 · … — and what is finished.
 - **Decisions so far:** each with who made it and where it is recorded (the reviews file's sections).
 - **GPT's findings:** each design-review, test-pass or PR-review finding still in play, with its

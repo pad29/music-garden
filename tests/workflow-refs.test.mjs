@@ -101,10 +101,26 @@ test("a ticket's size is its Size label and its ## Size section, the larger when
     // "M" or "larger" also occurs in the loop table, the size bullets and "larger than L".
     assert.match(text, /disagree[^.;]*\blarger\b/, `${where} says the larger size wins a disagreement`);
     assert.match(text, /\bneither\b[^.;]*\bM\b/, `${where} says a ticket with neither is M`);
-    assert.match(text, /(?:\b[Ee]ither alone|\bonly one of them)[^.;]*\bsize\b/, `${where} says either alone is the size`);
+    // Pinned to the words of the rule: a looser match ran on into "as § 4 does for a size", so "either
+    // alone means M" passed (GPT's PR review of ebe5bcb).
+    assert.match(text, /\b(?:[Ee]ither alone is|only one of them takes) (?:the|that) size\b/,
+                 `${where} says either alone is the size`);
   }
-  assert.match(goes, /One label from the `Size` group/, "file-ticket § Where it goes requires a Size label");
+  // The tie-break is said in the hand-off: CLAUDE.md and work-ticket's opening address the worker
+  // (file-ticket § Size addresses the filer). work-ticket's opening stops before § 4's own wording.
+  for (const [where, text] of [["CLAUDE.md § The loop, by size", loop], ["work-ticket's opening", opening]]) {
+    assert.match(text, /disagree[^.;]*\blarger\b[^.;]*\bhand-off\b/, `${where} says the hand-off reports a disagreement`);
+  }
+  assert.match(goes, /One label from the `Size` group[^.]*same letter as the ticket's `## Size` section/,
+               "file-ticket § Where it goes requires a Size label matching the ## Size section");
   assert.match(goes, /`addLabels`, never `labels`/, "file-ticket warns that `labels` replaces the set");
+  // The template keeps its ## Size block (owner, 2026-11-12), and ties the label to it.
+  const template = read(".claude/skills/file-ticket/SKILL.md").match(/```markdown\n([\s\S]*?)\n```/)?.[1] ?? "";
+  assert.match(template, /^## Size$/m, "file-ticket's template keeps its ## Size section");
+  assert.match(template, /Size label carries the same letter/, "file-ticket's template ties the Size label to it");
+  // The hand-off format has a place for the disagreement the rule says it reports.
+  const handoffSize = flat(read(`${workTicket}/handoff.md`)).match(/- Size: .*?(?= - Design:)/)?.[0] ?? "";
+  assert.match(handoffSize, /`Size` label[^.]*disagree[^.]*larger/, "handoff.md's Size line names a disagreement");
 });
 
 test("every `work-ticket` § n step m names a numbered step of that section", () => {

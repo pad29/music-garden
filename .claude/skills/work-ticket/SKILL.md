@@ -12,8 +12,8 @@ the owner merges.
 
 **The loop depends on the ticket's size** — the table in `CLAUDE.md` § The loop, by size. Read the size
 from the ticket's `Size` label and its `## Size` section: either alone is the size, neither means M, and
-if they disagree, work the larger and say so in the hand-off, as § 4 does for a size that looks wrong. Whether to stop for the owner once the design
-exists is decided in one place: § 5. § 7 says how to stop.
+if they disagree, work the larger and say so in the hand-off, as § 4 does for a size that looks wrong.
+Whether to stop for the owner once the design exists is decided in one place: § 5. § 7 says how to stop.
 
 Files beside this one, read **only when their step comes up**: `resume.md` (taking over or resuming a
 ticket), `browser.md` (the browser check), `needs-input.md` (stopping for the owner), `pr-review.md`
