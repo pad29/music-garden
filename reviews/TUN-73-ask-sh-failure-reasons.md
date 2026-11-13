@@ -186,6 +186,9 @@ from the 8:25 PM reset was spent within about 45 minutes, most likely by other s
    review without GPT's round 2. The owner reviews the round-1 fixes.
    **Answer: A** — the owner, relayed by the orchestrator in `music-garden-17`'s spawn prompt on
    2026-11-12, after the reset: run round 2 now. The attempt hit the limit again (above).
-2. **Open** (2026-11-12, Needs Input): round 2 hit the limit a second time; it resets at 2:02 AM,
+2. (2026-11-12, Needs Input): round 2 hit the limit a second time; it resets at 2:02 AM,
    2026-11-13. **A)** run round 2 after the reset, from a fresh worker, on the current head · **B)** hand
    off for review without GPT's round 2; the owner reviews the round-1 fixes (`c8cece7..67fb320`).
+   **Answer: A** — the owner, relayed by the orchestrator in `music-garden-20`'s spawn prompt on
+   2026-11-13, after the 2:02 AM reset. `music-garden-20` took the PR over from `music-garden-17` at
+   `7e2bc05`, merged `origin/main` (clean; 682/682), and ran round 2.
