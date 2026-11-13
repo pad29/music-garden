@@ -150,7 +150,8 @@ defect (`setSaves` discarding `Store.set`'s return, so an artifact write could f
 
 ## Scope
 
-This suite is young. It covers the detectors; the pure seams under the quest work — the projection
+It covers the detectors and pulse helpers; meter, grooves, tempo and the click; persistence; pinch and
+field zoom; the script list and its load order; the pure seams under the quest work — the projection
 (`projectTracks`), the pulse helpers' explicit-grid forms and `contourSeqFromGrid`; and the quest
 engine itself — the play scope, persistence, the completion session, the QuestRun reducer, phases and
 history, the sealed catalog, and the analyzer registries and semantic validator. It is not a substitute
