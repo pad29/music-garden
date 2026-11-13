@@ -10,15 +10,19 @@ reads what you hand off. In Linear states: **Todo → In Progress → (Needs Inp
 Review → Done.** You move a ticket as far as In Review. Only the owner moves tickets into Todo, and only
 the owner merges.
 
-**The loop depends on the ticket's size** — the table in `CLAUDE.md` § The loop, by size. Whether to stop
-for the owner once the design exists is decided in one place: § 5. § 7 says how to stop.
+**The loop depends on the ticket's size** — the table in `CLAUDE.md` § The loop, by size. Read the size
+from the ticket's `Size` label and its `## Size` section: either alone is the size, and if they disagree,
+work the larger and say so in the hand-off, as § 4 does for a size that looks wrong. With neither, there
+is no default: § 4 has you propose one and stop at Needs Input for the owner to confirm it. Whether to
+stop for the owner once the design exists is decided in one place: § 5. § 7 says how to stop.
 
 Files beside this one, read **only when their step comes up**: `resume.md` (taking over or resuming a
 ticket), `browser.md` (the browser check), `needs-input.md` (stopping for the owner), `pr-review.md`
 (AO's reviewer and the limit), `handoff.md` (the hand-off formats).
 
 **No ticket** — ad-hoc work the owner asked for: skip every Linear step (§§ 1–2, ticket comments, state
-moves) and the `Closes` line; size it M unless the owner gave a size; the review record is
+moves) and the `Closes` line; take the size the owner gave, or else propose one and ask, as § 4's
+*No size* says (the hand-off goes to AO alone, as nothing is pushed yet); the review record is
 `reviews/<date>-<slug>.md`, and hand-offs go to the PR and AO. **A trivial change** — a typo, a comment,
 formatting: skip §§ 4–5, and write *"not required — trivial change"* in the hand-off's design and test
 lines — **unless the ticket is labelled `needs-owner`**: then § 5's rule 1 still stops it. The PR review
@@ -69,6 +73,13 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
   searching first, reading the sections that matter. **Decisions already made** in the ticket bind the
   design, the plan and the critique alike. No code yet. If the ticket's size looks wrong once you have
   read it, work it at the larger size and say why in the hand-off.
+- **No size** — neither a `Size` label nor a `## Size` section — whether the orchestrator named the
+  ticket or you took it from the top of Todo: there is no default size. If the ticket's comments already
+  hold the owner's answer to a size question, that is the size: set it as `resume.md`, *Continuing*, says,
+  and carry on. Otherwise propose S, M or L, with one or two lines of reasoning against `file-ticket`
+  § Size; apply nothing — no label, no section, no plan or design — and stop at Needs Input (§ 7)
+  asking the owner to confirm or change it. Only once they have does the ticket get its label, and the
+  work start.
 - **L** — run the **`gpt-design`** skill: GPT designs (`ask.sh fresh`), you critique, and both go into
   `reviews/<ID>-<slug>.md`, separate and verbatim — the record § 6's test pass hands back to GPT.
 - **M** — write your plan into the reviews file: the approach, the files and functions, the tests that
@@ -122,12 +133,12 @@ might overrule* in the hand-off.
 
 ## 7. Stop for the owner — Needs Input
 
-**When:** § 5 says so; § 8's review loop ends here; an external tool broke on a limit
-(`CLAUDE.md` § When something external breaks); or, later in the work, a decision turns out to be the
-owner's (§ 5's tests), or **the owner should try it before it is worth finishing**: music, feel, pacing,
-anything visual or audible that tests cannot judge. The standing rule holds at any point: a new fork
-where the readings lead to materially different work, or a decision already made in the ticket that the
-work shows is wrong, is a question for the owner, never a quiet change.
+**When:** a ticket has no size (§ 4, *No size*); § 5 says so; § 8's review loop ends here; an external
+tool broke on a limit (`CLAUDE.md` § When something external breaks); or, later in the work, a decision
+turns out to be the owner's (§ 5's tests), or **the owner should try it before it is worth finishing**:
+music, feel, pacing, anything visual or audible that tests cannot judge. The standing rule holds at any
+point: a new fork where the readings lead to materially different work, or a decision already made in the
+ticket that the work shows is wrong, is a question for the owner, never a quiet change.
 
 **How:** `needs-input.md`. Its hand-off must let a fresh session resume cold — the orchestrator starts
 one when the owner answers after more than an hour. **When the answer comes:** `resume.md`, *Continuing*.

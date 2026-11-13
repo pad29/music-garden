@@ -48,6 +48,12 @@ the poller exits 1 after two failed or unreadable reads in a row; the recipe pri
 of a failure and fails with it. Skipped where no bash is found. `workflow-refs.test.mjs` checks that the workflow docs'
 file paths, `§` references and step numbers resolve, so a cold worker never follows a dead pointer.
 Both from GPT's PR review of PR #88 (`reviews/2026-11-10-cost-effective-workflow.md`).
+`workflow-refs.test.mjs` also checks that `CLAUDE.md`, `work-ticket` and `file-ticket` keep reading a
+ticket's size from its `Size` label and its `## Size` section — either alone is the size, the larger
+when they disagree, said in the hand-off — that `file-ticket`'s template keeps its `## Size` block, and
+that a ticket with neither gets no default: the worker proposes a size and stops at Needs Input for the
+owner to confirm it, on every path, with the old M default gone from every workflow doc (TUN-74,
+`reviews/TUN-74-size-label.md`).
 
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
@@ -144,7 +150,8 @@ defect (`setSaves` discarding `Store.set`'s return, so an artifact write could f
 
 ## Scope
 
-This suite is young. It covers the detectors; the pure seams under the quest work — the projection
+It covers the detectors and pulse helpers; meter, grooves, tempo and the click; persistence; pinch and
+field zoom; the script list and its load order; the pure seams under the quest work — the projection
 (`projectTracks`), the pulse helpers' explicit-grid forms and `contourSeqFromGrid`; and the quest
 engine itself — the play scope, persistence, the completion session, the QuestRun reducer, phases and
 history, the sealed catalog, and the analyzer registries and semantic validator. It is not a substitute

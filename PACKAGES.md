@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `js/packages.js`. Keep it out of code.*
-Last updated: 2026-08-13 — **20 packages are BUILT** (every Wave A–D package; **Wave A, Pulse Woods, Stone Chorus Canyon and Wave C are COMPLETE**); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-08-13 — **20 packages are BUILT** (the intro, every Wave A–C package, the ★ milestone and Wave D's `sun-and-moon-garden`; **Wave A, Stone Chorus Canyon and Wave C are COMPLETE**; Pulse Woods waits on its fifth package, `march-and-waltz`); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
 
 ---
 
@@ -134,7 +134,7 @@ Tag every rhythm-touching package with the tier it needs.
 |---|---|---|---|---|
 | 0 | 🌱 **The First Garden** (intro) | Voice · Home · Pulse · Shape | pentatonic | **built** (13 levels) |
 | 1 | 🎶 **Paths of Song** | Voice | pentatonic | **4 built — COMPLETE** (fireflies, stepping-stones, Q&A, tiny-motifs) |
-| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **4 built — COMPLETE** (footsteps, wind-and-gaps, off-the-path, two-kinds-of-walking) |
+| 2 | 🥁 **Pulse Woods** | Pulse | pentatonic (pitch-independent) | **4 built** (footsteps, wind-and-gaps, off-the-path, two-kinds-of-walking); `march-and-waltz` still to come |
 | 3 | 🏛️ **Stone Chorus Canyon** | Shape | pentatonic→diatonic | **5 built — COMPLETE** (twin-blooms, standing-towers, twin-blooms-plus, shifting-shadows, soft-wobble-strong-wobble) |
 | 4 | 🌈 **The Color Spring** (`two-new-colors` ★ milestone — engine widens to diatonic) | Color | pentatonic→diatonic | **built** |
 | 5 | 🌦️ **Weather of Wanting** | Flow / Home | diatonic | **4 built** (ways-home, river-turns, pull-of-the-moon, false-doors) |
@@ -253,7 +253,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Patterns:** classify, transform, match_feel, build_constraint. **Success:** broad/targeted.
 - **World hook:** *Waltz Garden / festival* — dance the correct step; gateway to folk/world styles.
 - **Sandbox:** movement-feel presets; dance-style groove families.
-- **System needs (M):** meter beyond fixed 4/4 (triple groupings) — a real grid/meter change. **Blocked on that engine work; file with the system-gated wave, NOT Wave A.**
+- **System needs (M) — BUILT:** meter beyond fixed 4/4 (triple groupings) shipped in EDITOR-DESIGN Phase 2: Studio meters march, waltz, jig and quick march, with bar lines and beat marks (2026-08-28), then the 💃 Waltz and 🍀 Jig grooves (2026-08-29). What is left is the package itself, with its levels and the unlock that takes meter out of the Studio.
 - **Why:** makes rhythm *embodied*; bridges into the style worlds. Duration is a genuine prerequisite, not a consolation — a waltz's identity is ONE-two-three, a long stressed beat and two short ones, so a child needs to hear length before they can feel a triple grouping.
 - **Note when scheduling:** `regionStage()` caps a region friend at `stages.length-1`, and Hopper has five stages, so Pulse Woods' *fifth* package awards no companion growth. Acceptable (Stone Chorus Canyon already has that shape) but a stated decision, not a surprise.
 
@@ -440,7 +440,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **Patterns:** build_constraint, match_feel, arrange, restore. **Success:** broad.
 - **World hook:** *Prepare a village gathering*; share songs by the fire.
 - **Sandbox:** folk timbres; drone mode; campfire biome theme.
-- **System needs (M):** a **style preset** (palette + groove + instruments + form constraints) — generalizes the existing 5-groove system into the real Styles engine.
+- **System needs (M):** a **style preset** (palette + groove + instruments + form constraints) — generalizes the existing 7-groove system (five styles plus the 💃 Waltz and 🍀 Jig dances) into the real Styles engine.
 - **Why:** first proof that styles = physics presets; long-term retention engine.
 
 #### `city-lights` — City Lights  [AS-2]
@@ -463,8 +463,8 @@ Beyond the region/capability packages above, **constraint packages** are a first
 **Resolved (this round):** tool-transposition → phased hybrid (§1a); diatonic transition → progressive reveal (§1a); rhythm readiness → tiers R1–R4 (§2f).
 
 Still open:
-1. ~~**Bars & plots / duration editor (R3)**~~ — **RESOLVED 2026-08-13**: duration shipped as EDITOR-DESIGN Phase 2 (vines + 🌿 Grow/✂ Trim) and is taught by `two-kinds-of-walking`. What remains of the old item is **meter/bars** (dance feels, bar numbers, loop range, count-in), which still gates `march-and-waltz`, `rain-and-sun` and Region 7.
+1. ~~**Bars & plots / duration editor (R3)**~~ — **RESOLVED 2026-08-13**: duration shipped as EDITOR-DESIGN Phase 2 (vines + 🌿 Grow/✂ Trim) and is taught by `two-kinds-of-walking`. Meter and bars shipped too (2026-08-28), the dance grooves a day later and the count-in on 2026-09-05: dance feels, bar numbers, the loop range and the count-in all work in the Studio. What remains is content — the `march-and-waltz` package that teaches meter; `rain-and-sun` waits on dynamics (EDITOR-DESIGN Phase 3) and Region 7 on sections (Phase 5), not on meter.
 2. **Multi-voice system** — gates all of Region 6. Largest new system in this map.
 3. **Level-template / generator engine** — needed before 24 packages is realistic; validated by building `follow-the-fireflies` end-to-end first.
-4. **World-map UI** — the player-facing region map (current Home screen is package cards); separate workstream, driven by this DAG.
+4. ~~**World-map UI**~~ — **RESOLVED 2026-07-05**: the interactive continent map is the Home screen (`renderPkgs()`; `DESIGN.md` § the continent map), one territory per package, driven by this DAG.
 5. **Capability-awareness UI** *(from review)* — a lightweight panel/journal of earned "powers" (Voice ✓Shape ✓Motion ○Motif). Improves retention/identity/map-navigation **without** becoming a curriculum tree. Overlaps the existing power cards + world strip + companion — likely an aggregation of those rather than a new system. Near-term UI item, after the Fireflies pass.

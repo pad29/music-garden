@@ -26,7 +26,7 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
   ```bash
   node --test "tests/*.test.mjs"
   ```
-  A young suite: it covers detectors and pure logic by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
+  It covers the game's logic — detectors and pulses, meter and grooves, persistence, pinch and zoom, the script load order, the quest engine — by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
 - **Dev URL flags:** append `?dev` to reveal a level-jump dropdown, "🔒 Relock instruments" (replays the region discovery cards without touching progress), "🗝️ Unlock quests" (marks every quest's prerequisite packages complete, so its Home card appears without playing them) and "🧹 Clear quest runs" (deletes every quest run and completion record, so the quests are unplayed again); `?reset` wipes local progress.
 - **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`) — and the game's own code in `js/` is **classic scripts, never ES modules**, which do not load from file://. Cloud APIs (https) are exempt.
 
@@ -109,7 +109,7 @@ Key landmarks:
 - `PACKAGES = { <id>: { id, name, region, requires:[…], palette?, desc, levels:[…] } }` — the flat catalog keyed by **stable slug IDs**; dependencies form a DAG via `requires`. An optional `palette` widens that package's pitch set. `PACKAGES.studio` is a hidden non-DAG node (the free-play Studio).
 - A **level** is a data object: `{ name, intro, teach?, goals:[{id,label,chk,play}], hint, setup, power, … }`. Multi-step levels use `steps:[…]`. Levels can carry flags like `contour`, `beatGuide`, `phrase`, `density`, `colors:[…]` (staged F/B reveal), `rhythm`, `drums`, `mood` (sun/moon wash), `famous` (capstone reward), `unlock:[…]`, `loop`.
 - `REGIONS = { <id>: { name, friend:{name,stages} } }` — per-region companion creatures. `REGION_MAP` — the ordered player-facing region list (id, emoji, name, blurb, brand color) that drives the world map.
-- `FAMOUS = { <id>: { title, credit, mel:[[midi,col]…], chords?, drums?, cols, jukebox? } }` — the score-validated famous-melody library ("🎧 Hear a famous one" capstone rewards + the Jukebox). `FAMOUS_TEMPO` maps each to its real ♩ BPM; `JUKEBOX_FAMOUS` lists the 15 Jukebox songs. **Melodies are validated against real scores** (several transcribed note-for-note by the owner via save-links) — don't "fix" them by ear.
+- `FAMOUS = { <id>: { title, credit, mel:[[midi,col]…], chords?, drums?, cols, jukebox? } }` — the score-validated famous-melody library ("🎧 Hear a famous one" capstone rewards + the Jukebox). `FAMOUS_TEMPO` maps each to its real ♩ BPM; `JUKEBOX_FAMOUS` lists the 16 of its 18 pieces that the Jukebox plays. **Melodies are validated against real scores** (several transcribed note-for-note by the owner via save-links) — don't "fix" them by ear.
 
 **Engine**
 - `renderLevel()` → sets up unlocks/layout for a level, then `renderStage()` renders the current step; `checkLevel()` evaluates goals; `stageComplete()` advances. `resetTransient()` wipes playback/UI between stages.
@@ -119,7 +119,7 @@ Key landmarks:
 - `initAudio()` (`js/audio.js`) builds three mixer buses under `master`: `voiceBus` (melody), `jamBus` (backing band), `drumBus` (drum sequencer). `applyMix()` applies the player's 🎚️ Mixer settings.
 - `voice(instr,freq,t)` (`js/audio.js`) plays one melody note. One synth voice remains player-facing (music box — the default & brand sound) + **sampled voices** via `SAMPLED`/`loadSamples()`/`sampleVoice()`: real recordings (piano = Salamander Grand, CC-BY; marimba + vibraphone + glockenspiel = VCSL, CC0; kalimba + guitar = FreePats, CC0; harp = Etherealwinds Harp II CE, CC-BY); the glockenspiel is a transposing voice (`up:24` — sounds 2 octaves above the grid, like real orchestration). Samples ship as base64 in `samples/<instr>.js`, load lazily via a script tag (never fetch — file:// must work), get conditioned once at decode (trim/normalize/peak-cap), and fall back to a synth while loading (synth marimba backs marimba; synth pluck backs guitar). The "warm pad" and "pluck" voices were retired (old saves fall back via `setVoice`: pad → music box, pluck → guitar).
 - **Gradual instrument reveal**: `REGION_INSTR` maps each region to its instrument (Studio → guitar); on first entry `applyRegionInstrument()` unlocks it with a discovery card (`INSTR_INFO` — each `intro:` line is narrated, so re-run `gen-voice.mjs` after editing) and every package entry defaults the voice to its region's instrument. Unlocks persist in `progress.instruments` (`ensureInstruments()` migrates older saves from visited regions). Locked voices are *hidden* in the picker but still settable by code, so shared songs always play with their author's voice.
-- Narration: `speakLine()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to browser speechSynthesis if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`).
+- Narration (`js/play-scope.js`): `narrate()` plays a pre-baked Polly mp3 from `voice/` keyed by `voiceHash(toSpeech(text))`, falling back to the browser voice, `speakStory()`, if a clip is missing (that fallback = the "wrong voice" symptom → run `node tools/gen-voice.mjs`). `stopSpeech()` silences both; `enterPlay()` lets narration begin once the player reaches a level (none on the landing or companion-picker screen).
 
 **Mechanics / detectors** (these are the reusable building blocks for packages)
 - **Quests** (declarative, data-not-code — a quest is JSON, never a `chk` closure, so a player-facing Questmaker stays reachable): `loadQuestCatalog(json, sourceKind)` → the plain-JSON gate + closed v1 grammar + `questCrossRefs()` + `questSemantics()`; the closed registries every id resolves against — `QUEST_PRIMITIVES` (musical analyzers and procedural gates in one id space), `QUEST_DESCRIPTORS`, `QUEST_CAPABILITIES`, `QUEST_CONTROLS`, `QUEST_TOOLS`, `QUEST_TRANSITIONS`, `QUEST_COMPLETION_ACTIONS`, `QUEST_PAYOFFS`, `QUEST_THEMES`, `QUEST_GROOVES`; `songEvidence()` + `questWorkspaceMismatch()` → `evaluateQuest()`; `reduceQuestRun()` / `transactQuestRun()`; `enterQuestRun()` / `performQuestAction()`; `questShellModel()` + `renderQuestShell()` (the `#questCard` panel); `questEligibility()` / `surfaceQuest()` / `renderQuestHome()` (the one calm card below the map). See `QUESTS.md`.
@@ -129,7 +129,7 @@ Key landmarks:
 - **Harmony**: `widthBand()` pair personalities (close/bright/open) and `stableMidis` towers (both `js/palettes.js`), tension (`craftedTense/craftedClash/craftedTritone/tensionThenRest`), major/minor (`countBrightChords/countWistfulChords`), and the **chord-progression machinery** (`CHORDS` I/IV/V/vi grid shapes, `placeProg`, `chordSyms`, `hasChordRun`, `startsOnDegree/endsOnDegree`, `leadingToneResolves`) behind the Weather of Wanting packages.
 - **Phrase**: the call/answer timeline split (`setPhraseGuide`, `answerEndsHome/answerEndsOpen`), cadence detectors (`endPC/approachPC`, `fullArrival/halfClose`).
 - **Compare pickers** (the recognition pattern): `showChoices` (melodies), `showPairChoices` (intervals/chords), `showDrumChoices`/`showPatternChoices` (rhythm), `showProgChoices` (progressions). All require **auditioning all options** before a pick counts.
-- **Crafting**: `fuse()` (combine seeds → interval/chord tools), `stampTool()`, the 🎒 Toolbox — **per-package** (each package has its own bag; don't reintroduce a global one).
+- **Crafting** (`js/editing.js`): 🔨 Fuse combines 2–3 seeds stacked in one column into an interval/chord tool — `fusePick()` with a Scoop pick, `fuseField()` without one (it finds the lone stack, or coaches), both ending in `craftFromCells()`; `stampTool()` plants a crafted tool from the 🎒 Toolbox, which is **per-package** (each package has its own bag; don't reintroduce a global one).
 
 **Progression & meta**
 - **Power cards** (`showPower`), the **world strip** (`renderWorld`), **companions** (`syncCompanion`/`checkEvolve` — one friend per region, grows per completed package), the **package-complete congrats** (`showCongrats`/`newlyUnlocked`).
@@ -138,7 +138,7 @@ Key landmarks:
 - **🎵 Studio & Jukebox:** the Studio is the dedicated free-play sandbox (widest unlocked palette, full toolbox, save/share). The Jukebox plays the famous-melody library.
 - **Narration/instruction tiering:** story + task text prominent, theory (`teach:`) dimmed; 🔊 read-aloud toggle (default ON) speaks the story text via the baked Polly clips.
 
-**Persistence** — everything goes through one **`Store` seam** (`Store.get/set`) so localStorage ↔ cloud is a swap with no game-code changes. `saveProgress()` writes progress; signed-in users sync to the cloud (debounced, newest-wins). Songs use the **pitch-based v3 format** (`SAVE-SHARE.md`): small songs share via `#s=` links, big ones via cloud `#song=<id>` links.
+**Persistence** — everything goes through one **`Store` seam** (`Store.get/set`) so localStorage ↔ cloud is a swap with no game-code changes. Progress is written by owner (`js/persistence.js`; the comment above `commitProgress` says why): `commitProgress()` is the **only sink** for gameplay writes — it serialises `progress` as it stands and never reads a live control (the only writes that bypass it are outside gameplay: signing in, where `onSignedIn()` in `js/cloud.js` stores the row it pulled from the cloud, and the `?reset` and `?dev` "🗝️ Unlock quests" tools in `js/boot.js`). `saveUserSettings()` is the only snapshot of the settings controls, called only from an explicit player action; `savePackageProgress()` advances a package and saves its toolbox, never touching settings; `saveActiveInventory()` saves a craft wherever it belongs (the package, a quest run's tray, or nowhere in the Studio). A new caller writes its own field into `progress` and calls `commitProgress()`, or uses the save that owns its data — never a fresh snapshot of the controls, which is how a game-set tempo once got saved as the child's choice. Signed-in users sync to the cloud (debounced, newest-wins). Songs use the **pitch-based v3 format** (`SAVE-SHARE.md`): small songs share via `#s=` links, big ones via cloud `#song=<id>` links.
 
 ---
 
@@ -164,13 +164,13 @@ Key landmarks:
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
 | 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
-| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) · `two-kinds-of-walking` (note duration, R3) — region complete |
+| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) · `two-kinds-of-walking` (note duration, R3) — `march-and-waltz` (meter) still to come |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) · `shifting-shadows` (inversions/voicing, diatonic) · `soft-wobble-strong-wobble` (graded tension, diatonic) — region complete |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
 | 🌦️ Weather of Wanting | `ways-home` (cadence strength) · `river-turns` (progressions, I-IV-V-vi) · `pull-of-the-moon` (dominant pull) · `false-doors` (deceptive cadence) |
 | 🌗 The Twin Gardens | `sun-and-moon-garden` (major/minor mood) |
 
-**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (182 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (15 score-validated songs incl. Ode to Joy, Amazing Grace, The Moldau, Big Ben, Goin' Home, I Got Rhythm, Bach's Prelude in C, Chopsticks); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually, one per region**, each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
+**Platform & polish shipped:** accounts + cloud progress sync (Cognito/DynamoDB, deployed); **save/share v3** (pitch-based; `#s=` + cloud `#song=<id>` links) + the **Studio**; **spoken narration** (248 pre-baked Polly clips, read-aloud default ON) with **instruction tiering** (story prominent, theory dimmed); **🎧 famous-example rewards** on capstones + the **Jukebox** (16 score-validated songs incl. Ode to Joy, Amazing Grace, Swing Low, The Moldau, Big Ben, Goin' Home, I Got Rhythm, Bach's Prelude in C, Chopsticks); the **Tune Garden light brand theme** (Fredoka/Nunito, token palette, per-region field colors); the **interactive continent map** Home screen; **seven sampled voices** — piano, marimba, kalimba, guitar, harp, vibraphone, glockenspiel (Salamander & Etherealwinds CC-BY / VCSL & FreePats CC0, lazy-loaded, synth fallbacks; warm pad + synth pluck retired) — revealed **gradually** — one per region from Paths of Song on (the First Garden keeps the synth music box), and the guitar as the Studio's gift — each with a narrated discovery card; 🎚️ Mixer; landing screen; `tunegarden.game` domain with git-based Netlify deploys.
 
 **Quests shipped:** **Kind 1**, in two quests (see `QUESTS.md`). A quest is a cross-package commission
 rather than a lesson: compose a path, make a second version of it, compare the two and offer the one you
@@ -199,7 +199,7 @@ capability heard, and never approves or disapproves of your music. Offering ends
 playing, both friends dancing, and the song named and saved to your melodies.
 
 **Next up (see `PACKAGES.md` §5–6 for the full map):**
-1. `march-and-waltz` (PW-5) — the parked meter material; needs triple groupings beyond fixed 4/4
+1. `march-and-waltz` (PW-5) — the parked meter material; meter and bars already work in the Studio (march, waltz, jig), so what is left is the package that teaches them
 2. Quest kinds 2–9 — `QUESTS.md` §8 has the order; the Questmaker is the last of them
 3. Bigger systems: multi-voice (Region 6), sections (Region 7), Styles/Eras
 
@@ -209,7 +209,7 @@ The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection
 
 ## Backend
 
-Deployed serverless stack (`music-garden`, us-east-1): Cognito User Pool → API Gateway (JWT authorizer) → Lambdas → DynamoDB. Two APIs: `GET/PUT /progress` (per-user progress row) and the **songs API** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage; `GET /songs/{id}` is unauthenticated for link-resolution). The client embeds the **public** Cognito/API IDs (safe to commit). Anonymous play is fully local; creating an account turns on cloud sync. CORS is scoped to `tunegarden.game` (+ Netlify fallback).
+Deployed serverless stack (`music-garden`, us-east-1): Cognito User Pool → API Gateway (JWT authorizer) → Lambdas → DynamoDB. Two APIs: `GET/PUT /progress` (per-user progress row) and the **songs API** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage; `GET /songs/{id}` is unauthenticated for link-resolution). The client embeds the **public** Cognito/API IDs (safe to commit). Anonymous play is fully local; creating an account turns on cloud sync. CORS is scoped to `tunegarden.game` (`template.yaml` also still allows the retired `music-garden.netlify.app`, which no longer serves the app).
 
 To redeploy backend changes:
 ```bash
@@ -222,7 +222,7 @@ See `backend/README.md` for first-time setup. Remaining pre-launch TODO: AWS bud
 
 ## Deployment
 
-**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Domain: **https://tunegarden.game** (site name `music-garden.netlify.app` — infra IDs keep the old working name; branding is Tune Garden).
+**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Domain: **https://tunegarden.game** (Netlify site `tunegarden.netlify.app`, which also serves the PR deploy previews; the AWS stack keeps the old working name `music-garden`).
 
 ⚠️ If you add a runtime asset folder, **add it to the `netlify.toml` build command** or it silently won't exist in production (the game's fallbacks can mask this — e.g. missing samples just means the synth voice plays). Code is not silent: the catch-all rewrite serves `index.html` in place of a missing `js/` file, the browser cannot parse it, and the game never starts. The game also expects to live at the site root — at a nested path like `/a/` its relative `js/` URLs miss in the same way.
 
