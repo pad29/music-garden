@@ -25,7 +25,8 @@ Size S: docs and Linear data, no new mechanism.
 
 **Amended on takeover:** the docs now say outright that label or section *alone* is the size, and only
 a ticket with neither is M. The patch left that implicit ("no size → M"), which a reader could take as
-"no label → M" for a ticket whose `## Size` says L.
+"no label → M" for a ticket whose `## Size` says L. **Superseded in part** (*Owner's decisions* 2): a
+ticket with neither is no longer M — the worker proposes a size and asks.
 
 ## Tickets labelled
 
@@ -45,13 +46,21 @@ None: every open ticket has a `## Size` section.
 
 ## Owner's decisions
 
-The ticket listed no open questions, and the build raised none.
+The ticket listed no open questions, and the build raised none; the review raised one (2).
 
 1. *The GPT PR review hit the ChatGPT usage limit (2026-11-12, reset "8:25 PM" local). Resume it after
    the reset, or something else?* — **A: run the one GPT PR review after the reset, S loop** (owner,
    relayed by the orchestrator in `music-garden-19`'s spawn prompt, 2026-11-12). The same instruction
    scoped the session to that one review: fix what it and Fable's review found, then push once to
    `claude/tun-74-size-labels` and open the PR from it.
+2. *Fable's finding 2: is "either alone is the size" right, given the ticket's "an unlabelled ticket is
+   still worked as M"?* — **"An unlabelled ticket is NOT worked as M."** (owner, relayed by the
+   orchestrator `music-garden-5` to `music-garden-19`, 2026-11-12, on PR #97). With no `Size` label and
+   no `## Size` section, the worker reads the ticket, proposes S, M or L with one or two lines of
+   reasoning, applies nothing, and stops at Needs Input for the owner to confirm or change it; only then
+   does it set the label and start. The dispatcher path stops the same way. The old rule goes from every
+   doc, the Linear group's description included. Either alone still sets the size, and the larger still
+   wins a disagreement. Done in the commit after `01aaa3d`; see *The no-size rule* below.
 
 ## PR review (temporarily GPT through `ask.sh`)
 
@@ -124,7 +133,9 @@ missing tests a–d; findings 3–6 optional. Its headings verbatim, with my ans
    one left unsized) and the decision's words "Every ticket gets a size; a ticket without one is worked
    as M"; and the literal reading would run a ticket whose section says L through the M loop. Fable
    itself judged the PR's reading the better one. If the owner prefers the literal reading, the change is
-   the three size sentences and the test's either-alone assertion.
+   the three size sentences and the test's either-alone assertion. **Then decided by the owner**
+   (*Owner's decisions* 2): neither reading — a ticket with no size is not worked as M at all, and
+   either alone stays the size. Finding 1's Linear description changed again with it.
 3. *"Low — the hand-off format does not carry what the rule says the hand-off says."* **Agreed** —
    `handoff.md`'s `Size:` line and `needs-input.md`'s resume state now ask for the larger size and why.
 4. *"Low — a fact about Linear that will go stale silently."* **Agreed** — `file-ticket` § Size now says
@@ -148,3 +159,39 @@ never `labels`", and nine more for round 1 — "either alone means M" (GPT's), "
 size", "only one of them takes M", each doc's hand-off clause, § Where it goes' "same letter" clause, the
 template's `## Size` heading, its label line, and `handoff.md`'s disagreement clause. Nothing in the game
 changed, so there is no browser check.
+
+## The no-size rule (owner's decision 2) — not reviewed by GPT or Fable
+
+Both reviews ran on `ebe5bcb`; this change came after them. The owner ruled out a new GPT review (the
+ChatGPT limit was hit until 2:02 AM), so nothing in this section has been independently reviewed.
+
+- **The rule**, in `CLAUDE.md` § The loop, by size, `work-ticket`'s opening and `file-ticket` § Size:
+  with neither a label nor a section there is no default; the worker proposes a size and stops at Needs
+  Input until the owner confirms it.
+- **`work-ticket` § 4, *No size*:** the procedure — whether the orchestrator named the ticket or the
+  worker took it from Todo; pick up an answer already in the comments; otherwise propose with reasons,
+  apply nothing, stop. § 7's *When* lists it. *No ticket* work with no size given asks the same way,
+  through AO.
+- **`needs-input.md`:** a size question stops before anything exists, so no commit, push or draft PR;
+  the resume state says "none — S / M / L proposed".
+- **`resume.md`, *Continuing*:** on the answer, add the label with `addLabels` and a `## Size` section,
+  then start § 4.
+- **`CLAUDE.md` § AO** (the dispatcher path): a size question has no PR, so a late answer is routed by
+  spawning a worker naming the ticket; the answer in its comments is the size it starts from.
+- **`handoff.md`:** the `Size:` line names the size the owner confirmed.
+- **Linear:** the `Size` group's description now ends *"With neither label nor section there is no
+  default: the worker proposes a size and waits at Needs Input for the owner."* (Linear caps it at 255
+  characters.) TUN-74's own *Decisions already made* carries a note that the owner superseded it.
+
+**Choices in it the owner might overrule:** the confirmed size is written as a `## Size` section as well
+as the label (`file-ticket` § Size sets both), and the trivial-change shortcut, which skips § 4, skips
+the size question with it.
+
+**Tests:** `workflow-refs.test.mjs`'s size test now asserts the no-default rule in all three docs in
+place of `neither … M`; a new test pins § 4's *No size*, § 7, *No ticket*, `needs-input.md`, `resume.md`,
+`CLAUDE.md` § AO and `handoff.md`, and fails if any workflow doc (and `tests/README.md`) still states
+the old M default. **666 tests pass**, `tools/check-syntax.mjs` clean. Mutation-checked, each failing the
+test: the M default restored in each of the three docs, in *No ticket* and (as new text) in `README.md`
+and `needs-input.md`; § 4 applying the size and carrying on, assuming M, losing the orchestrator/Todo
+paths or the already-answered case; § 7, `needs-input.md`, the `CLAUDE.md` § AO route and `handoff.md`'s
+line each removed; `resume.md` told to use `labels`. Fifteen in all, and the nine of round 1 still fail.

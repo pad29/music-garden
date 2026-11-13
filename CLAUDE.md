@@ -21,9 +21,11 @@ This repo is worked through **Agent Orchestrator (AO)**, and only through it:
 ## The loop, by size
 
 Size is the ticket's `Size` label and its `## Size` section (`file-ticket`): **S**, **M** or **L**. Either
-alone is the size; where the two disagree, the larger wins, and the hand-off says so. No size — neither
-set, or work with no ticket — is **M**. Small is still non-trivial. **Trivial** means typos, comments,
-formatting; **when in doubt, it is not trivial: run the loop.**
+alone is the size; where the two disagree, the larger wins, and the hand-off says so. With neither, there
+is no default: the worker proposes a size and stops at Needs Input until the owner confirms it, and
+only then sets the label and starts (`work-ticket` § 4) — work with no ticket likewise, unless the
+owner gave a size. Small is still non-trivial. **Trivial** means typos, comments, formatting; **when in
+doubt, it is not trivial: run the loop.**
 
 | Step | Trivial | S | M | L |
 |---|---|---|---|---|
@@ -112,14 +114,16 @@ no Linear support: every Linear read and state change is the agents' own, throug
   milestones — claimed, Needs Input, done — with `ao report`.
 - **Needs Input** is how a worker asks — a decision that is the owner's, or work the owner should try
   before it is worth finishing. It pushes, opens a draft PR, asks on the ticket and through
-  `ao report --needs-input`, in a hand-off a cold session can resume from, and stops.
+  `ao report --needs-input`, in a hand-off a cold session can resume from, and stops. A ticket with no
+  size stops the same way before any of that exists — no push, no PR (`work-ticket` § 4, *No size*).
 - **When the owner answers** within an hour of the Needs Input hand-off, the orchestrator takes the
   answer to the session that asked (`ao send`; `ao session restore` first if terminated). **Later** —
   waking it would re-save its expired cache — or if it can't be restored, it never routes to the old
   session again: `ao spawn --claim-pr <pr-url> --name "<ID> <title> (resumed)" --prompt "Resume <ID or
   PR #n> from its Needs Input hand-off: run the work-ticket skill, then follow
   .claude/skills/work-ticket/resume.md; your spawn claimed the PR"`, and a comment naming both sessions
-  on the ticket (no ticket: on the PR).
+  on the ticket (no ticket: on the PR). A size question has no PR to claim: spawn a worker naming the
+  ticket, as for Todo — the owner's answer in its comments is the size it starts from.
 - Out-of-scope work found along the way becomes a Backlog ticket (`file-ticket`), not a detour.
 
 **Branches** come from AO (`work-ticket` § 3). A session may commit, push its own branch

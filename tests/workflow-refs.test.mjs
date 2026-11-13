@@ -100,7 +100,10 @@ test("a ticket's size is its Size label and its ## Size section, the larger when
     // Each rule is matched inside the one clause that states it (no `.` or `;` between its words): a bare
     // "M" or "larger" also occurs in the loop table, the size bullets and "larger than L".
     assert.match(text, /disagree[^.;]*\blarger\b/, `${where} says the larger size wins a disagreement`);
-    assert.match(text, /\bneither\b[^.;]*\bM\b/, `${where} says a ticket with neither is M`);
+    // A ticket with neither is not worked as M: the worker proposes a size and waits for the owner
+    // (owner, on PR #97, 2026-11-12).
+    assert.match(text, /\b[Nn]either\b[^.;]*\bno default\b[^.;]*\bproposes?\b[^.;]*\bNeeds Input\b[^.;]*\bconfirm/,
+                 `${where} says a ticket with neither gets a proposed size, confirmed by the owner at Needs Input`);
     // Pinned to the words of the rule: a looser match ran on into "as § 4 does for a size", so "either
     // alone means M" passed (GPT's PR review of ebe5bcb).
     assert.match(text, /\b(?:[Ee]ither alone is|only one of them takes) (?:the|that) size\b/,
@@ -121,6 +124,38 @@ test("a ticket's size is its Size label and its ## Size section, the larger when
   // The hand-off format has a place for the disagreement the rule says it reports.
   const handoffSize = flat(read(`${workTicket}/handoff.md`)).match(/- Size: .*?(?= - Design:)/)?.[0] ?? "";
   assert.match(handoffSize, /`Size` label[^.]*disagree[^.]*larger/, "handoff.md's Size line names a disagreement");
+  assert.match(handoffSize, /\bneither\b[^.;]*\bowner confirmed\b/, "handoff.md's Size line names the confirmed size");
+});
+
+test("a ticket with no size stops at Needs Input for the owner to confirm a proposed size", () => {
+  // Owner, on PR #97 (2026-11-12): no default size. Propose one, apply nothing, ask; label and start only
+  // once the owner confirms — on every path a ticket reaches a worker by, and in no doc the old default.
+  const skill = flat(read(`${workTicket}/SKILL.md`));
+  const s4 = skill.split(" ## 4.")[1]?.split(" ## 5.")[0] ?? "";
+  const noSize = s4.match(/\*\*No size\*\*.*?(?= - \*\*L\*\*)/)?.[0] ?? "";
+  assert.match(noSize, /neither a `Size` label nor a `## Size` section/, "§ 4's No size names both halves");
+  assert.match(noSize, /orchestrator named the ticket or you took it from the top of Todo/,
+               "§ 4's No size holds whether the orchestrator named the ticket or the worker took it from Todo");
+  assert.match(noSize, /\bpropose S, M or L\b[^.]*\breasoning\b/, "§ 4's No size proposes a size with reasons");
+  assert.match(noSize, /\bapply nothing\b[^.]*\bno label\b[^.]*\bstop at Needs Input\b[^.]*\bconfirm/,
+               "§ 4's No size applies nothing and stops at Needs Input");
+  assert.match(noSize, /\bowner's answer to a size question\b/, "§ 4's No size picks up an answer already given");
+  const s7 = skill.split(" ## 7.")[1]?.split(" ## 8.")[0] ?? "";
+  assert.match(s7, /\*\*When:\*\* a ticket has no size/, "§ 7's When lists the size question");
+  assert.match(skill.split(" ## 1.")[0], /\*\*No ticket\*\*[^*]*\bpropose one and ask\b/,
+               "work with no ticket and no size given asks too");
+  assert.match(flat(read(`${workTicket}/needs-input.md`)),
+               /\*\*A size question\*\*.{0,200}?\bskip step 1's commit, push and PR\b/,
+               "needs-input.md says a size question stops before anything is pushed");
+  assert.match(flat(read(`${workTicket}/resume.md`)),
+               /\*\*A size answer\*\*.{0,200}?`Size` label with `addLabels`, never `labels`/,
+               "resume.md sets the confirmed Size label with addLabels");
+  assert.match(flat(read("CLAUDE.md")), /A size question has no PR to claim: spawn a worker naming the ticket/,
+               "CLAUDE.md § AO routes a late size answer without a PR");
+  // The old default is gone from every workflow doc (the closed reviews keep it as history).
+  const old = /worked as M\b|neither means M|neither is M\b|size it M\b|is \*\*M\*\*|unlabelled ticket is still/i;
+  const stale = [...files, "tests/README.md"].filter(f => old.test(flat(read(f))));
+  assert.deepStrictEqual(stale, [], "no workflow doc still says a ticket with no size is worked as M");
 });
 
 test("every `work-ticket` § n step m names a numbered step of that section", () => {

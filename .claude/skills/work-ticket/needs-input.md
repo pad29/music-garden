@@ -17,6 +17,12 @@ written down is lost.
 
 No ticket: the PR and AO get the hand-off.
 
+**A size question** (`work-ticket` § 4, *No size*) comes before anything exists to commit: skip step 1's
+commit, push and PR. Ask on the ticket and through `ao report --needs-input`, in the format below without
+the PR and preview, with your proposed size and its reasoning as the question, *Resume state*'s branch
+line saying nothing is pushed, and its *Next step* saying to set the confirmed size and start
+`work-ticket` § 4. Then move the ticket to **Needs Input**. With no ticket, AO alone gets it.
+
 ## Needs Input — the ticket comment
 
 ```markdown
@@ -44,7 +50,7 @@ own the PR.
 <details><summary>Resume state — for the session that picks this up</summary>
 
 - **Branch:** `<headRefName>` at `<full head SHA>`; everything committed and pushed. Size: S / M / L
-  (the larger, and why, if label and section disagree).
+  (the larger, and why, if label and section disagree; "none — S / M / L proposed" at a size question).
 - **Phase:** design checkpoint · building · PR review round N of 3 · … — and what is finished.
 - **Decisions so far:** each with who made it and where it is recorded (the reviews file's sections).
 - **GPT's findings:** each design-review, test-pass or PR-review finding still in play, with its

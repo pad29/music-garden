@@ -49,9 +49,11 @@ of a failure and fails with it. Skipped where no bash is found. `workflow-refs.t
 file paths, `§` references and step numbers resolve, so a cold worker never follows a dead pointer.
 Both from GPT's PR review of PR #88 (`reviews/2026-11-10-cost-effective-workflow.md`).
 `workflow-refs.test.mjs` also checks that `CLAUDE.md`, `work-ticket` and `file-ticket` keep reading a
-ticket's size from its `Size` label and its `## Size` section — either alone is the size, neither is M,
-the larger when they disagree, said in the hand-off — and that `file-ticket`'s template keeps its
-`## Size` block (TUN-74, `reviews/TUN-74-size-label.md`).
+ticket's size from its `Size` label and its `## Size` section — either alone is the size, the larger
+when they disagree, said in the hand-off — that `file-ticket`'s template keeps its `## Size` block, and
+that a ticket with neither gets no default: the worker proposes a size and stops at Needs Input for the
+owner to confirm it, on every path, with the old M default gone from every workflow doc (TUN-74,
+`reviews/TUN-74-size-label.md`).
 
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
