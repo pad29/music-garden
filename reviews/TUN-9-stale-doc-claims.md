@@ -80,8 +80,44 @@ My answers — all four agreed, each checked against the code first:
 
 **Tests:** syntax check (29 scripts) and the suite, 664/664, after the fixes.
 
+## PR review — round 2 (Astra, `ask.sh`, on 813e01f; one call reviewed this PR and TUN-70's #96; session `music-garden-18`)
+
+<details><summary>GPT's findings for this PR, verbatim</summary>
+
+**PR #94 — reviewed `813e01f63c8033d92bf4319685af1a878f25e9c2`**
+
+Changes required:
+
+1. **Should-fix — `README.md:167`, `PACKAGES.md:5,137`:** Pulse Woods still says “region complete” / “4 built — COMPLETE.” `js/packages.js` contains its four shipped packages but no `march-and-waltz`. The revised `PACKAGES.md:256` explicitly identifies that fifth package as remaining work. Remove or qualify these completion claims consistently.
+
+2. **Nit — `PACKAGES.md:256,466`:** “shipped … (2026-08-28): … Waltz and … Jig grooves” incorrectly groups the grooves under the meter release date; the dependency summary similarly groups count-in beneath that date. `DESIGN.md` dates meter/bars to **August 28**, dance grooves to **August 29**, and count-in to **September 5**. Separate the dates or omit the grouped dating. All these features exist in the code.
+
+The other round-1 corrections check out: voice distribution, seven grooves, the continent map and its July 5 date, and dynamics/sections phase dependencies.
+
+Missing tests: **none** — these are prose corrections verifiable against existing code and the feature log.
+
+**Verdict: CHANGES REQUESTED.**
+
+(On the pair: "Read-only three-way merge checks found **no conflicts in either order**.")
+
+</details>
+
+My answers — both agreed, checked against the code and `DESIGN.md` first:
+
+1. **Agreed.** `PACKAGES` has the four Pulse Woods packages and no `march-and-waltz` (PW-5, planned for
+   that region). README's table row and `PACKAGES.md`'s region table now say `march-and-waltz` is still
+   to come; the header no longer counts Pulse Woods as complete (Wave A still is — its list never held
+   `march-and-waltz`). **Found while fixing it:** the same header said the 20 packages were "every Wave
+   A–D package", but Wave D's `secret-doors` and `mist-paths` are unbuilt. It now names what the 20 are —
+   the intro, Waves A–C, the ★ milestone and `sun-and-moon-garden` — measured against `PACKAGES` (20 +
+   the Studio).
+2. **Agreed.** `DESIGN.md` 2j (bars) 2026-08-28, 2k (grooves) 2026-08-29, 2l (count-in) 2026-09-05. Both
+   lines now date each; the loop range is left undated.
+
+**Tests:** syntax check (29 scripts) and the suite, 664/664, after the fixes.
+
 ## Owner's decisions
 
 1. *GPT's round-2 PR review hit the ChatGPT usage limit* (2026-11-12, 15:34 local: "You've hit your
    usage limit … try again at 8:25 PM"). Wait for the reset and run round 2 then, or merge on round 1's
-   fixes without it? — **open**. Round 2 never ran, so one round of three is used.
+   fixes without it? — **A: wait and run round 2** (owner, through the orchestrator's spawn of `music-garden-18`, 2026-11-12 after the 8:25 PM reset). Round 2 ran on 813e01f; two rounds of three are used.

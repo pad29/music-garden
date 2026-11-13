@@ -164,7 +164,7 @@ Key landmarks:
 |---|---|
 | 🌱 The First Garden | `intro` "Garden Basics" (13 levels, 4 awakening arcs) |
 | 🎶 Paths of Song | `follow-the-fireflies` (contour) · `stepping-stones` (steps/leaps) · `question-and-answer` (phrase Q&A) · `tiny-motifs` (motif repeat/vary/flip) |
-| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) · `two-kinds-of-walking` (note duration, R3) — region complete |
+| 🥁 Pulse Woods | `footsteps` (pulse/subdivision) · `wind-and-gaps` (rests/density, R2-lite) · `off-the-path` (syncopation/push/swing feel) · `two-kinds-of-walking` (note duration, R3) — `march-and-waltz` (meter) still to come |
 | 🏛️ Stone Chorus Canyon | `twin-blooms` (interval personality) · `standing-towers` (triads) · `twin-blooms-plus` (tension/tritone, diatonic) · `shifting-shadows` (inversions/voicing, diatonic) · `soft-wobble-strong-wobble` (graded tension, diatonic) — region complete |
 | 🌈 The Color Spring | `two-new-colors` ★ milestone (pentatonic→diatonic; F then B) |
 | 🌦️ Weather of Wanting | `ways-home` (cadence strength) · `river-turns` (progressions, I-IV-V-vi) · `pull-of-the-moon` (dominant pull) · `false-doors` (deceptive cadence) |
