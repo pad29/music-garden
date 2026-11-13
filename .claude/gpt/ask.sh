@@ -11,6 +11,16 @@
 # it (.claude/gpt/briefs/) don't have to. GPT's reply goes to stdout; diagnostics (token usage,
 # thread id, errors) go to stderr, so `$(ask.sh ...)` captures only the answer.
 #
+# Exit status:
+#   0    GPT answered; the answer is on stdout
+#   1    codex failed (its exit status and error messages, or its last events, on stderr), or it
+#        exited 0 with no answer ("GPT returned no message")
+#   2    bad arguments, or a missing or empty prompt file
+#   69   the ChatGPT usage limit: one stderr line, with the reset time when codex gave one. Never
+#        retried, waited out or sent to another model — CLAUDE.md § When something external breaks
+#   127  no codex CLI on PATH
+# (gpt-lock.sh's busy is 75; 69 is its sysexits neighbour, EX_UNAVAILABLE.)
+#
 # Thread state lives beside this script, inside the worktree, so every AO session gets its own
 # GPT thread automatically. Delete .thread-id before a session starts a second task.
 set -euo pipefail
@@ -79,15 +89,76 @@ jsonl_field() {  # $1 = event type, $2 = field
   ' "$1" "$2" 2>/dev/null || true
 }
 
+# Why codex failed, from its events on STDIN. With --json codex reports an error as an event on
+# stdout, not on stderr, and its event types for errors aren't documented: so any event whose type
+# names an error or a failure (`error`, `turn.failed`) counts, and an item that is an error. When a
+# message names the usage limit, prints "LIMIT " and the one line to report, with the reset time
+# when codex gave one; otherwise each distinct message on its own line, as "ask.sh:   <message>"
+# (codex repeats one in `error` and `turn.failed`).
+failure_report() {  # $1 = codex's exit status
+  node -e '
+    let d = "";
+    process.stdin.on("data", c => d += c).on("end", () => {
+      const msgs = [];
+      const add = m => { if (typeof m !== "string") return; m = m.replace(/\s+/g, " ").trim(); if (m && !msgs.includes(m)) msgs.push(m); };
+      for (const line of d.split("\n")) {
+        let o; try { o = JSON.parse(line); } catch { continue; }
+        if (!o || typeof o !== "object") continue;
+        if (/error|fail/i.test(String(o.type))) { add(o.message); add(o.error); add(o.error && o.error.message); }
+        if (o.item && o.item.type === "error") add(o.item.message);
+      }
+      // The reset time runs to the end of the message, less a final period ("2:49 a.m. CST on
+      // November 11, 2026." keeps its own periods). A later message may carry the reset an earlier
+      // one left out, so a limit message that names one wins.
+      const resetOf = m => (m.match(/try again ((?:at|in) .*?)\.?\s*$/i) || [])[1];
+      const limits = msgs.filter(m => /usage limit/i.test(m));
+      const limit = limits.find(resetOf) || limits[0];
+      if (limit) {
+        const reset = resetOf(limit);
+        const exit = `(codex exit ${process.argv[1]})`;
+        console.log("LIMIT usage limit — " + (reset ? `try again ${reset} ${exit}` : `codex gave no reset time ${exit}: ${limit}`));
+      } else msgs.forEach(m => console.log("ask.sh:   " + m));
+    });
+  ' "$1" 2>/dev/null || true
+}
+
+# Report a failed call on stderr and exit: 69 at the usage limit, otherwise 1.
+fail() {  # $1 = codex's exit status (0: it exited cleanly but left no answer). Never returns.
+  local status="$1" report
+  report="$(failure_report "$status" < "$EVENTS")"
+  case "$report" in
+    "LIMIT "*) echo "ask.sh: ${report#LIMIT }" >&2; exit 69 ;;
+  esac
+  if [ "$status" -eq 0 ]; then
+    echo "ask.sh: GPT returned no message. Last events:" >&2
+    tail -5 "$EVENTS" >&2 || true
+  elif [ -n "$report" ]; then
+    echo "ask.sh: codex failed (exit $status):" >&2
+    printf '%s\n' "$report" >&2
+  else
+    echo "ask.sh: codex failed (exit $status) with no error event. Last events:" >&2
+    tail -5 "$EVENTS" >&2 || true
+  fi
+  exit 1
+}
+
+# Catch codex's exit status: under `set -e` a bare failing call would end the script silently,
+# before anything below could say why.
 : > "$OUT"
+STATUS=0
 if [ "$MODE" = "thread" ] && [ -s "$ID_FILE" ]; then
   run_codex resume || {
+    STATUS=$?
+    # A resume that hit the usage limit is reported, never retried as a fresh call.
+    case "$(failure_report "$STATUS" < "$EVENTS")" in "LIMIT "*) fail "$STATUS" ;; esac
     echo "ask.sh: resume failed (stale thread id?) — starting a fresh thread" >&2
-    run_codex fresh
+    STATUS=0
+    run_codex fresh || STATUS=$?
   }
 else
-  run_codex fresh
+  run_codex fresh || STATUS=$?
 fi
+[ "$STATUS" -eq 0 ] || fail "$STATUS"
 
 # Only a fresh run emits thread.started; a resume keeps the existing id, so don't clobber it.
 NEW_ID="$(jsonl_field thread.started thread_id < "$EVENTS")"
@@ -111,11 +182,7 @@ node -e '
   });
 ' < "$EVENTS" || true
 
-if [ ! -s "$OUT" ]; then
-  echo "ask.sh: GPT returned no message. Last events:" >&2
-  tail -5 "$EVENTS" >&2 || true
-  exit 1
-fi
+[ -s "$OUT" ] || fail 0
 
 cat "$OUT"
 echo

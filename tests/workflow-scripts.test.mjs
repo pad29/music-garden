@@ -1,11 +1,12 @@
-// The workflow's shell scripts, run for real under bash with fake `ao`, `gh` and `sleep` on PATH:
-// `.claude/gpt/gpt-lock.sh` (one GPT job at a time, CLAUDE.md § Cost) and the review poller in
-// `.claude/skills/work-ticket/pr-review.md`, extracted from the doc so the doc is what is tested.
+// The workflow's shell scripts, run for real under bash with fake `ao`, `gh`, `sleep` and `codex` on
+// PATH: `.claude/gpt/gpt-lock.sh` (one GPT job at a time, CLAUDE.md § Cost), the review poller in
+// `.claude/skills/work-ticket/pr-review.md`, extracted from the doc so the doc is what is tested, and
+// `.claude/gpt/ask.sh`'s exit statuses and stderr (a stub codex — never the real one).
 // Skipped when no bash is found (on Windows, Git Bash — never WSL's bash.exe).
 import { test } from "node:test";
 import assert from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -364,5 +365,217 @@ test("test-output recipe: two sessions at once write separate logs", { skip }, a
     const logB = readFileSync(join(sb.dir, "test-music-garden-6.log"), "utf8");
     assert.ok(logA.includes("LATE-SENTINEL music-garden-4") && !logA.includes("music-garden-6"));
     assert.ok(!logB.includes("LATE-SENTINEL") && !logB.includes("music-garden-4"));
+  } finally { sb.cleanup(); }
+});
+
+// --- ask.sh, against a stub codex: never the real one, whose every call spends the ChatGPT limit ---
+
+const askScript = join(root, ".claude/gpt/ask.sh");
+const events = (...objs) => objs.map(o => JSON.stringify(o)).join("\n") + "\n";
+const LIMIT = "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit "
+  + "https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Nov 11th, 2026 2:49 AM.";
+const started = { type: "thread.started", thread_id: "t-new" };
+
+// A copy of ask.sh runs from the sandbox, so its .last-* and .thread-id files never touch the
+// worktree's. The stub codex logs each call, plays back $FAKE_STATE/<fresh|resume>.events on stdout,
+// writes <kind>.answer to the -o file, and exits with <kind>.exit.
+function ask({ mode = "fresh", fresh = {}, resume, threadId } = {}) {
+  const sb = sandbox();
+  try {
+    writeFileSync(join(sb.dir, "bin", "codex"), `#!/usr/bin/env bash
+s="$FAKE_STATE"; echo "$*" >> "$s/codex.calls"
+kind=fresh; [ "$2" = "resume" ] && kind=resume
+out=""; prev=""; for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+cat > /dev/null
+[ -e "$s/$kind.events" ] && cat "$s/$kind.events"
+[ -e "$s/$kind.answer" ] && cat "$s/$kind.answer" > "$out"
+exit "$(cat "$s/$kind.exit" 2>/dev/null || echo 0)"
+`, { mode: 0o755 });
+    const which = spawnSync(bash, ["-c", PRELUDE + "command -v codex"], { env: sb.env, encoding: "utf8" }).stdout.trim();
+    assert.strictEqual(which, sb.env.FAKE_BIN + "/codex", "the stub codex is first on PATH");
+    for (const [kind, r] of Object.entries({ fresh, resume })) {
+      if (!r) continue;
+      if (r.events) writeFileSync(join(sb.state, `${kind}.events`), r.events);
+      if (r.answer != null) writeFileSync(join(sb.state, `${kind}.answer`), r.answer);
+      writeFileSync(join(sb.state, `${kind}.exit`), String(r.exit ?? 0));
+    }
+    const gpt = join(sb.dir, "gpt");
+    mkdirSync(gpt);
+    copyFileSync(askScript, join(gpt, "ask.sh"));
+    writeFileSync(join(gpt, "prompt.txt"), "the prompt\n");
+    if (threadId) writeFileSync(join(gpt, ".thread-id"), threadId);
+    const res = spawnSync(bash, runScript(join(gpt, "ask.sh"), mode, "read-only", "gpt-6-astra", posix(join(gpt, "prompt.txt"))),
+      { env: sb.env, encoding: "utf8" });
+    const callsFile = join(sb.state, "codex.calls"), idFile = join(gpt, ".thread-id");
+    return {
+      code: res.status, out: res.stdout, err: res.stderr.trim(),
+      calls: existsSync(callsFile) ? readFileSync(callsFile, "utf8").split("\n").filter(Boolean) : [],
+      threadId: existsSync(idFile) ? readFileSync(idFile, "utf8") : null,
+    };
+  } finally { sb.cleanup(); }
+}
+
+test("ask.sh: at the usage limit it exits 69 with one stderr line naming the reset time, and calls codex once", { skip }, () => {
+  const r = ask({ fresh: { exit: 1, events: events(started, { type: "turn.started" },
+    { type: "error", message: LIMIT }, { type: "turn.failed", error: { message: LIMIT } }) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.strictEqual(r.out, "");
+  assert.strictEqual(r.err.split("\n").length, 1, "one line: " + r.err);
+  assert.match(r.err, /^ask\.sh: usage limit — try again at Nov 11th, 2026 2:49 AM \(codex exit 1\)$/);
+  assert.strictEqual(r.calls.length, 1, "no retry");
+});
+
+test("ask.sh: a usage limit with no reset time still exits 69, and quotes codex's message", { skip }, () => {
+  const r = ask({ fresh: { exit: 1, events: events(started, { type: "error", message: "You've hit your usage limit." }) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.strictEqual(r.err.split("\n").length, 1, "one line: " + r.err);
+  assert.match(r.err, /usage limit — codex gave no reset time \(codex exit 1\): You've hit your usage limit\.$/);
+});
+
+test("ask.sh: another codex failure exits 1 with codex's exit status and its error message, once", { skip }, () => {
+  const msg = "stream disconnected before completion: connection reset";
+  const r = ask({ fresh: { exit: 1, events: events(started, { type: "error", message: msg },
+    { type: "turn.failed", error: { message: msg } }) } });
+  assert.strictEqual(r.code, 1);
+  assert.strictEqual(r.out, "");
+  assert.match(r.err, /codex failed \(exit 1\)/);
+  assert.strictEqual(r.err.split(msg).length - 1, 1, "the message, de-duplicated: " + r.err);
+  assert.match(r.err, /^ask\.sh:   stream disconnected before completion: connection reset$/m);
+  assert.doesNotMatch(r.err, /usage limit/);
+});
+
+test("ask.sh: a codex failure with no error event exits 1 and prints the last events", { skip }, () => {
+  const r = ask({ fresh: { exit: 3, events: events(started, { type: "turn.started" }) } });
+  assert.strictEqual(r.code, 1, r.err);
+  assert.match(r.err, /codex failed \(exit 3\)/);
+  assert.match(r.err, /"turn\.started"/);
+});
+
+test("ask.sh: success prints only the answer on stdout, and the token usage on stderr", { skip }, () => {
+  const r = ask({ fresh: { answer: "Approved on abc123.\nNo findings.", events: events(started,
+    { type: "turn.completed", usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 7 } }) } });
+  assert.strictEqual(r.code, 0, r.err);
+  assert.strictEqual(r.out, "Approved on abc123.\nNo findings.\n");
+  assert.match(r.err, /ask\.sh: usage in=100 \(cached 40\) out=7/);
+});
+
+test("ask.sh: an empty answer with codex exiting 0 says GPT returned no message and exits 1", { skip }, () => {
+  const r = ask({ fresh: { events: events(started, { type: "turn.completed", usage: {} }) } });
+  assert.strictEqual(r.code, 1);
+  assert.strictEqual(r.out, "");
+  assert.match(r.err, /GPT returned no message\. Last events:\n[\s\S]*"turn\.completed"/);
+});
+
+test("ask.sh: thread mode falls back to a fresh call when the resume fails, and reports a limit there", { skip }, () => {
+  const resume = { exit: 1, events: events({ type: "error", message: "thread not found" }) };
+  const ok = ask({ mode: "thread", threadId: "t-old", resume, fresh: { answer: "fine", events: events(started) } });
+  assert.strictEqual(ok.code, 0, ok.err);
+  assert.strictEqual(ok.out, "fine\n");
+  assert.match(ok.err, /resume failed/);
+  assert.deepStrictEqual(ok.calls.map(c => c.split(" ").slice(0, 3).join(" ")), ["exec resume t-old", "exec --profile claudecollab"]);
+  const limit = ask({ mode: "thread", threadId: "t-old", resume, fresh: { exit: 1, events: events({ type: "error", message: LIMIT }) } });
+  assert.strictEqual(limit.code, 69, limit.err);
+  assert.match(limit.err, /usage limit — try again at Nov 11th, 2026 2:49 AM/);
+  assert.strictEqual(limit.calls.length, 2);
+});
+
+test("ask.sh: an empty answer whose events name the usage limit still exits 69", { skip }, () => {
+  const r = ask({ fresh: { events: events(started, { type: "turn.failed", error: { message: LIMIT } }) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.match(r.err, /^ask\.sh: usage limit — try again at Nov 11th, 2026 2:49 AM \(codex exit 0\)$/);
+});
+
+test("ask.sh: a resume that hits the usage limit exits 69 without a fresh call", { skip }, () => {
+  const r = ask({ mode: "thread", threadId: "t-old", resume: { exit: 1, events: events({ type: "error", message: LIMIT }) },
+    fresh: { answer: "should never run", events: events(started) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.strictEqual(r.out, "");
+  assert.strictEqual(r.err, "ask.sh: usage limit — try again at Nov 11th, 2026 2:49 AM (codex exit 1)");
+  assert.deepStrictEqual(r.calls.map(c => c.split(" ").slice(0, 3).join(" ")), ["exec resume t-old"], "no fresh retry");
+});
+
+test("ask.sh: a reset time in a later limit message wins over an earlier one without it", { skip }, () => {
+  const r = ask({ fresh: { exit: 7, events: events(started, { type: "error", message: "You've hit your usage limit." },
+    { type: "turn.failed", error: { message: LIMIT } }) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.strictEqual(r.out, "");
+  assert.strictEqual(r.err, "ask.sh: usage limit — try again at Nov 11th, 2026 2:49 AM (codex exit 7)");
+});
+
+test("ask.sh: a reset time keeps its own periods, timezone and date", { skip }, () => {
+  const r = ask({ fresh: { exit: 1, events: events(
+    { type: "error", message: "Usage limit reached. Please try again at 2:49 a.m. CST on November 11, 2026." }) } });
+  assert.strictEqual(r.code, 69, r.err);
+  assert.strictEqual(r.out, "");
+  assert.strictEqual(r.err, "ask.sh: usage limit — try again at 2:49 a.m. CST on November 11, 2026 (codex exit 1)");
+});
+
+test("ask.sh: the limit is found in an error item, and in an unfamiliar failure event, in any case", { skip }, () => {
+  const msg = "Usage Limit reached. Try again in 3 hours.";
+  for (const ev of [{ type: "item.completed", item: { type: "error", message: msg } },
+    { type: "request.failed", error: msg }, { type: "request.failed", error: { message: msg } }]) {
+    const r = ask({ fresh: { exit: 7, events: events(started, ev) } });
+    assert.strictEqual(r.code, 69, JSON.stringify(ev) + ": " + r.err);
+    assert.strictEqual(r.out, "");
+    assert.strictEqual(r.err, "ask.sh: usage limit — try again in 3 hours (codex exit 7)", JSON.stringify(ev));
+  }
+});
+
+test("ask.sh: a failure prints each distinct error once, skips bad lines, and never the partial answer", { skip }, () => {
+  const a = "first problem", b = "second problem";
+  const r = ask({ fresh: { exit: 42, answer: "partial answer",
+    events: events(started, { type: "error", message: a }) + "not json\n" + events({ type: "error", message: b },
+      { type: "turn.failed", error: { message: a } }) } });
+  assert.strictEqual(r.code, 1, r.err);
+  assert.strictEqual(r.out, "");
+  assert.doesNotMatch(r.err, /partial answer/);
+  assert.match(r.err, /^ask\.sh: codex failed \(exit 42\):$/m);
+  for (const m of [a, b]) assert.strictEqual(r.err.split(m).length - 1, 1, m + ", once: " + r.err);
+});
+
+test("ask.sh: a failure with unparseable or no events still says so, with the last five lines", { skip }, () => {
+  const lines = Array.from({ length: 7 }, (_, i) => `plain line ${i + 1}`);
+  const r = ask({ fresh: { exit: 3, events: lines.join("\n") + "\n" } });
+  assert.strictEqual(r.code, 1, r.err);
+  assert.strictEqual(r.out, "");
+  assert.match(r.err, /^ask\.sh: codex failed \(exit 3\) with no error event\. Last events:$/m);
+  assert.ok(lines.slice(2).every(l => r.err.includes(l)) && !/plain line [12]$/m.test(r.err), r.err);
+  const none = ask({ fresh: { exit: 3 } });
+  assert.strictEqual(none.code, 1, none.err);
+  assert.strictEqual(none.out, "");
+  assert.strictEqual(none.err, "ask.sh: codex failed (exit 3) with no error event. Last events:");
+});
+
+test("ask.sh: thread mode answers from a resume and keeps its id, or from a fresh call and saves the new one", { skip }, () => {
+  const usage = { type: "turn.completed", usage: { input_tokens: 9, cached_input_tokens: 4, output_tokens: 2 } };
+  const resumed = ask({ mode: "thread", threadId: "t-old", resume: { answer: "resumed answer", events: events(usage) },
+    fresh: { answer: "should never run", events: events(started) } });
+  assert.strictEqual(resumed.code, 0, resumed.err);
+  assert.strictEqual(resumed.out, "resumed answer\n");
+  assert.match(resumed.err, /ask\.sh: usage in=9 \(cached 4\) out=2/);
+  assert.deepStrictEqual(resumed.calls.map(c => c.split(" ").slice(0, 3).join(" ")), ["exec resume t-old"]);
+  assert.strictEqual(resumed.threadId, "t-old");
+  const first = ask({ mode: "thread", fresh: { answer: "fresh answer", events: events(started, usage) } });
+  assert.strictEqual(first.code, 0, first.err);
+  assert.strictEqual(first.out, "fresh answer\n");
+  assert.deepStrictEqual(first.calls.map(c => c.split(" ").slice(0, 2).join(" ")), ["exec --profile"]);
+  assert.strictEqual(first.threadId, "t-new");
+});
+
+test("ask.sh: with no codex on PATH it exits 127 and says so", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const gpt = join(sb.dir, "gpt");
+    mkdirSync(gpt);
+    copyFileSync(askScript, join(gpt, "ask.sh"));
+    writeFileSync(join(gpt, "prompt.txt"), "the prompt\n");
+    const bare = "PATH=/usr/bin:/bin; ";
+    const which = spawnSync(bash, ["-c", bare + "command -v codex || echo none"], { env: sb.env, encoding: "utf8" }).stdout.trim();
+    assert.strictEqual(which, "none", "no codex on the bare PATH");
+    const r = spawnSync(bash, ["-c", bare + 'exec "$BASH" "$@"', "_", join(gpt, "ask.sh"), "fresh", "read-only", "gpt-6-astra",
+      posix(join(gpt, "prompt.txt"))], { env: sb.env, encoding: "utf8" });
+    assert.strictEqual(r.status, 127, r.stderr);
+    assert.strictEqual(r.stdout, "");
+    assert.strictEqual(r.stderr.trim(), "ask.sh: codex CLI not on PATH");
   } finally { sb.cleanup(); }
 });
