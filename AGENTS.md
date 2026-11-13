@@ -43,7 +43,7 @@ Regenerators — slow, overwrite generated files, run only when their inputs cha
   text; needs AWS credentials (Amazon Polly). Skipping it is invisible in code and audible in the game:
   the browser TTS fallback speaks in the wrong voice. **Default to `--dry`** (lists what would change, no
   AWS calls, free); run it for real only when you intend to. **Never run `--force`** unless the owner
-  explicitly asks — it regenerates all ~180 clips on Polly's `generative` engine, which costs real money.
+  explicitly asks — it regenerates all ~250 clips on Polly's `generative` engine, which costs real money.
 - `node tools/build-samples.mjs` — after changing anything under `samples/<instr>/`.
 
 Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS credentials.
@@ -89,9 +89,9 @@ code alone: the rationale lives in these docs, not in the code.
 
 The design docs state intent alongside fact. Where they differ, this is the reality:
 
-- `EDITOR-DESIGN.md` is a **plan, not current state.** Notes-as-objects, lenses, duration/dynamics
-  editing, multi-voice, and sections are **not built**. Today the grid is column-based, single-voice,
-  fixed 8th-note steps.
+- `EDITOR-DESIGN.md` is **mostly plan.** Its phases 0–2 are built (note objects in ticks, undo and the
+  seed tray, duration vines, meter and bars in the Studio); dynamics, multi-voice, sections and the
+  chromatic lattice are **not**. §16 marks each phase.
 - `PACKAGES.md` catalogs packages that are specced but not yet built. Only the packages listed as
   shipped in `README.md` § "Current status" exist in the game (`js/packages.js`).
 
