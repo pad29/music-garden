@@ -63,6 +63,10 @@ are on unless they match. Re-run the suite on the head you start from.
    was taken over by <session>; the answer belongs there"`, and stop.
 1. Move the ticket back to **In Progress** — from Todo, claim it again as `work-ticket` § 2 says — and
    record each answer under *Owner's decisions*: the answer, and where and when it was given.
+   **A size answer** (`work-ticket` § 4, *No size*): add the confirmed letter's `Size` label with
+   `addLabels`, never `labels`, and a `## Size` section with that letter and your reasoning
+   (`file-ticket` § Size), then start `work-ticket` § 4 at that size — the reviews file it creates
+   records the answer.
 2. Keep the design you have. Only if an answer changes it materially, revise it — by size: **S**, you
    revise your plan; **M**, you revise your plan and GPT reviews the revision (fresh, read-only); **L**,
    GPT revises its design (`gpt-design`, *A revision*) and you critique it. Every GPT prompt stands alone
