@@ -392,3 +392,36 @@ guide).
    "legacy Pages" switch, and that flow named the project **`music-garden`** with no choice offered
    (not `tunegarden`, Q2). It matches the repository, the AWS stack and the old Netlify site, so the
    docs say `music-garden.pages.dev`. Cloudflare Access was left off (Q3).
+
+## Verification on Cloudflare (Claude, 2026-11-14)
+
+On the commit preview `https://70f00f24.music-garden.pages.dev` (head `ed3c759`), built by the owner's Pages
+project `music-garden`:
+
+- **The PR check** is named **Cloudflare Pages** (app `cloudflare-workers-and-pages`): `success` on
+  `ed3c759`. Cloudflare also posts a PR comment with the commit preview and the branch alias
+  `ao-tun-80-ticket-root.music-garden.pages.dev` (the branch name's `/` became `-`).
+- **GET probes**, bodies compared with the commit: `/` is byte-identical to `index.html`; all 29 `js/`
+  files are `200 application/javascript` and byte-identical; `voice/108fedab.mp3` is `200 audio/mpeg` and
+  `samples/glockenspiel.js` is `200 application/javascript`, both byte-identical.
+- **A path that is not a file** — `/no-such-page`, `/no-such-page/`, `/js/no-such-file.js`,
+  `/samples/piano/` — answers `200 text/html` with exactly the body of `/`. The same as Netlify: a
+  missing `js/` file is served as the page, and the game would not start. (No redirect anywhere.)
+- **Not published** — `/backend/template.yaml`, `/tests/netlify-publish.test.mjs`,
+  `/spike/pinch-probe.html`, `/spike/`, `/README.md`, `/cloudflare-build.sh`, `/.claude/gpt/ask.sh`,
+  `/netlify.toml` — each answers with the body of `/`, so none is served as a file.
+- **In the browser** (AO's Chromium): the game loads; level 1 *Wake the Seeds* plays through (four seeds,
+  ▶ Play, both goals ticked, *Next level*); with network capture on, a narration clip
+  (`voice/b547890d.mp3`, `200 audio/mpeg`, media) and the Piano pack (`samples/piano.js`, `200`) load
+  from Cloudflare; a `#s=` link opened fresh on the branch alias shows *"A melody from a friend"* in
+  the Studio with the encoded notes. No page errors from the game; the only console error is
+  Cloudflare's own Turnstile script, which the game does not load.
+- **The backend refuses the origin:** a CORS preflight to the songs API from the preview origin gets
+  no `Access-Control-Allow-Origin`; from `https://tunegarden.game` it gets one. Cloud sync and cloud
+  songs fail on Cloudflare URLs, as the ticket expects.
+- **Production** (`main` at `ba365ee`): the *Cloudflare Pages* check **failed** (*"Build failed."*),
+  as expected, because `main` has no `cloudflare-build.sh` yet. **But `https://music-garden.pages.dev/`
+  answers `200` with an unrelated "Welcome to Astro" starter page** (`lang="ja"`, no `js/boot.js`).
+  Open question for the owner (dashboard): whose page that is.
+- **Not verified:** the sound itself (by ear), that the Piano pack decodes rather than falling back to
+  the synth (AO's browser can't run page code), the phone, `file://`, and production after the merge.
