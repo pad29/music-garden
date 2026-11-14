@@ -46,6 +46,29 @@ fonts and loads the library from `vendor/`. Its scanner refuses any `src`/`href`
 the game's own scripts may name only the backend. The network half is the browser check in
 `reviews/TUN-81-self-hosted-fonts-and-sign-in.md`.
 
+**The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
+small structural parser for its block-YAML subset and pins its cost limits and data protection, each
+at its effective path, so the same text under `Metadata` doesn't count:
+
+- every `HttpApi` event, discovered structurally, is an approved `METHOD /path` on `Api` with exactly
+  its approved rate and burst;
+- the default route throttle, and Globals reserved concurrency with no function overriding it;
+- `Retain` and deletion protection on the user pool and both tables, and point-in-time recovery;
+- the $30 account-wide budget with its four alerts to `!Ref BudgetEmail` and no fixed name.
+
+It also refuses any email address other than an `@example.com` placeholder in the template or
+`samconfig.toml`, comments included: the repository is public. It is a static check, not
+CloudFormation validation — the owner's deploy runs `sam validate --lint`. A raise the owner approves
+means changing `ROUTES` and the arithmetic in the review record together. Its mutation cases, each
+asserting its own diagnostic, and a harmless-formatting case are kept as tests, so the checker cannot
+quietly go blind.
+
+**Keep `template.yaml` in block style.** The parser refuses what it doesn't implement rather than
+misreading it: flow collections (`{…}`, `[…]`), anchors, aliases, folded or literal block scalars
+(`>`, `|`), and tags other than `!Ref`, `!GetAtt` and `!Sub`. Such a line fails with "unsupported
+YAML". A reference keeps its meaning: `!Ref X` and the block form `Ref: X` both count, while a quoted
+`"!Ref X"` is a literal string, as CloudFormation reads it.
+
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the
 worktree uncached, bound to `127.0.0.1` on AO's `${PORT}`; the url on that same origin; and
