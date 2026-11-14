@@ -102,14 +102,16 @@ export function decodeRefs(value) {
 
 /**
  * Every reference in CSS text (a stylesheet, a <style> body or a decoded style attribute) that leaves the
- * origin. A CSS escape ("\68ttps:") inside a url() or @import is refused — reported as it stands — rather
- * than decoded: the page has no reason to spell a URL that way.
+ * origin. A restricted grammar: a CSS escape ANYWHERE in the text is refused, reported as "unreadable: CSS
+ * escape …", rather than decoded — "\68 ttps:" is "https:" to a browser, and an escape can also hide the url(
+ * itself (GPT's PR review, round 2). The page's own CSS has none, and no reason to.
  */
 export function cssThirdParty(css) {
   const out = [];
+  for (const m of css.matchAll(/\\[^\n]{0,20}/g)) out.push("unreadable: CSS escape " + m[0].trim());
   for (const re of [CSS_URL, CSS_IMPORT]) for (const m of css.matchAll(re)) {
     const ref = m[1] ?? m[2] ?? m[3] ?? "";
-    if (ref.includes("\\") || leavesOrigin(ref)) out.push(ref.trim());
+    if (!ref.includes("\\") && leavesOrigin(ref)) out.push(ref.trim());
   }
   return out;
 }
@@ -127,10 +129,12 @@ export function htmlThirdParty(html) {
       const refs = name === "srcset" ? value.split(",").map((c) => c.trim().split(/\s+/)[0]) : [value];
       for (const ref of refs) if (leavesOrigin(ref)) out.push(ref.trim());
     }
-    const style = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(t[2]);
+    // Quoted or not: `style=background:url(…)` is valid HTML too (GPT's PR review, round 2).
+    const style = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(t[2]);
     if (style) {
-      const css = decodeRefs(style[1] ?? style[2]);
-      if (css === null) out.push("unreadable: " + (style[1] ?? style[2]).trim()); else out.push(...cssThirdParty(css));
+      const raw = style[1] ?? style[2] ?? style[3];
+      const css = decodeRefs(raw);
+      if (css === null) out.push("unreadable: " + raw.trim()); else out.push(...cssThirdParty(css));
     }
   }
   for (const s of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) out.push(...cssThirdParty(s[1]));

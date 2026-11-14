@@ -297,9 +297,9 @@ CHANGES REQUESTED
    line is removed; the record states only what was measured.
 2. **Medium — encoded references pass the scanner.** **Agreed** — reproduced. `htmlThirdParty` now decodes
    numeric character references and a small named set (`&quot;`, `&colon;`, `&sol;`, `&Tab;`, …) before reading
-   an attribute or a `style`; any other named reference, or one without its `;`, is reported as `unreadable`
-   rather than guessed. `leavesOrigin` reads URLs as the URL parser does (tabs and newlines dropped, `\` as `/`),
-   and a CSS escape inside `url()`/`@import` is refused. Tests: GPT's three inputs, a hex reference, `&Tab;`,
+   an attribute or a `style`; any other named reference, or a named one without its `;`, is reported as
+   `unreadable` rather than guessed (a numeric one without `;` is decoded, as browsers do — corrected in round 2). `leavesOrigin` reads URLs as the URL parser does (tabs and newlines dropped, `\` as `/`),
+   and a CSS escape inside `url()`/`@import` is refused (round 2 widened this to a CSS escape anywhere). Tests: GPT's three inputs, a hex reference, `&Tab;`,
    `\host`, an unknown reference, a reference without `;`, a CSS escape, and encoded-but-local controls.
    Mutation run: inspect the raw value instead of the decoded one → the test fails.
 3. **Low — the two commands' results were not recorded.** **Agreed** — recorded below. (GPT's 75 failures were
@@ -321,3 +321,69 @@ Missing tests:
 **Commands, on the round-2 head** (Windows, Node 24.15): `node tools/check-syntax.mjs` → exit 0, *syntax OK (29
 scripts …; vendored: vendor/cognito/amazon-cognito-identity.min.js)*; `node --test "tests/*.test.mjs"` → exit 0,
 733 of 733 pass (0 fail, 0 skipped).
+
+### Round 2 — head `7cbc3cc`
+<details><summary>GPT's PR review, verbatim</summary>
+
+Reviewed `7cbc3ccfde95a0d980553419b19a4c132a4e58e4`. No files edited. Syntax checking and all three selected scanner tests passed. I did not rerun the full suite or browser checks; the recorded 733/733 result is acknowledged.
+
+Required changes:
+
+1. **Medium — CSS escape rejection silently misses unquoted URLs containing escape-terminating whitespace.** [tests/helpers/vendor.mjs:110](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:110)
+
+   Reproduced `htmlThirdParty(...) === []` for:
+
+   ```html
+   <style>.a{background:url(\68 ttps://img.example/a.png)}</style>
+   ```
+
+   CSS consumes `\68 ` as `h`, producing an external URL. The regex rejects the internal whitespace before the new backslash check can inspect it. [CSS parsing rules](https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point)
+
+   **Fix:** detect and reject unsupported escapes before relying on the URL matcher, or tokenize escaped URLs correctly. Unmatched syntax must not silently pass.
+
+2. **Medium — Unquoted style attributes bypass the new decoding entirely.** [tests/helpers/vendor.mjs:130](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:130)
+
+   Reproduced `htmlThirdParty(...) === []` for:
+
+   ```html
+   <div style=background:url(https&#58;//img.example/a.png)></div>
+   ```
+
+   This is valid [unquoted attribute syntax](https://html.spec.whatwg.org/multipage/syntax.html#attributes-2), but the style matcher accepts only quoted values.
+
+   **Fix:** inspect unquoted style values through the same decoding/CSS checks, or explicitly reject them under the restricted grammar.
+
+Tests still missing:
+
+- Assert the escaped CSS case above is reported or explicitly rejected, both in a stylesheet and in a quoted `style` attribute.
+- Assert the unquoted encoded style case above is reported or explicitly rejected. Include an unquoted local-path control consistent with the chosen grammar.
+- **Owner verification remains pending:** successful sign-up, successful sign-in, then reload; verify restored authenticated state, expected preview-origin sync failure, and approved request hosts.
+
+I agree that the recorded interactive offline `file://` smoke test satisfies that check without adding a browser runner.
+
+Docs needing correction:
+
+- [Review record:302](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:302) overstates CSS escape rejection, as finding 1 demonstrates.
+- [Review record:300](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:300) should specify **named** references without `;`: numeric references without it are decoded, not reported unreadable. For example, `decodeRefs('img&#47a.png')` returns `img/a.png`.
+
+README counts are fixed. The Netlify preview decision remains with the owner and is not re-raised.
+
+CHANGES REQUESTED
+
+</details>
+
+1. **Medium — `url(\68 ttps://…)` passes: the escape ends at its space, which the `url()` matcher would not read.**
+   **Agreed** — reproduced. The restricted grammar is now stricter: a CSS escape **anywhere** in CSS text (a
+   stylesheet, a `<style>` body, a decoded `style` attribute) is refused as `unreadable: CSS escape …`, which also
+   covers an escaped `url(` itself (`\75rl(`). The page's own CSS has no backslash at all. Mutation run: check for
+   `\` only inside a matched `url()` → the test fails.
+2. **Medium — an unquoted `style=` attribute is never inspected.** **Agreed** — reproduced. The `style` matcher
+   now reads quoted and unquoted values alike, through the same decoding. Mutation run: quoted values only → the
+   test fails. (Re-run as well: `\host` read as `//host` — the round-1 mutation whose shell quoting had failed —
+   is caught.)
+
+Missing tests: the escaped CSS case in a stylesheet and in a quoted `style`, an escaped `url(`, the unquoted
+encoded `style`, and unquoted-local and numeric-without-`;` controls — **added**. Successful sign-up/sign-in —
+**the owner's**, as before. GPT accepts the recorded `file://` smoke test without a browser runner.
+
+Docs: both review-record lines GPT named are corrected above (marked).

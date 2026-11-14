@@ -130,7 +130,14 @@ test("the third-party scanner catches every way the page could name another host
     ['<img src="\\\\img.example/a.png">', "\\\\img.example/a.png"],                    // "\\host" is "//host"
     ['<img src="&unknown;//img.example/a.png">', "unreadable: &unknown;//img.example/a.png"],
     ['<img src="https&colon//img.example/a.png">', "unreadable: https&colon//img.example/a.png"],  // no ";": not guessed
-    ['<style>.a{background:url("\\68ttps://img.example/a.png")}</style>', "\\68ttps://img.example/a.png"],
+    // CSS escapes, refused wherever they are (round 2: "\68 " ends at its space, which the url() matcher refused
+    // to read). Mutation: check for "\" only inside a matched url() — the unquoted and the hidden-url( cases pass.
+    ['<style>.a{background:url("\\68ttps://img.example/a.png")}</style>', "unreadable: CSS escape \\68ttps://img.example"],
+    ['<style>.a{background:url(\\68 ttps://img.example/a.png)}</style>', "unreadable: CSS escape \\68 ttps://img.exampl"],
+    ['<style>.a{background:\\75rl(https://img.example/a.png)}</style>', "unreadable: CSS escape \\75rl(https://img.exa"],
+    ['<div style="background:url(\\68 ttps://img.example/a.png)"></div>', "unreadable: CSS escape \\68 ttps://img.exampl"],
+    // An unquoted style attribute is read too. Mutation: match only quoted style values — this passes as local.
+    ["<div style=background:url(https&#58;//img.example/a.png)></div>", "https://img.example/a.png"],
   ]) assert.deepEqual(htmlThirdParty(html), [want], html);
   // Controls: local paths, data: URLs, and links (a link fetches nothing until clicked).
   for (const html of [
@@ -140,6 +147,8 @@ test("the third-party scanner catches every way the page could name another host
     '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
     '<img src="img&#47;a.png"><div style="background:url(&quot;img/b.png&quot;)"></div>',   // encoded, but local
     '<a href="https&#58;//tunegarden.game/">home</a>',
+    "<div style=background:url(img&#47;c.png)></div>",   // unquoted, encoded, local
+    '<img src="img&#47a.png">',                           // a numeric reference without ";" is decoded, as browsers do
   ]) assert.deepEqual(htmlThirdParty(html), [], html);
   assert.deepEqual(cssThirdParty("@font-face{src:url(\"https://fonts.gstatic.com/x.woff2\") format('woff2')}"), ["https://fonts.gstatic.com/x.woff2"]);
   assert.deepEqual(cssThirdParty("@font-face{src:url(nunito/latin.woff2) format('woff2')}"), []);
