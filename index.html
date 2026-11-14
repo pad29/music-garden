@@ -5,9 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#F9F6EF" />
 <title>Tune Garden — where music grows through play</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Fredoka and Nunito, from this site: the page makes no third-party requests (TUN-81; vendor/README.md). -->
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
   :root{
     /* Tune Garden brand palette (Light Brand Kit §7) */
@@ -983,7 +982,9 @@
     </div>
   </div>
 
-<script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6/dist/amazon-cognito-identity.min.js"></script>
+<!-- The Cognito sign-in library, pinned and served from this site (vendor/README.md). Not a game script: the
+     tools list vendor/ scripts apart, and the load gate ignores them, so without it the game runs guest-only. -->
+<script src="vendor/cognito/amazon-cognito-identity.min.js"></script>
 <script src="js/load-gate.js"></script>
 <script src="js/palettes.js"></script>
 <script src="js/audio.js"></script>

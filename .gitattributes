@@ -1,2 +1,5 @@
 # Normalize line endings: store as LF in the repo, check out native on each OS.
 * text=auto
+# Third-party files kept byte for byte, as released: vendor/SHA256SUMS pins their hashes (TUN-81), and a
+# line-ending conversion on checkout would change both.
+vendor/** -text

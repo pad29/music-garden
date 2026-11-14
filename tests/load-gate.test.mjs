@@ -71,7 +71,7 @@ test("load gate: input is swallowed before the game's own handlers until the gat
   assert.deepEqual(heard, [...g.LOAD_GATE_EVENTS]);
 });
 
-// Mutations: count every error (the Cognito CDN's, an extension's, a sample pack's); ignore document.currentScript
+// Mutations: count every error (the vendored Cognito SDK's, an extension's, a sample pack's); ignore document.currentScript
 // (a throw on file:// arrives with its filename hidden); ignore a <script> element's own load error; compare
 // against the site root instead of the page's folder; take the folder from location.href rather than the
 // document's base URL. Each fails here.
@@ -83,7 +83,9 @@ test("load gate: only an error from one of the game's own js/ files counts as a 
   assert.strictEqual(g.isGameScriptError({ target: g.window, filename: "" }), true, "a throw whose details are hidden");
   g.document.currentScript = null;
   for (const [what, e] of [
-    ["the Cognito SDK", { target: { tagName: "SCRIPT", src: "https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6/dist/amazon-cognito-identity.min.js" } }],
+    // TUN-81: same origin, but outside js/ — the sign-in library stays optional, as it was on its CDN.
+    ["the vendored Cognito SDK", { target: { tagName: "SCRIPT", src: "https://tunegarden.test/vendor/cognito/amazon-cognito-identity.min.js" } }],
+    ["a third-party script", { target: { tagName: "SCRIPT", src: "https://cdn.example/lib.js" } }],
     ["a sample pack", { target: { tagName: "SCRIPT", src: "https://tunegarden.test/samples/piano.js" } }],
     ["an extension", { target: g.window, filename: "chrome-extension://abc/content.js" }],
     ["an error with no source", { target: g.window, filename: "" }],
@@ -108,8 +110,8 @@ test("load gate: a failed game script keeps the game from starting and the gate 
   g = gate(); g.parsed(); assert.strictEqual(g.open, false, "boot never asked (js/boot.js itself is missing): shut");
   g = gate(); assert.strictEqual(g.gameScriptsLoaded(), true); g.error(BASE + "boot.js"); g.parsed();
   assert.strictEqual(g.open, true, "a throw inside a boot that has started is an ordinary runtime error");
-  g = gate(); g.error("https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6/dist/amazon-cognito-identity.min.js");
-  assert.strictEqual(g.gameScriptsLoaded(), true, "the optional CDN script does not stop the game");
+  g = gate(); g.error("https://tunegarden.test/vendor/cognito/amazon-cognito-identity.min.js");
+  assert.strictEqual(g.gameScriptsLoaded(), true, "the optional sign-in library (vendor/) does not stop the game");
 });
 
 // Mutations: delete boot's guard, or have it ask something other than the gate (`if(false) throw …`) — then a
