@@ -1,4 +1,4 @@
-# Cloudflare Pages build for Tune Garden (TUN-80). The Pages project `tunegarden` runs it from its
+# Cloudflare Pages build for Tune Garden (TUN-80). The Pages project `music-garden` runs it from its
 # dashboard settings: build command `sh cloudflare-build.sh`, build output directory `site`. Those two
 # settings live only in the dashboard; this file is the part the repository can pin.
 #

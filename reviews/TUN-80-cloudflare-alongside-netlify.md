@@ -388,3 +388,7 @@ guide).
 4. *Q3 — Preview access: public or restricted to the Cloudflare account?* **A, public.** Same.
 5. *Q4 — Production can only be checked after the merge.* **A:** the PR says `Refs TUN-80`, and the ticket
    stays open in In Review until the production checks pass after the merge. Same.
+6. *Project created* — by the owner, 2026-11-14. Cloudflare's dashboard now reaches Pages through a
+   "legacy Pages" switch, and that flow named the project **`music-garden`** with no choice offered
+   (not `tunegarden`, Q2). It matches the repository, the AWS stack and the old Netlify site, so the
+   docs say `music-garden.pages.dev`. Cloudflare Access was left off (Q3).
