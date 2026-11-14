@@ -27,7 +27,12 @@ small throwaway pages. `tests/netlify-publish.test.mjs` checks that `netlify.tom
 copies `index.html` and every folder the page loads a script from to the same path under `site/` — a
 file left out is served as `index.html` in production, and the game never starts. The checker is
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
-override) and honours a shell `#` comment.
+override) and honours a shell `#` comment. `tests/cloudflare-publish.test.mjs` does the same for
+Cloudflare Pages' `cloudflare-build.sh`, more strictly (`helpers/cloudflare-publish.mjs`): the script
+must publish exactly `index.html`, `js/`, `voice/` and `samples/`, a step it cannot read is refused
+rather than skipped, every Netlify build command must copy the same set into `site/`, no `404.html` may
+be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
+as in `workflow-scripts.test.mjs`).
 
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the

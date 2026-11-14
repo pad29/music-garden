@@ -380,12 +380,11 @@ guide).
 
 ## Owner's decisions
 
-1. *Design checkpoint (`needs-owner`)*: **open**.
-2. *Q1 — Which product: A) Pages or B) Workers static assets + Workers Builds?* I recommend A. **Open.**
-3. *Q2 — The project name: `tunegarden` (→ `tunegarden.pages.dev`)?* **Open.**
-4. *Q3 — Preview access: public (as Netlify's are today) or restricted to your Cloudflare account?* I
-   recommend public. **Open.**
-5. *Q4 — Production can only be checked after this PR merges. A) the PR says `Refs TUN-80`, and the ticket
-   stays open in In Review until the production checks pass; or B) before the merge, you temporarily
-   point Cloudflare's production branch at this PR's branch, I check production, and you point it back.*
-   I recommend A. **Open.**
+1. *Design checkpoint (`needs-owner`)*: **build the revised plan**. The owner, in AO session
+   `music-garden-22`, 2026-11-13 (CST).
+2. *Q1 — Which product: A) Pages or B) Workers static assets + Workers Builds?* **A, Pages.** Same place
+   and date.
+3. *Q2 — The project name: `tunegarden` (→ `tunegarden.pages.dev`)?* **A, `tunegarden`.** Same.
+4. *Q3 — Preview access: public or restricted to the Cloudflare account?* **A, public.** Same.
+5. *Q4 — Production can only be checked after the merge.* **A:** the PR says `Refs TUN-80`, and the ticket
+   stays open in In Review until the production checks pass after the merge. Same.
