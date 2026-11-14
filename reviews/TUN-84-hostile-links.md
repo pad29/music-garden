@@ -70,3 +70,6 @@ cover `addColumns`, and `colPlus` by reading its handler. Rendering a full 14 ×
 the 100,000-note link, in the browser — the URLs are too long to pass to AO's browser, and a second local
 server to redirect from was not allowed; in Node the gate takes the 100,000 notes to at most `ROWS × COLS`
 in well under a second.
+
+**Test link for the owner's playtest** — a 1,912-column song, eight columns short of `MAX_COLS`; append to
+the preview's address: `index.html#s=WzMsInBlbnRhdG9uaWMiLDE5MTIsMTA4LDAsIiIsW1s3MiwwXSxbNzQsMTkxMV1dLFtdXQ`
