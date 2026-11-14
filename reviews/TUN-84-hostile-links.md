@@ -190,3 +190,7 @@ Suite after the fixes: 705/705 (eight new tests), syntax check clean.
 1. Run GPT's PR review round 1 after the 1:59 AM reset? **1A — yes** (the owner, relayed by the
    orchestrator in session `music-garden-25`'s spawn prompt, 2026-11-14). Run on head `d439426`, the
    current head (only this record had changed since `98333ac`).
+2. **Open:** run GPT's PR review round 2 on the fixes (`3f9ecff` and this record), as the delta since
+   `d439426` with round 1's findings quoted? Session `music-garden-25` was scoped to one round, so it stops
+   here. (Recommended: yes — the fixes are unreviewed, and only GPT's approval on the current head hands
+   the PR to In Review. Rounds left: 2 of 3.)
