@@ -413,6 +413,20 @@ Verification: the focused test passed **2/2**. The full suite produced **615 pas
   GPT's position: "Reading code does not replace exercising those paths." Both sides stand; the owner
   can overrule.
 
+- **Round 3 — not run.** `ask.sh` on head `1c11749`: "usage limit — try again at 1:36 PM (codex exit
+  1)" (Chicago time, 2026-11-14). It doesn't count as a round: **one review round is left**. To rerun:
+  - Review the delta `git diff b10cacc..<current head>`, quoting this file's round 1 and round 2 sections.
+  - Ask whether round 2's findings 1–5 and missing checks 1–4 are resolved.
+  - Ask GPT to accept or contest the recorded disagreement on mocked client 429 tests.
+  - Ask whether the parser can mis-parse the template, or fail on valid edits TUN-76, TUN-83, TUN-87 or
+    TUN-88 would make.
+  - Run `node --test tests/backend-template.test.mjs`.
+  - Ask for required changes with severity, missing tests, and an approval naming the head SHA.
+
+  **CI:** the "Cloudflare Pages" check fails. The project's build command is `sh cloudflare-build.sh`,
+  which exists only on TUN-80's PR #128. PR #128's own notes expect this until it merges. Not caused by
+  this PR. Merging `main` after #128 lands should turn it green.
+
 ## Tests
 
 682/682 pass on `c958c2e` (no code changed). Not verified: anything on AWS — no credentials, no `sam`,
