@@ -147,10 +147,11 @@ export function templateProblems(template, samconfig) {
   const def = [num(d.ThrottlingRateLimit), num(d.ThrottlingBurstLimit)];
   if (def.join() !== DEFAULT_ROUTE.join()) problems.push(`default route throttle is ${fmt(def)}, approved ${fmt(DEFAULT_ROUTE)}`);
 
-  // CORS: exactly the approved browser origins, in any order.
+  // CORS: exactly the approved browser origins, in any order — compared entry by entry, so one entry holding
+  // "a,b" is not mistaken for the two origins a and b (PR review, round 1).
   const ao = (props("Api").CorsConfiguration || {}).AllowOrigins;
-  const origins = Array.isArray(ao) ? ao.map(String).sort() : [];
-  if (origins.join() !== [...ORIGINS].sort().join()) problems.push(`CORS origins are [${origins.join(", ")}], approved [${ORIGINS.join(", ")}]`);
+  const origins = Array.isArray(ao) ? ao.map((o) => (typeof o === "string" ? o : JSON.stringify(o))).sort() : [];
+  if (JSON.stringify(origins) !== JSON.stringify([...ORIGINS].sort())) problems.push(`CORS origins are [${origins.join(", ")}], approved [${ORIGINS.join(", ")}]`);
 
   // Reserved concurrency: the Globals value, and no function overriding it (0 would switch one off).
   const g = num(((t.Globals || {}).Function || {}).ReservedConcurrentExecutions);
@@ -271,7 +272,8 @@ test("the template check refuses each mistake it guards against, with the right 
     ["the retired origin back", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://music-garden.netlify.app\n"), /CORS origins are \[.*https:\/\/music-garden\.netlify\.app.*\], approved/],
     ["a deploy-preview origin", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://deploy-preview-1--tunegarden.netlify.app\n"), /CORS origins are \[.*deploy-preview-1--tunegarden.*\], approved/],
     ["any origin", TEMPLATE.replace(ORIGIN_LINES, "          - '*'\n"), /CORS origins are \[\*\], approved/],
-    ["a production origin dropped", TEMPLATE.replace("          - https://www.tunegarden.game\n", ""), /CORS origins are \[https:\/\/tunegarden\.game\], approved/],
+    ["both origins in one entry", TEMPLATE.replace(ORIGIN_LINES, "          - https://tunegarden.game,https://www.tunegarden.game\n"), /CORS origins are \[https:\/\/tunegarden\.game,https:\/\/www\.tunegarden\.game\], approved/],
+    ["a production origin dropped",TEMPLATE.replace("          - https://www.tunegarden.game\n", ""), /CORS origins are \[https:\/\/tunegarden\.game\], approved/],
     ["origins moved under Metadata", TEMPLATE.replace("      CorsConfiguration:\n", "    Metadata:\n      CorsConfiguration:\n"), /CORS origins are \[\], approved/],
   ];
   for (const [what, mutated, expect] of cases) {

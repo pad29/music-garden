@@ -27,3 +27,47 @@ back; from `tunegarden.game` and `www.tunegarden.game` it echoes those; from an 
 ## Owner's decisions
 
 None needed — no `needs-owner` label, no open question.
+
+## PR review
+
+### Round 1 (Astra via `ask.sh`, on bb6e069) — changes requested
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested on `bb6e069`.**
+
+1. **Medium — [tests/backend-template.test.mjs:153](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-28/tests/backend-template.test.mjs:153): the CORS comparison accepts an incorrect list.** Replacing both production entries with this single entry makes `templateProblems()` return `[]`:
+
+   ```yaml
+   AllowOrigins:
+     - https://tunegarden.game,https://www.tunegarden.game
+   ```
+
+   Both arrays produce the same `.join()` result, although one contains a single string and the other contains two origins. The guard therefore cannot guarantee that the production origins remain allowed. Compare array lengths and individual values after sorting.
+
+**Missing test:** add that single-entry mutation and require the CORS diagnostic. Keep the existing reversed-order/quoted-origin passing case.
+
+Other checks:
+
+- The only effective template change is removing the retired origin. No resource replacement is implied; AWS documents API definition/CORS updates as requiring [no interruption](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-apigatewayv2-api.html). The actual change set remains an owner check.
+- No additional required documentation changes found.
+- Focused tests: **4/4 passed**. Syntax: **29 scripts passed**. SAM lint reports a valid template, with sandbox errors accessing SAM metadata.
+- Full suite: **654 passed, 72 failed**, all failures from denied temporary-directory creation.
+
+**Review limitation:** I could not retrieve the PR body through CLI, web, or browser, so its checklist remains unverified. Against the source, “Save melody” is local-only, short shares use `#s=`, and successful sign-in alone does not prove progress sync. The owner’s deploy and live checks remain pending.
+
+No files changed.
+
+</details>
+
+My answers:
+
+1. **Medium — `.join()` lets one entry "a,b" pass as two origins.** Agreed. The check now compares the
+   sorted lists element by element (`JSON.stringify`); a non-string entry is stringified, so it fails too.
+   **Missing test added:** "both origins in one entry" must draw the CORS diagnostic. Audit: with the old
+   `.join()` comparison put back, that case fails. Reordered/quoted variant kept.
+- *Note (no severity): sign-in alone does not prove progress sync.* Agreed — progress is also kept
+  locally, so a reload proves nothing. The checklist now loads progress in a fresh private window (no
+  local copy) instead. *"Save melody" is local-only, short shares use `#s=`*: the checklist claims
+  neither; its cloud-song item uses the Jukebox's ☁️ In the cloud list and `#song=` links.
+- GPT's 72 suite failures are its sandbox refusing temp directories; here the suite is 726/726.
