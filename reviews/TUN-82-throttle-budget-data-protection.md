@@ -162,4 +162,16 @@ replaced by that check.
 
 ## PR review
 
-_None yet._
+- **Round 1 — not run.** `ask.sh` on head `c958c2e`: "usage limit — try again at Nov 14th, 2026 1:59
+  AM (codex exit 1)" (1:59 AM Chicago time). Stopped at Needs Input. The prompt is reproducible: the
+  ticket verbatim, the owner's three answers, `git diff origin/main...HEAD`, and the specific risks
+  (SAM transform of event `RouteSettings` + `DefaultRouteSettings`, fractional rates,
+  `ReservedConcurrentExecutions` in Globals, Budget shapes, replacements, `UsePreviousValue` for
+  `BudgetEmail`, the arithmetic, the docs). Ask for required changes with severity, missing tests or
+  checks, and an approval naming the head SHA.
+
+## Tests
+
+682/682 pass on `c958c2e` (no code changed). Not verified: anything on AWS — no credentials, no `sam`,
+and running a downloaded cfn-lint was refused. The owner's deploy runs `sam validate --lint` and shows
+the change set first.
