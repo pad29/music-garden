@@ -221,6 +221,17 @@ the same in an LF clone.
 text instead of the resolved path → 1; match `vendor` as a prefix → 1; leave `vendoredSources` out of
 `tools/check-syntax.mjs` → 1. The scanner run on `main`'s `index.html` finds all four third-party references.
 
+**Hosted previews, PR #133 head `7789397`** (answer 5; each preview's vendored files first byte-compared with
+the repository's — identical, `application/javascript` and `font/woff2`):
+- *Cloudflare branch preview* (`ao-tun-81-root.music-garden.pages.dev`, which serves `index.html` unchanged):
+  guest page load, 34 requests, **one host: its own origin.**
+- *Netlify deploy preview* (`deploy-preview-133--tunegarden.netlify.app`): 45 requests — 35 to its own origin,
+  **9 to `app.netlify.com` and 1 to `cdn.segment.com`.** Those come from Netlify's deploy-preview feedback
+  drawer: Netlify inserts `<script async src="/.netlify/scripts/cdp">` into the page, with the comment "This div
+  is automatically inserted by Netlify for all Deploy Preview URLs." **Production does not get it:**
+  `https://www.tunegarden.game/` serves `main`'s `index.html` byte for byte (diffed 2026-11-14). So no player
+  sees it, and it ends with Netlify (TUN-85); switching the drawer off in Netlify's settings is the owner's call.
+
 **Not verified here:** a real sign-up and sign-in, and the signed-in host list (answer 1 — the owner's
 checklist, before merge); a click that changes the game on `file://` (the onboarding card took the clicks; boot
-and the gate are verified, play is not); Firefox and Safari; the hosted previews (after the PR exists).
+and the gate are verified, play is not); Firefox and Safari; production itself until it deploys.
