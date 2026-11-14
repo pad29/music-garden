@@ -113,7 +113,11 @@ function growTrim(dir){
 document.getElementById("growBtn").onclick=()=>growTrim(+1);
 document.getElementById("trimBtn").onclick=()=>growTrim(-1);
 function rebuildField(){ buildGrid(); buildDrums(); trayPrune(); syncCursor(); renderVines(); renderBars(); camReseed(); }   // pitch grid + drum lane are ALWAYS rebuilt together, so they stay the SAME width (COLS) — never let them drift apart; the tray re-anchors, the cursor re-clamps, and the camera re-seeds so a shrinking field's own scroll clamp is not mistaken for the child
-function addColumns(n){ modelSetCols(COLS+n); rebuildField(); }
+// The field stops at MAX_COLS, the line applySong clamps a loaded song to, so a song a player built always
+// loads back whole (TUN-84). ＋ more and ＋ room both ask here, as － room asks about the 16-column floor.
+function fieldCanGrow(n){ if(COLS+n<=MAX_COLS) return true;
+  setStatus("The field is as long as a garden grows 🌱 — no more room after this."); return false; }
+function addColumns(n){ if(!fieldCanGrow(n)) return false; modelSetCols(COLS+n); rebuildField(); return true; }
 // The 16-column floor is STRUCTURAL, not a preference, and the reason is not the one the old comment
 // gave: COLS is assigned in five places and NOTHING ever grows it back — resetTransient only ever shrinks
 // (`if(COLS>16) removeColumns(COLS-16)`), so a Studio waltz trimmed to 6 columns would render every level

@@ -34,8 +34,8 @@ fail on structurally identical arrays.
 
 Serve locally: `npx http-server -p 8377 -c-1 .` → http://localhost:8377 — in an AO session,
 `ao preview start` instead (`.ao/launch.json`: the worktree, on a loopback port AO picks). Dev URL flags:
-`?dev` (level-jump dropdown, "relock instruments", "unlock quests", "clear quest runs"), `?reset` (wipe
-progress).
+`?dev` (level-jump dropdown, "relock instruments", "unlock quests", "clear quest runs"), `?reset` (asks,
+then wipes progress and quest runs; saved melodies stay; either answer drops it from the URL).
 
 Regenerators — slow, overwrite generated files, run only when their inputs changed:
 

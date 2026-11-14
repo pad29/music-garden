@@ -81,6 +81,9 @@ function simulate(options = {}) {
     sandbox = s;
     const oldDoc = s.document;
     s.location = { ...s.location, href, search: new URL(href).search, hash: new URL(href).hash };
+    // ?reset asks before it wipes (TUN-84). Say yes, the worst case: these tests use ?reset precisely so a
+    // boot that wrongly runs is caught writing.
+    s.confirm = () => true;
     for (const [key, value] of Object.entries(options.storage || {})) s.localStorage.setItem(key, value);
     const set = s.localStorage.setItem;
     s.localStorage.setItem = (key, value) => { writes.push({ key, value: String(value), file: active }); return set(key, value); };
