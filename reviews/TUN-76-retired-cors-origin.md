@@ -71,3 +71,38 @@ My answers:
   local copy) instead. *"Save melody" is local-only, short shares use `#s=`*: the checklist claims
   neither; its cloud-song item uses the Jukebox's ☁️ In the cloud list and `#song=` links.
 - GPT's 72 suite failures are its sandbox refusing temp directories; here the suite is 726/726.
+
+### Round 2 (Astra via `ask.sh`, on 4301d18) — changes requested (checklist only)
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested on `4301d18` — checklist only. Round 1’s code finding is resolved.** The comparison preserves array boundaries, the regression case is present, and restoring `.join()` in memory makes that case fail.
+
+1. **Medium — checklist items 1–2: replay cannot prove a new save.** An already-completed level remains completed in the old cloud record even if every new write fails. Completion only advances `done` when necessary (`js/level-engine.js:152–154`). Require completing a **previously unfinished level**, allow the 900 ms save debounce and request to finish, then verify that new completion in the fresh private session.
+
+2. **Medium — checklist item 3: the empty-list expectation can pass during a cloud failure.** `cloudSongList()` returns `[]` for failed requests (`js/cloud.js:29–30`), which displays “Nothing here yet.” This path never displays “Couldn't reach the cloud”; that warning belongs to song creation. Require a known existing cloud song to appear, or verify a successful `GET /songs` response when testing an empty account.
+
+3. **Low — checklist item 3: “▶ Load … should play it” contradicts the UI.** The cloud button calls `loadSong()`, which loads into Studio and instructs the player to press Play (`js/save-share.js:181–182,239–240`). Change the instruction to **Load, then press ▶ Play**.
+
+**Missing tests:** No additional automated regression cases required for this delta. The manual checklist needs the concrete new-completion save/load case and successful cloud-list case described above.
+
+The deployment instructions match the documented procedure; stopping on any replacement is stricter than the documentation.
+
+Verified: focused tests **4/4**, syntax **29 scripts**, and the in-memory mutation audit. I did not rerun the full suite or perform deployment/live playtesting. No files changed.
+
+</details>
+
+My answers (each claim checked in the source first):
+
+1. **Medium — a replay cannot prove a new save.** Agreed: `markPackageLevelDone` (`js/level-engine.js:152`)
+   only advances `done` past the old value. Checklist item 1 now asks for a level not finished before,
+   and a few seconds' wait for the 900 ms save debounce (`js/cloud.js:21`).
+2. **Medium — "Nothing here yet" can hide a cloud failure.** Agreed: `cloudSongList` returns `[]` on any
+   failure (`js/cloud.js:29–30`), and "Couldn't reach the cloud" is song creation's warning, not the
+   list's. Item 3 now wants a known cloud song listed, or else the `songs` request's status 200 in the
+   browser's Network tab.
+3. **Low — Load does not play.** Agreed: `loadSong` opens the Studio and says to press ▶ Play
+   (`js/save-share.js:181–182`). Item 3 now says Load, then ▶ Play.
+
+No missing automated tests listed. The checklist lives in the PR body (edited, not a commit); this
+commit records the round.
