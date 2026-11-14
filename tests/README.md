@@ -29,6 +29,15 @@ file left out is served as `index.html` in production, and the game never starts
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
 override) and honours a shell `#` comment.
 
+**The backend template.** `backend-template.test.mjs` (TUN-82) reads `backend/template.yaml` as text
+and pins its cost limits and data protection: every API route has its own throttle and the rates sum
+to the owner's 5 requests a second, a default throttle and a positive reserved concurrency exist, the
+user pool and both tables keep `Retain` and deletion protection, the tables keep point-in-time
+recovery, and the $30 budget has its four alerts, no fixed name and no filters. It also refuses an
+email address in the template or `samconfig.toml` (the repository is public). It is a static check, not
+CloudFormation validation — the owner's deploy runs `sam validate --lint`. Its mutation cases are
+kept as a second test, so the checker cannot quietly go blind.
+
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the
 worktree uncached, bound to `127.0.0.1` on AO's `${PORT}`; the url on that same origin; and

@@ -67,7 +67,7 @@ sam deploy --guided
 - **Disable rollback:** `N`
 - **ProgressFn / PreSignUpFn may not have authorization defined — OK?:** `Y` (the API itself is JWT-protected; this prompt is about the Lambda, which is fine)
 - **Save arguments to configuration file:** `Y` (writes `samconfig.toml` so future deploys are just `sam deploy`)
-- **BudgetEmail:** your address for the cost alerts (see [Limits and budget](#limits-and-budget)). `--guided` saves it into `samconfig.toml` as `parameter_overrides` — **delete that line before committing**: the repository is public. The stack keeps the value, so later deploys don't need it.
+- **BudgetEmail:** your address for the cost alerts (see [Limits and budget](#limits-and-budget)). It is a `NoEcho` parameter, which current SAM leaves out when it saves `samconfig.toml` — but **check `samconfig.toml` holds no address before committing**: the repository is public. The stack keeps the value, so later deploys don't need it.
 
 When it finishes it prints **Outputs**. You'll see four values:
 
@@ -100,8 +100,11 @@ on the command line — never in `samconfig.toml`, which is public:
 sam deploy --confirm-changeset --parameter-overrides BudgetEmail=you@example.com
 ```
 Later `sam deploy`s reuse the stored value (SAM asks CloudFormation for the previous value of any
-parameter it isn't given). Don't run `sam deploy --guided` against the existing stack: it would save the
-address into `samconfig.toml`.
+parameter it isn't given). Then **verify the address**: AWS Budgets emails a verification link (from an
+`@aws.com` sender; it expires after 12 hours). Open it while signed in to this AWS account, then check the
+budget's detail page (Billing and Cost Management → Budgets) shows the address as **Active**. *Pending* or
+*Inactive* means no alerts will arrive — use *Resend verification* or *Send Notification* there. An
+address already verified in this account through another AWS service shows Active at once.
 
 ## Tear down (if you ever want to remove everything)
 ```powershell
@@ -117,8 +120,9 @@ Set in `template.yaml` by TUN-82. The cost arithmetic — every route used flat 
 list prices — is in `reviews/TUN-82-throttle-budget-data-protection.md`.
 
 **API throttle.** Each route has a rate limit (requests per second) and a burst, shared by **every**
-caller — HTTP APIs have no per-user limits — so the API as a whole serves at most the sum, 5 requests
-a second:
+caller — HTTP APIs have no per-user limits — so the API's nominal steady-state rate is the sum, 5
+requests a second. AWS applies throttles **best-effort**: bursts and other factors can briefly exceed
+them, so treat the numbers as targets, not a guaranteed ceiling.
 
 | Route | Rate/s | Burst | Why |
 |---|---|---|---|
@@ -129,13 +133,22 @@ a second:
 | any route added later | 0.25 | 2 | `DefaultRouteSettings` on `Api` |
 
 Over a limit, API Gateway answers `429 Too Many Requests` without calling the Lambda. The game treats it
-like any failed call: a save that fails is silent and the next save sends everything again; sharing,
-loading or deleting a song shows a "couldn't reach the cloud"-style toast. One known gap: a failed
-progress load at sign-in pushes this device's progress over the cloud copy — TUN-106. To change a
-limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the comment on
-`Api` and this table, and redo the arithmetic: with today's payload sizes even 5 requests a second
-saturated costs far more than $30 a month, so the throttle bounds how *fast* money can go and the
-budget email (and TUN-87's switch-off) bound the month.
+like any failed call, with no automatic retry:
+
+- A progress save that fails is silent; the next save sends the whole progress again.
+- Sharing a big song: "⚠️ Couldn't reach the cloud — please try again." Loading one from Melodies:
+  "⚠️ Couldn't load that song." Deleting one: "⚠️ Couldn't delete."
+- **Misleading:** a friend's `#song=` link says "⚠️ That song link didn't work — it may have been
+  deleted.", and a failed Melodies list shows "Nothing here yet — share a big song to store it in the
+  cloud." as if the player's cloud songs were gone (TUN-107).
+- **Data loss:** a failed progress load at sign-in pushes this device's progress over the cloud copy
+  (TUN-106).
+
+To change a limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the
+comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the arithmetic. The
+arithmetic is a set of saturated-rate *scenarios*, not an upper bound: with today's payload sizes even 5
+requests a second costs far more than $30 a month. The throttle slows how fast money can go; the budget
+email (and TUN-87's switch-off) bound the month.
 
 **Reserved concurrency.** `Globals` reserves 2 concurrent executions for each of the three functions
 (6 of the account's 1,000; Lambda keeps 100 unreserved). It caps what reaches a function whatever the
@@ -145,9 +158,13 @@ API does, and guarantees the game's functions can run if something else in the a
 **Budget.** `MonthlyBudget` is an AWS Budget of **$30 a month for the whole AWS account** — it has no
 cost filters, so anything else in the account counts too. It emails `BudgetEmail` when actual spend
 passes 50 %, 80 % and 100 %, and when AWS forecasts the month will pass 100 %. Budget alerts with email
-are free. Billing data lags by hours, so an alert is a warning, not a stop. Change the amount in
-`BudgetLimit`. Change the address with
-`sam deploy --parameter-overrides BudgetEmail=new@example.com`.
+are free. Billing data lags by hours, so an alert is a warning, not a stop. Alerts only reach an address
+the budget shows as **Active** (see the verification step under [Future deploys](#future-deploys)).
+Change the amount in `BudgetLimit`. Change the address with
+`sam deploy --confirm-changeset --parameter-overrides BudgetEmail=new@example.com`: a new address
+**replaces** the budget (CloudFormation creates the new one, then deletes the old), which is why the
+budget has no fixed name — CloudFormation generates one, so look for it on the Budgets page by its
+$30.00 amount. Verify the new address the same way.
 
 **Data protection.** The user pool and both tables have `DeletionPolicy: Retain` and
 `UpdateReplacePolicy: Retain` (kept if the stack is deleted or a change would replace them) and AWS's

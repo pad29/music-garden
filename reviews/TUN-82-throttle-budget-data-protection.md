@@ -37,6 +37,10 @@ interruption**, so the expected change set replaces **nothing** — the owner co
 
 ## The arithmetic
 
+> **Corrected in PR review round 1** (§ *The arithmetic, corrected*, below): `DELETE` was underpriced,
+> PITR was charged on the index too, and "worst case" overstated what these figures bound. They are
+> saturated-rate scenarios, not upper bounds. This section is kept as first written.
+
 **Prices (us-east-1), from AWS's pages on 2026-11-13.** The pricing tables did not render, so these are
 quoted from each page's worked examples:
 
@@ -155,10 +159,52 @@ Built as planned with split A. Departures from the plan:
 properties. Added: `MonthlyBudget`. `UserPoolClient` is untouched; its ID is hard-coded in
 `js/cloud.js` `AUTH`.
 
-**Budget confirmation email:** AWS Budgets' direct email subscribers are not believed to get a
-confirmation email (unverified; SNS topic subscriptions do). If none arrives, the owner checks the
-Budgets console lists the address. The ticket's "confirms the budget's confirmation email arrives" is
-replaced by that check.
+**Budget confirmation email:** ~~not believed to get a confirmation email~~ — wrong, corrected in PR
+review round 1 (finding 1). AWS Budgets now emails new direct recipients a verification link, and only
+an **Active** recipient gets alerts. The ticket's "confirms the budget's confirmation email arrives"
+stands, and the owner also checks for Active status.
+
+## The arithmetic, corrected (PR review round 1)
+
+Same prices and method, with three corrections from GPT's findings 3 and 4:
+
+- **`DELETE /songs/{id}`:** a real delete of a 16 KB song costs 16 WRU on the table plus 16 on the
+  ALL-projection `byOwner` index, after the read. That is $21.87 per million, not $2.49. Each delete
+  needs a prior create, but at saturation creates and deletes run at the same 0.25/s.
+- **PITR** is billed on table storage only; the index's half of song storage pays storage, not PITR.
+- **These are saturated-rate scenarios, not upper bounds.** `songs.mjs` caps a song at 100,000
+  JavaScript *characters*, not bytes, so multi-byte text can make a song ~300 KB (GPT's example:
+  `{v:3,x:"一".repeat(100000)}` passes at 100,014 characters and serialises to 300,014 bytes). The
+  200 ms Lambda duration is an assumption, and AWS throttles best-effort, so bursts can briefly exceed
+  the nominal rates.
+
+| Scenario | Split A (~5 req/s, chosen) | Split B (~1.5 req/s) |
+|---|---|---|
+| Today, progress 400 KB, songs 100 KB | $1,820.58/month (≈ $2.45/hour) | $461.53/month |
+| Today, songs ~300 KB (multi-byte) | $2,467.25/month (≈ $3.32/hour) | — |
+| After TUN-83, progress 8 KB, songs 16 KB | **$119.62/month** (≈ $0.16/hour) | $28.79/month |
+
+Song storage can grow, cumulatively: split A after TUN-83 by up to 21.4 GB/month (+$7.50/month); today
+by up to 134 GB/month (100 KB songs) or 402 GB/month (300 KB).
+
+<details><summary>Split A after TUN-83, per route (corrected)</summary>
+
+| Route | Limit | Requests/month | $ per million | $/month |
+|---|---|---|---|---|
+| `PUT /progress` | 2/s | 5.36M | $6.62 | $35.44 |
+| `GET /progress` | 1/s | 2.68M | $2.46 | $6.59 |
+| `GET /songs/{id}` | 1/s | 2.68M | $3.31 | $8.86 |
+| `POST /songs` | 0.25/s | 0.67M | $34.12 | $22.84 |
+| `GET /songs` | 0.25/s | 0.67M | $14.79 | $9.90 |
+| `PUT /songs/{id}` | 0.25/s | 0.67M | $31.87 | $21.34 |
+| `DELETE /songs/{id}` | 0.25/s | 0.67M | $21.87 | $14.64 |
+| **Total** | 5/s | 13.39M | | **$119.62** |
+
+</details>
+
+The owner's choice of split A rested on its rate per hour being small. Corrected, it is ≈ $0.16/hour
+after TUN-83 instead of $0.14, so a few hours of billing lag still cost well under a dollar. The
+conclusion stands, and the hand-off reports the change.
 
 ## PR review
 
@@ -169,9 +215,93 @@ replaced by that check.
   `ReservedConcurrentExecutions` in Globals, Budget shapes, replacements, `UsePreviousValue` for
   `BudgetEmail`, the arithmetic, the docs). Ask for required changes with severity, missing tests or
   checks, and an approval naming the head SHA.
+- **Round 1 — run on `9eded2a`** (owner: "Let's run the GPT review now", 2026-11-14, 8:35 AM Chicago).
+  **CHANGES REQUESTED**: one high, four medium, two low, plus five owner/deploy checks.
+
+<details><summary>GPT's round 1 review, verbatim</summary>
+
+Reviewed **9eded2aee8140ad741a24041b1afeb1e20cc5522** against `origin/main`. No files changed. SAM 1.162.0 is now installed: lint validation passed, and an in-memory transform preserved all seven route overrides. AWS deployment remains unverified.
+
+I require these changes:
+
+1. **High — [review record:158](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/reviews/TUN-82-throttle-budget-data-protection.md:158): the replacement budget-email acceptance check can leave alerts disabled.**  
+   AWS now requires verification for new direct email recipients, separately from SNS. An address merely appearing in the console is insufficient: it can be Pending or Inactive and receive nothing. Replace this instruction, and update `backend/README.md`, to require completing verification and confirming **Active** status; already-verified addresses need no new email. [AWS recipient-verification documentation](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-email-recipients.html).
+
+2. **Medium — [template.yaml:38](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/backend/template.yaml:38), `backend/README.md:149–150`: the documented email-change command cannot safely replace this fixed-name budget.**  
+   Changing `BudgetEmail` changes `NotificationsWithSubscribers`, which requires resource replacement. CloudFormation creates replacements before deleting originals, but `tune-garden-monthly` must be unique within the account. Remove the fixed name before initial deployment, or provide a working replacement/name-rotation procedure. The advertised single parameter override is insufficient. [Budget replacement rules](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-budgets-budget.html), [budget-name uniqueness](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-budgets-budget-budgetdata.html), [replacement ordering](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-updatereplacepolicy.html).
+
+3. **Medium — [review record:84](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/reviews/TUN-82-throttle-budget-data-protection.md:84): DELETE is materially underpriced.**  
+   Deleting a 16 KiB song consumes 16 WRUs for the table **plus 16 for its ALL-projection GSI**, alongside the preceding read. Under the record's other assumptions, this is approximately **$21.87/million, or $14.64/month**, versus the reported $2.49/million and $1.67/month. Correcting this alone raises split A's $106.65 to approximately **$119.62**. Recalculate both splits and today's scenario. Also correct the storage calculation: PITR charges exclude GSIs. [DynamoDB delete accounting](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html), [GSI write accounting](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html), [PITR pricing basis](https://aws.amazon.com/dynamodb/pricing/).
+
+4. **Medium — [review record:53](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/reviews/TUN-82-throttle-budget-data-protection.md:53): the "worst case" assumes a song-size bound the backend does not enforce.**  
+   `songs.mjs` checks JavaScript string length, not UTF-8 bytes or DynamoDB item size. An in-memory example `{v:3,x:"一".repeat(100000)}` passes the current guard at **100,014 characters**, yet serializes to **300,014 bytes**. The 100 KB assumption therefore understates storage, reads, writes and response transfer. Recalculate using enforceable sizes, including item overhead, or label these figures as illustrative scenarios. Likewise, 200 ms Lambda duration is an assumption, not a worst-case bound. Validator changes can remain in TUN-83.
+
+5. **Medium — [backend/README.md:119](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/backend/README.md:119), `template.yaml:289–292`, review arithmetic: the throttle is falsely described as a guaranteed ceiling.**  
+   AWS explicitly describes HTTP API throttling as best effort; bursts and other factors can exceed configured rates. Replace "at most," "ceiling," and guaranteed burn-rate language with a **nominal steady-state target**, and state that saturated-rate arithmetic is not an upper bound. Preserve the owner-approved split; the problem is the claimed guarantee. [AWS HTTP API throttling documentation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-throttling.html).
+
+6. **Low — [backend/README.md:131](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/backend/README.md:131), review record's "client under a 429": the Melodies-list failure is omitted.**  
+   `cloudSongList()` returns `[]` on 429, so `openMelodies()` displays **"Nothing here yet — share a big song to store it in the cloud."** Existing cloud songs appear absent, without a retry message. Document this additional gap and the actual cloud-link message suggesting deletion. TUN-106 is not the only misleading failure path; client fixes may remain separate.
+
+7. **Low — [backend/README.md:70](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/backend/README.md:70), `template.yaml:13–14`, review record: the claimed guided-deploy email leak is inaccurate.**  
+   Current SAM marks prompted `NoEcho` parameters hidden and excludes them when saving configuration. Correct the categorical claim that `--guided` writes this parameter into `samconfig.toml`. Retain the instruction to inspect configuration before committing. [SAM configuration-saving implementation](https://raw.githubusercontent.com/aws/aws-sam-cli/develop/samcli/commands/deploy/guided_config.py).
+
+The remaining checks are:
+
+1. **Owner change-set check:** create an unexecuted change set against the deployed stack. Record every replacement, including `Conditional`; explicitly inspect `UserPool`, `UserPoolClient`, both tables and `Api`. Local transformation cannot establish deployed-stack state.
+2. **Budget lifecycle check:** verify all four notification thresholds, account-wide scope and Active recipient status; demonstrate receipt with a controlled notification test. After fixing item 2, verify changing the address succeeds and a subsequent deploy without parameter overrides preserves it.
+3. **Deployed configuration check:** read back all seven route settings, default settings, concurrency reservations, deletion protection and PITR status. Verify existing accounts and saved data remain accessible.
+4. **429 and smoke checks:** exercise bounded throttling requests and verify recovery after token refill. Cover progress push, large-song sharing, Melodies listing/loading/deleting and anonymous `#song=` loading. Mock failed sign-in pulls to avoid triggering the acknowledged TUN-106 overwrite against real player data; verify no automatic retry loop.
+5. **Production owner check:** confirm sign-in, cross-device progress sync and an existing cloud-song link on `https://tunegarden.game`, recording these as pending until performed.
+
+**CHANGES REQUESTED**
+
+</details>
+
+**My answers (round 1)** — I agree with all seven findings. I checked findings 1, 2 and 7 against
+AWS's and SAM's own pages and source before agreeing. GPT's SAM claim also checked out: SAM CLI
+1.162.0 is installed on this machine (it wasn't on this session's PATH), and its `sam validate --lint`
+reports "valid SAM Template".
+
+1. **High — agree.** AWS's page says new direct recipients get a verification email and "only verified
+   addresses receive budget notifications". Fixed: the `backend/README.md` deploy steps and the
+   hand-off require completing the verification link and seeing **Active**. The template comment says so too.
+2. **Medium — agree.** `NotificationsWithSubscribers` is "Update requires: Replacement". Fixed: `BudgetName`
+   removed (CloudFormation generates one). The template says why. The README's change-the-address step
+   now uses `--confirm-changeset` and says the budget is replaced and needs verifying again.
+3. **Medium — agree.** I had priced a delete at 1 WRU, as a miss. Recomputed (above): GPT's $21.87/M and
+   $119.62 reproduce exactly. PITR is now on the table half only.
+4. **Medium — agree.** The figures are relabelled as saturated-rate scenarios, with a multi-byte song
+   scenario added. The README no longer calls them a bound. Enforcing byte sizes stays in TUN-83.
+5. **Medium — agree.** "At most" and "ceiling" are gone from the README, the template comment and
+   README.md § Backend. They now say "nominal steady-state rate", "best-effort" and "a target, not a
+   guaranteed ceiling". The split is unchanged.
+6. **Low — agree.** `backend/README.md` now lists every 429 path with its actual message, including the
+   Melodies "Nothing here yet" line and the `#song=` "may have been deleted" line. Both misleading
+   messages are filed as **TUN-107** (Backlog, S, Bug).
+7. **Low — agree.** SAM's `_save_parameter_overrides` skips values flagged `Hidden`, which is how guided
+   marks `NoEcho` prompts. The README and the template comment drop the claim and keep "check
+   `samconfig.toml` holds no address before committing".
+
+**Missing tests and checks:**
+- **Added:** `tests/backend-template.test.mjs`. It statically pins the seven route throttles summing to
+  5/s, the default throttle, reserved concurrency ≥ 1, `Retain` and deletion protection on the pool and
+  tables, PITR, the budget's $30 / four alerts / no name / no filters / `!Ref BudgetEmail`, `NoEcho` with
+  no default, and no email address in `template.yaml` or `samconfig.toml`. Its 13 mutation cases are
+  kept as a second test.
+- **GPT's five owner checks** went into the deploy checklist: the unexecuted change set, inspecting
+  `UserPool`, `UserPoolClient`, both tables and `Api` including `Conditional`; recipient Active; a read-back
+  of the deployed settings; a bounded 429 check on a nonexistent song ID, then recovery; the production
+  smoke test. Two are not done:
+  - The live 429 check skips progress sync, sharing and Melodies, because that would need a real
+    account under TUN-106's overwrite risk; the game paths are checked by reading the code above.
+  - The address-change rehearsal is skipped: replacing the budget would need re-verifying the address.
+    The README documents the steps instead.
 
 ## Tests
 
 682/682 pass on `c958c2e` (no code changed). Not verified: anything on AWS — no credentials, no `sam`,
 and running a downloaded cfn-lint was refused. The owner's deploy runs `sam validate --lint` and shows
 the change set first.
+
+After round 1: see the round's commit message and the hand-off for the suite count. `sam validate --lint`
+passes locally (SAM CLI 1.162.0).

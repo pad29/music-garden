@@ -216,7 +216,7 @@ To redeploy backend changes:
 cd backend
 sam build && sam deploy
 ```
-See `backend/README.md` for first-time setup. The API is throttled to 5 requests a second in total, each function has a small reserved concurrency, an AWS Budget emails the owner at $15, $24 and $30 of the month's $30 and when the forecast passes $30, and the user pool and both tables are protected from deletion (both tables with point-in-time recovery) — `backend/README.md` § Limits and budget.
+See `backend/README.md` for first-time setup. The API is throttled to a nominal 5 requests a second in total (AWS throttles best-effort), each function has a small reserved concurrency, an AWS Budget emails the owner at $15, $24 and $30 of the month's $30 and when the forecast passes $30 (once the address is verified), and the user pool and both tables are protected from deletion (both tables with point-in-time recovery) — `backend/README.md` § Limits and budget.
 
 ---
 

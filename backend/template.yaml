@@ -10,8 +10,8 @@ Description: Music Garden backend — Cognito (username+password) auth + per-use
 Parameters:
   # Never commit the address (the repository is public): pass it once, on the first deploy after TUN-82, with
   #   sam deploy --parameter-overrides BudgetEmail=you@example.com
-  # Later `sam deploy`s reuse the stored value. Never `sam deploy --guided` again: it would save the address
-  # into samconfig.toml.
+  # Later `sam deploy`s reuse the stored value. Check samconfig.toml holds no address before committing it.
+  # AWS emails the address a verification link; alerts only go out once the budget shows it as Active.
   BudgetEmail:
     Type: String
     NoEcho: true
@@ -31,11 +31,12 @@ Globals:
 Resources:
 
   # --- Cost alert: $30 a month across the WHOLE AWS account (no cost filters), emailed to BudgetEmail. ---
+  # No BudgetName on purpose: changing the notifications (a new BudgetEmail) REPLACES the budget, and
+  # CloudFormation creates the new one before deleting the old — a fixed name would collide.
   MonthlyBudget:
     Type: AWS::Budgets::Budget
     Properties:
       Budget:
-        BudgetName: tune-garden-monthly
         BudgetType: COST
         TimeUnit: MONTHLY
         BudgetLimit:
@@ -203,7 +204,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SongsTable
-      # Route throttles (requests/second, shared by ALL callers; over it → 429). See the note on Api.
+      # Route throttles (nominal requests/second, shared by ALL callers; over it → 429). See the note on Api.
       Events:
         Create:
           Type: HttpApi
@@ -286,10 +287,12 @@ Resources:
               ThrottlingBurstLimit: 10
 
   # HTTP API with a built-in Cognito JWT authorizer (validates the ID token; audience = app client).
-  # Throttling: each route has its own limit, shared by every caller, so the API's ceiling is their SUM —
-  # 5 requests/second today (progress 2 + 1, song links 1, the four other song routes 0.25 each). A route
-  # added later without its own RouteSettings gets DefaultRouteSettings. Change a limit in its event's
-  # RouteSettings, add it to the sum above, and redo the arithmetic in the TUN-82 review record.
+  # Throttling: each route has its own limit, shared by every caller; the API's nominal steady-state rate
+  # is their SUM — 5 requests/second today (progress 2 + 1, song links 1, the four other song routes 0.25
+  # each). AWS applies throttles best-effort: bursts and other factors can briefly exceed them, so this is
+  # a target, not a guaranteed ceiling. A route added later without its own RouteSettings gets
+  # DefaultRouteSettings. Change a limit in its event's RouteSettings, update the sum above, and redo the
+  # arithmetic in the TUN-82 review record. tests/backend-template.test.mjs holds these invariants.
   Api:
     Type: AWS::Serverless::HttpApi
     Properties:
