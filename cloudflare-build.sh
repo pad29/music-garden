@@ -6,8 +6,9 @@
 # no docs, backend/, tests/, tools/, reviews/, spike/ or .claude/. If you add a folder the game loads
 # at run time, add it here AND to netlify.toml's build command while both hosts exist.
 # tests/cloudflare-publish.test.mjs holds this file to a strict form: `set -eu`, then only
-# `rm -rf site`, `mkdir site` and `cp [-r] <name> site/<name>` steps joined by `&&`. It refuses
-# anything else, so keep to that form.
+# `rm -rf site`, `mkdir site` and `cp [-r] <name> site/<name>` steps joined by `&&`, all on ONE line.
+# It refuses anything else, so keep to that form. One line matters: under `set -e` a failure inside an
+# `&&` list does not stop the script, so a second line would run, and the build pass, after a failed copy.
 #
 # A path that is not a real file: with no 404.html in site/, Pages treats the project as a single-page
 # app and serves index.html in its place. So a missing js/ file is not a 404 here either: the browser

@@ -86,13 +86,18 @@ test("anything that is not a plain copy is refused, never skipped", () => {
   assert.deepEqual(problems({ script: sh("\nrm -rf site", "\n# rm -rf site") }), ['cloudflare-build.sh: refused "(no build steps)"']);
 });
 
-test("a copy on a live line after a commented-out one counts; the commented one does not", () => {
-  const split = sh(" && cp -r voice site/voice && cp -r samples site/samples",
-    "\n# cp -r spike site/spike && cp -r voice site/voice\ncp -r voice site/voice && cp -r samples site/samples");
-  assert.deepEqual(problems({ script: split }), []);
-  const dropped = sh(" && cp -r voice site/voice && cp -r samples site/samples",
-    "\n# cp -r voice site/voice\ncp -r samples site/samples");
-  includesAll(problems({ script: dropped }), ["cloudflare-build.sh does not run: cp -r voice site/voice"]);
+// Exactly one chain line. Under `set -e`, a failure inside an `&&` list does not stop the script, so a
+// second line would run after a failed copy and the build would "succeed" half-published (GPT's PR
+// review, finding 3; the execution test below shows the single chain failing instead).
+test("a second command line is refused, even one that would publish correctly; comment lines are fine", () => {
+  const tail = " && cp -r voice site/voice && cp -r samples site/samples";
+  assert.deepEqual(problems({ script: sh(tail, "\ncp -r voice site/voice && cp -r samples site/samples") }),
+    ['cloudflare-build.sh: refused "a second command line: cp -r voice site/voice && cp -r samples site/samples"']);
+  assert.deepEqual(problems({ script: sh(" && cp -r samples site/samples", "\ncp -r samples site/samples") }),
+    ['cloudflare-build.sh: refused "a second command line: cp -r samples site/samples"']);
+  // A comment line between `set -eu` and the chain, or a commented-out copy after it, changes nothing.
+  assert.deepEqual(problems({ script: sh("set -eu\n", "set -eu\n# the copy:\n") }), []);
+  assert.deepEqual(problems({ script: REAL_SH + "# cp -r spike site/spike\n" }), []);
 });
 
 test("a valid copy of something the game does not load is caught — spike/ above all", () => {
@@ -129,6 +134,47 @@ test("Netlify must publish site/, in [build] and in any override", () => {
   assert.deepEqual(problems({ toml: REAL_TOML + '\n[context.production]\n  publish = "dist"\n' }),
     ['netlify.toml [context.production] publishes "dist", not "site"']);
   assert.deepEqual(problems({ toml: swap(REAL_TOML, 'publish = "site"', "") }), ["netlify.toml [build] sets no publish directory"]);
+});
+
+// Parity reads Netlify's commands strictly too: the lenient Netlify checker skips a step it can't read,
+// so each of these passed parity before (GPT's PR review, finding 1), in [build] and in an override.
+test("a Netlify command with anything but plain copies is refused, in [build] and in every override", () => {
+  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
+  const mutants = [
+    [real + " && cp -R spike site/spike", "cp -R spike site/spike"],
+    [real + " && cp -r backend site", "cp -r backend site"],
+    [real + " && rm site/js/boot.js", "rm site/js/boot.js"],
+    ["exit 0 && " + real, "exit 0"],
+  ];
+  for (const [cmd, refused] of mutants) {
+    assert.deepEqual(problems({ toml: swap(REAL_TOML, `"${real}"`, `"${cmd}"`) }), [`netlify.toml [build]: refused "${refused}"`]);
+    for (const ctx of ["production", "deploy-preview"])
+      assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.${ctx}]\n  command = "${cmd}"\n` }),
+        [`netlify.toml [context.${ctx}]: refused "${refused}"`]);
+  }
+  // Control: an override that repeats the real command is fine.
+  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\n  command = "${real}"\n` }), []);
+});
+
+// Quoted keys are valid TOML; a reader that misses them would treat the setting as absent (finding 2).
+test("quoted and dotted command/publish keys are read, or refused — never ignored", () => {
+  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
+  const short = "mkdir -p site && cp index.html site/index.html && cp -r js site/js";
+  assert.deepEqual(problems({ toml: REAL_TOML + '\n[context.production]\n  "publish" = "."\n' }),
+    ['netlify.toml [context.production] publishes ".", not "site"']);
+  assert.deepEqual(problems({ toml: REAL_TOML + "\n[context.production]\n  'publish' = \"dist\"\n" }),
+    ['netlify.toml [context.production] publishes "dist", not "site"']);
+  includesAll(problems({ toml: REAL_TOML + `\n[context.deploy-preview]\n  "command" = "${short}"\n` }),
+    ["cloudflare-build.sh runs cp -r voice site/voice; netlify.toml [context.deploy-preview] does not"]);
+  // Controls: the same quoted keys with the right values.
+  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\n  "publish" = "site"\n  "command" = "${real}"\n` }), []);
+  // A dotted key can't be read here, so it is refused rather than taken as absent.
+  includesAll(problems({ toml: REAL_TOML + `\n[context]\n  production.command = "${short}"\n` }),
+    ["netlify.toml: 1 command/publish line(s) in a form this check can't read"]);
+  includesAll(problems({ toml: 'build.publish = "."\n' + REAL_TOML }),
+    ["netlify.toml: 1 command/publish line(s) in a form this check can't read"]);
+  // But a command in a table that never deploys (Netlify Dev's [dev]) is not counted.
+  assert.deepEqual(problems({ toml: REAL_TOML + '\n[dev]\n  command = "npx http-server"\n' }), []);
 });
 
 // ---- A scratch repository: a few files in each folder, plus everything that must stay out. ----
@@ -205,9 +251,18 @@ test("run for real, twice over a stale site/: exactly the allowed trees, byte fo
     writeFileSync(join(dir, "site", "spike", "old.html"), "stale");
     writeFileSync(join(dir, "site", "js", "gone.js"), "stale");
     check();
-    // And a missing source folder fails the build instead of publishing a partial site.
-    rmSync(join(dir, "voice"), { recursive: true });
-    const broken = spawnSync(bash, ["-c", "sh cloudflare-build.sh"], { cwd: dir, encoding: "utf8" });
-    assert.notStrictEqual(broken.status, 0, "a build missing voice/ must fail");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A missing source fails the build instead of publishing a partial site — wherever it sits in the
+// chain, not only last (GPT's PR review, finding 3: a failure mid-chain must still fail the script).
+test("run for real: a missing index.html, js/, voice/ or samples/ fails the build", { skip: bash ? false : "no bash found" }, () => {
+  for (const missing of ["index.html", "js", "voice", "samples"]) {
+    const dir = scratch();
+    try {
+      rmSync(join(dir, missing), { recursive: true });
+      const run = spawnSync(bash, ["-c", "sh cloudflare-build.sh"], { cwd: dir, encoding: "utf8" });
+      assert.notStrictEqual(run.status, 0, `a build missing ${missing} must fail`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
 });

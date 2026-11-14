@@ -20,7 +20,7 @@ export function buildCommands(toml) {
   for (const line of toml.split(/\r?\n/)) {
     const header = line.match(/^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/);
     if (header) { table = header[1]; continue; }
-    const m = line.match(/^\s*command\s*=\s*(?:"([^"]*)"|'([^']*)')/);   // a real line, never a # comment
+    const m = line.match(/^\s*(?:command|"command"|'command')\s*=\s*(?:"([^"]*)"|'([^']*)')/);   // a real line, never a # comment
     if (m && table && (table === "build" || table.startsWith("context.")))
       out.push({ table, command: m[1] ?? m[2] });
   }
@@ -77,7 +77,7 @@ export function publishDirs(toml) {
   for (const line of toml.split(/\r?\n/)) {
     const header = line.match(/^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/);
     if (header) { table = header[1]; continue; }
-    const m = line.match(/^\s*publish\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    const m = line.match(/^\s*(?:publish|"publish"|'publish')\s*=\s*(?:"([^"]*)"|'([^']*)')/);
     if (m && table && (table === "build" || table.startsWith("context.")))
       out.push({ table, dir: m[1] ?? m[2] });
   }

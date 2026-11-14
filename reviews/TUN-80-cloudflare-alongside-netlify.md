@@ -430,3 +430,118 @@ project `music-garden`:
 the project's domain as `music-garden.pages.dev` and no production deployment. The Astro page is what the
 hostname shows until the first production build. Checking production after the merge must confirm the game
 replaces it.
+
+## PR review (GPT through `ask.sh`, Astra — AO's reviewer is out of service)
+
+### Round 1 — on `bc7fd42`: changes requested
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+**Changes requested** for head `bc7fd428854d88830952231a9f2df10dbbbdb07e`. No files edited.
+
+1. **Medium — Netlify parity still silently ignores commands that change publication.**  
+   [tests/helpers/cloudflare-publish.mjs:56](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/tests/helpers/cloudflare-publish.mjs:56)
+
+   The new parity guarantee reuses permissive `publishCopies`. I reproduced `cloudflareProblems(...) === []` after independently:
+   - Appending `cp -R spike site/spike`.
+   - Appending `cp -r backend site`.
+   - Appending `rm site/js/boot.js`.
+   - Prefixing the command with `exit 0 &&`.
+
+   A production-context override containing the backend copy also passes. These configurations publish forbidden content, remove required code, or skip publication entirely. This contradicts README’s claim that the test fails when either host publishes outside its list.
+
+   **Required:** validate every Netlify command used by the new parity check without silently discarding unsupported steps. Preserve the existing Netlify helper’s compatibility contract through a separate strict path if necessary.
+
+   **Tests to add:** each mutation above in `[build]`, `[context.production]`, and `[context.deploy-preview]`; each must fail the new guard.
+
+2. **Medium — Valid quoted TOML keys bypass publish-directory validation.**  
+   [tests/helpers/netlify-publish.mjs:80](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/tests/helpers/netlify-publish.mjs:80)
+
+   Appending this valid override returns no problems:
+
+   ```toml
+   [context.production]
+   "publish" = "."
+   ```
+
+   Netlify would publish the repository root, while the checker assumes inherited `site`. The regex only recognizes the bare key. Quoted `command` keys similarly escape the command enumeration used by parity.
+
+   **Required:** recognize equivalent quoted keys, or explicitly reject unsupported configuration syntax rather than treating it as absent.
+
+   **Tests to add:** quoted `publish` overrides selecting `"."` and `"dist"`; quoted `command` overrides omitting runtime assets; positive controls using quoted keys with the correct configuration.
+
+3. **Medium — Flattening separate command chains hides successful partial builds.**  
+   [tests/helpers/cloudflare-publish.mjs:26](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/tests/helpers/cloudflare-publish.mjs:26), [tests/cloudflare-publish.test.mjs:208](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/tests/cloudflare-publish.test.mjs:208)
+
+   The comment that a newline is equivalent to `&&` under `set -e` is incorrect. Replace the separator before the final samples copy with a newline:
+
+   ```sh
+   rm -rf site && mkdir site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice
+   cp -r samples site/samples
+   ```
+
+   The parser accepts it. With shell functions simulating a failed `js/` copy, I measured **exit 0**, with samples copied afterward and voice skipped. The original single-chain script returns **exit 1**.
+
+   The execution test’s missing-`voice/` case does not catch this layout: voice is the final command of the first chain.
+
+   **Required:** restrict accepted layouts to ones that preserve failure propagation, or validate their control flow correctly.
+
+   **Tests to add:** this split-chain case with missing `js/` and missing `index.html`. Require parser rejection or a nonzero execution result. Retain successful supported multiline/comment cases.
+
+4. **Medium — Complete the promised preview verification evidence.**  
+   [reviews/TUN-80-cloudflare-alongside-netlify.md:398](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/reviews/TUN-80-cloudflare-alongside-netlify.md:398)
+
+   The record proves a check/deployment for `ed3c759`, but does not record the promised second-push preview update with unchanged production. It records GET responses for trailing-slash misses, but no browser observation of their player-visible behavior.
+
+   **Required manual checks:** attach current-head Cloudflare check/deployment evidence to the PR; establish that a subsequent push updates the branch preview without changing production; open both `/no-such-page` and `/no-such-page/` in a browser and record the outcome. Later commits only change the review record, so this does not require repeating every unchanged gameplay check.
+
+   Actual narration playback, decoded Piano samples, and `file://` remain explicitly pending owner checks before merge. The owner-approved **production check after merge is acceptable**; keep `Refs TUN-80` and the ticket open.
+
+The published-tree `404.html` boundary is appropriate, including nested files; this agrees with [Cloudflare’s routing documentation](https://developers.cloudflare.com/pages/configuration/serving-pages/). Netlify’s actual command changes only by removing `spike/`. I found no additional AGENTS.md invariant violation. Against the original ten findings, **1 and 4 remain incompletely guarded; 6 and 7 remain incompletely verified; 2, 3, 5, 8, 9 and 10 are addressed**.
+
+Validation performed:
+
+- `node tools/check-syntax.mjs`: **passed, 29 scripts**.
+- `node --test "tests/netlify-publish*.test.mjs"`: **6/6 passed**.
+- `node --test "tests/*.test.mjs"`: **not green in this environment**; temporary-fixture tests encounter sandbox `EPERM` on `mkdtemp`, including both new filesystem/execution tests.
+- In-memory mutation probes and shell failure simulation reproduced findings 1–3.
+- Live PR inspection through `gh` was blocked by denied access to its configuration; I could not independently establish current-head check status.
+
+</details>
+
+1. **Medium — parity still read Netlify's commands leniently.** **Agreed.** Every Netlify command now goes
+   through the same strict chain parser as the script (`parseChain`, head `mkdir -p site`). A step it
+   can't read is refused. The lenient `publishCopies` and the existing Netlify tests are unchanged.
+   Tests added: each of GPT's four mutations in `[build]`, `[context.production]` and
+   `[context.deploy-preview]`, plus a control.
+2. **Medium — quoted keys bypassed the publish check.** **Agreed.** The Netlify readers accept `"command"`,
+   `'command'`, `"publish"` and `'publish'`. Any `command`/`publish` line at top level or in a
+   `[build]`/`[context…]` table that they still can't read (a dotted key) is refused instead of treated
+   as absent. A `[dev]` command is not counted. Tests added: quoted `"."` and `"dist"`, a quoted command
+   that drops assets, quoted controls, dotted keys, and a `[dev]` control.
+3. **Medium — split chains hide failures.** **Agreed**, and my comment was wrong. Reproduced: with `js/`
+   missing, a script with the chain split over two lines exits **0** and publishes `index.html` and
+   `samples/` alone; the single chain exits **1**. The parser now requires exactly one chain line (a
+   second command line is refused). The execution test runs the real script with each of `index.html`,
+   `js/`, `voice/`, `samples/` missing and requires a non-zero exit. Header comments and
+   `tests/README.md` corrected.
+4. **Medium — verification evidence incomplete.** **Agreed.** Recorded below. The current head's check
+   goes in the PR body after the push.
+
+Mutation audit of the new guards (each restored afterwards): allowing a second line, dropping the strict
+Netlify refusal, and ignoring unreadable keys each turn `tests/cloudflare-publish.test.mjs` red.
+
+**Second push** (`531c1ef`, after `ed3c759`): the *Cloudflare Pages* check passed with a new commit
+preview (`99b8487c.music-garden.pages.dev`; the first was `70f00f24`). The branch alias answered the
+same game and still did not serve `reviews/…` as a file. Production `music-garden.pages.dev` was
+unchanged (the Astro placeholder, no production deployment).
+
+**Missing paths in the browser** (preview `99b8487c`):
+- `/no-such-page`: the whole game loads and works (relative `js/` URLs still resolve at the root).
+- `/no-such-page/`: the page shell shows (header, ▶ Play, an empty *Level* card, Toolbox, Garden), but there
+  is no grid and nothing responds. Every script is refused: *"Refused to execute script from
+  '…/no-such-page/js/load-gate.js' because its MIME type ('text/html') is not executable"*. This is the
+  nested-path failure Netlify has too. TUN-68 owns it.
+
+Still for the owner, before or at merge: narration and the piano by ear, `file://`. After the merge, the
+production checks (Q4 = A).
