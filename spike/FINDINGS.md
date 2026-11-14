@@ -2,7 +2,7 @@
 
 *The Spike phase from `EDITOR-DESIGN.md` §16: decide by building throwaways. Everything in `spike/` is disposable — only this document and the addenda it feeds back into `EDITOR-DESIGN.md` survive. Started 2026-07-19.*
 
-**Prototypes** (deployed at `tunegarden.game/spike/…` once pushed; all run from `file://` too):
+**Prototypes** (no longer deployed: TUN-80 took `spike/` out of the deploy, 2026-11-13; all run from `file://`):
 
 | Page | Gate it serves |
 |---|---|
