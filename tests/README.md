@@ -16,7 +16,8 @@ binding they declared (about a thousand of them).
 
 **The script list.** `helpers/game-scripts.mjs` is the one reader of the page: `gameScripts()` returns
 every local `<script src>` and inline `<script>` in document order (CDN tags skipped, CRLF
-normalised), and the harness, both mutation audits, `tools/gen-voice.mjs` and
+normalised; a script under `vendor/` — third-party code the site serves itself — is listed apart, in
+`vendored`, never run by the harness, but compiled by `tools/check-syntax.mjs` through `vendoredSources`), and the harness, both mutation audits, `tools/gen-voice.mjs` and
 `tools/check-syntax.mjs` all go through it. Only synchronous classic scripts are allowed —
 `type="module"`, `async`, `defer`, `nomodule` or an unknown `type` make it throw rather than skip.
 `loadGame()` runs **each script as its own `vm.runInContext` call** in one context, as a browser does:
@@ -24,16 +25,26 @@ top-level `const`/`let` reach later files, but a function declared in a later fi
 into an earlier one, so load-time code that calls ahead throws here exactly where it throws in the
 browser. Never concatenate them to run. `tests/game-scripts.test.mjs` covers the loader itself with
 small throwaway pages. `tests/netlify-publish.test.mjs` checks that `netlify.toml`'s build command
-copies `index.html` and every folder the page loads a script from to the same path under `site/` — a
+copies `index.html`, every folder the page loads a script from, and every file in `vendor/` to the
+same path under `site/` — a
 file left out is served as `index.html` in production, and the game never starts. The checker is
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
 override) and honours a shell `#` comment. `tests/cloudflare-publish.test.mjs` does the same for
 Cloudflare Pages' `cloudflare-build.sh`, more strictly (`helpers/cloudflare-publish.mjs`): the script
-must publish exactly `index.html`, `js/`, `voice/` and `samples/` in one `&&` chain, a step it cannot
+must publish exactly `index.html`, `js/`, `voice/`, `samples/` and `vendor/` in one `&&` chain, a step it cannot
 read is refused rather than skipped (in Netlify's commands too; and `netlify.toml` must stay in plain
 TOML — plain headers, bare keys, no inline tables — so no spelling of a setting is read as absent), every Netlify build command must copy the same set into `site/`, no `404.html` may
 be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
 as in `workflow-scripts.test.mjs`).
+
+**No third-party requests (TUN-81).** `vendor.test.mjs` holds `vendor/` to `vendor/SHA256SUMS`
+(`helpers/vendor.mjs`: a changed, added or missing file fails, byte for byte — `.gitattributes` keeps
+`vendor/` out of line-ending conversion), checks `vendor/README.md` states the library's version and hash,
+that `fonts.css` declares every weight the page used from listed files, and that the page links the
+fonts and loads the library from `vendor/`. Its scanner refuses any `src`/`href`/`url()`/`@import` in
+`index.html` or `fonts.css` that names another host — a markup/CSS guard, not a network trace — and
+the game's own scripts may name only the backend. The network half is the browser check in
+`reviews/TUN-81-self-hosted-fonts-and-sign-in.md`.
 
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the

@@ -183,3 +183,44 @@ The ticket’s “Done looks like” still needs explicit coverage for:
    errors. A real interaction on `file://` I cannot drive beyond that, so it goes under *Not verified*.
    Firefox and Safari stay unverified.
 - **The two required runs:** **agreed** — both are run after every edit and their results recorded below.
+
+## Verification (Claude, 2026-11-14)
+
+**Hosts the page requested — local preview** (AO's browser, network capture, this worktree served by
+`ao preview start`; `index.html` and `vendor/fonts/fonts.css` byte-compared against the server first):
+- *Guest, page load:* 34 requests, **one host: the page's own origin** (`http://127.0.0.1:59295`). Among them
+  `vendor/fonts/fonts.css`, `vendor/cognito/amazon-cognito-identity.min.js`, `vendor/fonts/fredoka/latin.woff2`,
+  `vendor/fonts/nunito/latin.woff2` — only the subsets the screen needs. No `fonts.googleapis.com`,
+  `fonts.gstatic.com` or `cdn.jsdelivr.net`.
+- *Sign-in with a made-up account* (`tun81-nobody-7f3q`): 3 requests, **one host:
+  `https://cognito-idp.us-east-1.amazonaws.com`** (POST 200, OPTIONS 200, POST 400). The game showed Cognito's
+  answer, "Incorrect username or password." Page errors: only that 400. So the vendored library loads and its
+  sign-in round trip reaches Cognito from a non-`tunegarden.game` origin.
+- *Signed in:* **not verified** — no account (answer 1). Expected hosts: own origin, Cognito, and the backend
+  `xush1pnxc7.execute-api.us-east-1.amazonaws.com`, whose CORS refuses a preview origin, so sync fails there.
+
+**Looks the same — pixel comparison** (headless Chrome 157, 1600×900, fresh profile each, 8 s virtual time):
+| Compared | Pixels that differ (of 1,440,000) |
+|---|---|
+| `main` on `file://` with Google Fonts online ↔ this branch on `http://` | **0** |
+| this branch on `file://` online ↔ the same, network unreachable (dead proxy) | **0** |
+| `main` on `file://` online ↔ this branch on `file://` | 393, all inside the Voice `<select>`'s "Music box" text (672,149–732,160): the same face and weight, sub-pixel anti-aliasing only (crops compared at 8×) |
+| control: `main` on `file://` online ↔ `main` offline (fallback fonts) | 259,697 — the comparison is sensitive |
+
+**`file://`, network unreachable, over the DevTools protocol:** `AmazonCognitoIdentity` defined, `userPool`
+built, the load gate open (every game script ran and boot completed), `document.fonts` ready with 0 faces
+failed, and Fredoka 400/500/600 and Nunito 400/800 all load; **no network request at all; no console error
+or exception.** The same script on `main` offline: `AmazonCognitoIdentity` undefined and a failed request to
+`cdn.jsdelivr.net` — the old behaviour this ticket removes.
+
+**Fresh clones:** with `core.autocrlf=true`, ordinary text files check out CRLF while every `vendor/` file
+stays LF (`git ls-files --eol`: `attr/-text`), and `sha256sum -c SHA256SUMS` and `tests/vendor.test.mjs` pass;
+the same in an LF clone.
+
+**Mutations run by hand** (each restored): drop the vendor rule in `gameScripts` → 5 tests fail; match the src
+text instead of the resolved path → 1; match `vendor` as a prefix → 1; leave `vendoredSources` out of
+`tools/check-syntax.mjs` → 1. The scanner run on `main`'s `index.html` finds all four third-party references.
+
+**Not verified here:** a real sign-up and sign-in, and the signed-in host list (answer 1 — the owner's
+checklist, before merge); a click that changes the game on `file://` (the onboarding card took the clicks; boot
+and the gate are verified, play is not); Firefox and Safari; the hosted previews (after the PR exists).

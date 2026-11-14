@@ -11,7 +11,8 @@
 // something other than JavaScript, or throws while loading no longer stops the files after it — so the gate
 // remembers, js/boot.js asks before it does anything, and the game does not start at all rather than boot, and
 // save progress, around a missing piece. The gate then stays shut. Only the game's own js/ files count: the
-// Cognito SDK (its own CDN script, optional since the start) and anything else on the page are ignored here.
+// Cognito SDK (vendor/, optional since the start, when it came from a CDN) and anything else on the page are
+// ignored here.
 // Every kind of player input the game listens for (tests/load-gate.test.mjs fails if a new one is wired unlisted).
 const LOAD_GATE_EVENTS=["pointerdown","pointermove","pointerup","pointercancel","pointerleave","mousedown","mouseup",
   "mouseover","mouseleave","click","touchstart","touchmove","touchend","touchcancel","keydown","keyup","input","change"];

@@ -36,7 +36,7 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
 
 | Path | What it is |
 |---|---|
-| **`index.html`** | The page: markup and styles, and the `<script src>` tags that load the game's code from `js/`, in order. It holds no game code of its own. With `js/`, the source of truth for the app. |
+| **`index.html`** | The page: markup and styles, and the `<script src>` tags that load the game's code from `js/`, in order. It holds no game code of its own, and names no other site: its fonts and the sign-in library come from `vendor/`. With `js/`, the source of truth for the app. |
 | **`js/`** | The game's code: 29 classic scripts that `index.html` loads with `<script src>` tags, in order — `js/load-gate.js` first, `js/boot.js` last. See [How the game's code is organized](#how-the-games-code-is-organized) for which sections live in which file. |
 | **`REQUIREMENTS.md`** | Product requirements & pillars. |
 | **`DESIGN.md`** | High-level design — the "musical physics" engine, crafting tree, play modes, the full feature log (everything built, dated). |
@@ -47,9 +47,10 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
 | **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **Kind 1 ships**, in two quests (*The Firefly Crossing*, *The Waking Woods*) — reachable from the world map. Kinds 2–9 are still intent. |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
+| **`vendor/`** | Third-party files the game serves from its own site, because the page makes no third-party requests (TUN-81): the Cognito sign-in library (`amazon-cognito-identity-js` 6.3.22) and the Fredoka and Nunito fonts (`woff2`, with Google's `@font-face` rules in `fonts/fonts.css`), copied as released, with their licences. `SHA256SUMS` pins every file. Versions, sources and how to update: `vendor/README.md`. |
 | **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS), `check-syntax.mjs` (syntax-checks every script the game loads). |
 | **`backend/`** | AWS SAM backend (Cognito auth + per-user progress API + cloud songs API on DynamoDB). `template.yaml`, `src/*.mjs`, `README.md` (deploy guide), `samconfig.toml`. |
-| **`netlify.toml`** | Git-based deploy config: copies `index.html` + `js/` + `voice/` + `samples/` into a clean publish dir. **Add any new runtime asset folder here and to `cloudflare-build.sh`** — a missing `js/` file is served as `index.html` and stops the game from starting (`tests/netlify-publish.test.mjs` checks the scripts). |
+| **`netlify.toml`** | Git-based deploy config: copies `index.html` + `js/` + `voice/` + `samples/` + `vendor/` into a clean publish dir. **Add any new runtime asset folder here and to `cloudflare-build.sh`** — a missing `js/` file is served as `index.html` and stops the game from starting (`tests/netlify-publish.test.mjs` checks the scripts). |
 | **`cloudflare-build.sh`** | Cloudflare Pages' build (its dashboard runs `sh cloudflare-build.sh`, output `site`): the same copy as `netlify.toml`, into a fresh `site/`. Kept to a strict copy-only form; `tests/cloudflare-publish.test.mjs` pins it, runs it, and checks it matches `netlify.toml`. See [Deployment](#deployment). |
 | **`reviews/`** | One file per ticket: the design (GPT's, or Claude's plan with GPT's review of it, by the ticket's size), what GPT's test pass and the PR review flagged, and what was done. See `reviews/README.md`. |
 | `REVIEW-LOG.md` | The same record for everything before 2026-09-28, in one file — closed, kept as history. |
@@ -64,7 +65,7 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
 
 ## How the game's code is organized
 
-`index.html` is the page — markup and styles — and holds no game code. The game's code is one run of sections, each opened by a `// ---------- … ----------` landmark (search for these), split across classic script files in `js/` that `index.html` loads **in this order** (TUN-6 moved the first five out of the page's inline script, TUN-7 the rest):
+`index.html` is the page — markup and styles — and holds no game code. The game's code is one run of sections, each opened by a `// ---------- … ----------` landmark (search for these), split across classic script files in `js/` that `index.html` loads **in this order** (TUN-6 moved the first five out of the page's inline script, TUN-7 the rest). Just before them the page loads one script that is not game code, the Cognito sign-in library from `vendor/` (TUN-81): the tools list it apart (`vendored` in `tests/helpers/game-scripts.mjs` — compiled by the syntax check, never run by the harness), and the load gate ignores it, so without it the game runs guest-only.
 
 | File | Sections |
 |---|---|
@@ -223,7 +224,7 @@ See `backend/README.md` for first-time setup. Remaining pre-launch TODO: AWS bud
 
 ## Deployment
 
-**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Domain: **https://tunegarden.game** (Netlify site `tunegarden.netlify.app`, which also serves the PR deploy previews; the AWS stack keeps the old working name `music-garden`).
+**Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` + `vendor/` into the publish dir). Domain: **https://tunegarden.game** (Netlify site `tunegarden.netlify.app`, which also serves the PR deploy previews; the AWS stack keeps the old working name `music-garden`).
 
 **Cloudflare Pages, alongside** (TUN-80) — the Pages project `music-garden` builds the same repository: a push to `main` deploys **https://music-garden.pages.dev**, and every other branch pushed to this repository gets a preview (`<hash>.music-garden.pages.dev`, plus a stable alias per branch that Cloudflare prints) and a *Cloudflare Pages* check on its PR. Its dashboard runs `sh cloudflare-build.sh` with build output directory `site`; the script copies the same four things as `netlify.toml`. It runs beside Netlify until the owner moves `tunegarden.game`'s DNS (TUN-85 then retires Netlify). Things to know while both run:
 - **Pull requests from forks get no Cloudflare preview** (Pages builds only branches of this repository). Netlify's deploy previews still cover them until Netlify is retired.
