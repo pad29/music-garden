@@ -112,6 +112,29 @@ or non-finite origin, or an origin at/past the bar's own length to **unmetered**
 a link we cannot trust is a link with no meter. A *missing* origin still means "no pickup", which is the
 ordinary case; only a present-but-unusable one rejects the meter with it.
 
+The same rule covers the rest of the song, in **one gate, `applySong()`**, which every path a song
+arrives by goes through — `#s=`, `#song=`, My Melodies, the rescued sprout, quest drafts (TUN-84). A
+`#s=` link never touches the server, so the client defends itself whatever the backend checks. Before the
+gate, `decodeSong()` refuses a `#s=` payload longer than **`SHARE_IN_MAX`** (4 × `SHARE_MAX`, 7,200
+characters) without decoding it — the game never writes one past `SHARE_MAX` — and `unpackSong()` takes
+only the v3 wire form (`[3, …]`). An empty `#s=`, a refused or unreadable one, and a `#song=` id that is
+empty or whose `%`-escapes don't decode open nothing, and the boot tells the player the link didn't work
+(`SONG_LINK_FAILED`); a cloud row's size is the server's to bound (`backend/src/songs.mjs` caps it on
+create and update). A packed meter's origin reaches `validMeter` as it came, so an unusable one means
+no meter by link as by cloud, and a missing one still means no pickup. The gate reads and normalises
+the whole song before it changes anything, so a song it cannot read never half-loads; a number in it
+counts only if it is a number or a string (`Number()` on a link's `{"toString":0}` throws), the palette
+only if it is one of `PALETTES`' own names (`paletteDef`; `"__proto__"` is pentatonic), the voice only if
+it is a string; and it reads no more raw notes or hits than could load. The gate
+**clamps, never refuses**: the columns to 16…`MAX_COLS` (1920, `js/doc-model.js` — 240 bars of 4/4; a
+million-column link used to freeze the tab); the tempo, when it is a finite number, to the slider's
+range, and anything else leaves the tempo alone; notes to whole MIDI pitches 0–127 at whole in-range
+columns, one per (pitch, column), each held 1…`MAX_VINE`, and no more than the song's own field has
+seeds (`ROWS × COLS`); drum hits to whole lanes and columns, one per cell. A song cut at the ceiling
+loads its beginning, and the status line says so. The Studio's ＋ patch and ＋ room stop at the same
+`MAX_COLS`, so a song a player built always loads back whole. A title is the player's or a stranger's
+text: it is shown with `textContent`, or escaped (`escapeHtml`) where it sits inside `setStatus` markup.
+
 ---
 
 ## 5. Dedicated Studio

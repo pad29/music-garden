@@ -204,11 +204,15 @@ let cached = null;
  * Run the game's scripts in a stubbed browser and return their top-level bindings.
  * Cached — the game is ~8.6k lines and every test file would otherwise re-run it.
  * Pass { fresh: true } for a test that needs an unmutated copy of the game's state.
+ * `elements` maps element ids to objects the game gets from getElementById instead of a stub — a
+ * test's own recording element, for a write the stub would swallow (TUN-84's title test). Never cached.
+ * `setup(window)` runs on the stubbed window BEFORE any script does — to boot js/boot.js with a URL
+ * (`location`), a saved profile (`localStorage`), an answer to `confirm`, or a cloud API (TUN-84). Never cached.
  * `root` loads the index.html in another directory instead (the loader's own tests use it); such a
  * load is never cached.
  */
-export function loadGame({ fresh = false, root = ROOT } = {}) {
-  const shared = root === ROOT;
+export function loadGame({ fresh = false, root = ROOT, elements = null, setup = null } = {}) {
+  const shared = root === ROOT && !elements && !setup;
   if (cached && !fresh && shared) return cached;
 
   const { html, scripts: loaded } = gameScripts(root);
@@ -222,6 +226,7 @@ export function loadGame({ fresh = false, root = ROOT } = {}) {
   Object.defineProperty(stubDoc, "getElementById", {
     value: (id) => (id === "tempo" ? tempoInput
                   : id === "click" ? clickSelect
+                  : elements && Object.hasOwn(elements, id) ? elements[id]
                   : makeStub(`document#${id}`)),
   });
   const sandbox = {
@@ -284,6 +289,7 @@ export function loadGame({ fresh = false, root = ROOT } = {}) {
   sandbox.self = sandbox;
   sandbox.top = sandbox;
 
+  if (setup) setup(sandbox);
   const ctx = vm.createContext(sandbox);
 
   // vm keeps top-level const/let/function out of the context object, so run an explicit

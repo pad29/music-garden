@@ -163,6 +163,7 @@ function showDrumArea(on){ const st=document.getElementById("drumStage");
   if(on) drumArea.scrollLeft=scroller.scrollLeft; }
 // one column of surgery per press, at the cursor — melody AND beat move together
 document.getElementById("colPlus").onclick=()=>{ if(traySurgeryBlocked()) return;
+  if(!fieldCanGrow(1)) return;                              // the same ceiling ＋ more stops at (TUN-84)
   if(playing) stop();
   modelInsertTime(cursorCol*TICKS_PER_COL, TICKS_PER_COL);
   rebuildField(); applyStageDecor(); trayPaint(); ev.played=false; checkLevel();

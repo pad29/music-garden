@@ -4,6 +4,8 @@ function setStatus(html){ statusEl.innerHTML=html; }
 // The same line, for text the player or an author wrote. setStatus takes markup, and a quest's strings
 // are the one kind that must never reach innerHTML — the catalog guard is the belt, this is the brace.
 function setStatusText(text){ statusEl.textContent=text; }
+// For a line that is markup around someone's text — a song title inside <b> — escape the text first.
+const escapeHtml=s=>String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 let toastT; const toastEl=document.createElement("div"); toastEl.className="toast"; document.body.appendChild(toastEl);
 function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
   clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("show"),2600); }

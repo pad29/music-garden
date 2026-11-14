@@ -21,8 +21,12 @@ const midiToFreq = m => 440 * Math.pow(2,(m-69)/12);
 const isTonic = r => MIDI[r]%12===TONIC_PC;
 let grid = Array.from({length:ROWS},()=>Array(COLS).fill(false));
 let gridNote = Array.from({length:ROWS},()=>Array(COLS).fill(null));   // the doc note behind each lit cell — duration lookup + vine hit test
+// An id names a palette only if it is one of PALETTES' OWN keys. A song's palette is untrusted (a link
+// can say anything), and "__proto__" or "constructor" would otherwise find Object.prototype's members
+// and leave MIDI undefined (TUN-84). Anything else is the pentatonic default, as it always was.
+const paletteDef=id=>(typeof id==="string" && Object.prototype.hasOwnProperty.call(PALETTES,id)) ? PALETTES[id] : PALETTES.pentatonic;
 // swap the active palette and rebuild the grid; no-op if already active (so it's cheap to call on every level entry)
-function setPalette(id){ const p=PALETTES[id]||PALETTES.pentatonic;
+function setPalette(id){ const p=paletteDef(id);
   if(p.id===paletteId) return;
   paletteId=p.id; MIDI=p.MIDI; NAMES=p.NAMES; TONIC_PC=p.tonicPC; ROWS=MIDI.length;
   modelClearMelody();   // same semantics as the old grid rebind: switching palette clears the field (drums survive)
