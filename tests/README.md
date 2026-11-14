@@ -135,6 +135,10 @@ contour. Use it instead of poking `g.grid` directly.
   reading `Store` can tell you whether it works. (The quest branch split that function by owner; the
   handler now calls `saveUserSettings()`, the only settings sink, and the test still drives the handler.) Wire another control in `makeSelect` when you need to test ITS
   handler, not by default.
+- **To see a write the stub swallows** — an `innerHTML` on `#status`, the rows `openMelodies` builds —
+  pass your own recording element: `loadGame({ fresh: true, elements: { status: el } })` hands it to
+  `getElementById("status")` (never cached). `hostile-links.test.mjs` does this, and defines
+  `document.createElement` on `g.__document` to record what the game builds.
 - **`fetch`/`XMLHttpRequest` are deliberately absent from the harness.** `index.html` must never
   use them for local assets (AGENTS.md hard invariant). If a test dies on a missing `fetch`,
   that is a real bug in the game, not a missing stub.
@@ -154,7 +158,11 @@ It covers the detectors and pulse helpers; meter, grooves, tempo and the click; 
 field zoom; the script list and its load order; the pure seams under the quest work — the projection
 (`projectTracks`), the pulse helpers' explicit-grid forms and `contourSeqFromGrid`; and the quest
 engine itself — the play scope, persistence, the completion session, the QuestRun reducer, phases and
-history, the sealed catalog, and the analyzer registries and semantic validator. It is not a substitute
+history, the sealed catalog, and the analyzer registries and semantic validator; and what a hostile link
+can do (`hostile-links.test.mjs`, TUN-84) — a huge or malformed song clamped by `applySong`, the Studio
+stopping at the same `MAX_COLS`, `?reset` asking first, and a title `<img onerror>` creating no element
+through `playSong`, My Melodies or the cloud list. The load-gate continuation sandbox answers `?reset`'s
+question with yes, so its `?reset` loads still catch a boot that wrongly runs by its writes. It is not a substitute
 for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
 worst at finding.
 

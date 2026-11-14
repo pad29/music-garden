@@ -67,7 +67,7 @@ function openStudio(){
   applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
-function openStudioWith(song){ openStudio(); if(song) applySong(song); journalClear(); }   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
+function openStudioWith(song){ openStudio(); const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
 //   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.

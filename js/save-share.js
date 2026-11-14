@@ -27,20 +27,45 @@ function currentSong(){
     tracks:[ { kind:"melody", voice:instrEl.value, notes },
              { kind:"drums",  hits } ] };
 }
+// A song is UNTRUSTED input wherever it came from: a #s= link never touches the server, and a save or a
+// cloud row is only as good as whatever wrote it. So this is the one gate, for every path — links, cloud
+// songs, My Melodies, the rescued sprout, quest drafts — and it CLAMPS rather than refuses, as validMeter
+// does: the playable start of a too-long song survives, and one number we cannot trust does not cost the
+// whole song. Columns go to [16, MAX_COLS]; notes to whole MIDI pitches at whole in-range columns, one per
+// (pitch, column), held 1..MAX_VINE like 🌿 Grow allows, and no more of them than the song's own field has
+// seeds — 100,000 notes in a link would otherwise be 100,000 stems in renderVines (TUN-84).
+const wholeIn=(x,lo,hi)=>Number.isInteger(x)&&x>=lo&&x<hi;
+function songCols(c){ const n=Math.round(Number(c)); return Number.isFinite(n) ? Math.min(MAX_COLS, Math.max(16, n)) : 16; }
+// Returns true when it had to leave part of the song behind, so the caller can tell the player.
 function applySong(s){
-  if(!s||s.v!==3) return;                                   // clean break: only v3 loads; stale links fail gracefully
+  if(!s||s.v!==3) return false;                             // clean break: only v3 loads; stale links fail gracefully
   setPalette(s.palette||"pentatonic");                      // sets MIDI/NAMES/ROWS for the song's authoring palette
-  const mel=(s.tracks||[]).find(t=>t.kind==="melody")||{notes:[]};
-  const dr =(s.tracks||[]).find(t=>t.kind==="drums") ||{hits:[]};
-  COLS=Math.max(16,(s.time&&s.time.cols)||16);
+  const tracks=Array.isArray(s.tracks)?s.tracks:[], t=(s.time&&typeof s.time==="object")?s.time:{};
+  const mel=tracks.find(x=>x&&x.kind==="melody")||{notes:[]};
+  const dr =tracks.find(x=>x&&x.kind==="drums") ||{hits:[]};
+  COLS=songCols(t.cols);
+  let cut=Number(t.cols)>MAX_COLS;
+  const seen=new Set(), notes=[], hits=[], cap=ROWS*COLS;
+  for(const n of Array.isArray(mel.notes)?mel.notes:[]){
+    if(!n||!wholeIn(n.p,0,128)||!wholeIn(n.c,0,COLS)||seen.has(n.p+":"+n.c)) continue;
+    if(notes.length>=cap){ cut=true; break; }
+    const len=Math.round(Number(n.len));
+    seen.add(n.p+":"+n.c); notes.push({p:n.p, c:n.c, len:Number.isFinite(len)?Math.min(MAX_VINE,Math.max(1,len)):1}); }
+  seen.clear();
+  for(const h of Array.isArray(dr.hits)?dr.hits:[]){
+    if(!h||!wholeIn(h.lane,0,DRUMS.length)||!wholeIn(h.c,0,COLS)||seen.has(h.lane+":"+h.c)) continue;
+    seen.add(h.lane+":"+h.c); hits.push(h); }
   tx("load-song",()=>{                                      // rebuild the DOC from the song; projection derives the grids
-    melTrack().notes=(mel.notes||[]).filter(n=>n.c>=0&&n.c<COLS)
-      .map(n=>({id:newNoteId(),pitch:n.p,startTick:n.c*TICKS_PER_COL,durationTicks:(n.len||1)*TICKS_PER_COL,velocity:1}));
-    drumTrack().notes=(dr.hits||[]).filter(h=>h.lane>=0&&h.lane<DRUMS.length&&h.c>=0&&h.c<COLS)
+    melTrack().notes=notes
+      .map(n=>({id:newNoteId(),pitch:n.p,startTick:n.c*TICKS_PER_COL,durationTicks:n.len*TICKS_PER_COL,velocity:1}));
+    drumTrack().notes=hits
       .map(h=>({id:newNoteId(),pitch:h.lane,startTick:h.c*TICKS_PER_COL,durationTicks:TICKS_PER_COL,velocity:1}));
-    const t=s.time||{};                                     // tempo/groove are song state — set INSIDE the tx so redo restores them too
+    // tempo/groove are song state — set INSIDE the tx so redo restores them too
     if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
-    if(t.tempo) tempoEl.value=t.tempo;
+    // Only a real number moves the slider, clamped to its own range; anything else leaves the tempo as
+    // it was (a range input would quietly turn "abc" into its midpoint).
+    const tempo=Math.round(Number(t.tempo));
+    if(t.tempo && Number.isFinite(tempo)) tempoEl.value=Math.min(+tempoEl.max||180, Math.max(+tempoEl.min||40, tempo));
     // Meter is the FIRST field that is legitimately ABSENT, so it must not copy the conditional pattern
     // above: loading an unmetered song has to actively CLEAR a meter, not merely decline to set one, or a
     // stale meter (and its bars) survives over the freshly loaded song.
@@ -56,7 +81,10 @@ function applySong(s){
   rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
   if(mel.voice) setVoice(mel.voice);
   updateGarden();
+  return cut;
 }
+// The sentence a loading path adds when applySong left part of a song behind.
+const SONG_CUT_NOTE=" 🌱 It was longer than a garden can grow, so only its beginning came along.";
 // --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
 // songs exceed SHARE_MAX and must be saved (cloud links arrive in P3). The in-memory object is always the v3 above. ---
 const SHARE_MAX=1800;   // encoded-char ceiling for a shareable link
@@ -121,9 +149,11 @@ saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim
   const a=getSaves(); a.unshift(s); setSaves(a); toast("💾 Saved to My Melodies!"); };
 const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
 function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
-function loadSong(s){ overlay.style.display="none"; openStudioWith(s); setStatus("Loaded into the Studio — press <b>▶ Play</b>!"); }
-function playSong(s){ loadSong(s); start();                                    // jukebox: land in the Studio AND start looping it right away
-  if(s.meta&&s.meta.title) setStatus("🎵 Now playing: <b>"+s.meta.title+"</b> — tinker freely, or press ■ to stop."); }
+function loadSong(s){ overlay.style.display="none"; const cut=openStudioWith(s);
+  setStatus("Loaded into the Studio — press <b>▶ Play</b>!"+(cut?SONG_CUT_NOTE:"")); return cut; }
+// A title is the player's (or a stranger's) text: it reaches setStatus's markup only escaped (TUN-84).
+function playSong(s){ const cut=loadSong(s); start();                          // jukebox: land in the Studio AND start looping it right away
+  if(s.meta&&s.meta.title) setStatus("🎵 Now playing: <b>"+escapeHtml(s.meta.title)+"</b> — tinker freely, or press ■ to stop."+(cut?SONG_CUT_NOTE:"")); }
 function mhint(text,top){ const e=document.createElement("div"); e.className="hint"; if(top) e.style.marginTop="10px"; e.textContent=text; return e; }
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching
 // excerpts — Amazing Grace, Mountain King, Joy, Ode to Joy, Moldau — stay capstone-only until promoted to full

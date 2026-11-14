@@ -3,6 +3,12 @@
 // recomputed on every mutation, so every shipped detector keeps reading grid[r][c] unchanged.
 // The doc keeps the TRUE pitch even when the active palette can't show it — the lens snaps, the data doesn't.
 const TG_PPQ=96, TICKS_PER_COL=48;             // canonical time: integer ticks; one column = an 8th = 48 ticks
+// The longest a field grows: 240 bars of 4/4, about nine minutes at 108. Loading costs about 0.2 ms a
+// column (measured in the browser, TUN-84), so this loads in half a second where a crafted link claiming a
+// million columns froze the tab. A multiple of 48, so every meter's bar (4, 6 or 8 columns) and the
+// unmetered 16 divide it. The Studio stops growing here and applySong clamps here — one line, so a song a
+// player built always loads back whole.
+const MAX_COLS=1920;
 let _noteSeq=1; const newNoteId=()=>_noteSeq++;
 function freshDoc(){ return { version:1, ppq:TG_PPQ,
   tempoMap:[], meterMap:[], tonalityMap:[],    // reserved seams (§4f) — stay empty until a phase needs them
