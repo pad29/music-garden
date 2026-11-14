@@ -387,3 +387,64 @@ encoded `style`, and unquoted-local and numeric-without-`;` controls — **added
 **the owner's**, as before. GPT accepts the recorded `file://` smoke test without a browser runner.
 
 Docs: both review-record lines GPT named are corrected above (marked).
+
+### Round 3 — head `d1904b9`
+<details><summary>GPT's PR review, verbatim</summary>
+
+Reviewed `d1904b9cbb148d2ac9489731a116a376542edf01`. No files edited. Syntax checking and seven selected read-only vendor tests passed. Full suite not rerun; your 733/733 result is acknowledged. Browser verification was unavailable.
+
+Required changes:
+
+1. **Medium — The new unquoted-style matcher introduces a bypass through another attribute’s value.** [tests/helpers/vendor.mjs:133](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:133)
+
+   ```html
+   <div title=" style=color:red " style="background:url(https://img.example/a.png)">x</div>
+   ```
+
+   Reproduced against both revisions: round 2 reports the external URL; round 3 returns `[]`. The matcher selects `style=color:red` inside `title`, then never examines the actual style attribute. Under [HTML attribute parsing](https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state), that text belongs to the title; the real background loads the external image.
+
+   **Fix:** scan attributes while respecting quoted-value boundaries, then inspect the actual `style` attribute. Explicit rejection under the restricted grammar is also acceptable.
+
+2. **Medium — Valid string-form imports still silently pass the CSS guard.** [tests/helpers/vendor.mjs:70](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:70)
+
+   Both return `[]`:
+
+   ```html
+   <style>@import"https://fonts.example/a.css";</style>
+   <style>@import/**/"https://fonts.example/a.css";</style>
+   ```
+
+   `CSS_IMPORT` requires whitespace, although the string can immediately follow the at-keyword, and CSS comments are consumed between tokens. Both specify an unconditional external stylesheet import. See [CSS tokenization](https://www.w3.org/TR/css-syntax-3/#tokenization) and [import syntax](https://www.w3.org/TR/css-cascade-5/#at-import). This is a remaining whole-PR gap in the CSS path touched by the delta.
+
+   **Fix:** recognize these token boundaries or explicitly reject unsupported `@import` spellings; unmatched imports must not silently pass.
+
+Tests still missing:
+
+- Finding 1’s exact input, plus the same case with an unquoted real `style`; require detection or explicit rejection. Include a local-background control.
+- Both import forms above, through `cssThirdParty` directly and through a `<style>` body; require detection or explicit rejection. Include local-import controls consistent with the chosen grammar.
+- Owner verification remains pending as agreed: successful sign-up/sign-in, reload/session restoration, expected preview-origin sync failure, and approved request hosts.
+
+Docs the delta made false: no separate correction required. The two previously requested wording corrections are accurate.
+
+CHANGES REQUESTED
+
+</details>
+
+1. **Medium — `title=" style=color:red " style="background:url(https://…)"`: round 2's widened `style` matcher
+   picked the text inside `title` and never read the real `style`.** **Agreed** — a regression my round-2 fix
+   introduced. Attributes are now read one at a time, left to right, each quoted value consumed whole (the way
+   `tests/helpers/game-scripts.mjs` reads them), and `style` goes through the same loop as `src`/`href`. This also
+   stops text inside a value (`title="src=https://…"`) from being read as an attribute.
+2. **Medium — `@import"https://…"` and `@import/**/"https://…"` pass.** **Agreed.** CSS comments are now removed
+   before matching — outside strings only, so a `"/*"` inside a string cannot swallow a rule — `@import` may be
+   followed directly by its string, and any `@import` the guard does not read is refused as `unreadable`.
+
+Missing tests — **added**: both of finding 1's inputs (quoted and unquoted real `style`) with a local control;
+both import forms through a `<style>` and through `cssThirdParty`; a comment inside `url()`; the `"/*"`-in-a-string
+case; an unreadable `@import`; local-import controls. Mutations run, each caught: `@import` must be followed by
+a space; comments stripped by a plain regex (ignoring strings); comments not stripped. (Finding 1's input
+returned `[]` on the round-2 code, as GPT reproduced; it fails nothing now.)
+
+**This was the third round of fixes, so per `work-ticket` § 8 there is no fourth review: these fixes await
+GPT's review, and the ticket stops at Needs Input** — with the owner's decision on round-1 finding 1 (the
+Netlify deploy-preview drawer) and the sign-in check.

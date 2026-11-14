@@ -138,6 +138,19 @@ test("the third-party scanner catches every way the page could name another host
     ['<div style="background:url(\\68 ttps://img.example/a.png)"></div>', "unreadable: CSS escape \\68 ttps://img.exampl"],
     // An unquoted style attribute is read too. Mutation: match only quoted style values — this passes as local.
     ["<div style=background:url(https&#58;//img.example/a.png)></div>", "https://img.example/a.png"],
+    // Round 3: "style=" inside another attribute's quoted value is that attribute's text. Mutation: find the
+    // style attribute with a search over the tag instead of reading attributes in turn — both pass as local.
+    ['<div title=" style=color:red " style="background:url(https://img.example/a.png)">x</div>', "https://img.example/a.png"],
+    ['<div title=" style=color:red " style=background:url(https://img.example/a.png)>x</div>', "https://img.example/a.png"],
+    // Round 3: @import with no space, or a comment, before its string; a comment inside url(); and a "/*" in a
+    // string that must not swallow the rule after it. Mutation: require a space after @import — the first two
+    // pass; read comments inside strings as comments — the last passes.
+    ['<style>@import"https://fonts.example/a.css";</style>', "https://fonts.example/a.css"],
+    ['<style>@import/**/"https://fonts.example/a.css";</style>', "https://fonts.example/a.css"],
+    ['<style>.a{background:url(/**/"https://img.example/a.png")}</style>', "https://img.example/a.png"],
+    ['<style>.a{content:"/*"} .b{background:url(https://img.example/a.png)} .c{content:"*/"}</style>', "https://img.example/a.png"],
+    // An @import spelling the guard does not read is refused, never passed.
+    ["<style>@import foo.css;</style>", "unreadable: @import foo.css"],
   ]) assert.deepEqual(htmlThirdParty(html), [want], html);
   // Controls: local paths, data: URLs, and links (a link fetches nothing until clicked).
   for (const html of [
@@ -149,7 +162,14 @@ test("the third-party scanner catches every way the page could name another host
     '<a href="https&#58;//tunegarden.game/">home</a>',
     "<div style=background:url(img&#47;c.png)></div>",   // unquoted, encoded, local
     '<img src="img&#47a.png">',                           // a numeric reference without ";" is decoded, as browsers do
+    '<div title=" style=background:url(https://x.example/a.png) " style="background:url(img/a.png)">x</div>',
+    '<div title="src=https://x.example/a.js" data-note=\'href="//x.example"\'>x</div>',   // text, not attributes
+    "<style>@import\"local.css\";@import url(local2.css);@import 'a/b.css' screen;</style>",
   ]) assert.deepEqual(htmlThirdParty(html), [], html);
+  // The same CSS rules hold for a stylesheet read directly (fonts.css is one).
+  assert.deepEqual(cssThirdParty('@import/**/"https://fonts.example/a.css";'), ["https://fonts.example/a.css"]);
+  assert.deepEqual(cssThirdParty('@import"https://fonts.example/a.css";'), ["https://fonts.example/a.css"]);
+  assert.deepEqual(cssThirdParty('@import "local.css"; /* @import "https://x.example/c.css"; */'), []);
   assert.deepEqual(cssThirdParty("@font-face{src:url(\"https://fonts.gstatic.com/x.woff2\") format('woff2')}"), ["https://fonts.gstatic.com/x.woff2"]);
   assert.deepEqual(cssThirdParty("@font-face{src:url(nunito/latin.woff2) format('woff2')}"), []);
 });

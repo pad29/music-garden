@@ -63,11 +63,31 @@ export function vendorProblems(root = ROOT) {
 // tag is one edit from live. It is a markup/CSS guard, not a network trace: what scripts fetch at run time is
 // the browser check's job (reviews/TUN-81-self-hosted-fonts-and-sign-in.md lists the hosts seen).
 
-const FETCHING_ATTRS = "src|srcset|href|poster|data|action|formaction";
+const FETCHING_ATTRS = new Set(["src", "srcset", "href", "poster", "data", "action", "formaction"]);
 const TAG = /<([a-z][a-z0-9-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-const ATTR = new RegExp(`(?:^|\\s)(?:xlink:)?(${FETCHING_ATTRS})\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "gi");
+// One attribute at a time, left to right, each quoted value consumed whole (as tests/helpers/game-scripts.mjs
+// reads them), so `title=" style=… "` is the title's text, never a style (GPT's PR review, round 3).
+const ATTR = /([^\s"'=<>\/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;
-const CSS_IMPORT = /@import\s+(?:"([^"]*)"|'([^']*)')/gi;
+// The @import spellings read here: a string right after the keyword, spaces or not (url() forms are CSS_URL's).
+// Comments are gone by then. Any other @import is refused as unreadable, never passed.
+const CSS_IMPORT = /@import\s*(?:"([^"]*)"|'([^']*)'|(?=url\())/gi;
+
+/** CSS with its comments replaced by a space, strings left whole — so a "/*" inside a string hides nothing. */
+function stripCssComments(css) {
+  let out = "", i = 0;
+  while (i < css.length) {
+    const c = css[i];
+    if (c === '"' || c === "'") {
+      const j = css.indexOf(c, i + 1), end = j < 0 ? css.length : j + 1;
+      out += css.slice(i, end); i = end;
+    } else if (c === "/" && css[i + 1] === "*") {
+      const j = css.indexOf("*/", i + 2);
+      out += " "; i = j < 0 ? css.length : j + 2;
+    } else { out += c; i++; }
+  }
+  return out;
+}
 
 /**
  * True for a reference that leaves the page's own origin: any scheme but data:/blob:, or a protocol-relative
@@ -106,13 +126,21 @@ export function decodeRefs(value) {
  * escape …", rather than decoded — "\68 ttps:" is "https:" to a browser, and an escape can also hide the url(
  * itself (GPT's PR review, round 2). The page's own CSS has none, and no reason to.
  */
-export function cssThirdParty(css) {
+export function cssThirdParty(text) {
   const out = [];
-  for (const m of css.matchAll(/\\[^\n]{0,20}/g)) out.push("unreadable: CSS escape " + m[0].trim());
-  for (const re of [CSS_URL, CSS_IMPORT]) for (const m of css.matchAll(re)) {
+  for (const m of text.matchAll(/\\[^\n]{0,20}/g)) out.push("unreadable: CSS escape " + m[0].trim());
+  const css = stripCssComments(text);   // `@import/**/"…"` and `url(/**/"…")` are what a browser reads
+  for (const m of css.matchAll(CSS_URL)) {
     const ref = m[1] ?? m[2] ?? m[3] ?? "";
     if (!ref.includes("\\") && leavesOrigin(ref)) out.push(ref.trim());
   }
+  const readable = new Set();
+  for (const m of css.matchAll(CSS_IMPORT)) {
+    readable.add(m.index);
+    const ref = m[1] ?? m[2];
+    if (ref !== undefined && !ref.includes("\\") && leavesOrigin(ref)) out.push(ref.trim());
+  }
+  for (const m of css.matchAll(/@import\b[^;]{0,40}/gi)) if (!readable.has(m.index)) out.push("unreadable: " + m[0].trim());
   return out;
 }
 
@@ -122,19 +150,16 @@ export function htmlThirdParty(html) {
   for (const t of html.matchAll(TAG)) {
     const tag = t[1].toLowerCase();
     for (const a of t[2].matchAll(ATTR)) {
-      const name = a[1].toLowerCase(), raw = a[2] ?? a[3] ?? a[4] ?? "";
+      const name = a[1].toLowerCase().replace(/^xlink:/, ""), raw = a[2] ?? a[3] ?? a[4];
+      if (raw === undefined) continue;   // a bare attribute names nothing
+      const isStyle = name === "style";  // quoted or not (round 2)
+      if (!isStyle && !FETCHING_ATTRS.has(name)) continue;
       if (name === "href" && (tag === "a" || tag === "area")) continue;
       const value = decodeRefs(raw);
       if (value === null) { out.push("unreadable: " + raw.trim()); continue; }
+      if (isStyle) { out.push(...cssThirdParty(value)); continue; }
       const refs = name === "srcset" ? value.split(",").map((c) => c.trim().split(/\s+/)[0]) : [value];
       for (const ref of refs) if (leavesOrigin(ref)) out.push(ref.trim());
-    }
-    // Quoted or not: `style=background:url(…)` is valid HTML too (GPT's PR review, round 2).
-    const style = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(t[2]);
-    if (style) {
-      const raw = style[1] ?? style[2] ?? style[3];
-      const css = decodeRefs(raw);
-      if (css === null) out.push("unreadable: " + raw.trim()); else out.push(...cssThirdParty(css));
     }
   }
   for (const s of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) out.push(...cssThirdParty(s[1]));
