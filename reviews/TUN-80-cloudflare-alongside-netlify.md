@@ -425,3 +425,8 @@ project `music-garden`:
   Open question for the owner (dashboard): whose page that is.
 - **Not verified:** the sound itself (by ear), that the Piano pack decodes rather than falling back to
   the synth (AO's browser can't run page code), the phone, `file://`, and production after the merge.
+
+**The owner's answer on production** (AO session `music-garden-22`, 2026-11-14): **A**. The dashboard shows
+the project's domain as `music-garden.pages.dev` and no production deployment. The Astro page is what the
+hostname shows until the first production build. Checking production after the merge must confirm the game
+replaces it.
