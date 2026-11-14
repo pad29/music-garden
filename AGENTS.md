@@ -60,9 +60,11 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **`FAMOUS` melodies are score-validated.** Never "fix" one by ear. Shortening a piece is allowed;
   rewriting it is not.
 - **The crafting toolbox is per-package, never global.**
-- **Any new runtime asset folder must be added to the `netlify.toml` build command**, or it is missing
-  in production: an asset folder fails silently behind the game's fallbacks, and a `js/` file is served
-  as `index.html` by the catch-all rewrite, which stops the game from starting.
+- **Any new runtime asset folder must be added to both build configs — `netlify.toml`'s build command
+  and `cloudflare-build.sh` — while both hosts exist**, or it is missing in production: an asset folder
+  fails silently behind the game's fallbacks, and on both hosts a missing `js/` file is served as
+  `index.html`, which stops the game from starting. `tests/cloudflare-publish.test.mjs` holds the two
+  to the same list.
 - **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main` deploys
   to production. An agent session may commit and push its own branch and open PRs.
 
