@@ -43,7 +43,8 @@ at its effective path, so the same text under `Metadata` doesn't count:
   its approved rate and burst;
 - the default route throttle, and Globals reserved concurrency with no function overriding it;
 - `Retain` and deletion protection on the user pool and both tables, and point-in-time recovery;
-- the $30 account-wide budget with its four alerts to `!Ref BudgetEmail` and no fixed name.
+- the $30 account-wide budget with its four alerts to `!Ref BudgetEmail` and no fixed name;
+- the API's CORS origins: exactly `tunegarden.game` and `www.tunegarden.game` (TUN-76).
 
 It also refuses any email address other than an `@example.com` placeholder in the template or
 `samconfig.toml`, comments included: the repository is public. It is a static check, not

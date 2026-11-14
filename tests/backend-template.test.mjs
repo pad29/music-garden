@@ -1,5 +1,5 @@
-// backend/template.yaml must keep TUN-82's cost limits and data protection, and the repository must never
-// hold the budget's email address.
+// backend/template.yaml must keep TUN-82's cost limits and data protection and TUN-76's CORS origins, and the
+// repository must never hold the budget's email address.
 //
 // Why a test: the backend has no deploy preview and the worker that edits the template has no AWS
 // credentials, so a dropped throttle, a lost Retain or a committed address would first show up in
@@ -35,6 +35,10 @@ const ROUTES = {
 const DEFAULT_ROUTE = [0.25, 2];
 const RESERVED_CONCURRENCY = 2;
 const ALERTS = ["ACTUAL 100", "ACTUAL 50", "ACTUAL 80", "FORECASTED 100"];
+// The browser origins the API answers (TUN-76, 2026-11-14): the production site only. The retired
+// music-garden.netlify.app is gone; deploy previews are the owner's call, not a worker's.
+const ORIGINS = ["https://tunegarden.game", "https://www.tunegarden.game"];
+const ORIGIN_LINES = "          - https://tunegarden.game\n          - https://www.tunegarden.game\n";   // as template.yaml lists them
 const ALLOWED_EMAIL = /@example\.com$/i;   // documentation placeholders only (you@ / new@example.com)
 
 // ---- a minimal block-YAML parser --------------------------------------------------------------------
@@ -143,6 +147,11 @@ export function templateProblems(template, samconfig) {
   const def = [num(d.ThrottlingRateLimit), num(d.ThrottlingBurstLimit)];
   if (def.join() !== DEFAULT_ROUTE.join()) problems.push(`default route throttle is ${fmt(def)}, approved ${fmt(DEFAULT_ROUTE)}`);
 
+  // CORS: exactly the approved browser origins, in any order.
+  const ao = (props("Api").CorsConfiguration || {}).AllowOrigins;
+  const origins = Array.isArray(ao) ? ao.map(String).sort() : [];
+  if (origins.join() !== [...ORIGINS].sort().join()) problems.push(`CORS origins are [${origins.join(", ")}], approved [${ORIGINS.join(", ")}]`);
+
   // Reserved concurrency: the Globals value, and no function overriding it (0 would switch one off).
   const g = num(((t.Globals || {}).Function || {}).ReservedConcurrentExecutions);
   if (g !== RESERVED_CONCURRENCY) problems.push(`Globals reserved concurrency is ${g}, approved ${RESERVED_CONCURRENCY}`);
@@ -203,7 +212,7 @@ export function templateProblems(template, samconfig) {
   return problems;
 }
 
-test("backend/template.yaml keeps the approved throttles, reserved concurrency, budget and data protection; no address is committed", () => {
+test("backend/template.yaml keeps the approved throttles, reserved concurrency, budget, data protection and CORS origins; no address is committed", () => {
   assert.deepEqual(templateProblems(TEMPLATE, SAMCONFIG), []);
 });
 
@@ -215,6 +224,7 @@ test("the template check is not fooled by harmless formatting", () => {
     TEMPLATE.replace(/Type: HttpApi\n/g, "Type: HttpApi   # a route\n"),
     TEMPLATE.replace(/(            ApiId: !Ref Api\n)(            Path: \/progress\n            Method: GET\n)/, "$2$1"),
     TEMPLATE.replace(/^( *)Address: !Ref BudgetEmail$/gm, "$1Address:\n$1  Ref: BudgetEmail"),
+    TEMPLATE.replace(ORIGIN_LINES, "          - 'https://www.tunegarden.game'\n          - \"https://tunegarden.game\"\n"),
   ];
   for (const v of variants) {
     assert.notEqual(v, TEMPLATE);
@@ -257,6 +267,12 @@ test("the template check refuses each mistake it guards against, with the right 
     ["alerts moved under Metadata", TEMPLATE.replace("      NotificationsWithSubscribers:\n", "    Metadata:\n      NotificationsWithSubscribers:\n"), /budget alerts are \[\]/],
     ["an alert to someone else", TEMPLATE.replace("Address: !Ref BudgetEmail", "Address: !Ref OtherEmail"), /every budget alert must email exactly !Ref BudgetEmail/],
     ["a default address", TEMPLATE.replace("    NoEcho: true\n", "    NoEcho: true\n    Default: '!Ref Nothing'\n"), /BudgetEmail has a Default/],
+    // TUN-76: the browser origins are exactly the production site's.
+    ["the retired origin back", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://music-garden.netlify.app\n"), /CORS origins are \[.*https:\/\/music-garden\.netlify\.app.*\], approved/],
+    ["a deploy-preview origin", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://deploy-preview-1--tunegarden.netlify.app\n"), /CORS origins are \[.*deploy-preview-1--tunegarden.*\], approved/],
+    ["any origin", TEMPLATE.replace(ORIGIN_LINES, "          - '*'\n"), /CORS origins are \[\*\], approved/],
+    ["a production origin dropped", TEMPLATE.replace("          - https://www.tunegarden.game\n", ""), /CORS origins are \[https:\/\/tunegarden\.game\], approved/],
+    ["origins moved under Metadata", TEMPLATE.replace("      CorsConfiguration:\n", "    Metadata:\n      CorsConfiguration:\n"), /CORS origins are \[\], approved/],
   ];
   for (const [what, mutated, expect] of cases) {
     assert.notEqual(mutated, TEMPLATE, `the "${what}" mutation must change the template`);

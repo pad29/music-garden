@@ -299,13 +299,12 @@ Resources:
       DefaultRouteSettings:
         ThrottlingRateLimit: 0.25
         ThrottlingBurstLimit: 2
+      # Only the production site may call the API from a browser. Adding an origin (a deploy preview, say)
+      # is the owner's decision; tests/backend-template.test.mjs holds this list.
       CorsConfiguration:
         AllowOrigins:
           - https://tunegarden.game
           - https://www.tunegarden.game
-          # Transition fallback: the original Netlify subdomain still serves the app.
-          # Safe to remove once everyone is on tunegarden.game.
-          - https://music-garden.netlify.app
         AllowHeaders:
           - authorization
           - content-type
