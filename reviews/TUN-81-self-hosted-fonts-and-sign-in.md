@@ -448,3 +448,15 @@ returned `[]` on the round-2 code, as GPT reproduced; it fails nothing now.)
 **This was the third round of fixes, so per `work-ticket` § 8 there is no fourth review: these fixes await
 GPT's review, and the ticket stops at Needs Input** — with the owner's decision on round-1 finding 1 (the
 Netlify deploy-preview drawer) and the sign-in check.
+
+## Owner's decisions
+
+1. *Do Netlify deploy previews have to meet "no third-party requests"?* Netlify injects its feedback drawer
+   into every deploy-preview URL (not production), and it calls `app.netlify.com` and `cdn.segment.com`.
+   **A** — no, previews are outside the rule (they end with TUN-85) · **B** — yes: the owner turns the drawer
+   off in Netlify's settings and a worker repeats the capture. Claude recommends A. — **open**
+2. *How is a successful sign-up/sign-in verified?* **A** — the owner, on the deploy preview, with their own
+   account · **B** — a worker creates one throwaway account in the live user pool, which the owner deletes
+   afterwards. Claude recommends A. — **open**
+3. *Round 3's fixes (`99072f7`) have had no GPT review (the three-round budget is spent).* **A** — one more
+   GPT review round after the answers · **B** — merge without it. Claude recommends A. — **open**
