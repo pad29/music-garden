@@ -47,20 +47,25 @@ export function parseBuildScript(text) {
   return parseChain(live[1], ["rm -rf site", "mkdir site"]);
 }
 
-// A line that sets `command` or `publish` in any TOML spelling: bare, quoted, or dotted
-// (`production.command = …` under [context], `build.publish = …` at the top level).
-const SETS_KEY = /^\s*(?:[\w."'-]*\.)?["']?(command|publish)["']?\s*=/;
+// netlify.toml must stay in the plain form the readers understand. TOML has many spellings of the same
+// setting — quoted or spaced table names (`["context".production]`, `[context . production]`), dotted
+// or escaped keys (`production . publish`, `"publish"`), inline tables
+// (`production = { publish = "." }`) — and a reader that misses one treats the setting as absent while
+// Netlify obeys it (GPT's PR review, rounds 1 and 2, finding 2). So instead of chasing them, every live
+// line must be a comment, a plain header, or `key = value` with a bare key (or exactly a quoted
+// "command"/"publish"), and no value may open an inline table or a multi-line string.
+const PLAIN_HEADER = /^\s*\[\[?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\]\]?\s*(?:#.*)?$/;
+const PLAIN_SETTING = /^\s*(?:[A-Za-z0-9_-]+|"command"|'command'|"publish"|'publish')\s*=\s*(?!\{|"""|''')\S/;
 
-/** Lines that can set a deploy's command or publish directory: top level, [build], [context…]. */
-function settingLines(toml) {
-  let table = null, n = 0;
-  for (const line of toml.split(/\r?\n/)) {
-    const header = line.match(/^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/);
-    if (header) { table = header[1]; continue; }
-    if (SETS_KEY.test(line) && (table === null || table === "build" || table === "context" || table.startsWith("context.")))
-      n++;
-  }
-  return n;
+/** Every netlify.toml line outside that plain form, as "netlify.toml line N: can't read …". */
+export function unreadableToml(toml) {
+  const out = [];
+  toml.split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (!t || t.startsWith("#") || PLAIN_HEADER.test(line) || PLAIN_SETTING.test(line)) return;
+    out.push(`netlify.toml line ${i + 1}: can't read "${t}"`);
+  });
+  return out;
 }
 
 export const showCopy = (c) => `cp ${c.recursive ? "-r " : ""}${c.src} site/${c.dst}`;
@@ -79,11 +84,8 @@ export function cloudflareProblems({ script, toml, scripts, allowed }) {
   for (const c of mine) if (!allowed.includes(c)) problems.push(`cloudflare-build.sh publishes more than the game loads: ${c}`);
   for (const c of allowed) if (!mine.has(c)) problems.push(`cloudflare-build.sh does not run: ${c}`);
   const commands = buildCommands(toml), dirs = publishDirs(toml);
-  // Every line that sets a command or publish directory must be one the readers above understood:
-  // one they can't read is refused, never treated as absent (GPT's PR review, finding 2).
-  const setting = settingLines(toml);
-  if (setting !== commands.length + dirs.length)
-    problems.push(`netlify.toml: ${setting - commands.length - dirs.length} command/publish line(s) in a form this check can't read`);
+  // A line the readers can't read is refused, never treated as absent (finding 2).
+  problems.push(...unreadableToml(toml));
   if (!commands.some((c) => c.table === "build")) problems.push("netlify.toml has no [build] command");
   for (const { table, command } of commands) {
     const { copies: copied, refused: no } = parseChain(command, ["mkdir -p site"]);

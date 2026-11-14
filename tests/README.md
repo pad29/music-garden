@@ -30,8 +30,8 @@ file left out is served as `index.html` in production, and the game never starts
 override) and honours a shell `#` comment. `tests/cloudflare-publish.test.mjs` does the same for
 Cloudflare Pages' `cloudflare-build.sh`, more strictly (`helpers/cloudflare-publish.mjs`): the script
 must publish exactly `index.html`, `js/`, `voice/` and `samples/` in one `&&` chain, a step it cannot
-read is refused rather than skipped (in Netlify's commands too, and in a `command`/`publish` key it
-cannot read), every Netlify build command must copy the same set into `site/`, no `404.html` may
+read is refused rather than skipped (in Netlify's commands too; and `netlify.toml` must stay in plain
+TOML — plain headers, bare keys, no inline tables — so no spelling of a setting is read as absent), every Netlify build command must copy the same set into `site/`, no `404.html` may
 be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
 as in `workflow-scripts.test.mjs`).
 

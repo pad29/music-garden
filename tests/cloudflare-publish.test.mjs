@@ -169,12 +169,33 @@ test("quoted and dotted command/publish keys are read, or refused — never igno
   // Controls: the same quoted keys with the right values.
   assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\n  "publish" = "site"\n  "command" = "${real}"\n` }), []);
   // A dotted key can't be read here, so it is refused rather than taken as absent.
-  includesAll(problems({ toml: REAL_TOML + `\n[context]\n  production.command = "${short}"\n` }),
-    ["netlify.toml: 1 command/publish line(s) in a form this check can't read"]);
-  includesAll(problems({ toml: 'build.publish = "."\n' + REAL_TOML }),
-    ["netlify.toml: 1 command/publish line(s) in a form this check can't read"]);
-  // But a command in a table that never deploys (Netlify Dev's [dev]) is not counted.
+  refusesLine(REAL_TOML + `\n[context]\n  production.command = "${short}"\n`, `production.command = "${short}"`);
+  refusesLine('build.publish = "."\n' + REAL_TOML, 'build.publish = "."');
+  // A command in a table that never deploys (Netlify Dev's [dev]) is plain TOML, and fine.
   assert.deepEqual(problems({ toml: REAL_TOML + '\n[dev]\n  command = "npx http-server"\n' }), []);
+});
+
+// The six spellings GPT's round-2 review found passing: valid TOML for a production or deploy-preview
+// override that the readers would miss. Each must be refused, by line, not treated as absent.
+const refusesLine = (toml, text) => {
+  const got = problems({ toml });
+  assert.ok(got.some((p) => /^netlify\.toml line \d+: can't read /.test(p) && p.endsWith(`"${text}"`)),
+    `expected "${text}" to be refused; got:\n  ${got.join("\n  ")}`);
+};
+test("any other TOML spelling of a table or key is refused, never read as absent", () => {
+  for (const [extra, text] of [
+    ['["context".production]\npublish = "."', '["context".production]'],
+    ['[context . production]\npublish = "."', "[context . production]"],
+    ['[context]\nproduction . publish = "."', 'production . publish = "."'],
+    ["['context'.'deploy-preview']\ncommand = \"exit 0\"", "['context'.'deploy-preview']"],
+    ['[context.production]\n"\\u0070ublish" = "."', '"\\u0070ublish" = "."'],
+    ['[context]\nproduction = { publish = "." }', 'production = { publish = "." }'],
+    ['[context.production]\ncommand = """mkdir -p site"""', 'command = """mkdir -p site"""'],
+  ]) refusesLine(REAL_TOML + "\n" + extra + "\n", text);
+  // Controls: the plain spellings of correct overrides, and the real file itself, read cleanly.
+  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
+  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\npublish = "site"\ncommand = "${real}"\n` }), []);
+  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.deploy-preview]\n'publish' = 'site'\n'command' = '${real}'\n` }), []);
 });
 
 // ---- A scratch repository: a few files in each folder, plus everything that must stay out. ----

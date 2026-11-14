@@ -545,3 +545,79 @@ unchanged (the Astro placeholder, no production deployment).
 
 Still for the owner, before or at merge: narration and the piano by ear, `file://`. After the merge, the
 production checks (Q4 = A).
+
+### Round 2 — on `5010950`: changes requested
+
+<details><summary>GPT's PR review, round 2, verbatim</summary>
+
+**Changes requested** for head `5010950573bc58d718b2e8ded2e2d53d8ac39161`. No files edited.
+
+Round-1 findings:
+
+| Finding | Assessment |
+|---|---|
+| 1. Lenient Netlify command parsing | **Resolved.** Both hosts now use the strict chain parser. All four requested mutations are covered in `[build]`, production and deploy-preview contexts. |
+| 2. Quoted/unreadable TOML settings | **Not fully resolved.** Simple quoted keys work, but valid deployment overrides still bypass both readers and the new counting guard. See required change below. |
+| 3. Split chains hide copy failures | **Resolved.** The parser rejects a second command line. Execution tests now cover each missing source; those tests encountered sandbox `EPERM` here. |
+| 4. Preview verification evidence | **Resolved on the supplied evidence.** The record documents the second push, unchanged production and both browser paths; your supplied update identifies the current-head check and preview. I could not independently inspect the PR comment/check: `gh` configuration access was denied, and web access failed. |
+
+1. **Medium — Unsupported TOML deployment overrides still silently pass.**  
+   [tests/helpers/cloudflare-publish.mjs:52](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-22/tests/helpers/cloudflare-publish.mjs:52), especially the table filter at line 60.
+
+   Appending either of these independently to the real configuration makes `cloudflareProblems(...)` return **`[]`**:
+
+   ```toml
+   ["context".production]
+   publish = "."
+   ```
+
+   ```toml
+   [context]
+   production . publish = "."
+   ```
+
+   These are valid spellings of a production publish override. TOML permits quoted table components and whitespace around dotted keys. [TOML specification](https://toml.io/en/v1.0.0)
+
+   The first bypasses the literal table-name checks; the second bypasses `SETS_KEY`. Because the readers and counter both miss the setting, their counts agree. Netlify can therefore publish the repository root while the guard reports parity.
+
+   **Required:** recognize these equivalent forms or explicitly reject unsupported deployment syntax. The counting guard must not silently accept settings that its own detection misses.
+
+   **Missing regression cases:** I reproduced no reported problems for each of these independent additions; each must produce a diagnostic:
+
+   - `["context".production]` with `publish = "."`.
+   - `[context . production]` with `publish = "."`.
+   - `[context]` with `production . publish = "."`.
+   - `['context'.'deploy-preview']` with `command = "exit 0"`.
+   - `[context.production]` with `"\u0070ublish" = "."`.
+   - `[context]` with `production = { publish = "." }`.
+
+   Retain the current valid configuration and `[dev]` controls. If these additional forms are supported, include corresponding valid `site`/copy-command controls.
+
+Validation performed:
+
+- Reviewed the requested delta and relevant whole-PR context.
+- `node tools/check-syntax.mjs`: **passed, 29 scripts**.
+- Targeted Cloudflare/Netlify tests: **16 passed; 3 blocked by `EPERM` creating temporary directories**.
+- Full suite attempted: temporary-fixture tests encountered sandbox `EPERM`; I do **not** count those as PR defects or claim an independent 695/695 pass.
+- In-memory mutation probes reproduced all six bypasses above.
+- `git diff --check`: reported Markdown hard-break trailing spaces in the verbatim review record; no change requested.
+
+Actual narration playback, confirmed Piano sample decoding and `file://` remain owner checks before merge. Production verification remains deferred until after merge under the recorded owner decision.
+
+</details>
+
+GPT judged round-1 findings 1, 3 and 4 resolved, and 2 not fully.
+
+1. **Medium — other valid TOML spellings of an override still slipped past.** **Agreed**: chasing spellings
+   can't end. Instead, `netlify.toml` must stay in plain form (`unreadableToml`):
+   - every live line is a comment, a plain header (no quotes or spaces), or `key = value`;
+   - each key is bare, or exactly a quoted `"command"`/`'command'`/`"publish"`/`'publish'`;
+   - no value opens an inline table or a multi-line string.
+
+   Anything else is refused by line number. This replaces round 1's line-counting guard. Tests added:
+   GPT's six spellings plus a multi-line string, each refused. Controls: plain and single-quoted correct
+   overrides, the `[dev]` table, and the real file. Mutation audit: dropping the check, accepting any
+   header, or accepting inline tables each turns the tests red.
+
+GPT's note on `git diff --check` (trailing spaces in its own verbatim review): no change requested, and
+none made, since the review is kept verbatim.
