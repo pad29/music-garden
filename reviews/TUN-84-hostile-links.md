@@ -301,10 +301,8 @@ Suite: 708/708, syntax check clean.
 3. Run round 2 after the limit resets? Overtaken: the owner upgraded the GPT plan, lifting the limit, and
    said to run round 2 now (relayed by the orchestrator `music-garden-5` to session `music-garden-25`,
    2026-11-14, about 9:00 AM Central). PR #128 still open, so nothing to merge from `main` first.
-4. **Open:** run GPT's PR review round 3 — the last of the three — on the round-2 fixes? Session
-   `music-garden-25` was scoped to one round, so it stops here. (Recommended: yes — only an approval on
-   the current head sends the PR to In Review; if round 3 still requests changes, the loop ends at Needs
-   Input with the open findings, per `work-ticket` § 8.)
-5. **Open:** is about a second acceptable for opening the densest song the gate allows (14 × 1,920, measured
-   in round 2), or should `MAX_COLS` come down? (Recommended: acceptable — it is a one-time wait for a
-   song the Studio needs ~27,000 plantings to build; the longest built-in tune is 102 columns.)
+4. Run GPT's PR review round 3 — the last of the three — on the round-2 fixes? **1A — yes, now** (the
+   owner, in AO session `music-garden-25`, 2026-11-14, about 10:09 AM Central).
+5. Is about a second acceptable for opening the densest song the gate allows (14 × 1,920, measured in
+   round 2), or should `MAX_COLS` come down? **2A — acceptable; `MAX_COLS` stays 1920** (the owner, same
+   place and time).
