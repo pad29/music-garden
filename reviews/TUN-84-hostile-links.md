@@ -207,5 +207,6 @@ branch (TUN-80's record says the first builds fail until it merges). Nothing to 
 2. Run GPT's PR review round 2 on the fixes, as the delta since `d439426` with round 1's findings
    quoted? **1A — yes, now** (the owner, in AO session `music-garden-25`, 2026-11-14, answering the
    Needs Input hand-off of the same morning).
-3. **Open:** run round 2 after the limit resets at 1:36 PM Central (2026-11-14)? (Recommended: yes —
-   the same prompt, re-pointed at the head it then has.)
+3. Run round 2 after the limit resets? Overtaken: the owner upgraded the GPT plan, lifting the limit, and
+   said to run round 2 now (relayed by the orchestrator `music-garden-5` to session `music-garden-25`,
+   2026-11-14, about 9:00 AM Central). PR #128 still open, so nothing to merge from `main` first.
