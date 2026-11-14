@@ -185,6 +185,20 @@ would need ~19,000 plantings.
 
 Suite after the fixes: 705/705 (eight new tests), syntax check clean.
 
+## PR review — round 2 (Astra, `ask.sh`), head `556d257`: not run, usage limit
+
+On the owner's 1A, session `music-garden-25` wrote the round-2 prompt (the delta `d439426..556d257`, round
+1's findings verbatim, Claude's answers including the disputed part of finding 3, the ticket verbatim)
+and took the GPT lock once session `music-garden-23` released it. `ask.sh` stopped at the ChatGPT limit:
+*"ask.sh: usage limit — try again at 1:36 PM (codex exit 1)"* — 2026-11-14, about 9:00 AM Central. The
+lock was released; no retry (`CLAUDE.md` § When something external breaks). Review rounds used: still
+**1 of 3** — a round that never ran is not spent.
+
+Separately, the PR's new **Cloudflare Pages** check fails, as it does on `main` and PR #129: TUN-80
+(PR #128) set the dashboard's build command to `sh cloudflare-build.sh`, which exists only on #128's
+branch (TUN-80's record says the first builds fail until it merges). Nothing to fix here; merge
+`origin/main` once #128 has landed.
+
 ## Owner's decisions
 
 1. Run GPT's PR review round 1 after the 1:59 AM reset? **1A — yes** (the owner, relayed by the
@@ -193,3 +207,5 @@ Suite after the fixes: 705/705 (eight new tests), syntax check clean.
 2. Run GPT's PR review round 2 on the fixes, as the delta since `d439426` with round 1's findings
    quoted? **1A — yes, now** (the owner, in AO session `music-garden-25`, 2026-11-14, answering the
    Needs Input hand-off of the same morning).
+3. **Open:** run round 2 after the limit resets at 1:36 PM Central (2026-11-14)? (Recommended: yes —
+   the same prompt, re-pointed at the head it then has.)
