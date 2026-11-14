@@ -35,41 +35,57 @@ function currentSong(){
 // (pitch, column), held 1..MAX_VINE like 🌿 Grow allows, and no more of them than the song's own field has
 // seeds — 100,000 notes in a link would otherwise be 100,000 stems in renderVines (TUN-84).
 const wholeIn=(x,lo,hi)=>Number.isInteger(x)&&x>=lo&&x<hi;
-function songCols(c){ const n=Math.round(Number(c)); return Number.isFinite(n) ? Math.min(MAX_COLS, Math.max(16, n)) : 16; }
+// A song's number becomes a number only if it is one, or a string. Number() on an object runs the
+// object's own toString/valueOf, and a link's {"toString":0} makes that THROW, part-way through a load;
+// an array a few thousand deep overflows the stack the same way (TUN-84 review). Anything else is NaN,
+// which every caller already treats as "not given".
+const num=x=>typeof x==="number" ? x : typeof x==="string" ? Number(x) : NaN;
+function songCols(c){ const n=Math.round(num(c)); return Number.isFinite(n) ? Math.min(MAX_COLS, Math.max(16, n)) : 16; }
 // Returns true when it had to leave part of the song behind, so the caller can tell the player.
 function applySong(s){
-  if(!s||s.v!==3) return false;                             // clean break: only v3 loads; stale links fail gracefully
-  setPalette(s.palette||"pentatonic");                      // sets MIDI/NAMES/ROWS for the song's authoring palette
+  if(!s||typeof s!=="object"||s.v!==3) return false;        // clean break: only v3 loads; stale links fail gracefully
+  // Read and normalise EVERYTHING first, touching nothing: a song that cannot be read must leave the game as
+  // it was, never half-loaded (a palette set, COLS changed, then a throw). Below the tx nothing can throw.
+  const pal=paletteDef(s.palette);                          // the song's authoring palette; unknown → pentatonic
   const tracks=Array.isArray(s.tracks)?s.tracks:[], t=(s.time&&typeof s.time==="object")?s.time:{};
   const mel=tracks.find(x=>x&&x.kind==="melody")||{notes:[]};
   const dr =tracks.find(x=>x&&x.kind==="drums") ||{hits:[]};
-  COLS=songCols(t.cols);
-  let cut=Number(t.cols)>MAX_COLS;
-  const seen=new Set(), notes=[], hits=[], cap=ROWS*COLS;
-  for(const n of Array.isArray(mel.notes)?mel.notes:[]){
-    if(!n||!wholeIn(n.p,0,128)||!wholeIn(n.c,0,COLS)||seen.has(n.p+":"+n.c)) continue;
-    if(notes.length>=cap){ cut=true; break; }
-    const len=Math.round(Number(n.len));
+  const cols=songCols(t.cols), cap=pal.MIDI.length*cols, hitCap=DRUMS.length*cols;
+  // Read at most as many raw entries as could ever load. A song the Studio wrote has no repeats and no
+  // junk, so this costs it nothing; a link stuffed with a million repeats stops here, not at its end.
+  const rawNotes=Array.isArray(mel.notes)?mel.notes:[], rawHits=Array.isArray(dr.hits)?dr.hits:[];
+  let cut=num(t.cols)>MAX_COLS || rawNotes.length>cap || rawHits.length>hitCap;
+  const seen=new Set(), notes=[], hits=[];
+  for(let i=0, end=Math.min(rawNotes.length,cap); i<end; i++){ const n=rawNotes[i];
+    if(!n||!wholeIn(n.p,0,128)||!wholeIn(n.c,0,cols)||seen.has(n.p+":"+n.c)) continue;
+    const len=Math.round(num(n.len));
     seen.add(n.p+":"+n.c); notes.push({p:n.p, c:n.c, len:Number.isFinite(len)?Math.min(MAX_VINE,Math.max(1,len)):1}); }
   seen.clear();
-  for(const h of Array.isArray(dr.hits)?dr.hits:[]){
-    if(!h||!wholeIn(h.lane,0,DRUMS.length)||!wholeIn(h.c,0,COLS)||seen.has(h.lane+":"+h.c)) continue;
-    seen.add(h.lane+":"+h.c); hits.push(h); }
+  for(let i=0, end=Math.min(rawHits.length,hitCap); i<end; i++){ const h=rawHits[i];
+    if(!h||!wholeIn(h.lane,0,DRUMS.length)||!wholeIn(h.c,0,cols)||seen.has(h.lane+":"+h.c)) continue;
+    seen.add(h.lane+":"+h.c); hits.push({lane:h.lane, c:h.c}); }
+  const groove=(typeof t.groove==="number"&&GROOVES[t.groove]) ? t.groove : null;
+  // Only a real number moves the slider, clamped to its own range; anything else leaves the tempo as
+  // it was (a range input would quietly turn "abc" into its midpoint).
+  const tn=Math.round(num(t.tempo));
+  const tempo=(t.tempo && Number.isFinite(tn)) ? Math.min(+tempoEl.max||180, Math.max(+tempoEl.min||40, tn)) : null;
+  // Meter is the FIRST field that is legitimately ABSENT, so it must not copy the conditional pattern
+  // above: loading an unmetered song has to actively CLEAR a meter, not merely decline to set one, or a
+  // stale meter (and its bars) survives over the freshly loaded song.
+  const meter=validMeter(t.meter, t.origin);
+  const voice=typeof mel.voice==="string" ? mel.voice : "";   // an object here would throw on the <select>
+  // Now change the game.
+  setPalette(pal.id);                                       // sets MIDI/NAMES/ROWS for the song's authoring palette
+  COLS=cols;
   tx("load-song",()=>{                                      // rebuild the DOC from the song; projection derives the grids
     melTrack().notes=notes
       .map(n=>({id:newNoteId(),pitch:n.p,startTick:n.c*TICKS_PER_COL,durationTicks:n.len*TICKS_PER_COL,velocity:1}));
     drumTrack().notes=hits
       .map(h=>({id:newNoteId(),pitch:h.lane,startTick:h.c*TICKS_PER_COL,durationTicks:TICKS_PER_COL,velocity:1}));
     // tempo/groove are song state — set INSIDE the tx so redo restores them too
-    if(typeof t.groove==="number"&&GROOVES[t.groove]){ grooveIdx=t.groove; grooveEl.value=t.groove; }
-    // Only a real number moves the slider, clamped to its own range; anything else leaves the tempo as
-    // it was (a range input would quietly turn "abc" into its midpoint).
-    const tempo=Math.round(Number(t.tempo));
-    if(t.tempo && Number.isFinite(tempo)) tempoEl.value=Math.min(+tempoEl.max||180, Math.max(+tempoEl.min||40, tempo));
-    // Meter is the FIRST field that is legitimately ABSENT, so it must not copy the conditional pattern
-    // above: loading an unmetered song has to actively CLEAR a meter, not merely decline to set one, or a
-    // stale meter (and its bars) survives over the freshly loaded song.
-    doc.meterMap = validMeter(t.meter, t.origin);
+    if(groove!==null){ grooveIdx=groove; grooveEl.value=groove; }
+    if(tempo!==null) tempoEl.value=tempo;
+    doc.meterMap = meter;
     // The groove was assigned above, before the meter existed; normalise now that it does. Note this must
     // NOT call applyGrooveTempo() — the song carries its own tempo and a fallback must not overwrite it.
     // Songs saved between the meter slice and the dances legitimately pair a 3/4 meter with one of the old
@@ -79,7 +95,7 @@ function applySong(s){
     reproject(); });
   clearLoopRange(); _tintKey=null; syncMeterUI();
   rebuildField();   // build the pitch grid + drum lane together at the new COLS (a song may have widened it) — always aligned
-  if(mel.voice) setVoice(mel.voice);
+  if(voice) setVoice(voice);
   updateGarden();
   return cut;
 }
@@ -88,6 +104,11 @@ const SONG_CUT_NOTE=" 🌱 It was longer than a garden can grow, so only its beg
 // --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
 // songs exceed SHARE_MAX and must be saved (cloud links arrive in P3). The in-memory object is always the v3 above. ---
 const SHARE_MAX=1800;   // encoded-char ceiling for a shareable link
+// The ceiling for a link we READ. The game never writes one past SHARE_MAX; four times that leaves room for
+// a link from a later version, and still decodes in an instant whatever it holds. Without it a link of
+// megabytes would be decoded, parsed and expanded into objects before applySong's gate saw a single note
+// (TUN-84 review). A longer link opens nothing, and the player is told so.
+const SHARE_IN_MAX=4*SHARE_MAX;
 // A share link is UNTRUSTED input. An unknown preset, a negative or fractional origin, or an origin at or
 // past a bar's own length all normalise to UNMETERED rather than throwing inside barTicks(METERS[id]) —
 // §17 says absence must read as unmetered, and a link we cannot trust is a link with no meter.
@@ -99,7 +120,7 @@ function validMeter(preset, originCols){
   // bar 1 in the wrong place, which is worse than no bars at all. `+x||0` would have quietly turned NaN
   // into a valid downbeat. Anything that does coerce to a whole in-range column is ACCEPTED, "2" and 1.5
   // included — they name a real pickup, and rejecting a link over its JSON number type helps nobody.
-  const o = (originCols===undefined||originCols===null||originCols==="") ? 0 : Math.round(Number(originCols));
+  const o = (originCols===undefined||originCols===null||originCols==="") ? 0 : Math.round(num(originCols));
   if(!Number.isFinite(o) || o<0 || o>=bc) return [];   // an origin as long as the bar is not a pickup, it is a mislabelled bar
   return [{tick:0, preset, originTick:o*TICKS_PER_COL}]; }
 function packSong(s){
@@ -115,14 +136,14 @@ function packSong(s){
 }
 function unpackSong(a){ const [,palette,cols,tempo,groove,voice,notes,hits,meter]=a; const now=Date.now();
   const time={cols,tempo,groove};
-  if(Array.isArray(meter) && meter[0]){ time.meter=meter[0]; time.origin=+meter[1]||0; }   // absent = unmetered, so every old link stays bar-less
+  if(Array.isArray(meter) && meter[0]){ time.meter=meter[0]; time.origin=num(meter[1])||0; }   // absent = unmetered, so every old link stays bar-less
   return { v:3, meta:{title:null,created:now,updated:now,author:null}, palette, time,
     tracks:[ {kind:"melody",voice,notes:(notes||[]).map(n=>({p:n[0],c:n[1],len:n[2]||1}))},
              {kind:"drums", hits:(hits||[]).map(h=>({lane:h[0],c:h[1]}))} ] }; }
 const b64url  =str=>btoa(unescape(encodeURIComponent(str))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const unb64url=b64=>decodeURIComponent(escape(atob(b64.replace(/-/g,"+").replace(/_/g,"/"))));
 const encodeSong=s=>b64url(JSON.stringify(packSong(s)));
-const decodeSong=str=>{ try{ return unpackSong(JSON.parse(unb64url(str))); }catch(e){ return null; } };
+const decodeSong=str=>{ if(typeof str!=="string"||str.length>SHARE_IN_MAX) return null; try{ return unpackSong(JSON.parse(unb64url(str))); }catch(e){ return null; } };
 function copyLink(url){ if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copied — paste it to a friend!"),()=>prompt("Copy this link:",url));
   else prompt("Copy this link:",url); }

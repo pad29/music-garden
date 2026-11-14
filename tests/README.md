@@ -139,6 +139,11 @@ contour. Use it instead of poking `g.grid` directly.
   pass your own recording element: `loadGame({ fresh: true, elements: { status: el } })` hands it to
   `getElementById("status")` (never cached). `hostile-links.test.mjs` does this, and defines
   `document.createElement` on `g.__document` to record what the game builds.
+- **To run the boot with a URL or a saved profile** — `#s=`, `#song=`, `?reset` — pass
+  `loadGame({ setup: w => { ... } })`: it gets the stubbed window before any script runs, so it can set
+  `w.location`, seed `w.localStorage`, answer `w.confirm`, or give the cloud songs API a `w.fetch` (never
+  cached). `hostile-links.test.mjs` boots this way. A `fetch` stub answers the cloud API only; anything
+  else it is asked for must still fail, per the next point.
 - **`fetch`/`XMLHttpRequest` are deliberately absent from the harness.** `index.html` must never
   use them for local assets (AGENTS.md hard invariant). If a test dies on a missing `fetch`,
   that is a real bug in the game, not a missing stub.

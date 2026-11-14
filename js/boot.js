@@ -40,7 +40,8 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
 // #s=<packed>  = an inline (small) song;  #song=<id> = a cloud-stored song fetched via the /songs API.
 (function(){
   const inline=(location.hash||"").match(/(?:^#|&)s=([^&]+)/);
-  if(inline){ const s=decodeSong(inline[1]); if(!s) return;
+  if(inline){ const s=decodeSong(inline[1]);   // null: too long to read (SHARE_IN_MAX), or not a song at all
+    if(!s){ toast("⚠️ That song link didn't work — it doesn't hold a song the garden can open."); return; }
     const cut=openStudioWith(s);
     setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"+(cut?SONG_CUT_NOTE:"")); toast("🎵 A melody from a friend!"); return; }
   const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]+)/);

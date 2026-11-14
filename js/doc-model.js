@@ -203,7 +203,7 @@ function noteEdit(label){
 // undo/redo: restore a full snapshot (palette vars + COLS + tracks), reproject, rebuild, recheck.
 // Never runs through tx() — an undo must not journal itself.
 function restoreSnapshot(json){ const s=JSON.parse(json);
-  if(s.palette!==paletteId){ const p=PALETTES[s.palette]||PALETTES.pentatonic;
+  if(s.palette!==paletteId){ const p=paletteDef(s.palette);
     paletteId=p.id; MIDI=p.MIDI; NAMES=p.NAMES; TONIC_PC=p.tonicPC; ROWS=MIDI.length; }
   COLS=s.cols; doc.tracks=s.tracks;
   doc.meterMap = Array.isArray(s.meter) ? s.meter : [];

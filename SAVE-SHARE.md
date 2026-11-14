@@ -114,7 +114,14 @@ ordinary case; only a present-but-unusable one rejects the meter with it.
 
 The same rule covers the rest of the song, in **one gate, `applySong()`**, which every path a song
 arrives by goes through — `#s=`, `#song=`, My Melodies, the rescued sprout, quest drafts (TUN-84). A
-`#s=` link never touches the server, so the client defends itself whatever the backend checks. The gate
+`#s=` link never touches the server, so the client defends itself whatever the backend checks. Before the
+gate, `decodeSong()` refuses a `#s=` payload longer than **`SHARE_IN_MAX`** (4 × `SHARE_MAX`, 7,200
+characters) without decoding it — the game never writes one past `SHARE_MAX` — and the boot tells the
+player the link didn't work; a cloud row's size is the server's to bound. The gate reads and normalises
+the whole song before it changes anything, so a song it cannot read never half-loads; a number in it
+counts only if it is a number or a string (`Number()` on a link's `{"toString":0}` throws), the palette
+only if it is one of `PALETTES`' own names (`paletteDef`; `"__proto__"` is pentatonic), the voice only if
+it is a string; and it reads no more raw notes or hits than could load. The gate
 **clamps, never refuses**: the columns to 16…`MAX_COLS` (1920, `js/doc-model.js` — 240 bars of 4/4; a
 million-column link used to freeze the tab); the tempo, when it is a finite number, to the slider's
 range, and anything else leaves the tempo alone; notes to whole MIDI pitches 0–127 at whole in-range
