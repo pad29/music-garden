@@ -39,14 +39,17 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
 // open a shared creation if the URL carries one — land in the editable Studio.
 // #s=<packed>  = an inline (small) song;  #song=<id> = a cloud-stored song fetched via the /songs API.
 (function(){
-  const inline=(location.hash||"").match(/(?:^#|&)s=([^&]+)/);
-  if(inline){ const s=decodeSong(inline[1]);   // null: too long to read (SHARE_IN_MAX), or not a song at all
-    if(!s){ toast("⚠️ That song link didn't work — it doesn't hold a song the garden can open."); return; }
+  // `*`, not `+`: a bare #s= or #song= is a broken link, and the player is told so rather than left guessing.
+  const inline=(location.hash||"").match(/(?:^#|&)s=([^&]*)/);
+  if(inline){ const s=decodeSong(inline[1]);   // null: empty, too long to read (SHARE_IN_MAX), or not a v3 song
+    if(!s){ toast(SONG_LINK_FAILED); return; }
     const cut=openStudioWith(s);
     setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"+(cut?SONG_CUT_NOTE:"")); toast("🎵 A melody from a friend!"); return; }
-  const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]+)/);
-  if(cloud){ openStudio(); const tok=songLoadToken;
-    cloudSongGet(decodeURIComponent(cloud[1])).then(res=>{
+  const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]*)/);
+  if(cloud){ let id=""; try{ id=decodeURIComponent(cloud[1]); }catch(e){}   // #song=% must not throw the boot away
+    if(!id){ toast(SONG_LINK_FAILED); return; }
+    openStudio(); const tok=songLoadToken;
+    cloudSongGet(id).then(res=>{
       // The player can walk into a package while this request is still in flight, and renderLevel bumps
       // the token on every entry. Landing a stranger's song — and now its BARS — in the level they chose
       // to open is worse than dropping it, so drop it. Re-opening the Studio over them would be worse yet.

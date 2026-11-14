@@ -116,8 +116,12 @@ The same rule covers the rest of the song, in **one gate, `applySong()`**, which
 arrives by goes through — `#s=`, `#song=`, My Melodies, the rescued sprout, quest drafts (TUN-84). A
 `#s=` link never touches the server, so the client defends itself whatever the backend checks. Before the
 gate, `decodeSong()` refuses a `#s=` payload longer than **`SHARE_IN_MAX`** (4 × `SHARE_MAX`, 7,200
-characters) without decoding it — the game never writes one past `SHARE_MAX` — and the boot tells the
-player the link didn't work; a cloud row's size is the server's to bound. The gate reads and normalises
+characters) without decoding it — the game never writes one past `SHARE_MAX` — and `unpackSong()` takes
+only the v3 wire form (`[3, …]`). An empty `#s=`, a refused or unreadable one, and a `#song=` id that is
+empty or whose `%`-escapes don't decode open nothing, and the boot tells the player the link didn't work
+(`SONG_LINK_FAILED`); a cloud row's size is the server's to bound (`backend/src/songs.mjs` caps it on
+create and update). A packed meter's origin reaches `validMeter` as it came, so an unusable one means
+no meter by link as by cloud, and a missing one still means no pickup. The gate reads and normalises
 the whole song before it changes anything, so a song it cannot read never half-loads; a number in it
 counts only if it is a number or a string (`Number()` on a link's `{"toString":0}` throws), the palette
 only if it is one of `PALETTES`' own names (`paletteDef`; `"__proto__"` is pentatonic), the voice only if

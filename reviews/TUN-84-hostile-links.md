@@ -199,6 +199,97 @@ Separately, the PR's new **Cloudflare Pages** check fails, as it does on `main` 
 branch (TUN-80's record says the first builds fail until it merges). Nothing to fix here; merge
 `origin/main` once #128 has landed.
 
+## PR review — round 2 (Astra, `ask.sh`), head `022e81c`: CHANGES REQUESTED
+
+Run 2026-11-14 by session `music-garden-25` after the owner's plan upgrade lifted the limit; fresh thread,
+read-only; the delta `d439426..022e81c` (code identical to `556d257`), round 1's findings verbatim, Claude's
+answers, the ticket verbatim. Usage: in 947,770 (cached 854,912), out 4,607. Review rounds used: **2 of 3**.
+GPT's review, verbatim (only its absolute file links shortened to repo paths):
+
+> 1. **Major — A malformed cloud-link ID still aborts boot.** [js/boot.js:49](js/boot.js:49)
+>
+>    I reproduced `URI malformed` through real boot with both `#song=%` and `#song=%FF`. `decodeURIComponent()` runs outside error handling, after opening the Studio, and prevents the remaining boot code from running.
+>
+>    **Required:** catch malformed ID encoding, show the failed-link message, and let boot complete.
+>
+> 2. **Minor — Inline decoding bypasses the invalid-meter-origin fallback.** [js/save-share.js:139](js/save-share.js:139)
+>
+>    `num(meter[1]) || 0` turns invalid origins into valid downbeats. I reproduced this with:
+>    ```js
+>    [3,"pentatonic",16,108,0,"",[[60,0]],[],["4/4",{"toString":0}]]
+>    ```
+>    The inline song becomes metered at origin zero; the equivalent cloud song becomes unmetered. `"abc"` and `[1,2]` have the same discrepancy. This contradicts the documented single-gate rule.
+>
+>    **Required:** preserve the origin through unpacking so `validMeter()` distinguishes missing origins from invalid ones.
+>
+> 3. **Minor — The failed-inline-link handling still reports success for non-songs, or nothing for an empty payload.** [js/save-share.js:137](js/save-share.js:137), [js/boot.js:42](js/boot.js:42)
+>
+>    `#s=W10` (`[]`) and `#s=WzJd` (`[2]`) both open an empty Studio and announce “A melody from a friend!” because unpacking ignores the version and manufactures `v:3`. Bare `#s=` bypasses the failure toast entirely.
+>
+>    **Required:** validate the packed container/version before unpacking, and route empty payloads through the failure message. Preserve valid v3 links and optional meter slots.
+>
+> Round-1 disposition:
+>
+> - **Finding 1 resolved:** the reported numeric coercion crashes are closed; supported fields are normalized before mutation.
+> - **Finding 2 resolved:** own-string palette lookup closes the inherited-property attacks.
+> - **Finding 3 partially resolved:** the 7,200-character predecode limit and raw-note/hit budgets work. Failed-link handling and browser performance verification remain incomplete.
+>
+> **I do not require an additional cloud response-size cap for this ticket.** The repository already bounds serialized song payloads on both creation and update in [backend/src/songs.mjs](backend/src/songs.mjs). That supports the scope decision; calling `response.json()` is not itself a reason client-side limits would be impossible.
+>
+> **Missing tests**
+>
+> - Boot with `#song=%` and `#song=%FF`. Expect completed boot, a failure message, and no request. Catches unguarded URI decoding.
+> - Load the meter example above through inline and cloud paths, also using `"abc"` and `[1,2]`. Expect unmetered results in both; missing origin must still mean zero. Catches `num(origin) || 0`.
+> - Boot with bare `#s=`, encoded `[]`, and encoded `[2]`. Expect failure feedback without successful Studio loading. Catches ignored wire versions and empty-payload bypass.
+> - Complete the outstanding **real-browser** check: load a dense 14 × 1,920 held-note save and a 100,000-note save/cloud fixture; measure ingestion through rendering and confirm the editor remains responsive. Also verify the oversized inline version is refused. The current timed test starts after unpacking and uses DOM stubs, so it cannot establish that the chosen limits prevent rendering stalls.
+>
+> Syntax checking and all **23 hostile-link tests passed**. Additional checks preserved all 16 Jukebox songs and full ordinary 16-column fields; the `setup` hook remained isolated from caching. The full suite encountered read-only-sandbox temporary-file permission failures. No files were changed.
+>
+> **CHANGES REQUESTED**
+
+### Claude's answers
+
+GPT accepted the round-1 dispute ("I do not require an additional cloud response-size cap for this
+ticket"), pointing to the backend's existing `MAX_BYTES` cap in `backend/src/songs.mjs` — now named in
+`SAVE-SHARE.md`. Its correction stands: `response.json()` alone is not why a client limit is impossible.
+
+1. **Agree (Major).** `decodeURIComponent("%")` throws, and the call sat after `openStudio()` with no try.
+   Fixed in `js/boot.js`: the id is decoded first, in a try; an empty or undecodable id shows
+   `SONG_LINK_FAILED`, opens no Studio, fetches nothing, and the boot carries on.
+2. **Agree (Minor).** `num(meter[1])||0` was mine, from round 1 — it made `"abc"` a downbeat. `unpackSong`
+   now passes the origin through as it came; `validMeter` already tells missing (no pickup) from
+   unusable (no meter), so link and cloud agree.
+3. **Agree (Minor).** `unpackSong` returns null unless it gets an array whose slot 0 is `3`; the `#s=` and
+   `#song=` patterns take `*` rather than `+`, so a bare one reaches the failure message. The message is
+   one constant, `SONG_LINK_FAILED` (`js/save-share.js`), for every way a link opens nothing.
+
+**Missing tests:** the first three added ("TUN-84 review 2: …" in `tests/hostile-links.test.mjs`):
+`#song=%`, `#song=%FF` and bare `#song=` through the real boot (failure message, no request, no Studio);
+the origins `{"toString":0}`, `"abc"`, `[1,2]`, `-1` and `8` (a whole 4/4 bar) unmetered by link and by
+cloud, with `["4/4"]`, `["4/4",0]` and `["3/4",2]` still metered at their pickup; bare `#s=`, `[]`, `[2]`
+and `{v:3}` failing through the boot with no Studio, and a valid v3 link with a meter slot still opening.
+
+The fourth — **real-browser timing** — done outside AO's browser, which cannot run page code: a throwaway
+headless Edge (its own temporary profile) driven over the DevTools protocol, on this worktree served by
+`ao preview start` (the changed `js/` files compared byte for byte). Each song went through
+`openStudioWith`, the path a save takes, timed to two drawn frames:
+
+| Song | `applySong` | to drawn | then: a timer / a frame | notes kept | DOM nodes |
+|---|---|---|---|---|---|
+| diatonic 14 × 1,920, every cell held 2, plus drums | 781 ms | 1.00 s | 7 ms / 36 ms | 26,880 | 88,647 |
+| 100,000 notes over 1,920 columns | 924 ms | 1.17 s | 1 ms / 16 ms | 26,880 | 88,647 |
+
+No page errors; both report `cut`. A 7,300-character `#s=` link showed "⚠️ That song link didn't work…"
+and left the Studio closed. So the densest song the gate lets through draws in about a second, once, and
+the page answers at once afterwards. Judgement: acceptable for a pathological song — the Studio cannot
+build one without ~27,000 plantings — but the owner may judge "about a second" otherwise.
+
+**Mutation audit** (each alone, the file run, the source restored): the unguarded `#song=` decode; the
+origin back to `num(…)||0`; no version check; `#s=` needing a character; `#song=` needing a character —
+**5 of 5 fail a named test**.
+
+Suite: 708/708, syntax check clean.
+
 ## Owner's decisions
 
 1. Run GPT's PR review round 1 after the 1:59 AM reset? **1A — yes** (the owner, relayed by the
@@ -210,3 +301,7 @@ branch (TUN-80's record says the first builds fail until it merges). Nothing to 
 3. Run round 2 after the limit resets? Overtaken: the owner upgraded the GPT plan, lifting the limit, and
    said to run round 2 now (relayed by the orchestrator `music-garden-5` to session `music-garden-25`,
    2026-11-14, about 9:00 AM Central). PR #128 still open, so nothing to merge from `main` first.
+4. **Open:** run GPT's PR review round 3 — the last of the three — on the round-2 fixes? Session
+   `music-garden-25` was scoped to one round, so it stops here. (Recommended: yes — only an approval on
+   the current head sends the PR to In Review; if round 3 still requests changes, the loop ends at Needs
+   Input with the open findings, per `work-ticket` § 8.)

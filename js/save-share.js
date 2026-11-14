@@ -100,6 +100,9 @@ function applySong(s){
   return cut;
 }
 // The sentence a loading path adds when applySong left part of a song behind.
+// What the player is told when a link opens nothing: empty, too long to read, not a v3 song, or a cloud id
+// whose %-escapes do not decode.
+const SONG_LINK_FAILED="⚠️ That song link didn't work — it doesn't hold a song the garden can open.";
 const SONG_CUT_NOTE=" 🌱 It was longer than a garden can grow, so only its beginning came along.";
 // --- Packed wire form for #s= links: short positional arrays → base64url. Keeps simple songs linkable; big/complex
 // songs exceed SHARE_MAX and must be saved (cloud links arrive in P3). The in-memory object is always the v3 above. ---
@@ -134,9 +137,14 @@ function packSong(s){
   if(s.time.meter) a.push([s.time.meter, s.time.origin||0]);
   return a;
 }
-function unpackSong(a){ const [,palette,cols,tempo,groove,voice,notes,hits,meter]=a; const now=Date.now();
+// Only the v3 wire form unpacks: [] or [2] is not a song, and must fail as one rather than open an empty Studio
+// announced as a friend's melody (TUN-84 review).
+function unpackSong(a){ if(!Array.isArray(a)||a[0]!==3) return null;
+  const [,palette,cols,tempo,groove,voice,notes,hits,meter]=a; const now=Date.now();
   const time={cols,tempo,groove};
-  if(Array.isArray(meter) && meter[0]){ time.meter=meter[0]; time.origin=num(meter[1])||0; }   // absent = unmetered, so every old link stays bar-less
+  // absent = unmetered, so every old link stays bar-less. The origin goes on AS IT CAME: validMeter tells a missing
+  // one (no pickup) from an unusable one (no meter at all), and `||0` here would turn "abc" into a downbeat.
+  if(Array.isArray(meter) && meter[0]){ time.meter=meter[0]; time.origin=meter[1]; }
   return { v:3, meta:{title:null,created:now,updated:now,author:null}, palette, time,
     tracks:[ {kind:"melody",voice,notes:(notes||[]).map(n=>({p:n[0],c:n[1],len:n[2]||1}))},
              {kind:"drums", hits:(hits||[]).map(h=>({lane:h[0],c:h[1]}))} ] }; }

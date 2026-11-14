@@ -428,3 +428,52 @@ test("TUN-84 review: only a string voice reaches setVoice", () => {
     assert.deepEqual(calls, ["piano"]);
   } finally { g.setVoice = real; }
 });
+
+// ---------- TUN-84 review round 2 ----------
+
+// Fault caught: decodeURIComponent on the #song= id outside a try (the round-1 code) — "%" or "%FF" throws
+// URIError in the boot, after the Studio opened, and the rest of the boot never runs.
+test("TUN-84 review 2: a #song= id that does not decode is a failed link, not a broken boot", async () => {
+  for (const hash of ["#song=%", "#song=%FF", "#song="]) {
+    const b = boot({ hash, cloud: { id: "x", song: song() } });   // loadGame throws if the boot does
+    await ticks();
+    assert.match(b.toast(), /didn't work/, hash);
+    assert.deepEqual(b.requests, [], `${hash}: nothing is fetched`);
+    assert.strictEqual(b.game.isStudioScope(), false, `${hash}: the Studio does not open`);
+  }
+});
+
+// Fault caught: unpackSong turning an unusable origin into 0 (`num(meter[1])||0`, the round-1 code) — the
+// link gets bars at a made-up downbeat while the same song from the cloud gets none.
+test("TUN-84 review 2: an unusable meter origin is no meter, by link and by cloud alike", () => {
+  for (const origin of [OBJ, "abc", [1, 2], -1, 8]) {
+    const packed = [3, "pentatonic", 16, 108, 0, "", [[60, 0]], [], ["4/4", origin]];
+    g.applySong(g.decodeSong(link(packed)));
+    assert.strictEqual(g.doc.meterMap.length, 0, `link, origin ${JSON.stringify(origin)}`);
+    const s = song(); s.time.meter = "4/4"; s.time.origin = origin;
+    g.applySong(s);
+    assert.strictEqual(g.doc.meterMap.length, 0, `cloud, origin ${JSON.stringify(origin)}`);
+  }
+  for (const [slot, origin] of [[["4/4"], 0], [["4/4", 0], 0], [["3/4", 2], 2]]) {
+    g.applySong(g.decodeSong(link([3, "pentatonic", 16, 108, 0, "", [[60, 0]], [], slot])));
+    assert.strictEqual(g.doc.meterMap.length, 1, JSON.stringify(slot));
+    assert.strictEqual(g.doc.meterMap[0].originTick / g.TICKS_PER_COL, origin, "a missing origin is still no pickup");
+  }
+});
+
+// Fault caught: unpackSong ignoring the wire version (it manufactured v:3 for anything), or the #s= pattern
+// needing a character — [] or [2] opened an empty Studio as "A melody from a friend!", and a bare #s= said nothing.
+test("TUN-84 review 2: an empty or non-v3 #s= link fails with the message, and opens no Studio", () => {
+  assert.strictEqual(g.unpackSong([]), null);
+  assert.strictEqual(g.unpackSong([2, "pentatonic", 16]), null);
+  assert.strictEqual(g.unpackSong({ 0: 3 }), null);
+  for (const hash of ["#s=", "#s=" + link([]), "#s=" + link([2]), "#s=" + link({ v: 3 })]) {
+    const b = boot({ hash });
+    assert.match(b.toast(), /didn't work/, hash);
+    assert.doesNotMatch(b.toast(), /from a friend/, hash);
+    assert.strictEqual(b.game.isStudioScope(), false, `${hash}: the Studio does not open`);
+  }
+  const ok = boot({ hash: "#s=" + link([3, "pentatonic", 16, 108, 0, "", [[60, 0]], [], ["3/4", 1]]) });
+  assert.match(ok.toast(), /from a friend/, "a valid v3 link with a meter slot still opens");
+  assert.strictEqual(ok.game.doc.meterMap.length, 1);
+});
