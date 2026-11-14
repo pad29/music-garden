@@ -4,7 +4,7 @@
 
 ```
 backend/
-  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas)
+  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas, the $30 budget)
   src/
     presignup.mjs      # auto-confirms new accounts (no email step)
     progress.mjs       # GET/PUT the caller's own progress
@@ -47,7 +47,7 @@ Download & run the MSI: https://github.com/aws/aws-sam-cli/releases/latest/downl
 ```powershell
 sam --version          # expect: SAM CLI, version 1.x
 ```
-*(No Docker needed — these Lambdas have no dependencies; the AWS SDK is provided by the Node 20 runtime.)*
+*(No Docker needed — these Lambdas have no dependencies; the AWS SDK is provided by the Node.js 24 runtime, `nodejs24.x`.)*
 
 ---
 
@@ -67,6 +67,7 @@ sam deploy --guided
 - **Disable rollback:** `N`
 - **ProgressFn / PreSignUpFn may not have authorization defined — OK?:** `Y` (the API itself is JWT-protected; this prompt is about the Lambda, which is fine)
 - **Save arguments to configuration file:** `Y` (writes `samconfig.toml` so future deploys are just `sam deploy`)
+- **BudgetEmail:** your address for the cost alerts (see [Limits and budget](#limits-and-budget)). `--guided` saves it into `samconfig.toml` as `parameter_overrides` — **delete that line before committing**: the repository is public. The stack keeps the value, so later deploys don't need it.
 
 When it finishes it prints **Outputs**. You'll see four values:
 
@@ -85,16 +86,77 @@ Those four values are *public* identifiers (the kind that ship inside any web ap
 After any change to `template.yaml` or `src/`:
 ```powershell
 cd backend   # from the repo root
-sam build; sam deploy
+sam validate --lint
+sam build; sam deploy --confirm-changeset
 ```
+`--confirm-changeset` shows the change set and waits for `y`. **Read its `Replacement` column first:** a
+`True` on `UserPool`, `ProgressTable` or `SongsTable` means CloudFormation wants a new one. Their
+`UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
+new one — answer `n` and fix the template instead.
+
+**The first deploy after TUN-82** adds the `BudgetEmail` parameter, which has no default, so pass it once
+on the command line — never in `samconfig.toml`, which is public:
+```powershell
+sam deploy --confirm-changeset --parameter-overrides BudgetEmail=you@example.com
+```
+Later `sam deploy`s reuse the stored value (SAM asks CloudFormation for the previous value of any
+parameter it isn't given). Don't run `sam deploy --guided` against the existing stack: it would save the
+address into `samconfig.toml`.
 
 ## Tear down (if you ever want to remove everything)
 ```powershell
 sam delete --stack-name music-garden
 ```
+Since TUN-82 this **leaves the user pool and both tables behind**, with every account and song: they
+have `DeletionPolicy: Retain`. To really remove them, switch off deletion protection in the console
+(Cognito → the pool → Settings; DynamoDB → each table → Additional settings), then delete them by hand.
+
+## Limits and budget
+
+Set in `template.yaml` by TUN-82. The cost arithmetic — every route used flat out for a month, at AWS's
+list prices — is in `reviews/TUN-82-throttle-budget-data-protection.md`.
+
+**API throttle.** Each route has a rate limit (requests per second) and a burst, shared by **every**
+caller — HTTP APIs have no per-user limits — so the API as a whole serves at most the sum, 5 requests
+a second:
+
+| Route | Rate/s | Burst | Why |
+|---|---|---|---|
+| `PUT /progress` | 2 | 10 | every save, 900 ms after the player's last change: the busiest route |
+| `GET /progress` | 1 | 5 | once per sign-in or page load |
+| `GET /songs/{id}` | 1 | 5 | every opened cloud share link; needs no account |
+| `POST /songs`, `GET /songs`, `PUT /songs/{id}`, `DELETE /songs/{id}` | 0.25 each | 2 | sharing a big song, the Melodies list, deleting: rare |
+| any route added later | 0.25 | 2 | `DefaultRouteSettings` on `Api` |
+
+Over a limit, API Gateway answers `429 Too Many Requests` without calling the Lambda. The game treats it
+like any failed call: a save that fails is silent and the next save sends everything again; sharing,
+loading or deleting a song shows a "couldn't reach the cloud"-style toast. One known gap: a failed
+progress load at sign-in pushes this device's progress over the cloud copy — TUN-106. To change a
+limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the comment on
+`Api` and this table, and redo the arithmetic: with today's payload sizes even 5 requests a second
+saturated costs far more than $30 a month, so the throttle bounds how *fast* money can go and the
+budget email (and TUN-87's switch-off) bound the month.
+
+**Reserved concurrency.** `Globals` reserves 2 concurrent executions for each of the three functions
+(6 of the account's 1,000; Lambda keeps 100 unreserved). It caps what reaches a function whatever the
+API does, and guarantees the game's functions can run if something else in the account is busy. Change
+`ReservedConcurrentExecutions` in `Globals`. Never set it to `0` — that switches the functions off.
+
+**Budget.** `MonthlyBudget` is an AWS Budget of **$30 a month for the whole AWS account** — it has no
+cost filters, so anything else in the account counts too. It emails `BudgetEmail` when actual spend
+passes 50 %, 80 % and 100 %, and when AWS forecasts the month will pass 100 %. Budget alerts with email
+are free. Billing data lags by hours, so an alert is a warning, not a stop. Change the amount in
+`BudgetLimit`. Change the address with
+`sam deploy --parameter-overrides BudgetEmail=new@example.com`.
+
+**Data protection.** The user pool and both tables have `DeletionPolicy: Retain` and
+`UpdateReplacePolicy: Retain` (kept if the stack is deleted or a change would replace them) and AWS's
+own deletion protection. Both tables have point-in-time recovery: DynamoDB can restore either table to
+any second of the last 35 days, into a new table (console → the table → Backups → Restore). It costs
+$0.20 per GB-month — cents at this size.
 
 ## Notes
 - **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
 - **CORS** is scoped to `https://tunegarden.game` (+ `www` + the Netlify fallback origin) in `template.yaml`. Update `AllowOrigins` there if the deploy URL changes.
 - **Recovery:** accounts are username+password with no email by default (no password reset). A user can optionally add an email at sign-up to enable forgot-password; a custom "recovery code" flow can be added later.
-- **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. Consider setting an AWS **Budget alert** ($1–5) for peace of mind.
+- **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. The throttle, the reserved concurrency and the $30 budget alert are in [Limits and budget](#limits-and-budget).

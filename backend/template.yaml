@@ -2,19 +2,89 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Music Garden backend — Cognito (username+password) auth + per-user progress API on DynamoDB.
 
+# Cost and data limits (TUN-82): the route throttles on the HttpApi events, the reserved concurrency in
+# Globals, the MonthlyBudget, and the Retain / deletion-protection / point-in-time-recovery settings on the
+# tables and the user pool. backend/README.md § "Limits and budget" explains them and how to change them;
+# reviews/TUN-82-throttle-budget-data-protection.md has the cost arithmetic.
+
+Parameters:
+  # Never commit the address (the repository is public): pass it once, on the first deploy after TUN-82, with
+  #   sam deploy --parameter-overrides BudgetEmail=you@example.com
+  # Later `sam deploy`s reuse the stored value. Never `sam deploy --guided` again: it would save the address
+  # into samconfig.toml.
+  BudgetEmail:
+    Type: String
+    NoEcho: true
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+    ConstraintDescription: must be an email address
+    Description: Where AWS Budgets emails the monthly cost alerts.
+
 Globals:
   Function:
     Runtime: nodejs24.x
     MemorySize: 128
     Timeout: 10
+    # A small, fixed slice of the account's Lambda concurrency (1000 on this account; Lambda keeps 100
+    # unreserved). Caps each function at 2 calls in flight, whatever reaches it.
+    ReservedConcurrentExecutions: 2
 
 Resources:
 
+  # --- Cost alert: $30 a month across the WHOLE AWS account (no cost filters), emailed to BudgetEmail. ---
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: tune-garden-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 30
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+
   # --- Auth: a Cognito User Pool. Username + password sign-in; email is OPTIONAL (recovery only). ---
+  # Every account lives here: never deleted with the stack, never silently replaced, and protected from
+  # deletion by AWS itself (switch DeletionProtection off by hand to really remove it).
   UserPool:
     Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: music-garden-users
+      DeletionProtection: ACTIVE
       UsernameConfiguration:
         CaseSensitive: false
       Policies:
@@ -71,11 +141,18 @@ Resources:
       SourceArn: !GetAtt UserPool.Arn
 
   # --- Storage: one tiny item per user (PK = Cognito sub) holding the progress JSON. ---
+  # Both tables: kept if the stack is deleted or the table would be replaced, protected from deletion,
+  # and backed up continuously (point-in-time recovery, 35 days).
   ProgressTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: music-garden-progress
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       AttributeDefinitions:
         - AttributeName: userId
           AttributeType: S
@@ -86,9 +163,14 @@ Resources:
   # --- Songs storage (SAVE-SHARE.md P3): one row per shared creation; GSI byOwner lists a user's songs. ---
   SongsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: music-garden-songs
       BillingMode: PAY_PER_REQUEST
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       AttributeDefinitions:
         - AttributeName: songId
           AttributeType: S
@@ -121,6 +203,7 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SongsTable
+      # Route throttles (requests/second, shared by ALL callers; over it → 429). See the note on Api.
       Events:
         Create:
           Type: HttpApi
@@ -128,12 +211,18 @@ Resources:
             ApiId: !Ref Api
             Path: /songs
             Method: POST
+            RouteSettings:
+              ThrottlingRateLimit: 0.25
+              ThrottlingBurstLimit: 2
         ListMine:
           Type: HttpApi
           Properties:
             ApiId: !Ref Api
             Path: /songs
             Method: GET
+            RouteSettings:
+              ThrottlingRateLimit: 0.25
+              ThrottlingBurstLimit: 2
         GetOne:
           Type: HttpApi
           Properties:
@@ -142,18 +231,27 @@ Resources:
             Method: GET
             Auth:
               Authorizer: NONE          # public read so a friend can open a share link without an account
+            RouteSettings:              # every opened share link; the one route that needs no account
+              ThrottlingRateLimit: 1
+              ThrottlingBurstLimit: 5
         Update:
           Type: HttpApi
           Properties:
             ApiId: !Ref Api
             Path: /songs/{id}
             Method: PUT
+            RouteSettings:
+              ThrottlingRateLimit: 0.25
+              ThrottlingBurstLimit: 2
         Delete:
           Type: HttpApi
           Properties:
             ApiId: !Ref Api
             Path: /songs/{id}
             Method: DELETE
+            RouteSettings:
+              ThrottlingRateLimit: 0.25
+              ThrottlingBurstLimit: 2
 
   # --- API: GET/PUT /progress, scoped to the caller's own row via the JWT `sub`. ---
   ProgressFn:
@@ -174,17 +272,30 @@ Resources:
             ApiId: !Ref Api
             Path: /progress
             Method: GET
+            RouteSettings:              # once per sign-in or page load
+              ThrottlingRateLimit: 1
+              ThrottlingBurstLimit: 5
         Put:
           Type: HttpApi
           Properties:
             ApiId: !Ref Api
             Path: /progress
             Method: PUT
+            RouteSettings:              # the busiest route: every save, 900 ms after the last change
+              ThrottlingRateLimit: 2
+              ThrottlingBurstLimit: 10
 
   # HTTP API with a built-in Cognito JWT authorizer (validates the ID token; audience = app client).
+  # Throttling: each route has its own limit, shared by every caller, so the API's ceiling is their SUM —
+  # 5 requests/second today (progress 2 + 1, song links 1, the four other song routes 0.25 each). A route
+  # added later without its own RouteSettings gets DefaultRouteSettings. Change a limit in its event's
+  # RouteSettings, add it to the sum above, and redo the arithmetic in the TUN-82 review record.
   Api:
     Type: AWS::Serverless::HttpApi
     Properties:
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 0.25
+        ThrottlingBurstLimit: 2
       CorsConfiguration:
         AllowOrigins:
           - https://tunegarden.game

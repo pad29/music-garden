@@ -126,9 +126,39 @@ songs. Each 1 KB of progress cap adds $0.625 per million `PUT /progress`.
 
 ## Owner's decisions
 
-1. **open** — *The throttle level*, given the arithmetic above (A ≈ 5 req/s, B ≈ 1.5 req/s, or other).
-2. **open** — *The `cloudPull` overwrite ticket, TUN-106*: into phase 1, before the announcement?
-3. **open** — *Reserved concurrency*: the account's Lambda concurrency limit.
+1. *The throttle level* — **A, about 5 req/s** (split A above): the owner, in AO session
+   `music-garden-23`, 2026-11-13. The throttle bounds how fast spend can grow; the budget emails and
+   TUN-87's switch-off bound the month.
+2. *TUN-106 into phase 1?* — **yes**, before TUN-87: the owner, same session. Now a sub-issue of TUN-77
+   that blocks TUN-87.
+3. *Reserved concurrency* — the account's Lambda limit is **1000**: the owner, same session. So the
+   default is 2 per function (6 reserved, 994 left unreserved).
+
+## Build (Claude)
+
+Built as planned with split A. Departures from the plan:
+
+- **Reserved concurrency is a fixed `ReservedConcurrentExecutions: 2` in `Globals`, not a parameter.**
+  The owner's limit is 1000, so no condition is needed. A second parameter would also have needed
+  passing on the first deploy, because SAM asks for the previous value of any parameter it isn't given,
+  and a new parameter has none.
+- **No `sam validate` / `cfn-lint` here:** neither is installed, and running a freshly downloaded
+  cfn-lint was refused by this session's permission check. The template was reviewed by hand. The
+  owner's deploy steps start with `sam validate --lint`, and `--confirm-changeset` shows the change set
+  before anything runs.
+
+**Expected change set** (the owner confirms it; no credentials here): **no resource marked
+`Replacement`**. Every changed property is documented as *Update requires: No interruption*:
+`DeletionProtection` (user pool), `DeletionProtectionEnabled` and `PointInTimeRecoverySpecification`
+(tables), `ReservedConcurrentExecutions` (functions), and the stage's `RouteSettings` /
+`DefaultRouteSettings`. `DeletionPolicy` and `UpdateReplacePolicy` are resource attributes, not
+properties. Added: `MonthlyBudget`. `UserPoolClient` is untouched; its ID is hard-coded in
+`js/cloud.js` `AUTH`.
+
+**Budget confirmation email:** AWS Budgets' direct email subscribers are not believed to get a
+confirmation email (unverified; SNS topic subscriptions do). If none arrives, the owner checks the
+Budgets console lists the address. The ticket's "confirms the budget's confirmation email arrives" is
+replaced by that check.
 
 ## PR review
 
