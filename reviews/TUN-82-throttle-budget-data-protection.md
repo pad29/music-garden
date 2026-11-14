@@ -137,6 +137,10 @@ songs. Each 1 KB of progress cap adds $0.625 per million `PUT /progress`.
    that blocks TUN-87.
 3. *Reserved concurrency* — the account's Lambda limit is **1000**: the owner, same session. So the
    default is 2 per function (6 reserved, 994 left unreserved).
+4. *Mocked client 429 tests* — **moved to TUN-106 and TUN-107**, not added here: the owner, via the
+   orchestrator (`music-garden-5`), 2026-11-14. GPT accepted the move in round 3.
+5. *Round 3's fixes (`3a64afd`)* — **accepted without a fourth GPT round**; no more GPT on this
+   ticket: the owner, via the orchestrator, 2026-11-14.
 
 ## Build (Claude)
 
