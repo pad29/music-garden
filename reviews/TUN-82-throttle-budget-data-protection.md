@@ -502,6 +502,37 @@ string as a tag, is.
 **Not reviewed:** these round 3 fixes, the last round having been used. They touch only
 `tests/backend-template.test.mjs` and `tests/README.md`, not the template or the docs the deploy uses.
 
+## Owner's review — the deploy (2026-11-14)
+
+The owner deployed from this worktree at `b92ac05`.
+
+- **Change set**, as the owner pasted it: Add `MonthlyBudget`. Modify with `Replacement: False`:
+  `ApiApiGatewayDefaultStage`, `Api`, `PreSignUpFn`, `ProgressFn`, `ProgressTable`, `SongsFn`, `SongsTable`,
+  `UserPool`. Modify `PreSignUpPermission` with `Replacement: Conditional`. `Conditional` there only
+  means it references modified resources whose name or ARN CloudFormation can't predict; both were
+  `False`, so it wasn't replaced. It's a stateless permission. `UserPoolClient` was untouched.
+  **Deployed successfully.**
+- **Budget email:** the recipient shows **Active (legacy)**: the address was on an older budget from
+  before AWS added verification, so no email was needed. The budget card's "0/1 email verified" tally
+  doesn't count legacy addresses. The owner then deleted the old budget; the address still shows
+  Active. Only `MonthlyBudget-us-east-1-…` remains, with all four alerts `OK` (checked by CLI). The
+  spend so far ($12.33, forecast $29.68) is almost all an unrelated Glacier archive, which the owner is
+  deleting.
+- **Live stage** (CLI read-back): exactly the approved limits — the default 0.25/2 and all seven routes.
+- **429 check** (run by me from this machine; no account, no data):
+  - one client, sequential calls to `GET /songs/{id}` at 5.9/s for 10 s → 50 × `404`, 10 × `429`;
+  - 20 simultaneous → 15 × `503` from Lambda's reserved concurrency;
+  - up to 60 simultaneous unauthenticated `GET /progress` → all `401`, none throttled.
+
+  The route throttle works but is loose at these rates, about 5× here. The hard limit is the
+  concurrency cap, which answers `503`. `backend/README.md` § Limits and budget now says so. TUN-87
+  and TUN-102 have the numbers.
+- **Site checks** (owner): sign-in loaded progress ("Signed in as pad29 — progress syncs across your
+  devices"); a change survived a reload; a cloud song link opened and played in a private window.
+- **Found while checking** (owner): a fresh visitor opening a song link first sees the guitar's discovery
+  card, then the song plays in its own voice. The cause predates this PR. Filed as **TUN-109** (Backlog),
+  with the owner's decision that opening a link shows no instrument card.
+
 ## Tests
 
 682/682 pass on `c958c2e` (no code changed). Not verified: anything on AWS — no credentials, no `sam`,
@@ -510,3 +541,6 @@ the change set first.
 
 After round 1: see the round's commit message and the hand-off for the suite count. `sam validate --lint`
 passes locally (SAM CLI 1.162.0).
+
+Final: 700/700 on `b92ac05` after merging `main`. Deployed and checked on AWS, as § *Owner's review*
+above records.

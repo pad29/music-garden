@@ -132,8 +132,10 @@ them, so treat the numbers as targets, not a guaranteed ceiling.
 | `POST /songs`, `GET /songs`, `PUT /songs/{id}`, `DELETE /songs/{id}` | 0.25 each | 2 | sharing a big song, the Melodies list, deleting: rare |
 | any route added later | 0.25 | 2 | `DefaultRouteSettings` on `Api` |
 
-Over a limit, API Gateway answers `429 Too Many Requests` without calling the Lambda. The game treats it
-like any failed call, with no automatic retry:
+Over a limit, API Gateway answers `429 Too Many Requests` without calling the Lambda. When a third call
+reaches a function while two are still running (its reserved concurrency), Lambda refuses it and API
+Gateway answers `503 Service Unavailable`. The game treats both like any failed call, with no
+automatic retry:
 
 - A progress save that fails is silent; the next save sends the whole progress again.
 - Sharing a big song: "⚠️ Couldn't reach the cloud — please try again." Loading one from Melodies:
@@ -149,6 +151,19 @@ comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the
 arithmetic is a set of saturated-rate *scenarios*, not an upper bound: with today's payload sizes even 5
 requests a second costs far more than $30 a month. The throttle slows how fast money can go; the budget
 email (and TUN-87's switch-off) bound the month.
+
+**Measured after the first deploy (2026-11-14).** The live stage held exactly the configured limits.
+Under a real burst they were looser than configured:
+
+| Test | Result |
+|---|---|
+| One client, sequential calls to `GET /songs/{id}` (limit 1/s, burst 5) at 5.9/s for 10 s | 50 × `404`, only 10 × `429`: about 4.9/s got through |
+| 20 simultaneous calls to `GET /songs/{id}` | 15 refused with `503` by the concurrency cap, not `429` |
+| Up to 60 simultaneous unauthenticated calls to `GET /progress` | all `401` from the JWT authorizer, none throttled; these run no Lambda |
+
+So at these low rates the throttle is a rough brake, and the hard limit is the reserved
+concurrency. With ~100–200 ms calls, 2 in flight still allows on the order of 10–20 calls a second
+per function. TUN-102 rehearses the cost cap against production with these numbers in mind.
 
 **Reserved concurrency.** `Globals` reserves 2 concurrent executions for each of the three functions
 (6 of the account's 1,000; Lambda keeps 100 unreserved). It caps what reaches a function whatever the
