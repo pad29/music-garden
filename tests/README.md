@@ -29,14 +29,22 @@ file left out is served as `index.html` in production, and the game never starts
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
 override) and honours a shell `#` comment.
 
-**The backend template.** `backend-template.test.mjs` (TUN-82) reads `backend/template.yaml` as text
-and pins its cost limits and data protection: every API route has its own throttle and the rates sum
-to the owner's 5 requests a second, a default throttle and a positive reserved concurrency exist, the
-user pool and both tables keep `Retain` and deletion protection, the tables keep point-in-time
-recovery, and the $30 budget has its four alerts, no fixed name and no filters. It also refuses an
-email address in the template or `samconfig.toml` (the repository is public). It is a static check, not
-CloudFormation validation — the owner's deploy runs `sam validate --lint`. Its mutation cases are
-kept as a second test, so the checker cannot quietly go blind.
+**The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
+small structural parser for its block-YAML subset and pins its cost limits and data protection, each
+at its effective path, so the same text under `Metadata` doesn't count:
+
+- every `HttpApi` event, discovered structurally, is an approved `METHOD /path` on `Api` with exactly
+  its approved rate and burst;
+- the default route throttle, and Globals reserved concurrency with no function overriding it;
+- `Retain` and deletion protection on the user pool and both tables, and point-in-time recovery;
+- the $30 account-wide budget with its four alerts to `!Ref BudgetEmail` and no fixed name.
+
+It also refuses any email address other than an `@example.com` placeholder in the template or
+`samconfig.toml`, comments included: the repository is public. It is a static check, not
+CloudFormation validation — the owner's deploy runs `sam validate --lint`. A raise the owner approves
+means changing `ROUTES` and the arithmetic in the review record together. Its mutation cases, each
+asserting its own diagnostic, and a harmless-formatting case are kept as tests, so the checker cannot
+quietly go blind.
 
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the

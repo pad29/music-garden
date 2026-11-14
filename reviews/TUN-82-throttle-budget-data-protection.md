@@ -172,17 +172,50 @@ Same prices and method, with three corrections from GPT's findings 3 and 4:
   ALL-projection `byOwner` index, after the read. That is $21.87 per million, not $2.49. Each delete
   needs a prior create, but at saturation creates and deletes run at the same 0.25/s.
 - **PITR** is billed on table storage only; the index's half of song storage pays storage, not PITR.
-- **These are saturated-rate scenarios, not upper bounds.** `songs.mjs` caps a song at 100,000
-  JavaScript *characters*, not bytes, so multi-byte text can make a song ~300 KB (GPT's example:
-  `{v:3,x:"一".repeat(100000)}` passes at 100,014 characters and serialises to 300,014 bytes). The
-  200 ms Lambda duration is an assumption, and AWS throttles best-effort, so bursts can briefly exceed
-  the nominal rates.
+- **These are saturated-rate scenarios, not upper bounds.** `songs.mjs` caps a song's
+  `JSON.stringify(...).length` at `MAX_BYTES` = 102,400 — UTF-16 code units, not bytes — so multi-byte
+  text can make a song ~300 KB (GPT's example: `{v:3,x:"一".repeat(100000)}` passes at 100,014 code
+  units and serialises to 300,014 bytes). The 200 ms Lambda duration is an assumption, and AWS throttles
+  best-effort, so bursts can briefly exceed the nominal rates.
+- **Round 2:** `GET /songs` (`listMine`) reads one 1 MB query page, so its response carries at most
+  ⌊1024 / song KB⌋ songs' metadata (~150 bytes each), not all 200. This lowers today's figures slightly
+  and leaves the after-TUN-83 figures unchanged.
 
 | Scenario | Split A (~5 req/s, chosen) | Split B (~1.5 req/s) |
 |---|---|---|
-| Today, progress 400 KB, songs 100 KB | $1,820.58/month (≈ $2.45/hour) | $461.53/month |
-| Today, songs ~300 KB (multi-byte) | $2,467.25/month (≈ $3.32/hour) | — |
+| Today, progress 400 KB, songs 100 KB | $1,818.86/month (≈ $2.44/hour) | $461.19/month |
+| Today, songs ~300 KB (multi-byte) | $2,465.47/month (≈ $3.31/hour) | — |
 | After TUN-83, progress 8 KB, songs 16 KB | **$119.62/month** (≈ $0.16/hour) | $28.79/month |
+
+<details><summary>Split A today, per route (round 2)</summary>
+
+Progress 400 KB, songs 100 KB:
+
+| Route | Limit | Requests/month | $ per million | $/month |
+|---|---|---|---|---|
+| `PUT /progress` | 2/s | 5.36M | $251.62 | $1,347.86 |
+| `GET /progress` | 1/s | 2.68M | $43.87 | $117.49 |
+| `GET /songs/{id}` | 1/s | 2.68M | $12.18 | $32.62 |
+| `POST /songs` | 0.25/s | 0.67M | $142.62 | $95.50 |
+| `GET /songs` | 0.25/s | 0.67M | $17.75 | $11.89 |
+| `PUT /songs/{id}` | 0.25/s | 0.67M | $190.68 | $127.68 |
+| `DELETE /songs/{id}` | 0.25/s | 0.67M | $128.18 | $85.83 |
+| **Total** | 5/s | 13.39M | | **$1,818.86** |
+
+Progress 400 KB, songs ~300 KB (multi-byte):
+
+| Route | Limit | Requests/month | $ per million | $/month |
+|---|---|---|---|---|
+| `PUT /progress` | 2/s | 5.36M | $251.62 | $1,347.86 |
+| `GET /progress` | 1/s | 2.68M | $43.87 | $117.49 |
+| `GET /songs/{id}` | 1/s | 2.68M | $33.30 | $89.20 |
+| `POST /songs` | 0.25/s | 0.67M | $392.62 | $262.90 |
+| `GET /songs` | 0.25/s | 0.67M | $17.66 | $11.82 |
+| `PUT /songs/{id}` | 0.25/s | 0.67M | $568.80 | $380.87 |
+| `DELETE /songs/{id}` | 0.25/s | 0.67M | $381.30 | $255.32 |
+| **Total** | 5/s | 13.39M | | **$2,465.47** |
+
+</details>
 
 Song storage can grow, cumulatively: split A after TUN-83 by up to 21.4 GB/month (+$7.50/month); today
 by up to 134 GB/month (100 KB songs) or 402 GB/month (300 KB).
@@ -296,6 +329,89 @@ reports "valid SAM Template".
     account under TUN-106's overwrite risk; the game paths are checked by reading the code above.
   - The address-change rehearsal is skipped: replacing the budget would need re-verifying the address.
     The README documents the steps instead.
+
+- **Round 2 — run on `b10cacc`** (the delta since `9eded2a`). **CHANGES REQUESTED**: four medium, one
+  low — all but the low one about the new test's rigour. GPT: "The seven round-1 fixes are materially
+  addressed … I found no new deployment defect in the actual template."
+
+<details><summary>GPT's round 2 review, verbatim</summary>
+
+Reviewed **b10cacc738b0745230977e1ca844609c1e1c4dfe**. No files changed.
+
+The seven round-1 fixes are materially addressed. Removing `BudgetName` is supported: AWS generates a name when it is omitted. I found no new deployment defect in the actual template. [AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-budgets-budget-budgetdata.html)
+
+Required changes:
+
+1. **Medium — [tests/backend-template.test.mjs:46](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:46): the checker accepts protection settings in the wrong location.**  
+   `value()` searches descendants without checking their parent. Moving `SongsTable`'s two `Retain` attributes into resource `Metadata` returns **zero problems**, although neither retention policy then applies. That mutation also passes CloudFormation lint. Moving budget notifications into metadata likewise fools the checker. Require each setting at its effective YAML path; metadata or other nested text must not satisfy it.
+
+2. **Medium — [tests/backend-template.test.mjs:63](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:63): route discovery silently misses valid routes.**  
+   Adding an eighth event with `Type: HttpApi # new route`, no explicit throttle, and a new path returns **zero problems**. The template passes lint; the additional route inherits the default rate, making the documented aggregate 5.25/s. Quoted `HttpApi` values also escape discovery. Discover events structurally, including ordinary comments and quoted scalars, and verify their API/path/method identities.
+
+3. **Medium — [tests/backend-template.test.mjs:76](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:76): the guard does not check effective concurrency or the promised burst limits.**  
+   Adding `ReservedConcurrentExecutions: 0` to `SongsFn.Properties` passes both this checker and lint, despite disabling the songs function. The global value does not establish each function's effective value. Setting the default burst to zero—or every burst to 5,000—also passes. Check function overrides and pin the approved rate/burst/concurrency configuration.
+
+4. **Medium — [tests/backend-template.test.mjs:118](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:118): the email guard ignores public comments, and its mutation tests cannot detect its removal.**  
+   Appending `# Budget contact: owner@example.org` to either file returns **zero problems**, because `code()` removes comments before scanning. More significantly, I disabled the email regex entirely in memory: **both committed tests still passed**. Their address mutations are rejected by the separate subscriber, default-value, or `parameter_overrides` checks. Scan comments too, allowing only explicitly permitted examples, and assert the specific email diagnostic independently.
+
+5. **Low — [review record:175](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/reviews/TUN-82-throttle-budget-data-protection.md:175): the new explanation states the wrong size limit.**  
+   The guard is **102,400 UTF-16 code units**, not 100,000 characters. This explains why the 100,014-unit example passes. Correct the number and terminology.
+
+Missing tests or checks:
+
+1. Add the structural mutations from findings 1–2, plus valid formatting cases with comments, quoted types and reordered event properties. Assert the precise diagnostic, not merely any failure.
+2. Add per-function zero/high concurrency overrides, missing/zero default burst, and oversized route bursts. Check the approved settings.
+3. Add address-only fixtures in comments and otherwise valid configuration text. Disabling the email detector must make its mutation test fail.
+4. Add explicit per-route calculations for the current 100/300 KB scenarios. Their totals reproduce with a 30 KB Melodies response assumption, but `listMine()` processes only one 1 MB query page—roughly ten or three songs at those sizes. The corrected DELETE calculation, table-only PITR allocation, and post-TUN-83 **$119.62/$28.79** totals otherwise reproduce under the record's approximations. [AWS PITR pricing basis](https://aws.amazon.com/dynamodb/pricing/)
+5. Keep the skipped address-change rehearsal and controlled notification delivery test pending. Verify replacement succeeds, the new recipient becomes Active, and a subsequent deployment without overrides preserves the address. Verification is account-scoped, so an already-verified test address need not be verified again. [AWS recipient verification](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-email-recipients.html)
+6. Complete the pending owner change-set/read-back/smoke checks and mocked 429 coverage for every documented client path. Reading code does not replace exercising those paths.
+
+Verification: the focused test passed **2/2**. The full suite produced **615 passes, 69 failures**, all failures reporting `EPERM` while creating temporary directories in this restricted environment. `sam validate --lint` reported a valid template, then failed in SAM telemetry with a permissions error; invoking the installed lint API directly returned no findings for the head.
+
+**CHANGES REQUESTED**
+
+</details>
+
+**My answers (round 2):**
+
+1. **Medium — agree.** The test is rewritten on a small structural parser for this template's
+   block-YAML subset. Every setting is read at its effective path, and the parser throws on anything it
+   doesn't understand. Mutation cases: `Retain` moved under `Metadata` → "SongsTable lacks
+   DeletionPolicy: Retain"; budget notifications moved under `Metadata` → "budget alerts are []".
+2. **Medium — agree.** Routes are discovered structurally: every `HttpApi` event on every function,
+   quoted or commented. Each is identified as `METHOD /path`, must be on `!Ref Api`, and must match the
+   approved table exactly. An unknown route is refused ("is not an approved route"), and a second HTTP
+   API or a raw `ApiGatewayV2` route is flagged. A valid-formatting test (quoted `Type`, inline comment,
+   reordered event properties) must report no problems.
+3. **Medium — agree.** The approved rate and burst are pinned for each of the seven routes and the
+   default, and Globals concurrency is pinned at 2. Any function overriding it with another value is
+   refused. Mutation cases: `SongsFn` at 0, default burst 0, a route burst of 5000.
+4. **Medium — agree.** The email scan now covers comments, allowing only `@example.com` placeholders.
+   A separate test uses otherwise-valid config (a template comment, a description, a `samconfig.toml`
+   comment) and requires *only* the address diagnostic. Mutation audit of the rewritten test, each guard
+   broken in a temporary copy: email scan off → the address test fails; `Retain` read from anywhere,
+   function overrides ignored, unknown routes ignored, bursts not compared → the mutation test fails.
+   All five caught.
+5. **Low — agree.** Corrected to "102,400 UTF-16 code units" above.
+
+**Missing tests and checks (round 2):**
+- 1–3: added, as above.
+- 4: **agree, added.** Per-route tables for today's 100 KB and 300 KB scenarios, with `GET /songs`
+  limited to one 1 MB page. The totals move slightly ($1,818.86 and $2,465.47).
+- 5: **agree.** The address-change rehearsal and a delivery test stay pending owner checks in the
+  hand-off.
+- 6: **partly disagree.** The owner change-set, read-back and smoke checks stay pending, in the deploy
+  checklist. Mocked 429 tests of the game's client paths I did **not** add here, because:
+  - The ticket is "template and docs only".
+  - The misleading paths are owned by tickets whose Done criteria already demand those tests: TUN-106
+    (the sign-in overwrite: 429/500/network cases) and TUN-107 (the Melodies list and the `#song=` link:
+    200/404/429).
+  - The calm paths (a failed push not retried, the share, load and delete toasts) are one-line
+    `r.ok ? … : …` branches. I commented on TUN-106 and TUN-107 to add a 429 case for them, since
+    those tickets edit the same functions.
+
+  GPT's position: "Reading code does not replace exercising those paths." Both sides stand; the owner
+  can overrule.
 
 ## Tests
 

@@ -4,11 +4,14 @@
 // Why a test: the backend has no deploy preview and the worker that edits the template has no AWS
 // credentials, so a dropped throttle, a lost Retain or a committed address would first show up in
 // production — or on a public repository. Later backend tickets (TUN-76, TUN-83, TUN-87, TUN-88) all edit
-// this template. This is a static check of the text, not a CloudFormation validation: the owner's deploy
-// runs `sam validate --lint` and reads the change set (backend/README.md § Future deploys).
+// this template. This is a static check, not CloudFormation validation: the owner's deploy runs
+// `sam validate --lint` and reads the change set (backend/README.md § Future deploys).
 //
-// The parser is deliberately tiny: it reads blocks by indentation, which is all this template needs. No
-// YAML library is installed, and tests here run with nothing to install.
+// Every setting is checked at its EFFECTIVE path (Resources.<Name>.DeletionPolicy, …Properties.Events.<E>
+// .Properties.RouteSettings, …), so the same text under Metadata or anywhere else does not count. The
+// parser is a small one for the block-style YAML subset this template uses (maps, lists, scalars, quotes,
+// comments, short-form tags kept as strings): no YAML library is installed, and tests here run with
+// nothing to install. It throws on anything it does not understand rather than guessing.
 import { test } from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
@@ -18,136 +21,234 @@ import { ROOT } from "./helpers/game-scripts.mjs";
 const TEMPLATE = readFileSync(join(ROOT, "backend", "template.yaml"), "utf8").replace(/\r/g, "");
 const SAMCONFIG = readFileSync(join(ROOT, "backend", "samconfig.toml"), "utf8").replace(/\r/g, "");
 
-// The nominal steady-state rate of the whole API, in requests/second: the sum of the route limits the owner
-// chose (TUN-82, 2026-11-13). Change it only with the arithmetic in reviews/TUN-82-*.md redone.
-const API_RATE = 5;
-const ROUTES = 7;
-
-const lines = (text) => text.replace(/\r/g, "").split("\n");
-const indentOf = (line) => line.length - line.trimStart().length;
-
-// The lines under `key:` at exactly `indent` spaces (the first match after `from`), up to the next line at
-// that indent or less. Comments and blank lines are kept; callers match on content.
-function block(text, key, indent, from = 0) {
-  const ls = lines(text);
-  const pad = " ".repeat(indent);
-  for (let i = from; i < ls.length; i++) {
-    if (ls[i].startsWith(pad + key + ":") && indentOf(ls[i]) === indent) {
-      const out = [ls[i]];
-      for (let j = i + 1; j < ls.length; j++) {
-        const l = ls[j];
-        if (l.trim() !== "" && !l.trimStart().startsWith("#") && indentOf(l) <= indent) break;
-        out.push(l);
-      }
-      return out.join("\n");
-    }
-  }
-  return null;
-}
-const value = (blk, key) => {
-  const m = blk && blk.match(new RegExp("^\\s*" + key + ":\\s*([^#\\n]*?)\\s*(?:#.*)?$", "m"));
-  return m ? m[1] : null;
+// The approved configuration (owner, TUN-82, 2026-11-13): route → [nominal rate/s, burst]. The rates sum to
+// 5 requests a second. Change these only with the arithmetic in reviews/TUN-82-*.md redone.
+const ROUTES = {
+  "PUT /progress": [2, 10],
+  "GET /progress": [1, 5],
+  "GET /songs/{id}": [1, 5],
+  "POST /songs": [0.25, 2],
+  "GET /songs": [0.25, 2],
+  "PUT /songs/{id}": [0.25, 2],
+  "DELETE /songs/{id}": [0.25, 2],
 };
-const code = (blk) => blk.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
+const DEFAULT_ROUTE = [0.25, 2];
+const RESERVED_CONCURRENCY = 2;
+const ALERTS = ["ACTUAL 100", "ACTUAL 50", "ACTUAL 80", "FORECASTED 100"];
+const ALLOWED_EMAIL = /@example\.com$/i;   // documentation placeholders only (you@ / new@example.com)
+
+// ---- a minimal block-YAML parser --------------------------------------------------------------------
+const KEY = /^([^\s#'"\-][^:]*?|"[^"]*"|'[^']*'):(?:\s+(.*))?$/;
+function scalar(v) {
+  v = v.trim();
+  if (v[0] === "'" || v[0] === '"') {
+    const end = v.indexOf(v[0], 1);
+    if (end < 0) throw new Error(`unterminated quote: ${v}`);
+    return v.slice(1, end);
+  }
+  const hash = v.search(/(^|\s)#/);   // `key:   # comment` has no value
+  return (hash >= 0 ? v.slice(0, hash) : v).trim();
+}
+export function parseYaml(text) {
+  const L = text.split("\n")
+    .map((raw) => ({ ind: raw.length - raw.trimStart().length, s: raw.trim() }))
+    .filter((l) => l.s && !l.s.startsWith("#"));
+  let i = 0;
+  const isItem = (l) => l.s === "-" || l.s.startsWith("- ");
+  const block = (ind) => (isItem(L[i]) ? list(ind) : map(ind));
+  function map(ind) {
+    const o = {};
+    while (i < L.length && L[i].ind >= ind) {
+      if (L[i].ind > ind) throw new Error(`unexpected indent: ${L[i].s}`);
+      if (isItem(L[i])) break;
+      const m = L[i].s.match(KEY);
+      if (!m) throw new Error(`not a key: ${L[i].s}`);
+      i++;
+      const key = scalar(m[1]), rest = m[2] === undefined ? "" : scalar(m[2]);
+      if (rest !== "") o[key] = rest;
+      else if (i < L.length && (L[i].ind > ind || (L[i].ind === ind && isItem(L[i])))) o[key] = block(L[i].ind);
+      else o[key] = null;
+    }
+    return o;
+  }
+  function list(ind) {
+    const a = [];
+    while (i < L.length && L[i].ind === ind && isItem(L[i])) {
+      const rest = L[i].s.slice(1).trimStart();
+      if (!rest) { i++; a.push(block(L[i].ind)); continue; }
+      if (KEY.test(rest)) { L[i] = { ind: ind + (L[i].s.length - rest.length), s: rest }; a.push(map(L[i].ind)); }
+      else { a.push(scalar(rest)); i++; }
+    }
+    return a;
+  }
+  const doc = map(0);
+  if (i < L.length) throw new Error(`could not parse from: ${L[i].s}`);
+  return doc;
+}
+
+// ---- the checks -------------------------------------------------------------------------------------
+const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+const fmt = ([r, b]) => `${r}/s burst ${b}`;
 
 export function templateProblems(template, samconfig) {
   const problems = [];
-  const resources = block(template, "Resources", 0);
-  if (!resources) return ["no Resources section"];
-  const resource = (name) => block(resources, name, 2);
+  let t;
+  try { t = parseYaml(template); } catch (e) { return [`template does not parse: ${e.message}`]; }
+  const R = t.Resources || {};
+  const res = (name) => R[name] || {};
+  const props = (name) => res(name).Properties || {};
 
-  // Throttles: every HttpApi event carries its own RouteSettings; the rates add up to API_RATE.
-  let rateSum = 0, routes = 0;
-  const ls = lines(resources);
-  ls.forEach((l, i) => {
-    if (!/^\s*Type:\s*HttpApi\s*$/.test(l)) return;
-    routes++;
-    const ev = block(resources, lines(resources)[i - 1].trim().replace(/:$/, ""), indentOf(ls[i - 1]), i - 1);
-    const rs = ev && block(ev, "RouteSettings", indentOf(ls[i]) + 2);
-    const rate = Number(value(rs, "ThrottlingRateLimit"));
-    const burst = Number(value(rs, "ThrottlingBurstLimit"));
-    const name = ev ? ev.split("\n")[0].trim() : `line ${i}`;
-    if (!rs) problems.push(`route ${name} has no RouteSettings`);
-    else if (!(rate > 0) || !(burst >= 1) || !Number.isInteger(burst)) problems.push(`route ${name} has no positive rate and burst`);
-    else rateSum += rate;
-  });
-  if (routes !== ROUTES) problems.push(`expected ${ROUTES} HttpApi routes, found ${routes}`);
-  if (Math.abs(rateSum - API_RATE) > 1e-9) problems.push(`route rates sum to ${rateSum}/s, not ${API_RATE}/s`);
-  const def = block(resource("Api") || "", "DefaultRouteSettings", 6);
-  if (!(Number(value(def, "ThrottlingRateLimit")) > 0)) problems.push("Api has no DefaultRouteSettings throttle");
+  // Every API route is an HttpApi event on a function, on Api, with exactly the approved throttle.
+  const found = {};
+  for (const [name, r] of Object.entries(R)) {
+    if (r.Type === "AWS::Serverless::HttpApi" && name !== "Api") problems.push(`a second HTTP API, ${name}: its routes are not throttled here`);
+    if (/^AWS::ApiGatewayV2::(Route|Api)$/.test(r.Type)) problems.push(`${name} is an ${r.Type} outside the throttled Api`);
+    if (r.Type !== "AWS::Serverless::Function") continue;
+    for (const [ev, e] of Object.entries((r.Properties || {}).Events || {})) {
+      if (e.Type !== "HttpApi") continue;
+      const p = e.Properties || {};
+      const id = `${String(p.Method || "ANY").toUpperCase()} ${p.Path || "(no path)"}`;
+      if (p.ApiId !== "!Ref Api") problems.push(`route ${id} (${name}.${ev}) is not on Api`);
+      const rs = p.RouteSettings || {};
+      found[id] = [num(rs.ThrottlingRateLimit), num(rs.ThrottlingBurstLimit)];
+    }
+  }
+  for (const [id, want] of Object.entries(ROUTES)) {
+    if (!found[id]) problems.push(`route ${id} is missing`);
+    else if (found[id].join() !== want.join()) problems.push(`route ${id} throttle is ${fmt(found[id])}, approved ${fmt(want)}`);
+  }
+  for (const id of Object.keys(found)) if (!ROUTES[id]) problems.push(`route ${id} is not an approved route (add it to the arithmetic first)`);
+  const d = props("Api").DefaultRouteSettings || {};
+  const def = [num(d.ThrottlingRateLimit), num(d.ThrottlingBurstLimit)];
+  if (def.join() !== DEFAULT_ROUTE.join()) problems.push(`default route throttle is ${fmt(def)}, approved ${fmt(DEFAULT_ROUTE)}`);
 
-  // Reserved concurrency: a positive integer in Globals (0 would switch every function off).
-  const rce = value(block(template, "Globals", 0), "ReservedConcurrentExecutions");
-  if (!(Number.isInteger(Number(rce)) && Number(rce) >= 1)) problems.push("Globals has no positive ReservedConcurrentExecutions");
+  // Reserved concurrency: the Globals value, and no function overriding it (0 would switch one off).
+  const g = num(((t.Globals || {}).Function || {}).ReservedConcurrentExecutions);
+  if (g !== RESERVED_CONCURRENCY) problems.push(`Globals reserved concurrency is ${g}, approved ${RESERVED_CONCURRENCY}`);
+  for (const [name, r] of Object.entries(R)) {
+    if (r.Type !== "AWS::Serverless::Function") continue;
+    const own = (r.Properties || {}).ReservedConcurrentExecutions;
+    if (own !== undefined && num(own) !== RESERVED_CONCURRENCY) problems.push(`${name} overrides reserved concurrency with ${own}`);
+  }
 
-  // Data protection.
+  // Data protection, at the resource's own attributes and properties.
   for (const name of ["UserPool", "ProgressTable", "SongsTable"]) {
-    const r = resource(name);
-    if (!r) { problems.push(`${name} is missing`); continue; }
-    if (value(r, "DeletionPolicy") !== "Retain") problems.push(`${name} lacks DeletionPolicy: Retain`);
-    if (value(r, "UpdateReplacePolicy") !== "Retain") problems.push(`${name} lacks UpdateReplacePolicy: Retain`);
+    if (!R[name]) { problems.push(`${name} is missing`); continue; }
+    if (res(name).DeletionPolicy !== "Retain") problems.push(`${name} lacks DeletionPolicy: Retain`);
+    if (res(name).UpdateReplacePolicy !== "Retain") problems.push(`${name} lacks UpdateReplacePolicy: Retain`);
   }
-  if (value(resource("UserPool"), "DeletionProtection") !== "ACTIVE") problems.push("UserPool lacks DeletionProtection: ACTIVE");
+  if (props("UserPool").DeletionProtection !== "ACTIVE") problems.push("UserPool lacks DeletionProtection: ACTIVE");
   for (const name of ["ProgressTable", "SongsTable"]) {
-    const r = resource(name) || "";
-    if (value(r, "DeletionProtectionEnabled") !== "true") problems.push(`${name} lacks DeletionProtectionEnabled`);
-    if (value(block(r, "PointInTimeRecoverySpecification", 6), "PointInTimeRecoveryEnabled") !== "true") problems.push(`${name} lacks point-in-time recovery`);
+    if (props(name).DeletionProtectionEnabled !== "true") problems.push(`${name} lacks DeletionProtectionEnabled`);
+    if ((props(name).PointInTimeRecoverySpecification || {}).PointInTimeRecoveryEnabled !== "true") problems.push(`${name} lacks point-in-time recovery`);
   }
 
-  // Budget: $30 a month, account-wide, four alerts, all to the BudgetEmail parameter, no fixed name.
-  const budget = code(resource("MonthlyBudget") || "");
-  if (!/Type:\s*AWS::Budgets::Budget/.test(budget)) problems.push("MonthlyBudget is missing");
-  else {
-    if (value(budget, "Amount") !== "30" || value(budget, "Unit") !== "USD" || value(budget, "TimeUnit") !== "MONTHLY") problems.push("the budget is not $30 a month");
-    if (/BudgetName:/.test(budget)) problems.push("the budget has a fixed BudgetName (a new address replaces it, and the name would collide)");
-    if (/CostFilters:/.test(budget)) problems.push("the budget has cost filters; it must cover the whole account");
-    const alerts = [...budget.matchAll(/NotificationType:\s*(\w+)\s*\n\s*ComparisonOperator:\s*GREATER_THAN\s*\n\s*Threshold:\s*(\d+)\s*\n\s*ThresholdType:\s*PERCENTAGE/g)]
-      .map((m) => `${m[1]} ${m[2]}`).sort();
-    if (alerts.join() !== ["ACTUAL 100", "ACTUAL 50", "ACTUAL 80", "FORECASTED 100"].join()) problems.push(`budget alerts are ${alerts.join(", ") || "none"}`);
-    const addresses = [...budget.matchAll(/Address:\s*(.*)/g)].map((m) => m[1].trim());
-    if (addresses.length !== 4 || addresses.some((a) => a !== "!Ref BudgetEmail")) problems.push("every budget alert must go to !Ref BudgetEmail");
+  // Budget: $30 a month, whole account, the four alerts, every one to BudgetEmail, no fixed name.
+  const budgets = Object.entries(R).filter(([, r]) => r.Type === "AWS::Budgets::Budget");
+  if (budgets.length !== 1 || budgets[0][0] !== "MonthlyBudget") problems.push("expected exactly one budget, MonthlyBudget");
+  const bp = props("MonthlyBudget"), b = bp.Budget || {};
+  const lim = b.BudgetLimit || {};
+  if (b.BudgetType !== "COST" || b.TimeUnit !== "MONTHLY" || num(lim.Amount) !== 30 || lim.Unit !== "USD") problems.push("the budget is not a $30 monthly cost budget");
+  if ("BudgetName" in b) problems.push("the budget has a fixed BudgetName (a new address replaces it, and the name would collide)");
+  if ("CostFilters" in b || "FilterExpression" in b) problems.push("the budget is filtered; it must cover the whole account");
+  const notes = Array.isArray(bp.NotificationsWithSubscribers) ? bp.NotificationsWithSubscribers : [];
+  const alerts = notes.map((n) => {
+    const x = n.Notification || {};
+    const ok = x.ComparisonOperator === "GREATER_THAN" && x.ThresholdType === "PERCENTAGE";
+    return ok ? `${x.NotificationType} ${num(x.Threshold)}` : "malformed";
+  }).sort();
+  if (alerts.join() !== ALERTS.join()) problems.push(`budget alerts are [${alerts.join(", ")}], approved [${ALERTS.join(", ")}]`);
+  for (const n of notes) {
+    const subs = Array.isArray(n.Subscribers) ? n.Subscribers : [];
+    if (subs.length !== 1 || subs[0].SubscriptionType !== "EMAIL" || subs[0].Address !== "!Ref BudgetEmail") {
+      problems.push("every budget alert must email exactly !Ref BudgetEmail");
+      break;
+    }
   }
-  const param = block(block(template, "Parameters", 0) || "", "BudgetEmail", 2);
-  if (!param) problems.push("the BudgetEmail parameter is missing");
+  const pe = (t.Parameters || {}).BudgetEmail;
+  if (!pe) problems.push("the BudgetEmail parameter is missing");
   else {
-    if (value(param, "NoEcho") !== "true") problems.push("BudgetEmail is not NoEcho");
-    if (/^\s*Default:/m.test(param)) problems.push("BudgetEmail has a Default (the address would be committed)");
+    if (pe.NoEcho !== "true") problems.push("BudgetEmail is not NoEcho");
+    if ("Default" in pe) problems.push("BudgetEmail has a Default (the address would be committed)");
   }
 
-  // No address in the repository's backend config: only example.com, and only in comments.
+  // No real address anywhere in the backend config — comments included: the repository is public.
   for (const [file, text] of [["template.yaml", template], ["samconfig.toml", samconfig]]) {
-    for (const m of code(text).matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) problems.push(`${file} contains an email address: ${m[0]}`);
+    for (const m of text.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)) {
+      if (!ALLOWED_EMAIL.test(m[0])) problems.push(`${file} contains an email address: ${m[0]}`);
+    }
   }
-  if (/parameter_overrides/.test(samconfig)) problems.push("samconfig.toml has parameter_overrides (it is public; pass BudgetEmail on the command line)");
+  if (/^\s*parameter_overrides\b/m.test(samconfig)) problems.push("samconfig.toml has parameter_overrides (it is public; pass BudgetEmail on the command line)");
   return problems;
 }
 
-test("backend/template.yaml keeps the throttles, reserved concurrency, budget and data protection; no address is committed", () => {
+test("backend/template.yaml keeps the approved throttles, reserved concurrency, budget and data protection; no address is committed", () => {
   assert.deepEqual(templateProblems(TEMPLATE, SAMCONFIG), []);
 });
 
+// Formatting that changes nothing must not change the verdict: a quoted or commented Type, and reordered
+// event properties.
+test("the template check is not fooled by harmless formatting", () => {
+  const variants = [
+    TEMPLATE.replace(/Type: HttpApi\n/g, 'Type: "HttpApi"\n'),
+    TEMPLATE.replace(/Type: HttpApi\n/g, "Type: HttpApi   # a route\n"),
+    TEMPLATE.replace(/(            ApiId: !Ref Api\n)(            Path: \/progress\n            Method: GET\n)/, "$2$1"),
+  ];
+  for (const v of variants) {
+    assert.notEqual(v, TEMPLATE);
+    assert.deepEqual(templateProblems(v, SAMCONFIG), []);
+  }
+});
+
 // The checker's own mutations, kept as tests so the guard cannot quietly go blind: each variant is the real
-// template or config with one of the mistakes this test exists for.
-test("the template check refuses each mistake it guards against", () => {
+// template or config with one mistake, and must draw THE diagnostic for that mistake.
+const NEW_ROUTE = `        Extra:
+          Type: HttpApi   # new route
+          Properties:
+            ApiId: !Ref Api
+            Path: /songs/extra
+            Method: GET
+`;
+test("the template check refuses each mistake it guards against, with the right diagnostic", () => {
   const cases = [
-    ["a route without its throttle", TEMPLATE.replace(/(Path: \/progress\n\s*Method: PUT)\n\s*RouteSettings:[^\n]*\n\s*ThrottlingRateLimit: 2\n\s*ThrottlingBurstLimit: 10/, "$1"), /PUT|route rates sum/],
-    ["a raised route rate", TEMPLATE.replace("ThrottlingRateLimit: 2\n", "ThrottlingRateLimit: 20\n"), /sum to/],
-    ["no default throttle", TEMPLATE.replace(/      DefaultRouteSettings:\n[^\n]*\n[^\n]*\n/, ""), /DefaultRouteSettings/],
-    ["reserved concurrency 0", TEMPLATE.replace("ReservedConcurrentExecutions: 2", "ReservedConcurrentExecutions: 0"), /ReservedConcurrentExecutions/],
-    ["a table without Retain", TEMPLATE.replace(/(SongsTable:\n\s*Type: AWS::DynamoDB::Table\n)\s*DeletionPolicy: Retain\n/, "$1"), /SongsTable lacks DeletionPolicy/],
-    ["a pool replaced without Retain", TEMPLATE.replace(/(UserPool:\n\s*Type: AWS::Cognito::UserPool\n\s*DeletionPolicy: Retain\n)\s*UpdateReplacePolicy: Retain\n/, "$1"), /UserPool lacks UpdateReplacePolicy/],
-    ["pool deletion protection off", TEMPLATE.replace("DeletionProtection: ACTIVE", "DeletionProtection: INACTIVE"), /UserPool lacks DeletionProtection/],
-    ["no point-in-time recovery", TEMPLATE.replace("PointInTimeRecoveryEnabled: true", "PointInTimeRecoveryEnabled: false"), /point-in-time/],
-    ["a fixed budget name", TEMPLATE.replace("        BudgetType: COST", "        BudgetName: tune-garden\n        BudgetType: COST"), /BudgetName/],
-    ["a dropped alert", TEMPLATE.replace("Threshold: 80", "Threshold: 90"), /budget alerts are/],
-    ["a committed address", TEMPLATE.replace("Address: !Ref BudgetEmail", "Address: owner@example.org"), /email address|BudgetEmail/],
-    ["a default address", TEMPLATE.replace("    NoEcho: true\n", "    NoEcho: true\n    Default: owner@example.org\n"), /Default|email address/],
+    ["a route without its throttle", TEMPLATE.replace(/(Method: PUT)\n\s*RouteSettings:[^\n]*\n\s*ThrottlingRateLimit: 2\n\s*ThrottlingBurstLimit: 10\n/, "$1\n"), /route PUT \/progress throttle is NaN\/s burst NaN/],
+    ["a raised route rate", TEMPLATE.replace("ThrottlingRateLimit: 2\n", "ThrottlingRateLimit: 20\n"), /route PUT \/progress throttle is 20\/s/],
+    ["an oversized burst", TEMPLATE.replace("ThrottlingBurstLimit: 10\n", "ThrottlingBurstLimit: 5000\n"), /route PUT \/progress throttle is 2\/s burst 5000/],
+    ["an unthrottled new route", TEMPLATE.replace("        ListMine:\n", NEW_ROUTE + "        ListMine:\n"), /route GET \/songs\/extra is not an approved route/],
+    ["a route on another API", TEMPLATE.replace("            ApiId: !Ref Api\n            Path: /songs\n            Method: POST", "            ApiId: !Ref Other\n            Path: /songs\n            Method: POST"), /route POST \/songs \(SongsFn\.Create\) is not on Api/],
+    ["no default throttle", TEMPLATE.replace(/      DefaultRouteSettings:\n[^\n]*\n[^\n]*\n/, ""), /default route throttle is NaN/],
+    ["a zero default burst", TEMPLATE.replace(/(DefaultRouteSettings:\n\s*ThrottlingRateLimit: 0\.25\n\s*)ThrottlingBurstLimit: 2/, "$1ThrottlingBurstLimit: 0"), /default route throttle is 0\.25\/s burst 0/],
+    ["reserved concurrency 0", TEMPLATE.replace("ReservedConcurrentExecutions: 2", "ReservedConcurrentExecutions: 0"), /Globals reserved concurrency is 0/],
+    ["a function switched off", TEMPLATE.replace("      Handler: songs.handler\n", "      Handler: songs.handler\n      ReservedConcurrentExecutions: 0\n"), /SongsFn overrides reserved concurrency with 0/],
+    ["Retain moved under Metadata", TEMPLATE.replace(/(SongsTable:\n\s*Type: AWS::DynamoDB::Table\n)\s*DeletionPolicy: Retain\n\s*UpdateReplacePolicy: Retain\n/, "$1    Metadata:\n      DeletionPolicy: Retain\n      UpdateReplacePolicy: Retain\n"), /SongsTable lacks DeletionPolicy: Retain/],
+    ["a pool replaced without Retain", TEMPLATE.replace(/(UserPool:\n\s*Type: AWS::Cognito::UserPool\n\s*DeletionPolicy: Retain\n)\s*UpdateReplacePolicy: Retain\n/, "$1"), /UserPool lacks UpdateReplacePolicy: Retain/],
+    ["pool deletion protection off", TEMPLATE.replace("DeletionProtection: ACTIVE", "DeletionProtection: INACTIVE"), /UserPool lacks DeletionProtection: ACTIVE/],
+    ["no point-in-time recovery", TEMPLATE.replace("PointInTimeRecoveryEnabled: true", "PointInTimeRecoveryEnabled: false"), /ProgressTable lacks point-in-time recovery/],
+    ["a fixed budget name", TEMPLATE.replace("        BudgetType: COST", "        BudgetName: tune-garden\n        BudgetType: COST"), /fixed BudgetName/],
+    ["a dropped alert", TEMPLATE.replace("Threshold: 80", "Threshold: 90"), /budget alerts are \[ACTUAL 100, ACTUAL 50, ACTUAL 90/],
+    ["alerts moved under Metadata", TEMPLATE.replace("      NotificationsWithSubscribers:\n", "    Metadata:\n      NotificationsWithSubscribers:\n"), /budget alerts are \[\]/],
+    ["an alert to someone else", TEMPLATE.replace("Address: !Ref BudgetEmail", "Address: !Ref OtherEmail"), /every budget alert must email exactly !Ref BudgetEmail/],
+    ["a default address", TEMPLATE.replace("    NoEcho: true\n", "    NoEcho: true\n    Default: '!Ref Nothing'\n"), /BudgetEmail has a Default/],
   ];
   for (const [what, mutated, expect] of cases) {
     assert.notEqual(mutated, TEMPLATE, `the "${what}" mutation must change the template`);
     const problems = templateProblems(mutated, SAMCONFIG);
+    assert.ok(problems.some((p) => expect.test(p)), `"${what}" should be refused with ${expect}; got ${JSON.stringify(problems)}`);
+  }
+});
+
+// The address guard on its own: each of these is otherwise-valid configuration, so ONLY the email scan can
+// refuse it — disabling that scan makes this test fail.
+test("an email address anywhere in the backend config is refused, comments included", () => {
+  const cases = [
+    ["template comment", TEMPLATE + "# Budget contact: owner@example.org\n", SAMCONFIG, /template\.yaml contains an email address: owner@example\.org/],
+    ["template description", TEMPLATE.replace("Description: Where AWS Budgets emails the monthly cost alerts.", "Description: Alerts go to owner@example.org."), SAMCONFIG, /template\.yaml contains an email address: owner@example\.org/],
+    ["samconfig comment", TEMPLATE, SAMCONFIG + "# owner@example.org\n", /samconfig\.toml contains an email address: owner@example\.org/],
+  ];
+  for (const [what, tpl, cfg, expect] of cases) {
+    const problems = templateProblems(tpl, cfg);
+    assert.deepEqual(problems.filter((p) => !expect.test(p)), [], `"${what}" should draw only the address diagnostic`);
     assert.ok(problems.some((p) => expect.test(p)), `"${what}" should be refused; got ${JSON.stringify(problems)}`);
   }
-  const leaked = SAMCONFIG + '\nparameter_overrides = "BudgetEmail=owner@example.org"\n';
-  assert.ok(templateProblems(TEMPLATE, leaked).some((p) => /samconfig/.test(p)), "an address in samconfig.toml should be refused");
+  assert.ok(templateProblems(TEMPLATE, SAMCONFIG + '\nparameter_overrides = "X=1"\n').some((p) => /parameter_overrides/.test(p)));
 });
