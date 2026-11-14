@@ -10,7 +10,7 @@ A browser game that teaches music theory through play — **"Minecraft for music
 
 ## Quick start
 
-The whole game is **`index.html`** — the page's markup and styles — and the classic scripts in **`js/`** that it loads, which hold all of the game's code (vanilla JS + Web Audio, no dependencies, no build step), plus two runtime asset folders (`voice/` narration clips, `samples/` instrument packs).
+The whole game is **`index.html`** — the page's markup and styles — and the classic scripts in **`js/`** that it loads, which hold all of the game's code (vanilla JS + Web Audio, no dependencies, no build step), plus three runtime asset folders (`voice/` narration clips, `samples/` instrument packs, `vendor/` fonts and the sign-in library).
 
 - **Run it:** open `index.html` directly in a browser (file:// works — the game is built to survive it), **or** serve the folder:
   ```bash
@@ -226,7 +226,7 @@ See `backend/README.md` for first-time setup. Remaining pre-launch TODO: AWS bud
 
 **Git-based Netlify deploy** — push to `main` and Netlify builds automatically (`netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` + `vendor/` into the publish dir). Domain: **https://tunegarden.game** (Netlify site `tunegarden.netlify.app`, which also serves the PR deploy previews; the AWS stack keeps the old working name `music-garden`).
 
-**Cloudflare Pages, alongside** (TUN-80) — the Pages project `music-garden` builds the same repository: a push to `main` deploys **https://music-garden.pages.dev**, and every other branch pushed to this repository gets a preview (`<hash>.music-garden.pages.dev`, plus a stable alias per branch that Cloudflare prints) and a *Cloudflare Pages* check on its PR. Its dashboard runs `sh cloudflare-build.sh` with build output directory `site`; the script copies the same four things as `netlify.toml`. It runs beside Netlify until the owner moves `tunegarden.game`'s DNS (TUN-85 then retires Netlify). Things to know while both run:
+**Cloudflare Pages, alongside** (TUN-80) — the Pages project `music-garden` builds the same repository: a push to `main` deploys **https://music-garden.pages.dev**, and every other branch pushed to this repository gets a preview (`<hash>.music-garden.pages.dev`, plus a stable alias per branch that Cloudflare prints) and a *Cloudflare Pages* check on its PR. Its dashboard runs `sh cloudflare-build.sh` with build output directory `site`; the script copies the same five things as `netlify.toml`. It runs beside Netlify until the owner moves `tunegarden.game`'s DNS (TUN-85 then retires Netlify). Things to know while both run:
 - **Pull requests from forks get no Cloudflare preview** (Pages builds only branches of this repository). Netlify's deploy previews still cover them until Netlify is retired.
 - **Cloud sync and cloud songs fail on `*.pages.dev`**: the backend's CORS list allows only `tunegarden.game`. Guest play, narration, samples and `#s=` links all work.
 - **A path that is not a file** gets `index.html`, as on Netlify: with no `404.html` in the output, Pages treats the site as a single-page app. A `404.html` anywhere in `site/` would change that for its folder, so the test refuses one.

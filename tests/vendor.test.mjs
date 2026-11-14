@@ -120,6 +120,17 @@ test("the third-party scanner catches every way the page could name another host
     ["<style>@import url(https://fonts.example/a.css);</style>", "https://fonts.example/a.css"],
     ['<style>@import "//fonts.example/b.css";</style>', "//fonts.example/b.css"],
     ['<!-- <script src="https://cdn.example/old.js"></script> -->', "https://cdn.example/old.js"],
+    // Encoded spellings a browser decodes before it fetches (GPT's PR review, finding 2). Mutation: inspect
+    // the raw attribute value instead of the decoded one — the first four pass as local.
+    ['<img src="https&#58;//img.example/a.png">', "https://img.example/a.png"],
+    ['<link rel="stylesheet" href="&#47;&#47;fonts.example/a.css">', "//fonts.example/a.css"],
+    ['<div style="background:url(&quot;https://img.example/a.png&quot;)"></div>', "https://img.example/a.png"],
+    ['<script src="&#x68;ttps://cdn.example/x.js"></script>', "https://cdn.example/x.js"],
+    ['<img src="ht&Tab;tps://img.example/a.png">', "ht\ttps://img.example/a.png"],   // the URL parser drops the tab
+    ['<img src="\\\\img.example/a.png">', "\\\\img.example/a.png"],                    // "\\host" is "//host"
+    ['<img src="&unknown;//img.example/a.png">', "unreadable: &unknown;//img.example/a.png"],
+    ['<img src="https&colon//img.example/a.png">', "unreadable: https&colon//img.example/a.png"],  // no ";": not guessed
+    ['<style>.a{background:url("\\68ttps://img.example/a.png")}</style>', "\\68ttps://img.example/a.png"],
   ]) assert.deepEqual(htmlThirdParty(html), [want], html);
   // Controls: local paths, data: URLs, and links (a link fetches nothing until clicked).
   for (const html of [
@@ -127,6 +138,8 @@ test("the third-party scanner catches every way the page could name another host
     '<img src="data:image/png;base64,AAAA"><div style="background:url(img/a.png)"></div>',
     '<a href="https://tunegarden.game/">home</a><area href="https://example.com/">',
     '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+    '<img src="img&#47;a.png"><div style="background:url(&quot;img/b.png&quot;)"></div>',   // encoded, but local
+    '<a href="https&#58;//tunegarden.game/">home</a>',
   ]) assert.deepEqual(htmlThirdParty(html), [], html);
   assert.deepEqual(cssThirdParty("@font-face{src:url(\"https://fonts.gstatic.com/x.woff2\") format('woff2')}"), ["https://fonts.gstatic.com/x.woff2"]);
   assert.deepEqual(cssThirdParty("@font-face{src:url(nunito/latin.woff2) format('woff2')}"), []);

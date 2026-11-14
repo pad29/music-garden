@@ -229,9 +229,95 @@ the repository's — identical, `application/javascript` and `font/woff2`):
   **9 to `app.netlify.com` and 1 to `cdn.segment.com`.** Those come from Netlify's deploy-preview feedback
   drawer: Netlify inserts `<script async src="/.netlify/scripts/cdp">` into the page, with the comment "This div
   is automatically inserted by Netlify for all Deploy Preview URLs." **Production does not get it:**
-  `https://www.tunegarden.game/` serves `main`'s `index.html` byte for byte (diffed 2026-11-14). So no player
-  sees it, and it ends with Netlify (TUN-85); switching the drawer off in Netlify's settings is the owner's call.
+  `https://www.tunegarden.game/` serves `main`'s `index.html` byte for byte (diffed 2026-11-14). Whether deploy
+  previews must meet the rule too is the owner's decision (PR review round 1, finding 1).
 
 **Not verified here:** a real sign-up and sign-in, and the signed-in host list (answer 1 — the owner's
-checklist, before merge); a click that changes the game on `file://` (the onboarding card took the clicks; boot
-and the gate are verified, play is not); Firefox and Safari; production itself until it deploys.
+checklist, before merge); Firefox and Safari; production itself until it deploys.
+
+## PR review (GPT through `ask.sh` — AO's reviewer is out of service)
+
+### Round 1 — head `4842f94`
+<details><summary>GPT's PR review, verbatim</summary>
+
+Reviewed HEAD `4842f947d03f41b3c274a4ab930ef6ebdcbf77d9`. No files edited.
+
+Syntax checking passed, including Cognito. The full suite produced **658 passes and 75 failures**, all attributable to sandbox `EPERM` errors creating temporary fixtures. I cannot certify a green suite here. I did not independently repeat the recorded browser checks.
+
+1. **Medium — The Netlify preview still violates the stated request policy.** [Review record:228](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:228)
+
+   The recorded capture includes requests to `app.netlify.com` and `cdn.segment.com`. Attribution to the injected drawer explains them but does not satisfy the owner’s unqualified “no third-party requests” decision. Production being unaffected does not establish an exception for public previews.
+
+   **Required:** disable the drawer and repeat the capture, or obtain and record an explicit owner exception for Netlify previews. Remove the unsupported dismissal that “no player sees it.”
+
+2. **Medium — The new privacy guard silently accepts encoded third-party references.** [tests/helpers/vendor.mjs:94](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:94)
+
+   I reproduced `htmlThirdParty(...) === []` for all three:
+
+   ```html
+   <img src="https&#58;//img.example/a.png">
+   <link rel="stylesheet" href="&#47;&#47;fonts.example/a.css">
+   <div style="background:url(&quot;https://img.example/a.png&quot;)"></div>
+   ```
+
+   Browsers decode these attribute values before interpreting their URLs or CSS. The checker examines the undecoded spelling.
+
+   **Required:** decode HTML character references before URL/CSS inspection, or explicitly reject unsupported encoded forms. This needs no general-purpose HTML parser; a documented, enforced restricted grammar is acceptable.
+
+3. **Low — The promised command results are absent.** [Review record:185](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:185)
+
+   The answer says both required commands’ results are recorded below, but Verification contains neither the full-suite result nor the syntax-command result.
+
+   **Required:** run both commands in a writable test environment and record the commit, exit status, and test totals. My sandbox failures establish neither a product regression nor a passing suite.
+
+4. **Low — Two README descriptions became false.** [README.md:13](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/README.md:13), [README.md:229](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/README.md:229)
+
+   Quick start still lists **two** runtime asset folders; deployment still says Cloudflare copies **four** things.
+
+   **Required:** include `vendor/`, making these three asset folders and five published entries respectively.
+
+The missing tests/checks are:
+
+- **Scanner regressions — finding 2:** add the three inputs above to [tests/vendor.test.mjs:109](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/vendor.test.mjs:109). Each must report the external URL or explicitly reject the input. They catch replacing normalized attribute inspection with the current raw-string checks. Include an encoded local-path control if decoding is supported.
+- **Successful authentication:** [Review record:235](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:235) correctly leaves this pending. With an owner-designated account, exercise sign-up and successful sign-in on the local preview, then reload. Assert authenticated state/session restoration, the expected preview-origin cloud-sync failure, and only approved request hosts. This covers success/token paths that a rejected login cannot catch.
+- **Interactive offline `file://` smoke test:** [Review record:236](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:236) remains pending. In a fresh offline context, dismiss onboarding, enter a level, plant a note, undo, and start playback. Assert visible state changes and no exceptions. This catches an inert interface despite loaded assets and a completed boot.
+
+Earlier design findings concerning byte preservation, vendored syntax checking, and the Cloudflare execution fixture are implemented. Authentication and interactive `file://` checks are honestly disclosed as pending; hosted privacy remains unresolved.
+
+CHANGES REQUESTED
+
+</details>
+
+1. **Medium — the Netlify deploy preview contacts `app.netlify.com` and `cdn.segment.com`.** **Agreed that the
+   rule as written has no exception; the exception is the owner's decision**, so this goes to the owner
+   (Needs Input). The requests come from Netlify's deploy-preview drawer, which Netlify injects into every
+   deploy-preview URL and not into production (production's HTML equals `main`'s byte for byte). The options:
+   **A** — accept Netlify deploy previews as outside the rule (they end with TUN-85); **B** — the owner switches
+   the drawer off in Netlify's settings and I repeat the capture. My recommendation: A. The "no player sees it"
+   line is removed; the record states only what was measured.
+2. **Medium — encoded references pass the scanner.** **Agreed** — reproduced. `htmlThirdParty` now decodes
+   numeric character references and a small named set (`&quot;`, `&colon;`, `&sol;`, `&Tab;`, …) before reading
+   an attribute or a `style`; any other named reference, or one without its `;`, is reported as `unreadable`
+   rather than guessed. `leavesOrigin` reads URLs as the URL parser does (tabs and newlines dropped, `\` as `/`),
+   and a CSS escape inside `url()`/`@import` is refused. Tests: GPT's three inputs, a hex reference, `&Tab;`,
+   `\host`, an unknown reference, a reference without `;`, a CSS escape, and encoded-but-local controls.
+   Mutation run: inspect the raw value instead of the decoded one → the test fails.
+3. **Low — the two commands' results were not recorded.** **Agreed** — recorded below. (GPT's 75 failures were
+   its sandbox's `EPERM` on temp folders, as it says; not a regression.)
+4. **Low — README's Quick start ("two runtime asset folders") and Deployment ("the same four things").**
+   **Agreed** — fixed: three folders, five things.
+
+Missing tests:
+- *The encoded scanner cases* — **added** (above).
+- *A successful sign-up and sign-in* — **not added: needs an account in the production pool** (my answer 1 to
+  the design review). On the owner's checklist, before merge.
+- *An interactive offline `file://` smoke test* — **run, not added to the suite.** Headless Chrome over the
+  DevTools protocol, network unreachable, on the real `index.html` from `file://`: picked a companion, a real
+  mouse click on a grid cell planted a seed (`.cell.on` 0 → 1), Ctrl+Z undid it (1 → 0), a click on ▶ Play
+  turned it into ■ Stop; no network request, no console error or exception. The suite has no browser runner
+  and is zero-dependency Node; adding one (Chrome-dependent, skipped where absent) is a precedent for the owner
+  to choose, so the script stays out of the repository and the run is recorded here.
+
+**Commands, on the round-2 head** (Windows, Node 24.15): `node tools/check-syntax.mjs` → exit 0, *syntax OK (29
+scripts …; vendored: vendor/cognito/amazon-cognito-identity.min.js)*; `node --test "tests/*.test.mjs"` → exit 0,
+733 of 733 pass (0 fail, 0 skipped).

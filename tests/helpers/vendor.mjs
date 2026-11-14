@@ -69,18 +69,47 @@ const ATTR = new RegExp(`(?:^|\\s)(?:xlink:)?(${FETCHING_ATTRS})\\s*=\\s*(?:"([^
 const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;
 const CSS_IMPORT = /@import\s+(?:"([^"]*)"|'([^']*)')/gi;
 
-/** True for a reference that leaves the page's own origin: any scheme but data:/blob:, or a protocol-relative "//…". */
+/**
+ * True for a reference that leaves the page's own origin: any scheme but data:/blob:, or a protocol-relative
+ * "//…". Read as a browser's URL parser reads it: tabs and newlines anywhere are dropped, leading and trailing
+ * spaces and control characters trimmed, and "\" counts as "/" (so "\\host/x" is "//host/x").
+ */
 export const leavesOrigin = (ref) => {
-  const r = ref.trim();
-  return /^\/\//.test(r) || (/^[a-z][a-z0-9+.-]*:/i.test(r) && !/^(?:data|blob):/i.test(r));
+  const r = ref.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
+  return /^[\\/]{2}/.test(r) || (/^[a-z][a-z0-9+.-]*:/i.test(r) && !/^(?:data|blob):/i.test(r));
 };
 
-/** Every reference in CSS text (a stylesheet, a <style> body or a style attribute) that leaves the origin. */
+// The character references this guard decodes in an attribute value: numeric ones, and the named ones a URL
+// or a style is likely to be spelled with. Any other named reference — or one without its ";" — is not
+// guessed at: the value is reported as unreadable, so an encoded host can never pass as local (GPT's PR review,
+// finding 2). A browser decodes them all before it reads the URL or the CSS.
+const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", colon: ":", sol: "/", bsol: "\\", period: ".",
+  lpar: "(", rpar: ")", Tab: "\t", NewLine: "\n", nbsp: "\u00a0" };
+/** An attribute value with its character references decoded, or null if it holds one this guard does not read. */
+export function decodeRefs(value) {
+  let unreadable = false;
+  const text = value.replace(/&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*)(;?)/g, (m, ref, semi) => {
+    if (ref[0] === "#") {
+      const cp = /^#[xX]/.test(ref) ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "\ufffd";
+    }
+    if (semi && Object.hasOwn(NAMED, ref)) return NAMED[ref];
+    unreadable = true;
+    return m;
+  });
+  return unreadable ? null : text;
+}
+
+/**
+ * Every reference in CSS text (a stylesheet, a <style> body or a decoded style attribute) that leaves the
+ * origin. A CSS escape ("\68ttps:") inside a url() or @import is refused — reported as it stands — rather
+ * than decoded: the page has no reason to spell a URL that way.
+ */
 export function cssThirdParty(css) {
   const out = [];
   for (const re of [CSS_URL, CSS_IMPORT]) for (const m of css.matchAll(re)) {
     const ref = m[1] ?? m[2] ?? m[3] ?? "";
-    if (leavesOrigin(ref)) out.push(ref.trim());
+    if (ref.includes("\\") || leavesOrigin(ref)) out.push(ref.trim());
   }
   return out;
 }
@@ -91,13 +120,18 @@ export function htmlThirdParty(html) {
   for (const t of html.matchAll(TAG)) {
     const tag = t[1].toLowerCase();
     for (const a of t[2].matchAll(ATTR)) {
-      const name = a[1].toLowerCase(), value = a[2] ?? a[3] ?? a[4] ?? "";
+      const name = a[1].toLowerCase(), raw = a[2] ?? a[3] ?? a[4] ?? "";
       if (name === "href" && (tag === "a" || tag === "area")) continue;
+      const value = decodeRefs(raw);
+      if (value === null) { out.push("unreadable: " + raw.trim()); continue; }
       const refs = name === "srcset" ? value.split(",").map((c) => c.trim().split(/\s+/)[0]) : [value];
       for (const ref of refs) if (leavesOrigin(ref)) out.push(ref.trim());
     }
     const style = /(?:^|\s)style\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(t[2]);
-    if (style) out.push(...cssThirdParty(style[1] ?? style[2]));
+    if (style) {
+      const css = decodeRefs(style[1] ?? style[2]);
+      if (css === null) out.push("unreadable: " + (style[1] ?? style[2]).trim()); else out.push(...cssThirdParty(css));
+    }
   }
   for (const s of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) out.push(...cssThirdParty(s[1]));
   return out;
