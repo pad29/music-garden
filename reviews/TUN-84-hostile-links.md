@@ -73,3 +73,15 @@ in well under a second.
 
 **Test link for the owner's playtest** — a 1,912-column song, eight columns short of `MAX_COLS`; append to
 the preview's address: `index.html#s=WzMsInBlbnRhdG9uaWMiLDE5MTIsMTA4LDAsIiIsW1s3MiwwXSxbNzQsMTkxMV1dLFtdXQ`
+
+## PR review — round 1 (Astra, `ask.sh`): not run, usage limit
+
+Prompt written for head `98333ac` (ticket verbatim, diff against `origin/main` ba365ee, this record). The
+GPT lock was taken and released. `ask.sh` stopped at the ChatGPT limit: *"ask.sh: usage limit — try again
+at Nov 14th, 2026 1:59 AM (codex exit 1)"* — 2026-11-13 11:51 PM Central. No retry (`CLAUDE.md` § When
+something external breaks); review rounds used: 0 of 3.
+
+## Owner's decisions
+
+1. **Open:** run GPT's PR review round 1 after the 1:59 AM reset, on head `98333ac`? (Recommended: yes —
+   the review is a required step, and no other reviewer stands in for it.)
