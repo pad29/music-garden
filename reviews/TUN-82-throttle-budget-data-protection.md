@@ -427,6 +427,77 @@ Verification: the focused test passed **2/2**. The full suite produced **615 pas
   which exists only on TUN-80's PR #128. PR #128's own notes expect this until it merges. Not caused by
   this PR. Merging `main` after #128 lands should turn it green.
 
+- **Round 3 — run on `c4dd527`** (owner via the orchestrator, 2026-11-14: "the limit is lifted. Run GPT
+  PR review round 3 (the last)"). **CHANGES REQUESTED**: two medium findings and three missing tests,
+  all in the template test's parser. GPT **accepted** deferring the mocked client 429 tests to TUN-106 and
+  TUN-107. That was the last round: the fixes below are unreviewed, and there is no fourth round
+  without the owner.
+
+<details><summary>GPT's round 3 review, verbatim</summary>
+
+Reviewed **c4dd52793ace5d6b4774356bacea0d0092b6214d**. No files changed.
+
+**Required changes:**
+
+1. **Medium — [tests/backend-template.test.mjs:68](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:68): unsupported YAML silently hides added routes.**  
+   Adding this under `SongsFn.Properties.Events` returns **zero problems**:
+   ```yaml
+   Extra: {Type: HttpApi, Properties: {ApiId: !Ref Api, Path: /extra, Method: GET}}
+   ```
+   The parser stores the entire mapping as a string; route discovery then skips it. The installed CloudFormation decoder recognizes the eighth route, and lint returns no findings. It inherits the default throttle, increasing the nominal aggregate to **5.25/s** without updating the arithmetic.
+
+   A block-form extra event with `Type: "Http\u0041pi"` also escapes discovery because quoted escapes are not decoded. Both are valid [YAML forms](https://yaml.org/spec/1.2.2/). Parse them correctly or explicitly reject unsupported syntax; the stated "throws on anything it does not understand" guarantee is currently false.
+
+2. **Medium — [tests/backend-template.test.mjs:42](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-23/tests/backend-template.test.mjs:42), subscriber check at line 163: quoting destroys reference semantics without failing the guard.**  
+   Replacing every `Address: !Ref BudgetEmail` with `Address: "!Ref BudgetEmail"` returns **zero problems**, including from the installed linter. The real decoder produces a literal string, so the budget no longer references the owner's email parameter. The checker collapses tagged references and quoted strings into the same representation.
+
+   Preserve that distinction and require an actual reference. Conversely, the equivalent block mapping `Address:` → `Ref: BudgetEmail` is currently rejected. Both genuine reference forms are documented by [CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/intrinsic-function-reference-ref.html).
+
+**Missing tests or checks:**
+
+1. Add the inline-map and escaped-type extra-route mutations above. Each must produce the route diagnostic or an explicit unsupported-syntax diagnostic.
+2. Add a quoted-literal budget-address mutation requiring the subscriber diagnostic, alongside passing cases for genuine short-form and block-form references.
+3. Complete round 2's missing check 2: add a **high per-function concurrency override**, and remove **only `DefaultRouteSettings.ThrottlingBurstLimit`**, preserving its rate. The implementation rejects both in my probes, but neither specific case is committed.
+
+Round 2's original reproductions are fixed; the broader route-discovery guarantee remains incomplete as described above. Missing checks 1, 3 and 4 are addressed. The corrected **$1,818.86/$2,465.47** totals reproduce under the record's assumptions.
+
+Ordinary block-list CORS additions/removals pass. Harmless folded descriptions and multiline flow-style CORS lists fail parsing—confirmed compatibility limitations for later tickets, rather than additional deployment defects.
+
+I accept deferring mocked client 429 coverage to TUN-106/TUN-107 under the recorded scope and follow-up commitments. That coverage remains unverified.
+
+Verification: focused tests **4/4 passed**. Whole suite: **617 passed, 69 failed**, all 69 reporting `EPERM` on temporary-directory creation (`mkdtemp`).
+
+**CHANGES REQUESTED**
+
+</details>
+
+**My answers (round 3)** — I agree with both findings and all three missing tests:
+
+1. **Medium — agree.** `scalar()` now refuses what the parser doesn't implement instead of storing it as
+   a string. Flow collections, anchors, aliases, block scalars and unknown tags throw "unsupported YAML",
+   so the checker reports "template does not parse". Double-quoted values are decoded, so
+   `"Http\u0041pi"` reads as `HttpApi`. Mutation cases: the inline-map route → "template does not
+   parse: unsupported YAML syntax"; the escaped `Type` → "route GET /songs/extra is not an approved
+   route". `tests/README.md` now tells later tickets to keep the template in block style, since folded
+   and flow forms fail by design.
+2. **Medium — agree.** Unquoted short-form tags parse to objects: `!Ref X` → `{Ref: "X"}`, the same
+   shape as the block form `Ref: X`. A quoted `"!Ref X"` stays a string. `ApiId` and the budget
+   `Address` are checked with `isRef`. Mutation: a quoted address → "every budget alert must email
+   exactly !Ref BudgetEmail". The block-form reference is now a passing formatting case.
+3. **Missing tests — agree, all added:** inline-map and escaped-`Type` routes; the quoted address plus
+   the block-form passing case; `ProgressFn` overriding concurrency to 500; `DefaultRouteSettings` with
+   only its burst removed → "default route throttle is 0.25/s burst NaN".
+
+Mutation audit of the round 3 test, each guard broken in a temporary copy, nine in all: flow syntax not
+refused; quoted escapes not decoded; a quoted `"!Ref"` read as a reference; references compared loosely;
+the email scan off; `Retain` read from anywhere; function overrides ignored; unknown routes ignored;
+bursts not compared. **All nine caught.** My first version of the quoted-`"!Ref"` mutation left the
+quotes on, so it changed nothing and wasn't caught; a faithful version, which decodes then treats the
+string as a tag, is.
+
+**Not reviewed:** these round 3 fixes, the last round having been used. They touch only
+`tests/backend-template.test.mjs` and `tests/README.md`, not the template or the docs the deploy uses.
+
 ## Tests
 
 682/682 pass on `c958c2e` (no code changed). Not verified: anything on AWS — no credentials, no `sam`,

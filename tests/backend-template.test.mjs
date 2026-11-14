@@ -39,16 +39,37 @@ const ALLOWED_EMAIL = /@example\.com$/i;   // documentation placeholders only (y
 
 // ---- a minimal block-YAML parser --------------------------------------------------------------------
 const KEY = /^([^\s#'"\-][^:]*?|"[^"]*"|'[^']*'):(?:\s+(.*))?$/;
+// A scalar is a string, or — for an UNQUOTED short-form tag — an object: `!Ref X` is { Ref: "X" }, the same
+// shape as the block form `Ref: X`, and `!Sub …` is { "Fn::Sub": "…" }. A QUOTED "!Ref X" stays a plain
+// string, as CloudFormation reads it: a literal, not a reference. Syntax this parser does not implement
+// (flow collections, anchors, aliases, block scalars, tags it does not know) throws rather than being
+// misread as a string.
+const TAGS = { "!Ref": "Ref", "!GetAtt": "Fn::GetAtt", "!Sub": "Fn::Sub" };
 function scalar(v) {
   v = v.trim();
-  if (v[0] === "'" || v[0] === '"') {
-    const end = v.indexOf(v[0], 1);
-    if (end < 0) throw new Error(`unterminated quote: ${v}`);
-    return v.slice(1, end);
+  if (v[0] === '"') {
+    let end = 1;
+    while (end < v.length && v[end] !== '"') end += v[end] === "\\" ? 2 : 1;
+    if (end >= v.length) throw new Error(`unterminated quote: ${v}`);
+    try { return JSON.parse(v.slice(0, end + 1)); }   // YAML's double-quoted escapes, as far as JSON shares them
+    catch { throw new Error(`unsupported YAML escape: ${v}`); }
+  }
+  if (v[0] === "'") {
+    const m = v.match(/^'((?:[^']|'')*)'/);
+    if (!m) throw new Error(`unterminated quote: ${v}`);
+    return m[1].replace(/''/g, "'");
   }
   const hash = v.search(/(^|\s)#/);   // `key:   # comment` has no value
-  return (hash >= 0 ? v.slice(0, hash) : v).trim();
+  v = (hash >= 0 ? v.slice(0, hash) : v).trim();
+  if (/^[{[&*|>?]/.test(v)) throw new Error(`unsupported YAML syntax: ${v}`);
+  if (v[0] === "!") {
+    const [tag, ...rest] = v.split(/\s+/);
+    if (!TAGS[tag]) throw new Error(`unsupported YAML tag: ${tag}`);
+    return { [TAGS[tag]]: scalar(rest.join(" ")) };
+  }
+  return v;
 }
+const isRef = (v, name) => !!v && typeof v === "object" && Object.keys(v).length === 1 && v.Ref === name;
 export function parseYaml(text) {
   const L = text.split("\n")
     .map((raw) => ({ ind: raw.length - raw.trimStart().length, s: raw.trim() }))
@@ -108,7 +129,7 @@ export function templateProblems(template, samconfig) {
       if (e.Type !== "HttpApi") continue;
       const p = e.Properties || {};
       const id = `${String(p.Method || "ANY").toUpperCase()} ${p.Path || "(no path)"}`;
-      if (p.ApiId !== "!Ref Api") problems.push(`route ${id} (${name}.${ev}) is not on Api`);
+      if (!isRef(p.ApiId, "Api")) problems.push(`route ${id} (${name}.${ev}) is not on Api`);
       const rs = p.RouteSettings || {};
       found[id] = [num(rs.ThrottlingRateLimit), num(rs.ThrottlingBurstLimit)];
     }
@@ -160,7 +181,7 @@ export function templateProblems(template, samconfig) {
   if (alerts.join() !== ALERTS.join()) problems.push(`budget alerts are [${alerts.join(", ")}], approved [${ALERTS.join(", ")}]`);
   for (const n of notes) {
     const subs = Array.isArray(n.Subscribers) ? n.Subscribers : [];
-    if (subs.length !== 1 || subs[0].SubscriptionType !== "EMAIL" || subs[0].Address !== "!Ref BudgetEmail") {
+    if (subs.length !== 1 || subs[0].SubscriptionType !== "EMAIL" || !isRef(subs[0].Address, "BudgetEmail")) {
       problems.push("every budget alert must email exactly !Ref BudgetEmail");
       break;
     }
@@ -186,13 +207,14 @@ test("backend/template.yaml keeps the approved throttles, reserved concurrency, 
   assert.deepEqual(templateProblems(TEMPLATE, SAMCONFIG), []);
 });
 
-// Formatting that changes nothing must not change the verdict: a quoted or commented Type, and reordered
-// event properties.
+// Formatting that changes nothing must not change the verdict: a quoted or commented Type, reordered event
+// properties, and the block form of a reference (`Ref: BudgetEmail`, the same as `!Ref BudgetEmail`).
 test("the template check is not fooled by harmless formatting", () => {
   const variants = [
     TEMPLATE.replace(/Type: HttpApi\n/g, 'Type: "HttpApi"\n'),
     TEMPLATE.replace(/Type: HttpApi\n/g, "Type: HttpApi   # a route\n"),
     TEMPLATE.replace(/(            ApiId: !Ref Api\n)(            Path: \/progress\n            Method: GET\n)/, "$2$1"),
+    TEMPLATE.replace(/^( *)Address: !Ref BudgetEmail$/gm, "$1Address:\n$1  Ref: BudgetEmail"),
   ];
   for (const v of variants) {
     assert.notEqual(v, TEMPLATE);
@@ -211,6 +233,12 @@ const NEW_ROUTE = `        Extra:
 `;
 test("the template check refuses each mistake it guards against, with the right diagnostic", () => {
   const cases = [
+    // Round 3: YAML this parser doesn't read must not hide a route — it is read correctly or refused.
+    ["an inline-map route", TEMPLATE.replace("        ListMine:\n", "        Extra: {Type: HttpApi, Properties: {ApiId: !Ref Api, Path: /extra, Method: GET}}\n        ListMine:\n"), /template does not parse: unsupported YAML syntax/],
+    ["an escaped Type", TEMPLATE.replace("        ListMine:\n", NEW_ROUTE.replace("Type: HttpApi   # new route", 'Type: "Http\\u0041pi"') + "        ListMine:\n"), /route GET \/songs\/extra is not an approved route/],
+    ["a quoted, literal budget address", TEMPLATE.replace(/Address: !Ref BudgetEmail/g, 'Address: "!Ref BudgetEmail"'), /every budget alert must email exactly !Ref BudgetEmail/],
+    ["a high function concurrency", TEMPLATE.replace("      Handler: progress.handler\n", "      Handler: progress.handler\n      ReservedConcurrentExecutions: 500\n"), /ProgressFn overrides reserved concurrency with 500/],
+    ["a default throttle with no burst", TEMPLATE.replace(/(DefaultRouteSettings:\n\s*ThrottlingRateLimit: 0\.25\n)\s*ThrottlingBurstLimit: 2\n/, "$1"), /default route throttle is 0\.25\/s burst NaN/],
     ["a route without its throttle", TEMPLATE.replace(/(Method: PUT)\n\s*RouteSettings:[^\n]*\n\s*ThrottlingRateLimit: 2\n\s*ThrottlingBurstLimit: 10\n/, "$1\n"), /route PUT \/progress throttle is NaN\/s burst NaN/],
     ["a raised route rate", TEMPLATE.replace("ThrottlingRateLimit: 2\n", "ThrottlingRateLimit: 20\n"), /route PUT \/progress throttle is 20\/s/],
     ["an oversized burst", TEMPLATE.replace("ThrottlingBurstLimit: 10\n", "ThrottlingBurstLimit: 5000\n"), /route PUT \/progress throttle is 2\/s burst 5000/],
