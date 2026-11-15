@@ -1,0 +1,46 @@
+# Response headers for Tune Garden (TUN-86). Both hosts read this file from the built site/ folder:
+# Cloudflare Pages and Netlify alike, so netlify.toml's build command and cloudflare-build.sh each copy
+# it there (`cp _headers site/_headers`). It is not served as a page. tests/site-headers.test.mjs pins it.
+#
+# Form: a path line, then indented `Name: value` lines. `*` matches the rest of a path. A request gets
+# the headers of EVERY rule whose path matches it. Cloudflare joins a header two matching rules both set
+# with a comma, so no header may come from two rules for one path: the security headers live in /* only,
+# and Cache-Control only in rules whose paths never overlap (the test checks this).
+#
+# The policy allows what the page loads, from its own site only: scripts (js/, the sample packs in
+# samples/, the sign-in library in vendor/), fonts (vendor/fonts/), narration clips (voice/), and
+# connections to the backend (AUTH.apiUrl in js/cloud.js) and Cognito's endpoint for AUTH.region.
+# Styles allow 'unsafe-inline': the page has an inline <style> block and style= attributes, and the
+# code sets inline styles. Scripts never do: no inline <script>, no on...= attribute, no eval.
+# Changing the API URL or the region in js/cloud.js? Change connect-src here too (the test insists).
+# A policy mistake breaks the game in production only, so check a preview with the console open.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+# Always re-checked: these names do not change when their content does, so a long cache would keep
+# players on old code after a deploy. (Both hosts send this by default; it is written down so it stays.)
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/samples/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/vendor/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Narration clips are named by a hash of their text, so new text is a new name. 30 days, not a year
+# and not immutable: `node tools/gen-voice.mjs --force` re-voices clips under the SAME names, and a
+# clip not baked yet is answered with index.html (the single-page fallback), which a browser would then
+# keep under that clip's name.
+/voice/*
+  Cache-Control: public, max-age=2592000

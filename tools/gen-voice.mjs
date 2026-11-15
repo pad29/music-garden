@@ -12,6 +12,8 @@
 //   node tools/gen-voice.mjs --dry          # list what WOULD change (no AWS calls, no cost)
 //   node tools/gen-voice.mjs                # generate missing clips + prune orphans
 //   node tools/gen-voice.mjs --force        # re-generate every clip (e.g. after changing the voice)
+//                                           # (same file names: players who have a clip keep the old
+//                                           #  voice for up to 30 days, the clips' cache in _headers)
 //   node tools/gen-voice.mjs --samples      # synthesize ONE line across candidate voices into voice/samples/ (to compare)
 //   POLLY_VOICE=Ruth POLLY_ENGINE=generative node tools/gen-voice.mjs --force   # change the voice
 //

@@ -57,6 +57,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **The page makes no third-party requests** (owner, 2026-11-13): no CDN script, no Google Fonts. A
   third-party file is copied into `vendor/` as released and pinned in `vendor/SHA256SUMS`
   (`vendor/README.md`); `tests/vendor.test.mjs` guards both. The backend and Cognito are the exceptions.
+  The site's content security policy (`_headers`, TUN-86) enforces this in the browser, and forbids
+  inline scripts, `eval` and `on…=` attributes: README § Deployment says how to change it.
 - **Never hand-edit generated files:** `samples/<instr>.js` (built from `samples/<instr>/*.mp3`),
   `voice/*.mp3`, `site/`, `backend/.aws-sam/`.
 - **Package and level IDs are stable slugs — never renumber or rename them.** Both `requires:` graphs
@@ -68,7 +70,7 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
   and `cloudflare-build.sh` — while both hosts exist**, or it is missing in production: an asset folder
   fails silently behind the game's fallbacks, and on both hosts a missing `js/` file is served as
   `index.html`, which stops the game from starting. `tests/cloudflare-publish.test.mjs` holds the two
-  to the same list.
+  to the same list. It also needs a cache rule in `_headers` (`tests/site-headers.test.mjs`).
 - **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main` deploys
   to production. An agent session may commit and push its own branch and open PRs.
 
