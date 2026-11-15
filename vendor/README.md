@@ -42,3 +42,9 @@ Moving to a new major version of the library, or changing the fonts, is a ticket
 ```bash
 find . -type f ! -name SHA256SUMS ! -name README.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum | sed 's/ \*/  /' > SHA256SUMS
 ```
+
+A new build of the library must also live with the site's content security policy (`_headers`, TUN-86),
+which allows no `eval` and no connection except to the backend and Cognito. `tests/site-headers.test.mjs`
+scans the file for code built from strings, and allows only webpack's `globalThis` shim, by its exact
+text. If a new build fails there, check that build on a preview with the console open before you loosen
+anything.

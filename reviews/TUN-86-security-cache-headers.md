@@ -79,3 +79,126 @@ Loader, Email Address Obfuscation) would be blocked or need the policy changed �
 
 **Checkpoint (§ 5):** no `needs-owner` label; no musical or player-facing question; no fork the ticket's
 readings split on. Build.
+
+## Verification (Claude, 2026-11-14)
+
+On commit `825d7d1`, both previews: Cloudflare `https://ao-tun-86-headers-root.music-garden.pages.dev`
+and Netlify `https://deploy-preview-139--tunegarden.netlify.app`.
+
+### `curl -I` — the page, one script, one clip, on both hosts
+
+Only the header lines that matter are kept (`grep -iE` on status, type, cache and the four security headers).
+
+```text
+$ curl -sI https://ao-tun-86-headers-root.music-garden.pages.dev/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Cache-Control: public, max-age=0, must-revalidate
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+$ curl -sI https://ao-tun-86-headers-root.music-garden.pages.dev/js/boot.js
+HTTP/1.1 200 OK
+Content-Type: application/javascript
+Cache-Control: public, max-age=0, must-revalidate
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+$ curl -sI https://ao-tun-86-headers-root.music-garden.pages.dev/voice/108fedab.mp3
+HTTP/1.1 200 OK
+Content-Type: audio/mpeg
+Cache-Control: public, max-age=2592000
+content-security-policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+referrer-policy: no-referrer
+x-content-type-options: nosniff
+x-frame-options: DENY
+
+$ curl -sI https://deploy-preview-139--tunegarden.netlify.app/
+HTTP/1.1 200 OK
+Cache-Control: public,max-age=0,must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+Content-Type: text/html; charset=UTF-8
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+
+$ curl -sI https://deploy-preview-139--tunegarden.netlify.app/js/boot.js
+HTTP/1.1 200 OK
+Cache-Control: public,max-age=0,must-revalidate
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+Content-Type: application/javascript; charset=UTF-8
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+
+$ curl -sI https://deploy-preview-139--tunegarden.netlify.app/voice/108fedab.mp3
+HTTP/1.1 200 OK
+Cache-Control: public,max-age=2592000
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; media-src 'self'; connect-src https://xush1pnxc7.execute-api.us-east-1.amazonaws.com https://cognito-idp.us-east-1.amazonaws.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+Content-Type: audio/mpeg
+Referrer-Policy: no-referrer
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+
+```
+
+Also checked: a clip that does not exist (`/voice/00000000.mp3`) gets `index.html` (`text/html`, 200)
+with the **30-day** cache on both hosts. The single-page fallback takes the path's rules, as the plan
+feared, which is why clips are not cached for a year. `_headers` itself is not served: Netlify answers
+404, and Cloudflare answers with the fallback page. A nested `vendor/fonts/nunito/` path gets every
+header once, on both hosts, so `*` crosses `/` on Netlify as it does on Cloudflare.
+
+### The six flows, with the console
+
+AO's Browser panel loaded the game with nothing in its console, but its console never shows CSP
+reports, so it can't tell "no violations" from "nothing recorded". (Its click on the landing card's
+*Sign in to resume* also did nothing, with or without the policy: on `music-garden.pages.dev`, which has
+none, it behaved the same.) So the flows ran in headless Chrome over the DevTools protocol, driven by the
+game's own functions (a scratch script outside the repository). Before any page script ran, a
+`securitypolicyviolation` listener was installed, and every console message, page exception, blocked
+load and request origin was recorded. Then three **controls** the policy must block, to prove the
+recording works:
+
+| Step | Cloudflare preview | Netlify preview | `music-garden.pages.dev` (no policy) |
+|---|---|---|---|
+| Load: fonts (5 faces loaded), Cognito library, landing screen | ✓ | ✓ | ✓ |
+| Sign-in form opened; a sign-in attempt with a made-up user reaches Cognito and shows "Incorrect username or password." | ✓ | ✓ | ✓ |
+| A level: Level 1/13 loaded and ▶ Play pressed; its story's clip `voice/b547890d.mp3` fetched and played (`audio/mpeg`, 200 or 206) | ✓ | ✓ | ✓ |
+| Sample pack: Piano chosen, `samples/piano.js` loaded and decoded (`sampleBank.piano.ready`) | ✓ | ✓ | ✓ |
+| The Studio (its clip `voice/a1eb81aa.mp3` fetched); a Jukebox tune (`fourchord`) playing | ✓ | ✓ | ✓ |
+| A quest: `startQuestRun("firefly-crossing")` → `ok:true` | ✓ | ✓ | ✓ |
+| A `#s=` link opened fresh → "Level 1/1: Studio" | ✓ | ✓ | ✓ |
+| **Violations during all of the above** | **none** | **one, preview-only** (below) | none |
+| Control: an inline `<script>` | blocked (`script-src-elem`, did not run) | blocked | ran |
+| Control: a `data:` script | blocked (`script-src-elem`) | blocked | — |
+| Control: `fetch("https://example.com/")` | blocked (`connect-src`) | blocked | sent (CORS refused it) |
+| Origins contacted | the site, `cognito-idp.us-east-1.amazonaws.com`, `xush1pnxc7.execute-api.us-east-1.amazonaws.com` | same | same + `example.com` (the control) |
+
+**The one Netlify violation** is Netlify's own review toolbar, which deploy previews add
+(`/.netlify/scripts/cdp`, then a frame of `https://app.netlify.com`):
+`Framing 'https://app.netlify.com/' violates the following Content Security Policy directive: "default-src 'self'"`.
+Production does not have it: `curl -s https://tunegarden.game/ | grep -c netlify/scripts` → `0`.
+
+**The API** (`cloudSongGet`) failed on CORS on all three hosts, as it must on a preview (the API allows
+only `tunegarden.game`). It was a CORS refusal, not a CSP violation: the request was sent. Cloud sync
+itself can't be tested on a preview.
+
+### Tests
+
+`node --test "tests/*.test.mjs"`: 747 pass, 0 fail. `node tools/check-syntax.mjs`: clean. Mutation audit
+by hand on the real `_headers` (each run restored): `/js/*` renamed, `/voice/*` renamed,
+`'unsafe-inline'` added to `script-src`, `X-Frame-Options` dropped, the API host changed, the `/*` rule
+moved to `/index.html` — each turned `site-headers.test.mjs` red (3 to 5 failing tests each).
+
+### Not verified
+
+- The headers on `tunegarden.game` itself: they arrive when this merges (Netlify), and on Cloudflare
+  after the DNS switch (TUN-85).
+- Cloud sync and cloud songs with the policy on: previews can't reach the API (CORS). `connect-src`
+  names exactly `AUTH.apiUrl`'s origin, the same origin the API calls use, and the sign-in reached
+  Cognito under the policy.
+- Firefox and Safari: the flows ran in Chrome only.

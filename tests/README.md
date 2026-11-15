@@ -31,7 +31,7 @@ file left out is served as `index.html` in production, and the game never starts
 `helpers/netlify-publish.mjs`; it reads every build command (`[build]` and each `[context.*]`
 override) and honours a shell `#` comment. `tests/cloudflare-publish.test.mjs` does the same for
 Cloudflare Pages' `cloudflare-build.sh`, more strictly (`helpers/cloudflare-publish.mjs`): the script
-must publish exactly `index.html`, `js/`, `voice/`, `samples/` and `vendor/` in one `&&` chain, a step it cannot
+must publish exactly `index.html`, `_headers`, `js/`, `voice/`, `samples/` and `vendor/` in one `&&` chain, a step it cannot
 read is refused rather than skipped (in Netlify's commands too; and `netlify.toml` must stay in plain
 TOML — plain headers, bare keys, no inline tables — so no spelling of a setting is read as absent), every Netlify build command must copy the same set into `site/`, no `404.html` may
 be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
@@ -45,6 +45,16 @@ fonts and loads the library from `vendor/`. Its scanner refuses any `src`/`href`
 `index.html` or `fonts.css` that names another host — a markup/CSS guard, not a network trace — and
 the game's own scripts may name only the backend. The network half is the browser check in
 `reviews/TUN-81-self-hosted-fonts-and-sign-in.md`.
+
+**The site's headers (TUN-86).** `site-headers.test.mjs` reads `_headers` the way both hosts do
+(`helpers/site-headers.mjs`, strict: a line it cannot read is refused) and works out the headers for
+every file the build publishes. Each header must come from one rule per path (Cloudflare joins
+duplicates with a comma). The policy may allow only the site itself, plus, for connections, the
+backend and Cognito endpoint read from `js/cloud.js`. Clips are cached for a week or more, but never
+`immutable`, and everything else is always re-checked. It also checks that the page has nothing
+`script-src 'self'` would block: no inline script, no `on…=` attribute, no `eval`. The vendored Cognito
+library's webpack `globalThis` shim is allowed once, by its exact text. The browser half, with the
+`curl -I` output, is in `reviews/TUN-86-security-cache-headers.md`.
 
 **The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
 small structural parser for its block-YAML subset and pins its cost limits and data protection, each
