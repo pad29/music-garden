@@ -71,7 +71,7 @@ Netlify one — the template and its CORS list are untouched — and `README.md`
 saying Netlify served the site until TUN-85, so a reader of the older records knows where
 `deploy-preview-<n>--tunegarden.netlify.app` went.
 
-- Syntax check OK; the whole suite 766/766.
+- Syntax check OK; the whole suite 766/766, and 791/791 after merging `origin/main` (01c6267, TUN-106).
 - Mutations, each restored: `copyGaps` ignoring the `-r` flag → `cloudflare-publish.test.mjs` 1 red (the
   retargeted path-rule test); a `spike/` script counted as covered by `js/` → 2 red.
 - The new `browser.md` command, run on PR #139: prints `d3dd7c1` (its head), the commit preview
