@@ -74,6 +74,13 @@ else is always re-checked. It also checks that the page has nothing
 library's webpack `globalThis` shim is allowed once, by its exact text. The browser half, with the
 `curl -I` output, is in `reviews/TUN-86-security-cache-headers.md`.
 
+**Cloud progress sync (TUN-106).** `cloud-sync.test.mjs` signs a stub Cognito user in (a protocol stub,
+not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load that returns progress, `null`,
+429, 500, 503, a network error or a body that is not JSON. A failed load must send no `PUT` — not at
+sign-in, not on a later save, not from `cloudPush` — and the sign-in panel must say the cloud couldn't be
+reached. `scheduleCloud`'s 900 ms timer is caught and run by hand, and the panel's text is read through
+recording elements over the harness's stubs.
+
 **The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
 small structural parser for its block-YAML subset and pins its cost limits and data protection, each
 at its effective path, so the same text under `Metadata` doesn't count:
