@@ -33,8 +33,14 @@ Resources:
   # --- Cost alert: $30 a month across the WHOLE AWS account (no cost filters), emailed to BudgetEmail. ---
   # No BudgetName on purpose: changing the notifications (a new BudgetEmail) REPLACES the budget, and
   # CloudFormation creates the new one before deleting the old — a fixed name would collide.
+  # The budget is created (or replaced) only once the whole path to the cost switch exists: a replacement
+  # budget already over $30 notifies on its first evaluation, and that must reach the switch.
   MonthlyBudget:
     Type: AWS::Budgets::Budget
+    DependsOn:
+      - CloudSwitchAlarmTopicPolicy
+      - CloudSwitchAlarmSubscription
+      - CloudSwitchAlarmPermission
     Properties:
       Budget:
         BudgetType: COST
@@ -67,6 +73,8 @@ Resources:
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref BudgetEmail
+            - SubscriptionType: SNS     # TUN-87: the cost switch — at $30 actual, cloud features switch off
+              Address: !Ref CloudSwitchAlarmTopic
         - Notification:
             NotificationType: FORECASTED
             ComparisonOperator: GREATER_THAN
@@ -75,6 +83,123 @@ Resources:
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref BudgetEmail
+
+  # --- Cost switch (TUN-87): at $30 of actual spend, switch the cloud off; the game plays on as a guest. ---
+  # Budgets → CloudSwitchAlarmTopic → CloudSwitchFn, which sets ProgressFn, SongsFn and PreSignUpFn to
+  # reserved concurrency 0 (no Lambda, no DynamoDB, no new accounts) and disables Api's default endpoint,
+  # then emails CloudSwitchNoticeTopic. Never switches back on by itself. backend/README.md § "The cost
+  # switch" is the runbook; reviews/TUN-87-cloud-switch.md the design. Costs nothing while idle.
+  CloudSwitchAlarmTopic:
+    Type: AWS::SNS::Topic       # unencrypted on purpose: Budgets cannot publish to an encrypted topic
+    Properties:
+      DisplayName: Tune Garden cost switch
+
+  # Only AWS Budgets, from this account, may publish (AWS's documented policy). The source ARN is the
+  # account's budgets, not this budget's: naming the budget would make each depend on the other. The owner's
+  # own IAM user can still publish — that is the rehearsal.
+  CloudSwitchAlarmTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref CloudSwitchAlarmTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: BudgetsPublish
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref CloudSwitchAlarmTopic
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+              ArnLike:
+                "aws:SourceArn": !Sub "arn:aws:budgets::${AWS::AccountId}:*"
+
+  CloudSwitchAlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref CloudSwitchAlarmTopic
+      Protocol: lambda
+      Endpoint: !GetAtt CloudSwitchFn.Arn
+
+  CloudSwitchAlarmPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CloudSwitchFn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref CloudSwitchAlarmTopic
+
+  # The switch's own email. AWS sends a confirmation link to BudgetEmail on the first deploy: until it is
+  # clicked, the switch still acts but no email arrives.
+  CloudSwitchNoticeTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Tune Garden
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref BudgetEmail
+
+  # When the owner last switched the cloud back on. A trip message published before it is that switch-on's
+  # past, delivered again, and is ignored. Free (a standard parameter). A deploy leaves its value alone unless
+  # this resource itself changes, which resets it to "never" — then an old trip delivered again would act.
+  CloudSwitchState:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /music-garden/cloud-switch/on-at
+      Type: String
+      Value: never
+      Description: When the owner last switched the cloud back on (TUN-87). Written by music-garden-cloud-switch.
+
+  # Fixed name, so the runbook's commands need no lookup. Its role may change exactly three functions'
+  # concurrency, this one API and its own switch-on time, and publish to its own notice topic — nothing else,
+  # and never itself.
+  CloudSwitchFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: music-garden-cloud-switch
+      CodeUri: src/
+      Handler: cloud-switch.handler
+      Timeout: 60                       # each step is capped well inside this (cloud-switch-api.mjs)
+      ReservedConcurrentExecutions: 1   # one command at a time: an off and an on never interleave
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 21600   # Lambda's longest: a late real trip still lands (CloudSwitchState tells old ones)
+        MaximumRetryAttempts: 2
+      Environment:
+        Variables:
+          PROGRESS_FN: !Ref ProgressFn
+          SONGS_FN: !Ref SongsFn
+          PRESIGNUP_FN: !Ref PreSignUpFn
+          API_ID: !Ref Api
+          ON_CONCURRENCY: "2"           # = Globals' ReservedConcurrentExecutions (tests hold them equal)
+          ALARM_TOPIC_ARN: !Ref CloudSwitchAlarmTopic
+          NOTICE_TOPIC_ARN: !Ref CloudSwitchNoticeTopic
+          STATE_PARAM: !Ref CloudSwitchState
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:GetFunctionConcurrency
+                - lambda:PutFunctionConcurrency
+              Resource:
+                - !GetAtt ProgressFn.Arn
+                - !GetAtt SongsFn.Arn
+                - !GetAtt PreSignUpFn.Arn
+            - Effect: Allow
+              Action:
+                - apigateway:GET
+                - apigateway:PATCH
+              Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis/${Api}"
+            - Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref CloudSwitchNoticeTopic
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:PutParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/music-garden/cloud-switch/on-at"
 
   # --- Auth: a Cognito User Pool. Username + password sign-in; email is OPTIONAL (recovery only). ---
   # Every account lives here: never deleted with the stack, never silently replaced, and protected from
@@ -337,3 +462,6 @@ Outputs:
   ApiUrl:
     Description: Base URL for the progress API
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  CloudSwitchAlarmTopicArn:
+    Description: Publish any message here to trip the cost switch by hand (the rehearsal)
+    Value: !Ref CloudSwitchAlarmTopic

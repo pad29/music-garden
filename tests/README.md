@@ -76,7 +76,20 @@ not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load t
 send no `PUT` — not at sign-in, not on a later save, not from `cloudPush` — and the sign-in panel must say
 the cloud couldn't be reached. Users can switch and their tokens can be held back, so a load or push that
 returns after sign-out or another player's sign-in is shown to do nothing. `scheduleCloud`'s 900 ms timer is caught and run by hand, and the panel's text is read through
-recording elements over the harness's stubs.
+recording elements over the harness's stubs. Since TUN-87 it also holds the panel's "the cloud is resting"
+line (`cloudResting`): a failed save or song call shows it, a good one clears it, the newest call to start
+wins in either completion order, and a result from an earlier sign-in never moves it.
+
+**The cloud resting (TUN-87).** `cloud-resting.test.mjs` answers every way a switched-off or busy API can
+(429, 503, API Gateway's own 404, 403, a thrown fetch, bodies that are not the song) and checks the player
+is told the cloud is resting — on a `#song=` link at boot, in Melodies' list, ▶ Load and 🗑, and when
+sharing a big song — and that only the API's own `{"error":"not found"}` says a song may be deleted. It
+also maps Cognito's sign-up trigger failures to the calm refusal. `backend-cloud-switch.test.mjs` drives
+`backend/src/cloud-switch-api.mjs` against a fake account: off from any alarm-topic message, never on;
+the owner's on/off/status; refusals; other topics ignored; a trip published before the owner's last
+switch-on ignored, a later or late one acted on; failing, hanging (aborted) steps;
+the read-back; a failed email; and the SDK adapter, with recording clients, sending each command with
+the step's abort signal.
 
 **The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
 small structural parser for its block-YAML subset and pins its cost limits and data protection, each
@@ -87,7 +100,14 @@ at its effective path, so the same text under `Metadata` doesn't count:
 - the default route throttle, and Globals reserved concurrency with no function overriding it;
 - `Retain` and deletion protection on the user pool and both tables, and point-in-time recovery;
 - the $30 account-wide budget with its four alerts to `!Ref BudgetEmail` and no fixed name;
-- the API's CORS origins: exactly `tunegarden.game` and `www.tunegarden.game` (TUN-76).
+- the API's CORS origins: exactly `tunegarden.game` and `www.tunegarden.game` (TUN-76);
+- the cost switch (TUN-87): the 100 % alert's second subscriber is `CloudSwitchAlarmTopic` and no other
+  alert has one; the budget `DependsOn` the topic policy, subscription and invoke permission; the topic
+  policy, subscription, permission, notice topic, the switch's timeout, concurrency 1, event age,
+  environment and role, each compared as exact JSON (key order aside), so an extra action, a `*`, the
+  switch naming itself or a quoted reference is a difference; no function invokable by a non-AWS
+  principal, no function URL, no explicit role; the SSM parameter holding the switch-on time; the payload
+  files.
 
 It also refuses any email address other than an `@example.com` placeholder in the template or
 `samconfig.toml`, comments included: the repository is public. It is a static check, not

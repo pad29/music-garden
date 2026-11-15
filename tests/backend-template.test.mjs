@@ -111,6 +111,82 @@ export function parseYaml(text) {
   return doc;
 }
 
+// ---- the cost switch (TUN-87) -----------------------------------------------------------------------
+// Its whole delivery path, its timing, and a role that may touch exactly the three game functions, this one
+// API and its own notice topic — compared as exact JSON, so an extra action, a `*`, a quoted (literal)
+// reference or the switch naming itself is a difference. backend/README.md § The cost switch.
+const SWITCH_CONCURRENCY = 1;
+const SWITCH_INVOKE = { MaximumEventAgeInSeconds: "21600", MaximumRetryAttempts: "2" };   // a late real trip still lands; a failed one is retried
+const STATE_NAME = "/music-garden/cloud-switch/on-at";
+// Everything CloudSwitchFn may set: no Role (it would bypass the checked Policies), no Events, no FunctionUrlConfig.
+const SWITCH_PROPS = ["CodeUri", "Environment", "EventInvokeConfig", "FunctionName", "Handler", "Policies", "ReservedConcurrentExecutions", "Timeout"];
+const ref = (n) => ({ Ref: n }), att = (s) => ({ "Fn::GetAtt": s }), sub = (s) => ({ "Fn::Sub": s });
+const SWITCH_ENV = {
+  PROGRESS_FN: ref("ProgressFn"), SONGS_FN: ref("SongsFn"), PRESIGNUP_FN: ref("PreSignUpFn"), API_ID: ref("Api"),
+  ON_CONCURRENCY: String(RESERVED_CONCURRENCY), ALARM_TOPIC_ARN: ref("CloudSwitchAlarmTopic"), NOTICE_TOPIC_ARN: ref("CloudSwitchNoticeTopic"),
+  STATE_PARAM: ref("CloudSwitchState"),
+};
+const SWITCH_POLICY = [{ Statement: [
+  { Effect: "Allow", Action: ["lambda:GetFunctionConcurrency", "lambda:PutFunctionConcurrency"],
+    Resource: [att("ProgressFn.Arn"), att("SongsFn.Arn"), att("PreSignUpFn.Arn")] },
+  { Effect: "Allow", Action: ["apigateway:GET", "apigateway:PATCH"], Resource: sub("arn:aws:apigateway:${AWS::Region}::/apis/${Api}") },
+  { Effect: "Allow", Action: "sns:Publish", Resource: ref("CloudSwitchNoticeTopic") },
+  { Effect: "Allow", Action: ["ssm:GetParameter", "ssm:PutParameter"], Resource: sub("arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter" + STATE_NAME) },
+] }];
+const BUDGETS_PUBLISH = { Version: "2012-10-17", Statement: [{
+  Sid: "BudgetsPublish", Effect: "Allow", Principal: { Service: "budgets.amazonaws.com" }, Action: "SNS:Publish",
+  Resource: ref("CloudSwitchAlarmTopic"),
+  Condition: { StringEquals: { "aws:SourceAccount": ref("AWS::AccountId") }, ArnLike: { "aws:SourceArn": sub("arn:aws:budgets::${AWS::AccountId}:*") } },
+}] };
+const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === "object"
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+const same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));   // key order is formatting
+function switchProblems(t) {
+  const problems = [], R = t.Resources || {};
+  const P = (n) => (R[n] || {}).Properties || {};
+  const need = (cond, msg) => { if (!cond) problems.push(msg); };
+  need((R.CloudSwitchAlarmTopic || {}).Type === "AWS::SNS::Topic", "CloudSwitchAlarmTopic is not an SNS topic");
+  need(!("KmsMasterKeyId" in P("CloudSwitchAlarmTopic")), "CloudSwitchAlarmTopic is encrypted (Budgets cannot publish to it)");
+  need(!("Subscription" in P("CloudSwitchAlarmTopic")), "CloudSwitchAlarmTopic has inline subscriptions");
+  const tp = P("CloudSwitchAlarmTopicPolicy");
+  need((R.CloudSwitchAlarmTopicPolicy || {}).Type === "AWS::SNS::TopicPolicy" && same(tp.Topics, [ref("CloudSwitchAlarmTopic")])
+    && same(tp.PolicyDocument, BUDGETS_PUBLISH), "CloudSwitchAlarmTopicPolicy must let only Budgets, from this account, publish");
+  need((R.CloudSwitchAlarmSubscription || {}).Type === "AWS::SNS::Subscription" && same(P("CloudSwitchAlarmSubscription"),
+    { TopicArn: ref("CloudSwitchAlarmTopic"), Protocol: "lambda", Endpoint: att("CloudSwitchFn.Arn") }), "CloudSwitchAlarmSubscription must deliver the alarm topic to CloudSwitchFn");
+  need((R.CloudSwitchAlarmPermission || {}).Type === "AWS::Lambda::Permission" && same(P("CloudSwitchAlarmPermission"),
+    { Action: "lambda:InvokeFunction", FunctionName: ref("CloudSwitchFn"), Principal: "sns.amazonaws.com", SourceArn: ref("CloudSwitchAlarmTopic") }),
+    "CloudSwitchAlarmPermission must let only the alarm topic invoke CloudSwitchFn");
+  const dep = (R.MonthlyBudget || {}).DependsOn;
+  need(Array.isArray(dep) && ["CloudSwitchAlarmTopicPolicy", "CloudSwitchAlarmSubscription", "CloudSwitchAlarmPermission"].every((d) => dep.includes(d)),
+    "MonthlyBudget must DependsOn the switch's topic policy, subscription and permission");
+  need((R.CloudSwitchNoticeTopic || {}).Type === "AWS::SNS::Topic" && same(P("CloudSwitchNoticeTopic").Subscription,
+    [{ Protocol: "email", Endpoint: ref("BudgetEmail") }]), "CloudSwitchNoticeTopic must email exactly !Ref BudgetEmail");
+  const f = P("CloudSwitchFn");
+  need((R.CloudSwitchFn || {}).Type === "AWS::Serverless::Function" && f.Handler === "cloud-switch.handler" && f.CodeUri === "src/"
+    && f.FunctionName === "music-garden-cloud-switch", "CloudSwitchFn is not the switch (music-garden-cloud-switch, cloud-switch.handler)");
+  need(num(f.Timeout) === 60, `CloudSwitchFn timeout is ${f.Timeout}, approved 60`);
+  need(num(f.ReservedConcurrentExecutions) === SWITCH_CONCURRENCY, `CloudSwitchFn reserved concurrency is ${f.ReservedConcurrentExecutions}, approved ${SWITCH_CONCURRENCY}`);
+  need(same(f.EventInvokeConfig, SWITCH_INVOKE), "CloudSwitchFn's EventInvokeConfig must be exactly a 21600-second event age and 2 retries");
+  need(!("Events" in f), "CloudSwitchFn has Events (its only trigger is CloudSwitchAlarmSubscription)");
+  const extra = Object.keys(f).filter((k) => !SWITCH_PROPS.includes(k));
+  need(!extra.length, `CloudSwitchFn sets ${extra.join(", ")} (only ${SWITCH_PROPS.join(", ")} are checked)`);
+  need((R.CloudSwitchState || {}).Type === "AWS::SSM::Parameter" && same(P("CloudSwitchState"), { Name: STATE_NAME, Type: "String", Value: "never",
+    Description: P("CloudSwitchState").Description }), "CloudSwitchState must be the String parameter " + STATE_NAME);
+  const gf = (t.Globals || {}).Function || {};
+  for (const k of ["Role", "FunctionUrlConfig", "Events", "Policies"]) need(!(k in gf), `Globals.Function sets ${k}`);
+  for (const [name, r] of Object.entries(R)) {
+    if (r.Type === "AWS::Lambda::Url" || (r.Properties || {}).FunctionUrlConfig) problems.push(`${name} gives a function a public URL`);
+    if (r.Type === "AWS::Serverless::Function" && "Role" in (r.Properties || {})) problems.push(`${name} sets an explicit Role`);
+  }
+  need(same((f.Environment || {}).Variables, SWITCH_ENV), "CloudSwitchFn's environment is not exactly the three functions, Api, ON_CONCURRENCY = Globals and its topics");
+  need(same(f.Policies, SWITCH_POLICY), "CloudSwitchFn's role must be exactly: concurrency of the three game functions, GET/PATCH on Api, publish to its notice topic");
+  for (const [name, r] of Object.entries(R)) {
+    if (r.Type === "AWS::Lambda::Permission" && !/\.amazonaws\.com$/.test(String((r.Properties || {}).Principal))) problems.push(`${name} lets ${(r.Properties || {}).Principal} invoke a function`);
+  }
+  need(same(((t.Outputs || {}).CloudSwitchAlarmTopicArn || {}).Value, ref("CloudSwitchAlarmTopic")), "the CloudSwitchAlarmTopicArn output (for the rehearsal) is missing");
+  return problems;
+}
+
 // ---- the checks -------------------------------------------------------------------------------------
 const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
 const fmt = ([r, b]) => `${r}/s burst ${b}`;
@@ -159,7 +235,8 @@ export function templateProblems(template, samconfig) {
   for (const [name, r] of Object.entries(R)) {
     if (r.Type !== "AWS::Serverless::Function") continue;
     const own = (r.Properties || {}).ReservedConcurrentExecutions;
-    if (own !== undefined && num(own) !== RESERVED_CONCURRENCY) problems.push(`${name} overrides reserved concurrency with ${own}`);
+    const allowed = name === "CloudSwitchFn" ? SWITCH_CONCURRENCY : RESERVED_CONCURRENCY;   // TUN-87: one command at a time
+    if (own !== undefined && num(own) !== allowed) problems.push(`${name} overrides reserved concurrency with ${own}`);
   }
 
   // Data protection, at the resource's own attributes and properties.
@@ -191,11 +268,22 @@ export function templateProblems(template, samconfig) {
   if (alerts.join() !== ALERTS.join()) problems.push(`budget alerts are [${alerts.join(", ")}], approved [${ALERTS.join(", ")}]`);
   for (const n of notes) {
     const subs = Array.isArray(n.Subscribers) ? n.Subscribers : [];
-    if (subs.length !== 1 || subs[0].SubscriptionType !== "EMAIL" || !isRef(subs[0].Address, "BudgetEmail")) {
+    if (!subs.length || subs[0].SubscriptionType !== "EMAIL" || !isRef(subs[0].Address, "BudgetEmail")) {
       problems.push("every budget alert must email exactly !Ref BudgetEmail");
       break;
     }
   }
+  // TUN-87: the ACTUAL 100 alert also reaches the cost switch; no other alert does, and nothing else is told.
+  for (const n of notes) {
+    const x = n.Notification || {}, subs = Array.isArray(n.Subscribers) ? n.Subscribers : [];
+    const trip = x.NotificationType === "ACTUAL" && num(x.Threshold) === 100;
+    const rest = subs.slice(1);
+    const ok = trip ? rest.length === 1 && rest[0].SubscriptionType === "SNS" && isRef(rest[0].Address, "CloudSwitchAlarmTopic")
+      : rest.length === 0;
+    if (!ok) problems.push(trip ? "the ACTUAL 100 alert must also go to exactly !Ref CloudSwitchAlarmTopic (the cost switch)"
+      : `the ${x.NotificationType} ${x.Threshold} alert has subscribers besides BudgetEmail`);
+  }
+  problems.push(...switchProblems(t));
   const pe = (t.Parameters || {}).BudgetEmail;
   if (!pe) problems.push("the BudgetEmail parameter is missing");
   else {
@@ -275,6 +363,38 @@ test("the template check refuses each mistake it guards against, with the right 
     ["both origins in one entry", TEMPLATE.replace(ORIGIN_LINES, "          - https://tunegarden.game,https://www.tunegarden.game\n"), /CORS origins are \[https:\/\/tunegarden\.game,https:\/\/www\.tunegarden\.game\], approved/],
     ["a production origin dropped",TEMPLATE.replace("          - https://www.tunegarden.game\n", ""), /CORS origins are \[https:\/\/tunegarden\.game\], approved/],
     ["origins moved under Metadata", TEMPLATE.replace("      CorsConfiguration:\n", "    Metadata:\n      CorsConfiguration:\n"), /CORS origins are \[\], approved/],
+    // TUN-87: the cost switch.
+    ["the trip alert not reaching the switch", TEMPLATE.replace(/            - SubscriptionType: SNS[^\n]*\n              Address: !Ref CloudSwitchAlarmTopic\n/, ""), /the ACTUAL 100 alert must also go to exactly !Ref CloudSwitchAlarmTopic/],
+    ["a quoted, literal switch topic", TEMPLATE.replace("Address: !Ref CloudSwitchAlarmTopic", 'Address: "!Ref CloudSwitchAlarmTopic"'), /the ACTUAL 100 alert must also go to exactly !Ref CloudSwitchAlarmTopic/],
+    ["the switch on the 80 % alert", TEMPLATE.replace(/(Threshold: 80\n[^\n]*\n[^\n]*\n[^\n]*\n[^\n]*BudgetEmail\n)/, "$1            - SubscriptionType: SNS\n              Address: !Ref CloudSwitchAlarmTopic\n"), /the ACTUAL 80 alert has subscribers besides BudgetEmail/],
+    ["the budget not waiting for the switch", TEMPLATE.replace("      - CloudSwitchAlarmPermission\n", ""), /MonthlyBudget must DependsOn/],
+    ["an encrypted alarm topic", TEMPLATE.replace("      DisplayName: Tune Garden cost switch\n", "      DisplayName: Tune Garden cost switch\n      KmsMasterKeyId: alias/aws/sns\n"), /CloudSwitchAlarmTopic is encrypted/],
+    ["anyone may publish", TEMPLATE.replace("              Service: budgets.amazonaws.com", "              AWS: '*'"), /CloudSwitchAlarmTopicPolicy must let only Budgets/],
+    ["no source-account condition", TEMPLATE.replace(/              StringEquals:\n[^\n]*\n/, ""), /CloudSwitchAlarmTopicPolicy must let only Budgets/],
+    ["any topic may invoke the switch", TEMPLATE.replace("      Principal: sns.amazonaws.com\n      SourceArn: !Ref CloudSwitchAlarmTopic\n", "      Principal: sns.amazonaws.com\n"), /CloudSwitchAlarmPermission must let only the alarm topic/],
+    ["a public invoke", TEMPLATE.replace("      Principal: sns.amazonaws.com\n", "      Principal: '*'\n"), /CloudSwitchAlarmPermission lets \* invoke a function/],
+    ["the switch subscribed to the wrong topic", TEMPLATE.replace("      TopicArn: !Ref CloudSwitchAlarmTopic\n", "      TopicArn: !Ref CloudSwitchNoticeTopic\n"), /CloudSwitchAlarmSubscription must deliver/],
+    ["the email to someone else", TEMPLATE.replace("          Endpoint: !Ref BudgetEmail\n", "          Endpoint: !Ref OtherEmail\n"), /CloudSwitchNoticeTopic must email exactly !Ref BudgetEmail/],
+    ["a wildcard function resource", TEMPLATE.replace("                - !GetAtt PreSignUpFn.Arn\n", "                - '*'\n"), /CloudSwitchFn's role must be exactly/],
+    ["the switch able to change itself", TEMPLATE.replace("                - !GetAtt PreSignUpFn.Arn\n", "                - !GetAtt PreSignUpFn.Arn\n                - !GetAtt CloudSwitchFn.Arn\n"), /CloudSwitchFn's role must be exactly/],
+    ["a broader API action", TEMPLATE.replace("                - apigateway:PATCH\n", "                - apigateway:PATCH\n                - apigateway:DELETE\n"), /CloudSwitchFn's role must be exactly/],
+    ["every API in the account", TEMPLATE.replace("::/apis/${Api}\"", "::/apis/*\""), /CloudSwitchFn's role must be exactly/],
+    ["a Cognito permission", TEMPLATE.replace("              Action: sns:Publish\n", "              Action:\n                - sns:Publish\n                - cognito-idp:UpdateUserPool\n"), /CloudSwitchFn's role must be exactly/],
+    ["switching on to a different concurrency", TEMPLATE.replace('ON_CONCURRENCY: "2"', 'ON_CONCURRENCY: "5"'), /ON_CONCURRENCY = Globals/],
+    ["a switch target on the wrong function", TEMPLATE.replace("          SONGS_FN: !Ref SongsFn\n", "          SONGS_FN: !Ref ProgressFn\n"), /CloudSwitchFn's environment is not exactly/],
+    ["two switches at once", TEMPLATE.replace("      ReservedConcurrentExecutions: 1 ", "      ReservedConcurrentExecutions: 2 "), /CloudSwitchFn reserved concurrency is 2, approved 1/],
+    ["a short switch timeout", TEMPLATE.replace("      Timeout: 60 ", "      Timeout: 10 "), /CloudSwitchFn timeout is 10, approved 60/],
+    ["a shorter event age", TEMPLATE.replace("MaximumEventAgeInSeconds: 21600", "MaximumEventAgeInSeconds: 3600"), /EventInvokeConfig must be exactly/],
+    ["no retries", TEMPLATE.replace("MaximumRetryAttempts: 2", "MaximumRetryAttempts: 0"), /EventInvokeConfig must be exactly/],
+    ["an explicit role", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      Role: arn:aws:iam::123456789012:role/admin\n"), /CloudSwitchFn sets an explicit Role/],
+    ["a public function URL", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      FunctionUrlConfig:\n        AuthType: NONE\n"), /CloudSwitchFn gives a function a public URL/],
+    ["a public URL on a game function", TEMPLATE.replace("      Handler: songs.handler\n", "      Handler: songs.handler\n      FunctionUrlConfig:\n        AuthType: NONE\n"), /SongsFn gives a function a public URL/],
+    ["a role from Globals", TEMPLATE.replace("    ReservedConcurrentExecutions: 2\n", "    ReservedConcurrentExecutions: 2\n    Role: arn:aws:iam::123456789012:role/admin\n"), /Globals\.Function sets Role/],
+    ["the state parameter elsewhere", TEMPLATE.replace("parameter/music-garden/cloud-switch/on-at", "parameter/*"), /CloudSwitchFn's role must be exactly/],
+    ["no switch-on state", TEMPLATE.replace("          STATE_PARAM: !Ref CloudSwitchState\n", ""), /CloudSwitchFn's environment is not exactly/],
+    ["a renamed state parameter", TEMPLATE.replace("      Name: /music-garden/cloud-switch/on-at", "      Name: /other"), /CloudSwitchState must be the String parameter/],
+    ["a second trigger", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      Events:\n        Daily:\n          Type: Schedule\n          Properties:\n            Schedule: rate(1 day)\n"), /CloudSwitchFn has Events/],
+    ["no rehearsal output", TEMPLATE.replace(/  CloudSwitchAlarmTopicArn:\n[^\n]*\n[^\n]*\n/, ""), /CloudSwitchAlarmTopicArn output/],
   ];
   for (const [what, mutated, expect] of cases) {
     assert.notEqual(mutated, TEMPLATE, `the "${what}" mutation must change the template`);
@@ -297,4 +417,12 @@ test("an email address anywhere in the backend config is refused, comments inclu
     assert.ok(problems.some((p) => expect.test(p)), `"${what}" should be refused; got ${JSON.stringify(problems)}`);
   }
   assert.ok(templateProblems(TEMPLATE, SAMCONFIG + '\nparameter_overrides = "X=1"\n').some((p) => /parameter_overrides/.test(p)));
+});
+
+// TUN-87: the runbook's payload files ask for exactly what they are named.
+test("the cost switch's payload files match the runbook", () => {
+  for (const action of ["on", "off", "status"]) {
+    const text = readFileSync(join(ROOT, "backend", "events", `switch-${action}.json`), "utf8");
+    assert.deepEqual(JSON.parse(text), { switch: action }, `switch-${action}.json`);
+  }
 });

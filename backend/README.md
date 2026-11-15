@@ -4,7 +4,7 @@
 
 ```
 backend/
-  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas, the $30 budget)
+  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas, the $30 budget, the cost switch)
   src/
     presignup.mjs      # auto-confirms new accounts (no email step)
     progress.mjs       # the progress Lambda: AWS SDK wiring only
@@ -13,7 +13,10 @@ backend/
     songs-api.mjs      # cloud songs CRUD (SAVE-SHARE.md §6: caps, unlisted-only; no SDK)
     validate.mjs       # what a song and progress may hold — the one place the server knows the formats
     http.mjs           # replies with fixed messages; reading a body under a byte cap
+    cloud-switch.mjs   # the cost switch Lambda: AWS SDK wiring only (TUN-87)
+    cloud-switch-api.mjs # switches the cloud off at the $30 budget, or on by command (no SDK, so it is testable)
     package.json
+  events/              # the cost switch's payloads: switch-on/off/status.json
   samconfig.toml       # saved deploy args (so future deploys are just `sam deploy`)
   README.md            # you are here
 ```
@@ -87,12 +90,18 @@ Those four values are *public* identifiers (the kind that ship inside any web ap
 ---
 
 ## Future deploys
-After any change to `template.yaml` or `src/`:
+After any change to `template.yaml` or `src/`. **First ask the [cost switch](#the-cost-switch) for its
+status** (once TUN-87 is deployed). **Deploy only if the command prints no `"FunctionError"` and
+`status.json` says `"cloud": "on"`.** `"off"`, `"mixed"` (a partial switch, or a setting it could not
+read), a `FunctionError` or no answer all mean stop — see *Deploying while it is off* there.
 ```powershell
 cd backend   # from the repo root
+aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json; type status.json
 sam validate --lint
 sam build; sam deploy --confirm-changeset
+aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json; type status.json
 ```
+The last line asks again after the deploy: it should still say `"cloud": "on"`.
 `--confirm-changeset` shows the change set and waits for `y`. **Read its `Replacement` column first:** a
 `True` on `UserPool`, `ProgressTable` or `SongsTable` means CloudFormation wants a new one. Their
 `UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
@@ -156,27 +165,40 @@ them, so treat the numbers as targets, not a guaranteed ceiling.
 
 Over a limit, API Gateway answers `429 Too Many Requests` without calling the Lambda. When a third call
 reaches a function while two are still running (its reserved concurrency), Lambda refuses it and API
-Gateway answers `503 Service Unavailable`. The game treats both like any failed call, with no
-automatic retry:
+Gateway answers `503 Service Unavailable`. The game treats both like any failed call — and like the
+[cost switch](#the-cost-switch) being off, which it cannot tell apart — with no automatic retry. Since
+TUN-87 every such failure says one calm thing, "the cloud is resting" (`CLOUD_RESTING` in `js/cloud.js`):
 
-- A progress save that fails is silent; the next save sends the whole progress again.
-- Sharing a big song: "⚠️ Couldn't reach the cloud — please try again." Loading one from Melodies:
-  "⚠️ Couldn't load that song." Deleting one: "⚠️ Couldn't delete."
-- **Misleading:** a friend's `#song=` link says "⚠️ That song link didn't work — it may have been
-  deleted.", and a failed Melodies list shows "Nothing here yet — share a big song to store it in the
-  cloud." as if the player's cloud songs were gone (TUN-107).
+- A progress save that fails sends nothing more until the next save, which sends the whole progress
+  again. Until a save succeeds, the signed-in panel stops saying "progress syncs across your devices"
+  and says "☁️ the cloud is resting just now. What you play is kept on this device, and goes up with
+  your next save after it wakes, while this page stays open. Opening the game again after it wakes
+  brings your cloud garden back in its place." Any failed or successful cloud call — songs included —
+  moves this line; the newest call to start wins.
 - A failed progress load at sign-in or page load — or a 200 that is neither `null` nor progress —
   leaves the cloud copy alone (TUN-106): nothing is pushed until a later load succeeds, the player plays
-  on this device's progress, and the panel says "couldn't reach the cloud just now. Your cloud progress
-  is safe, but what you play now stays on this device: reloading later loads your cloud progress in its
-  place." The next page load or sign-in tries again; a success replaces this device's progress with the
-  cloud copy, as every load does.
+  on this device's progress, and the panel says "☁️ the cloud is resting just now. Your cloud garden is
+  safe there, and what you play now is kept on this device. When the cloud wakes, reloading brings your
+  cloud garden back in its place." The next page load or sign-in tries again; a success replaces this
+  device's progress with the cloud copy, as every load does.
+- Sharing a big song: "☁️ The cloud is resting just now — try sharing this song again later." Loading
+  or deleting one from Melodies: "☁️ The cloud is resting just now — try again later." A Melodies list
+  that cannot be loaded says the cloud is resting and the songs are safe; only a list that loads empty
+  says "Nothing here yet…" (TUN-107's fix, taken into TUN-87).
+- A friend's `#song=` link: "☁️ The cloud is resting just now, so this song can't open yet. Try the
+  link again later." Only the API's own `404 {"error":"not found"}` says "⚠️ That song link didn't
+  work — it may have been deleted." — a switched-off API answers 404 too, with API Gateway's body.
+- Making an account when Cognito cannot run the sign-up trigger (the switch is off, or the trigger
+  failed): "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is
+  saved on this device — and try again another day." Cognito's own text, which the game no longer shows, is
+  "PreSignUp invocation failed due to error TooManyRequestsException." (measured with the switch off,
+  2026-11-15).
 
 To change a limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the
 comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the arithmetic. The
 arithmetic is a set of saturated-rate *scenarios*, not an upper bound: with today's payload sizes even 5
 requests a second costs far more than $30 a month. The throttle slows how fast money can go; the budget
-email (and TUN-87's switch-off) bound the month.
+email and the [cost switch](#the-cost-switch) bound the month.
 
 **Measured after the first deploy (2026-11-14).** The live stage held exactly the configured limits.
 Under a real burst they were looser than configured:
@@ -194,11 +216,14 @@ per function. TUN-102 rehearses the cost cap against production with these numbe
 **Reserved concurrency.** `Globals` reserves 2 concurrent executions for each of the three functions
 (6 of the account's 1,000; Lambda keeps 100 unreserved). It caps what reaches a function whatever the
 API does, and guarantees the game's functions can run if something else in the account is busy. Change
-`ReservedConcurrentExecutions` in `Globals`. Never set it to `0` — that switches the functions off.
+`ReservedConcurrentExecutions` in `Globals`. Never set it to `0` by hand — that switches the functions
+off, which is the [cost switch](#the-cost-switch)'s job. (`CloudSwitchFn` itself reserves 1, so two
+switch commands never run at once.)
 
 **Budget.** `MonthlyBudget` is an AWS Budget of **$30 a month for the whole AWS account** — it has no
 cost filters, so anything else in the account counts too. It emails `BudgetEmail` when actual spend
-passes 50 %, 80 % and 100 %, and when AWS forecasts the month will pass 100 %. Budget alerts with email
+passes 50 %, 80 % and 100 %, and when AWS forecasts the month will pass 100 %. At 100 % actual it also
+trips the [cost switch](#the-cost-switch). Budget alerts with email
 are free. Billing data lags by hours, so an alert is a warning, not a stop. Alerts only reach an address
 the budget shows as **Active** (see the verification step under [Future deploys](#future-deploys)).
 Change the amount in `BudgetLimit`. Change the address with
@@ -212,6 +237,94 @@ $30.00 amount. Verify the new address the same way.
 own deletion protection. Both tables have point-in-time recovery: DynamoDB can restore either table to
 any second of the last 35 days, into a new table (console → the table → Backups → Restore). It costs
 $0.20 per GB-month — cents at this size.
+
+## The cost switch
+
+Set in `template.yaml` by TUN-87; the design, the AWS facts it rests on and the overshoot arithmetic are
+in `reviews/TUN-87-cloud-switch.md`. The throttle is the real cap; this is the backstop.
+
+**What trips it.** When the month's **actual** spend passes $30, `MonthlyBudget`'s 100 % alert posts to
+the SNS topic `CloudSwitchAlarmTopic`, which runs `music-garden-cloud-switch` (`CloudSwitchFn`,
+`src/cloud-switch.mjs`). Any message on that topic means **off** — a message can never switch the cloud
+on. Only AWS Budgets (and IAM users of this account, like you) can publish there. When you switch back
+on, the switch records the time in the SSM parameter `/music-garden/cloud-switch/on-at`
+(`CloudSwitchState`); a trip message **published before that time** is ignored, and emailed about — Lambda
+and SNS can deliver a message again, even hours later, and it must not undo your switch-on. A trip
+published after it, however late it arrives, switches off. Nothing is running while it waits: it costs
+nothing.
+
+**What it does.** It sets `ProgressFn`, `SongsFn` and `PreSignUpFn` to reserved concurrency **0** — no
+Lambda runs, no DynamoDB read or write, and Cognito cannot run the sign-up trigger, so **no new accounts**
+— and **disables the API's default endpoint**, so calls stop at API Gateway before any route,
+authorizer or throttle. It reads all four back, then emails `BudgetEmail` (through
+`CloudSwitchNoticeTopic`) what tripped it and what each setting now is. A step that fails or hangs does
+not stop the others — at its deadline (10 seconds) its AWS call is cancelled, retries and all, and the
+switch waits up to 2 seconds more for it to settle before reading every setting back. Cancelling only
+stops the switch's side: a request AWS had already received may still apply — possibly after the
+read-back, or even after a later command (not seen, and not ruled out by AWS's documentation; the owner's
+call in TUN-87's review record). Any step that failed or timed out makes the email say "NOT COMPLETE",
+with the command to run again, and an automatic trip is retried twice. **A minute after any on or off,
+ask for the status once more**: it should say what you asked for — if not, run the command again. It **never switches back on by itself** — not at the start of a month
+either.
+
+**What players see.** The game plays on as for a guest: levels, the Studio, local saves, `#s=` links.
+Existing players can still sign in (sign-in never runs the sign-up trigger), and every cloud call fails
+calmly — "the cloud is resting" (the list under [Limits and budget](#limits-and-budget)): nothing claims
+"syncs across your devices", no song is called deleted, nothing is pushed over the cloud copy (TUN-106).
+**What a player plays while it is off stays on their device**, and the first load after you switch on
+replaces it with their cloud copy, as every load does — the messages say so.
+
+**What it cannot stop.** API Gateway's charge for the calls it refuses, if refused calls are billed
+($1.00 per million; TUN-102 measures it), existing players' sign-ins (Cognito), storage and backups,
+anything else in the account, and the hours of spend before the budget notices — billing data reaches
+Budgets hours late. The review record has the scenarios.
+
+**Commands.** Run from `backend/` in the repository; the payload files are in `events/`, so no shell
+quoting matters. Each prints `"StatusCode": 200`; **if it also prints `"FunctionError"`, it did not
+fully work** — open the `.json` file it wrote to see which setting did not take, and run it again.
+
+| To | Run |
+|---|---|
+| Switch back **on** | `aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-on.json on.json` |
+| See the **status** (`"cloud": "on"`, `"off"` or `"mixed"`) | `aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json` |
+| Switch **off** by hand | `aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-off.json off.json` |
+| **Rehearse** the trip, through the real SNS path | `aws sns publish --topic-arn <CloudSwitchAlarmTopicArn> --message rehearsal` |
+
+`<CloudSwitchAlarmTopicArn>` is a stack output (`sam list stack-outputs --stack-name music-garden`).
+`on.json`, `status.json` and `off.json` are gitignored.
+
+**Before switching back on**, look at the month's spend (Billing and Cost Management → Budgets).
+**The budget alerts once per budget per month**: if this month's $30 alert has already fired (not a
+rehearsal — that does not use it up), switching on while the month is still over $30 means the switch
+will not trip again until next month — only the throttle stands in the way.
+
+**Deploying while it is off.** Don't. A `sam deploy` may or may not switch the functions or the endpoint
+back on (CloudFormation compares templates, not live settings; not yet measured — TUN-102 can), and
+nothing can hold them off during the deploy itself. So [Future deploys](#future-deploys) starts with the
+**status** command. If a deploy can't wait — the switch itself needs fixing — deploy, then at once run
+the **off** command and **status** again; the functions may have run for the minutes in between.
+A change to the `CloudSwitchState` resource resets the recorded switch-on time to `never`; that is
+harmless unless an old trip message is delivered again afterwards.
+
+**Setting it up — the first deploy after TUN-87:**
+1. Look at the month's spend first. The deploy **replaces** the budget (its notifications change), and a
+   new budget already over $30 notifies at its first check — the switch would trip right after the deploy.
+2. `sam build; sam deploy --confirm-changeset`. New in the change set: `CloudSwitchAlarmTopic`,
+   `CloudSwitchAlarmTopicPolicy`, `CloudSwitchAlarmSubscription`, `CloudSwitchAlarmPermission`,
+   `CloudSwitchNoticeTopic`, `CloudSwitchState`, `CloudSwitchFn` with its role and invoke config (Add);
+   `MonthlyBudget` (Modify, Replacement
+   `True` — expected; only `UserPool`, `ProgressTable` and `SongsTable` must never show `True`). Budgets
+   checks it may publish to a subscriber topic when a budget is saved (the console's "Invalid SNS
+   topic" error), so a deploy that succeeds should mean the topic policy works. The rehearsal cannot
+   test that part: it publishes as you, not as Budgets.
+3. An email "AWS Notification - Subscription Confirmation" arrives at `BudgetEmail`: **Confirm
+   subscription**. Until you do, the switch works but emails no one.
+4. Rehearse: publish to the topic (above). Within a minute, an email "Tune Garden: the cloud is switched
+   OFF". **A minute after the trip, status** says `"cloud": "off"`. Open https://tunegarden.game: the game
+   plays, Home's panel says the cloud is resting, a cloud song link says the same, and creating an account
+   says the garden isn't taking new accounts.
+5. Switch back on (above); the email "…switched back ON" arrives, and **a minute later, status** says
+   `"cloud": "on"` — if it doesn't, run the switch-on command again.
 
 ## What the API accepts
 
@@ -260,7 +373,7 @@ they have.
 progress cap instead of 8 KB, and each full item's keys and other attributes, which take it to 17
 write units, not 16. The route table is in `reviews/TUN-83-real-songs-and-progress.md` § The
 arithmetic. It is a scenario, not a bound: the throttle measured about 5× looser than configured.
-The budget email and TUN-87's switch-off bound the month. Replacing an old row bigger than the cap is
+The budget email and the [cost switch](#the-cost-switch) bound the month. Replacing an old row bigger than the cap is
 billed at the old size, once.
 
 **When the game grows, check the caps.** The largest progress the game can write is every package

@@ -32,3 +32,8 @@ Thumbs.db
 .vscode/
 *.tmp
 *-extracted.txt
+
+# The cost switch's CLI output files (backend/README.md § The cost switch)
+backend/on.json
+backend/off.json
+backend/status.json
