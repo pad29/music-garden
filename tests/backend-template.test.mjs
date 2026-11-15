@@ -358,7 +358,7 @@ test("the template check refuses each mistake it guards against, with the right 
     ["a default address", TEMPLATE.replace("    NoEcho: true\n", "    NoEcho: true\n    Default: '!Ref Nothing'\n"), /BudgetEmail has a Default/],
     // TUN-76: the browser origins are exactly the production site's.
     ["the retired origin back", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://music-garden.netlify.app\n"), /CORS origins are \[.*https:\/\/music-garden\.netlify\.app.*\], approved/],
-    ["a deploy-preview origin", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://deploy-preview-1--tunegarden.netlify.app\n"), /CORS origins are \[.*deploy-preview-1--tunegarden.*\], approved/],
+    ["a preview origin", TEMPLATE.replace(ORIGIN_LINES, ORIGIN_LINES + "          - https://ao-x-root.music-garden.pages.dev\n"), /CORS origins are \[.*ao-x-root\.music-garden\.pages\.dev.*\], approved/],
     ["any origin", TEMPLATE.replace(ORIGIN_LINES, "          - '*'\n"), /CORS origins are \[\*\], approved/],
     ["both origins in one entry", TEMPLATE.replace(ORIGIN_LINES, "          - https://tunegarden.game,https://www.tunegarden.game\n"), /CORS origins are \[https:\/\/tunegarden\.game,https:\/\/www\.tunegarden\.game\], approved/],
     ["a production origin dropped",TEMPLATE.replace("          - https://www.tunegarden.game\n", ""), /CORS origins are \[https:\/\/tunegarden\.game\], approved/],

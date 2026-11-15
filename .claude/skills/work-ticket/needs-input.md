@@ -7,8 +7,9 @@ written down is lost.
 
 1. List each question under *Owner's decisions* in the reviews file, marked **open**. Commit everything
    you have — at the design checkpoint, the reviews file alone — and push, so nothing lives only in this
-   worktree. Open a **draft** PR against `main` (or keep the PR you have): Netlify builds a preview for
-   the phone, and a later session can claim the PR. **Never request a review on a draft.**
+   worktree. Open a **draft** PR against `main` (or keep the PR you have): Cloudflare builds a preview
+   for the phone (its branch preview URL, as `browser.md`'s script finds it — none for a fork PR), and a
+   later session can claim the PR. **Never request a review on a draft.**
 2. Comment on the ticket in the format below — the same text in the draft PR's body under its PR-format
    headings (`handoff.md`), or as a PR comment if the PR body is already in use — and end with the same
    text as your last message. File its short form (under 1,000 characters; `handoff.md` says how) with

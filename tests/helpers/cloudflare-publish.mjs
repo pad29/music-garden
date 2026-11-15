@@ -1,8 +1,11 @@
-// Does cloudflare-build.sh publish exactly what the game loads, and the same folders as netlify.toml?
-// Used by tests/cloudflare-publish.test.mjs (TUN-80).
+// Does cloudflare-build.sh publish exactly what the game loads, at the paths the page asks for it?
+// Used by tests/cloudflare-publish.test.mjs (TUN-80) and tests/site-headers.test.mjs.
 //
-// Unlike the Netlify checker, which picks out the `cp` steps it recognises and ignores the rest, this
-// one is STRICT: a step it cannot read is refused, never skipped. Skipping is how `cp -R spike
+// Pages serves index.html for any path that is not a real file, so a js/ file missing from site/ is not
+// a 404: the browser gets HTML where it asked for JavaScript, fails to parse it, and the game never
+// starts. Nothing local shows that — http-server and file:// both serve the repository itself.
+//
+// The checker is STRICT: a step it cannot read is refused, never skipped. Skipping is how `cp -R spike
 // site/spike`, `cp -r backend site` or an `exit 0 &&` in front would slip past a check that claims
 // "exactly" (GPT's design review of TUN-80, finding 1). The script's allowed form:
 //
@@ -13,14 +16,9 @@
 // Exactly ONE chain line: under `set -e`, a failure inside an `&&` list does not stop the script —
 // only the list's last command does — so a second line would run, and the build "succeed", after a
 // copy on the first line failed (GPT's PR review of TUN-80, finding 3).
-//
-// netlify.toml's commands go through the same strict chain parser for the parity check (they start
-// with `mkdir -p site` instead), so a Netlify command with a step it can't read is refused too
-// (finding 1). The lenient Netlify checker in netlify-publish.mjs keeps its own narrower contract.
 
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { buildCommands, copyGaps, publishDirs } from "./netlify-publish.mjs";
 
 const CP = /^cp( -r)? ([A-Za-z0-9_][A-Za-z0-9._-]*) site\/([A-Za-z0-9_][A-Za-z0-9._-]*)$/;
 
@@ -47,25 +45,20 @@ export function parseBuildScript(text) {
   return parseChain(live[1], ["rm -rf site", "mkdir site"]);
 }
 
-// netlify.toml must stay in the plain form the readers understand. TOML has many spellings of the same
-// setting — quoted or spaced table names (`["context".production]`, `[context . production]`), dotted
-// or escaped keys (`production . publish`, `"publish"`), inline tables
-// (`production = { publish = "." }`) — and a reader that misses one treats the setting as absent while
-// Netlify obeys it (GPT's PR review, rounds 1 and 2, finding 2). So instead of chasing them, every live
-// line must be a comment, a plain header, or `key = value` with a bare key (or exactly a quoted
-// "command"/"publish"), and no value may open an inline table or a multi-line string.
-const PLAIN_HEADER = /^\s*\[\[?[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\]\]?\s*(?:#.*)?$/;
-const PLAIN_SETTING = /^\s*(?:[A-Za-z0-9_-]+|"command"|'command'|"publish"|'publish')\s*=\s*(?!\{|"""|''')\S/;
-
-/** Every netlify.toml line outside that plain form, as "netlify.toml line N: can't read …". */
-export function unreadableToml(toml) {
-  const out = [];
-  toml.split(/\r?\n/).forEach((line, i) => {
-    const t = line.trim();
-    if (!t || t.startsWith("#") || PLAIN_HEADER.test(line) || PLAIN_SETTING.test(line)) return;
-    out.push(`netlify.toml line ${i + 1}: can't read "${t}"`);
-  });
-  return out;
+/**
+ * What one list of copies would lack: `index.html` and every local script the page loads, each
+ * needing a copy that puts it at the SAME path under site/. A script is covered by copying its top
+ * folder recursively (js → site/js), or by copying the file itself when it sits at the root.
+ */
+export function copyGaps(copies, scripts) {
+  const at = (path, dir) => copies.some((c) => c.src === path && c.dst === path && c.recursive === dir);
+  const gaps = [];
+  if (!at("index.html", false)) gaps.push("index.html");
+  for (const s of scripts.filter((s) => !s.inline)) {
+    const [top, ...rest] = s.name.split("/");
+    if (!(rest.length ? at(top, true) : at(top, false))) gaps.push(s.name);
+  }
+  return gaps;
 }
 
 export const showCopy = (c) => `cp ${c.recursive ? "-r " : ""}${c.src} site/${c.dst}`;
@@ -73,30 +66,15 @@ export const showCopy = (c) => `cp ${c.recursive ? "-r " : ""}${c.src} site/${c.
 /**
  * Everything wrong with the Cloudflare publish config, as readable lines ([] when it is right):
  * a refused step; a script the page loads that would not be published at its path; a copy outside
- * `allowed` or an allowed one missing; a Netlify build command ([build] or any [context.*]) whose
- * copies differ from Cloudflare's; a Netlify publish directory other than site.
+ * `allowed` or an allowed one missing.
  */
-export function cloudflareProblems({ script, toml, scripts, allowed }) {
+export function cloudflareProblems({ script, scripts, allowed }) {
   const { copies, refused } = parseBuildScript(script);
   if (refused !== null) return [`cloudflare-build.sh: refused "${refused}"`];
   const problems = copyGaps(copies, scripts).map((g) => `cloudflare-build.sh does not publish ${g}`);
   const mine = new Set(copies.map(showCopy));
   for (const c of mine) if (!allowed.includes(c)) problems.push(`cloudflare-build.sh publishes more than the game loads: ${c}`);
   for (const c of allowed) if (!mine.has(c)) problems.push(`cloudflare-build.sh does not run: ${c}`);
-  const commands = buildCommands(toml), dirs = publishDirs(toml);
-  // A line the readers can't read is refused, never treated as absent (finding 2).
-  problems.push(...unreadableToml(toml));
-  if (!commands.some((c) => c.table === "build")) problems.push("netlify.toml has no [build] command");
-  for (const { table, command } of commands) {
-    const { copies: copied, refused: no } = parseChain(command, ["mkdir -p site"]);
-    if (no !== null) { problems.push(`netlify.toml [${table}]: refused "${no}"`); continue; }
-    const theirs = new Set(copied.map(showCopy));
-    for (const c of theirs) if (!mine.has(c)) problems.push(`netlify.toml [${table}] runs ${c}; cloudflare-build.sh does not`);
-    for (const c of mine) if (!theirs.has(c)) problems.push(`cloudflare-build.sh runs ${c}; netlify.toml [${table}] does not`);
-  }
-  for (const { table, dir } of dirs)
-    if (dir !== "site") problems.push(`netlify.toml [${table}] publishes "${dir}", not "site"`);
-  if (!dirs.some((p) => p.table === "build")) problems.push("netlify.toml [build] sets no publish directory");
   return problems;
 }
 

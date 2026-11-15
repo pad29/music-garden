@@ -28,7 +28,7 @@ keeps `vendor/` out of line-ending conversion, so a checkout on any OS has the r
   (`tests/helpers/game-scripts.mjs`) lists it apart, as `vendored` — `tools/check-syntax.mjs` still compiles
   it, but the vm harness never runs it — and the load gate ignores its errors because it is outside `js/`.
   So a missing or broken copy leaves the game guest-only, as the CDN being down always did.
-- Both build configs copy `vendor/` (`netlify.toml`, `cloudflare-build.sh`), and both publish tests check
+- The build (`cloudflare-build.sh`) copies `vendor/`, and `tests/cloudflare-publish.test.mjs` checks
   every file in `SHA256SUMS` is published.
 
 ## Updating

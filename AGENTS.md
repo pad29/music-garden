@@ -5,7 +5,7 @@ meant to appeal broadly. The app is `index.html` (markup and styles) plus the cl
 that hold all of its code (vanilla JS + Web Audio; no dependencies, framework or build step), and three
 runtime asset folders it loads at startup: `voice/` (narration mp3s), `samples/` (instrument packs) and
 `vendor/` (the fonts and the Cognito sign-in library, as released).
-Live at https://tunegarden.game — every push to `main` deploys.
+Live at https://tunegarden.game (Cloudflare Pages) — every push to `main` deploys.
 
 ## Commands
 
@@ -71,11 +71,10 @@ Backend (rarely touched): `backend/README.md` § Future deploys — the owner's,
   before the client. Content growth (a new Fuse package, a wider palette) can outgrow the size caps:
   `tests/backend-validate.test.mjs` fails first. Then raise the cap per `backend/README.md` § What
   the API accepts.
-- **Any new runtime asset folder must be added to both build configs — `netlify.toml`'s build command
-  and `cloudflare-build.sh` — while both hosts exist**, or it is missing in production: an asset folder
-  fails silently behind the game's fallbacks, and on both hosts a missing `js/` file is served as
-  `index.html`, which stops the game from starting. `tests/cloudflare-publish.test.mjs` holds the two
-  to the same list. It also needs a cache rule in `_headers` (`tests/site-headers.test.mjs`).
+- **Any new runtime asset folder must be added to the build, `cloudflare-build.sh`**, or it is missing
+  in production: an asset folder fails silently behind the game's fallbacks, and a missing `js/` file
+  is served as `index.html`, which stops the game from starting. `tests/cloudflare-publish.test.mjs`
+  holds the script to its list. It also needs a cache rule in `_headers` (`tests/site-headers.test.mjs`).
 - **Never push to `main` or merge a PR unless the owner explicitly asks.** Every push to `main` deploys
   to production. An agent session may commit and push its own branch and open PRs.
 

@@ -4,7 +4,7 @@
 *.docx
 /archive/
 
-# Generated deploy copy, for Netlify and Cloudflare alike (netlify.toml's build command or cloudflare-build.sh)
+# Generated deploy copy (cloudflare-build.sh)
 /site/
 
 # AWS SAM build artifacts
