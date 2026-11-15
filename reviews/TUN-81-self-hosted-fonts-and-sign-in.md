@@ -437,7 +437,8 @@ CHANGES REQUESTED
    stops text inside a value (`title="src=https://…"`) from being read as an attribute.
 2. **Medium — `@import"https://…"` and `@import/**/"https://…"` pass.** **Agreed.** CSS comments are now removed
    before matching — outside strings only, so a `"/*"` inside a string cannot swallow a rule — `@import` may be
-   followed directly by its string, and any `@import` the guard does not read is refused as `unreadable`.
+   followed directly by its string, and any `@import` the guard does not read is refused as `unreadable`
+   (not yet true of `@import url(…)` with a comment-like `/*` inside — corrected in round 4).
 
 Missing tests — **added**: both of finding 1's inputs (quoted and unquoted real `style`) with a local control;
 both import forms through a `<style>` and through `cssThirdParty`; a comment inside `url()`; the `"/*"`-in-a-string
@@ -463,3 +464,58 @@ Netlify deploy-preview drawer) and the sign-in check.
 3. *Round 3's fixes (`99072f7`) have had no GPT review (the three-round budget is spent).* **A** — one more
    GPT review round after the answers · **B** — merge without it. Claude recommends A. — **A**: the owner, in the
    AO session, 2026-11-14. Round 4 below.
+4. *Round 4 (the extra round) requested changes; they are fixed (`127c70c`) but unreviewed.* **A** — one more
+   GPT round · **B** — no more review: the guard is a test-side regression net, the page itself is proven clean by
+   the host captures, and each round now finds a deliberately obfuscated spelling · **C** — replace the scanner
+   with a blunter rule (no `//host.tld` anywhere in the decoded page or `fonts.css`, the SVG namespace aside),
+   then one GPT round. Claude recommends B. — **open**
+
+### Round 4 — head `e51637e` (the owner's extra round, decision 3A)
+<details><summary>GPT's PR review, verbatim</summary>
+
+Reviewed `e51637e59ed70550b2c5f702bc9f832a13116203`. No files edited. The merges preserved this PR’s changes; no merge-related conflict found. Syntax checking and six selected read-only vendor tests passed. Full suite and browser checks were not rerun; your 737/737 result is acknowledged.
+
+Required changes:
+
+1. **Medium — Comment stripping introduces a bypass inside unquoted URLs.** [tests/helpers/vendor.mjs:84](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/tests/helpers/vendor.mjs:84)
+
+   Both now return `[]` through `htmlThirdParty`:
+
+   ```html
+   <style>body{background:url(https://img.example/a/*b)}</style>
+   <style>@import url(https://fonts.example/a/*b.css);</style>
+   ```
+
+   Round 3 reports the external URL in both cases. Inside an unquoted CSS URL token, `/` and `*` are literal URL characters; they do not start a comment. These therefore specify external requests under the [CSS URL-token rules](https://www.w3.org/TR/css-syntax-3/#consume-url-token).
+
+   The new stripper removes everything from `/*` onward, preventing `CSS_URL` from matching. The import also passes because its `@import url(` prefix is marked readable without a successfully parsed URL. A paired spelling, `url(https://img.example/a/**/b.png)`, likewise returns `[]`.
+
+   **Fix:** preserve unquoted URL tokens during comment handling, or explicitly reject unsupported forms before stripping can erase them. Recognizing an import’s prefix must not suffice to mark its URL readable.
+
+Tests still missing:
+
+- `body{background:url(https://img.example/a/*b)}` and the paired `a/**/b.png` variant, directly through `cssThirdParty`, inside `<style>`, and in a quoted `style` attribute. Require detection or explicit rejection.
+- `@import url(https://fonts.example/a/*b.css);`, directly and inside `<style>`. Require detection or explicit rejection.
+- Local controls using `url(img/a/*b)` and `url(img/a/**/b.png)`, consistent with the chosen restricted grammar.
+
+The agreed successful-authentication playtest remains the owner’s responsibility.
+
+Docs the change made false: [review record:440](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-27/reviews/TUN-81-self-hosted-fonts-and-sign-in.md:440) says unread imports are refused. The import above silently passes; reconcile that claim with the fix.
+
+CHANGES REQUESTED
+
+</details>
+
+1. **Medium — round 3's comment stripper erased `/*` inside an unquoted `url(…)`, so `url(https://img.example/a/*b)`
+   and `@import url(https://fonts.example/a/*b.css)` passed.** **Agreed** — a regression from my round-3 fix. An
+   unquoted `url(` token is now copied whole when comments are removed (inside it, `/*` is part of the URL), and
+   any `url(` the matcher cannot read is refused as `unreadable`, so an `@import`'s `url(` prefix is never enough
+   on its own. `url(/**/"…")` — a bad URL that CSS never fetches — is now refused rather than read.
+
+Missing tests — **added**: both `url()` spellings through `cssThirdParty`, a `<style>` and a quoted `style`; the
+`@import url(…/*…)` case directly and in a `<style>`; local controls `url(img/a/*b)` and `url(img/a/**/b.png)`.
+Mutations run, each caught: strip comments without copying unquoted url tokens whole; drop the unreadable-`url(`
+refusal. Docs: the round-3 answer's claim about unread imports is corrected above (marked).
+
+The owner's extra round ended in changes requested, so these fixes are unreviewed and the ticket stops at
+Needs Input again (decision 4 below).

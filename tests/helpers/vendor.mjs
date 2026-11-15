@@ -73,12 +73,18 @@ const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;
 // Comments are gone by then. Any other @import is refused as unreadable, never passed.
 const CSS_IMPORT = /@import\s*(?:"([^"]*)"|'([^']*)'|(?=url\())/gi;
 
-/** CSS with its comments replaced by a space, strings left whole — so a "/*" inside a string hides nothing. */
+/**
+ * CSS with its comments replaced by a space, strings and unquoted url(…) tokens left whole — inside either,
+ * "/*" is literal text, not a comment (round 4: `url(https://x/a/*b)` is a request for that URL).
+ */
 function stripCssComments(css) {
   let out = "", i = 0;
   while (i < css.length) {
     const c = css[i];
-    if (c === '"' || c === "'") {
+    if ((c === "u" || c === "U") && /^url\(\s*[^\s"')]/i.test(css.slice(i, i + 64))) {
+      const j = css.indexOf(")", i), end = j < 0 ? css.length : j + 1;   // an unquoted url token, copied as is
+      out += css.slice(i, end); i = end;
+    } else if (c === '"' || c === "'") {
       const j = css.indexOf(c, i + 1), end = j < 0 ? css.length : j + 1;
       out += css.slice(i, end); i = end;
     } else if (c === "/" && css[i + 1] === "*") {
@@ -130,10 +136,15 @@ export function cssThirdParty(text) {
   const out = [];
   for (const m of text.matchAll(/\\[^\n]{0,20}/g)) out.push("unreadable: CSS escape " + m[0].trim());
   const css = stripCssComments(text);   // `@import/**/"…"` and `url(/**/"…")` are what a browser reads
+  const urls = new Set();
   for (const m of css.matchAll(CSS_URL)) {
+    urls.add(m.index);
     const ref = m[1] ?? m[2] ?? m[3] ?? "";
     if (!ref.includes("\\") && leavesOrigin(ref)) out.push(ref.trim());
   }
+  // A url( the matcher could not read (a quote or a comment inside an unquoted url, say) is refused, never
+  // passed — so an @import's "url(" prefix is never enough on its own (round 4).
+  for (const m of css.matchAll(/url\([^)]{0,40}\)?/gi)) if (!urls.has(m.index)) out.push("unreadable: " + m[0].trim());
   const readable = new Set();
   for (const m of css.matchAll(CSS_IMPORT)) {
     readable.add(m.index);
