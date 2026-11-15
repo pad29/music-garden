@@ -466,9 +466,49 @@ that drops the title.
 **GPT's note** that the full suite hit `EPERM` in its read-only sandbox applies to its run only: the
 suite passes here (Tests, below).
 
+### Round 2 — head `0921c3c`, the delta since `5afee2b` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-14)
+
+Usage: in 598,817 (cached 517,120), out 3,475. **Verdict: Changes requested** (one missing test, no code change).
+
+<details><summary>GPT's PR review, round 2, verbatim</summary>
+
+**Changes required**
+
+None in production code. The legacy-limit fix and revised cost estimate address round-1 findings 1–2; the item accounting matches [AWS’s rules](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html). Test items 2–6 are resolved.
+
+**Missing tests**
+
+1. **Medium — Historical sharing still bypasses the requested entry path.**  
+   [tests/backend-handlers.test.mjs:246](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-29/tests/backend-handlers.test.mjs:246) calls `cloudSongCreate()` directly, never My Melodies or `shareSong()`. I replaced `shareSong()` with an unconditional exception **in memory**: all 15 handler tests still passed, including the historical-sharing test.
+
+   Seed the raw historical fixtures into saved melodies, invoke their share button through the real `shareSong()`, and feed the resulting request into POST. Assert successful storage with columns, retired voices and long durations preserved. Do not normalize through `applySong()` first.
+
+Owner deployment acceptance remains pending as recorded: change-set inspection, an old link opened signed out, a new cloud-sized song, and newly advanced progress surviving a fresh-session reload.
+
+All 29 validator/handler tests and syntax checks passed. The full suite encountered temporary-directory `EPERM` failures in the read-only sandbox. No files changed.
+
+**Verdict**
+
+Changes requested.
+
+</details>
+
+**My answer:**
+
+1. **Medium (missing test): historical sharing bypassed My Melodies and `shareSong`. Agreed.** GPT
+   replaced `shareSong` with a throw and the test still passed. It now seeds the raw saves into My
+   Melodies (`mg_saves`), reads each row back with `getSaves()`, and calls the real `shareSong(it)`,
+   which is what the row's 🔗 calls. It then checks that one `POST /songs` was sent, that `POST` stored
+   it, and that `GET` returns the columns, retired voice and long holds as saved. It also checks the
+   player got a `#song=` link on the clipboard. `clientGame` gained `saves` and a recording clipboard.
+   **Mutations, both caught:** `shareSong` throwing (GPT's probe), and `shareSong` normalising the song
+   through `openStudioWith`/`currentSong` before sending.
+
+Owner deploy acceptance stays pending, as GPT notes: it is in the deploy hand-off.
+
 ## Tests
 
-`node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). **766/766** with PR review round 1's fixes (backend tests: 14 + 15). That includes the new
+`node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). **766/766** with PR review round 1's fixes (backend tests: 14 + 15), and again with round 2's. That includes the new
 `backend-validate.test.mjs` (14) and `backend-handlers.test.mjs` (10). Syntax: `tools/check-syntax.mjs`,
 plus `node --check` on every backend module.
 

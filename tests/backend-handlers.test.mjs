@@ -239,17 +239,27 @@ function oldSave({ cols, voice, longLen }) {
     tracks: [{ kind: "melody", voice, notes }, { kind: "drums", hits: [{ lane: 0, c: 0 }, { lane: 2, c: cols - 1 }] }] };
 }
 
-test("a saved song from before TUN-84 is shared as saved, and the cloud keeps it", async () => {
-  const { g, requests } = clientGame();
-  for (const raw of [oldSave({ cols: 1928, voice: "pluck", longLen: 12 }), oldSave({ cols: 2400, voice: "pad", longLen: 30 })]) {
-    assert.ok(g.encodeSong(raw).length > g.SHARE_MAX, "too big for a link, so it really goes to the cloud");
-    await g.cloudSongCreate(clone(raw), raw.meta.title, "unlisted");
-    const api = songsApi();
-    const r = await api.call(ev("POST", { body: requests.at(-1).body }));
+test("a saved song from before TUN-84, shared from My Melodies, is stored as it was saved", async () => {
+  const saved = [oldSave({ cols: 1928, voice: "pluck", longLen: 12 }), oldSave({ cols: 2400, voice: "pad", longLen: 30 })];
+  const { g, requests, copied } = clientGame({ saves: saved });
+  g.userPool = { getCurrentUser: () => ({}) };            // signed in, so shareSong may use the cloud
+  const api = songsApi();
+  for (const [i, raw] of saved.entries()) {
+    const it = g.getSaves()[i];                           // My Melodies' row; its 🔗 runs shareSong(it)
+    assert.deepStrictEqual(it, raw, "the save is read back as the older client wrote it");
+    assert.ok(g.encodeSong(it).length > g.SHARE_MAX, "too big for a link, so it really goes to the cloud");
+    const before = requests.length;
+    await g.shareSong(it);
+    assert.strictEqual(requests.length, before + 1, "shareSong sent one request");
+    const sent = requests.at(-1);
+    assert.deepStrictEqual([sent.method, /\/songs$/.test(sent.url)], ["POST", true]);
+    const r = await api.call(ev("POST", { body: sent.body }));
     assert.strictEqual(r.statusCode, 200, `${raw.time.cols} columns, ${raw.tracks[0].voice}: ${r.body}`);
     const got = json(await api.call(ev("GET", { sub: null, id: json(r).id })));
-    assert.deepStrictEqual(got.song.tracks, raw.tracks, "stored exactly as saved; the Studio clamps it on load");
+    assert.deepStrictEqual(got.song.tracks, raw.tracks, "notes, retired voice and long holds stored as saved");
     assert.strictEqual(got.song.time.cols, raw.time.cols);
+    assert.strictEqual(got.title, "Old one");
+    assert.ok(copied.at(-1).endsWith("#song=fake-id"), "the player got a cloud link");
   }
 });
 

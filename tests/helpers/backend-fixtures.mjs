@@ -42,13 +42,16 @@ function voiceSelect() {
 }
 
 /**
- * A fresh game whose cloud calls are recorded instead of sent. `local` seeds localStorage's progress
- * (what an older client left behind). Only the game's own API is answered; any other fetch throws.
+ * A fresh game whose cloud calls are recorded instead of sent. `local` seeds localStorage's progress and
+ * `saves` its My Melodies (what an older client left behind). Only the game's own API is answered; any
+ * other fetch throws. `copied` collects every link the game puts on the clipboard.
  */
-export function clientGame({ local } = {}) {
-  const requests = [];
+export function clientGame({ local, saves } = {}) {
+  const requests = [], copied = [];
   const g = loadGame({ fresh: true, elements: { instr: voiceSelect() }, setup: w => {
     if (local) w.localStorage.setItem("mg_progress", JSON.stringify(local));
+    if (saves) w.localStorage.setItem("mg_saves", JSON.stringify(saves));
+    w.navigator = { ...w.navigator, clipboard: { writeText: async url => { copied.push(url); } } };
     w.fetch = async (url, opts = {}) => {
       if (!/\/(songs|progress)(\/|$)/.test(String(url))) throw new Error("fetch outside the game's API: " + url);
       requests.push({ url: String(url), method: opts.method || "GET", body: opts.body });
@@ -57,7 +60,7 @@ export function clientGame({ local } = {}) {
   } });
   g.freshToken = async () => "test-token";      // signed in, as far as the cloud calls can tell
   g.initAudio();                                 // the Craft button does this before craftFromCells
-  return { g, requests };
+  return { g, requests, copied };
 }
 
 const clone = x => JSON.parse(JSON.stringify(x));
