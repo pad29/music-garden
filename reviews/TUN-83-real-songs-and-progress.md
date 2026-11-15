@@ -329,7 +329,46 @@ The approach and tests above stand, with these changes:
 
 ## Owner's decisions
 
-1. **open** — *The progress cap.* The reachable maximum is 13,457 bytes; 8 KB refuses it, and a refused
-   save freezes the cloud copy, which the next sign-in or reload brings back over newer play.
-2. **open** — *The song cap of 16 KB*, and whether the misleading "Couldn't reach the cloud" message for
-   a too-big song may wait for its own ticket.
+1. *The progress cap* (the reachable maximum is 13,457 bytes; 8 KB refused it) — **A: 16 KB**
+   (16,384 bytes): the owner, in the AO session, 2026-11-14. With it: **document that the caps must be
+   checked, and raised if needed, as content is added.** Done in `backend/README.md` beside the caps,
+   with a pointer from `AGENTS.md`'s package-adding rule, and enforced by a test that computes the
+   reachable maximum from the real `PACKAGES` and fails if it no longer fits.
+2. *The song cap* — **A: 16 KB** (16,384 bytes), and a Backlog ticket for the misleading "Couldn't
+   reach the cloud" message on a too-big song: the owner, in the AO session, 2026-11-14.
+
+## Build (Claude)
+
+Built the revised plan with the owner's caps (both 16,384 bytes).
+
+- `backend/src/validate.mjs`: `checkSong`, `checkSongRequest`, `chooseTitle`, `checkProgress`, the caps
+  and closed lists. It is pure. Every refusal carries a fixed `error` and a fixed-vocabulary `why`.
+- `backend/src/http.mjs`: `readJson` checks the UTF-8 size before `JSON.parse`, decoding base64 first
+  with a length pre-check. `refuse` answers 413 or 400. `serverError` logs the exception and answers
+  a fixed 500. `stored` reads either form of a row.
+- `backend/src/songs-api.mjs` and `progress-api.mjs` hold the handlers over an injected `db`.
+  `songs.mjs` and `progress.mjs` are SDK wiring only, and `template.yaml` is unchanged.
+- **Departures from the revised plan:** the name is stripped and cut rather than refused, as planned.
+  An explicit "no song" guard in `createSong` was removed as dead code: `checkSong(null)` refuses the
+  same way, and a mutation proved them equivalent. `metRegions` never holds `first-garden` in practice
+  (`greetRegionFriend` skips it), but the closed list keeps it because it is a package's `region`.
+- **The content-growth rule** (owner, 2026-11-14): `AGENTS.md` § Hard invariants and `backend/README.md`
+  § What the API accepts. The test that enforces it is in `tests/backend-validate.test.mjs`.
+- **Filed:** TUN-111 (Backlog, S): "too big to share" and "cloud full" messages instead of "Couldn't
+  reach the cloud". The 409 at 50 songs shows the same misleading line, so it is included.
+
+## Tests
+
+`node --test "tests/*.test.mjs"`: 750/750 before the docs commit. That includes the new
+`backend-validate.test.mjs` (14) and `backend-handlers.test.mjs` (10). Syntax: `tools/check-syntax.mjs`,
+plus `node --check` on every backend module.
+
+**Mutation checks, run by hand and all caught:** dropping `pluck`; a 14 KB progress cap; dropping the
+`studio` package; copying any `meta.created`; no column check; an uncapped name; any `meta` key; a
+one-page count; an unconditional `PUT`; a 500 that echoes `e.message`; storing the raw song or the raw
+progress; counting UTF-16 units; ignoring base64; a rename that drops the stored title. The only
+survivor was the equivalent "no song" guard (above). A no-op control survived, as it should.
+
+**Not verified here:** anything against real AWS. Whether the SDK's DocumentClient accepts these
+parameter objects, Lambda packaging of the four new files, and the live 413/400/500 responses are
+the owner's deploy checks.

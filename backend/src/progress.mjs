@@ -1,37 +1,13 @@
-// Progress API: GET/PUT the caller's own progress record.
-// The HTTP API's JWT authorizer has already validated the Cognito ID token; we read the
-// user id from the token claims (`sub`), so a caller can only ever touch their own row.
+// Progress API Lambda (template.yaml: Handler progress.handler). Only the AWS SDK wiring lives here; the
+// routes are in progress-api.mjs and what progress may hold is in validate.mjs (TUN-83), both testable
+// without the SDK.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { makeProgressHandler } from "./progress-api.mjs";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const TABLE = process.env.TABLE_NAME;
-const JSON_HEADERS = { "content-type": "application/json" };
 
-export const handler = async (event) => {
-  const sub = event?.requestContext?.authorizer?.jwt?.claims?.sub;
-  const method = event?.requestContext?.http?.method;
-  if (!sub) return reply(401, { error: "unauthorized" });
-
-  try {
-    if (method === "GET") {
-      const r = await ddb.send(new GetCommand({ TableName: TABLE, Key: { userId: sub } }));
-      return reply(200, r.Item?.data ?? null);
-    }
-    if (method === "PUT") {
-      const data = event.body ? JSON.parse(event.body) : null;
-      await ddb.send(new PutCommand({
-        TableName: TABLE,
-        Item: { userId: sub, data, updated: Date.now() },
-      }));
-      return reply(200, { ok: true });
-    }
-    return reply(405, { error: "method not allowed" });
-  } catch (e) {
-    return reply(500, { error: String(e && e.message || e) });
-  }
-};
-
-function reply(statusCode, body) {
-  return { statusCode, headers: JSON_HEADERS, body: JSON.stringify(body) };
-}
+export const handler = makeProgressHandler({
+  get: p => ddb.send(new GetCommand(p)),
+  put: p => ddb.send(new PutCommand(p)),
+}, { table: process.env.TABLE_NAME });

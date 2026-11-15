@@ -60,6 +60,11 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **`FAMOUS` melodies are score-validated.** Never "fix" one by ear. Shortening a piece is allowed;
   rewriting it is not.
 - **The crafting toolbox is per-package, never global.**
+- **The backend refuses what it doesn't know.** A new package, region, voice, companion, meter or
+  song/progress field changes `backend/src/validate.mjs` in the same PR, and the backend deploys
+  before the client. Content growth (a new Fuse package, a wider palette) can outgrow the size caps:
+  `tests/backend-validate.test.mjs` fails first. Then raise the cap per `backend/README.md` § What
+  the API accepts.
 - **Any new runtime asset folder must be added to both build configs — `netlify.toml`'s build command
   and `cloudflare-build.sh` — while both hosts exist**, or it is missing in production: an asset folder
   fails silently behind the game's fallbacks, and on both hosts a missing `js/` file is served as

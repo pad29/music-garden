@@ -7,8 +7,12 @@ backend/
   template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas, the $30 budget)
   src/
     presignup.mjs      # auto-confirms new accounts (no email step)
-    progress.mjs       # GET/PUT the caller's own progress
-    songs.mjs          # cloud songs CRUD (SAVE-SHARE.md §6: caps, unlisted-only)
+    progress.mjs       # the progress Lambda: AWS SDK wiring only
+    progress-api.mjs   # GET/PUT the caller's own progress (no SDK, so it is testable)
+    songs.mjs          # the songs Lambda: AWS SDK wiring only
+    songs-api.mjs      # cloud songs CRUD (SAVE-SHARE.md §6: caps, unlisted-only; no SDK)
+    validate.mjs       # what a song and progress may hold — the one place the server knows the formats
+    http.mjs           # replies with fixed messages; reading a body under a byte cap
     package.json
   samconfig.toml       # saved deploy args (so future deploys are just `sam deploy`)
   README.md            # you are here
@@ -93,6 +97,17 @@ sam build; sam deploy --confirm-changeset
 `True` on `UserPool`, `ProgressTable` or `SongsTable` means CloudFormation wants a new one. Their
 `UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
 new one — answer `n` and fix the template instead.
+
+**Rows that are normal even when `src/` is unchanged** (seen at TUN-76's deploy, 2026-11-14):
+
+| Resource | Action / Replacement | Why |
+|---|---|---|
+| `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | `sam build` re-zips the code, and after a `git pull` the files' timestamps differ, so the zip gets a new upload key |
+| `UserPool` | Modify / `False` | its sign-up trigger refers to `PreSignUpFn`'s ARN |
+| `PreSignUpPermission` | Modify / `Conditional` | its `FunctionName` refers to `PreSignUpFn`, which is not replaced, so neither is the permission |
+
+The stop rule does not change: `True` in the `Replacement` column on `UserPool`, `ProgressTable` or
+`SongsTable` means answer `n`.
 
 **The first deploy after TUN-82** adds the `BudgetEmail` parameter, which has no default, so pass it once
 on the command line — never in `samconfig.toml`, which is public:
@@ -186,6 +201,71 @@ $30.00 amount. Verify the new address the same way.
 own deletion protection. Both tables have point-in-time recovery: DynamoDB can restore either table to
 any second of the last 35 days, into a new table (console → the table → Backups → Restore). It costs
 $0.20 per GB-month — cents at this size.
+
+## What the API accepts
+
+Since TUN-83 the server stores only songs and progress the game really writes. `src/validate.mjs` is
+the **one place on the server that knows both formats**. `songs-api.mjs` and `progress-api.mjs` call
+it on every write. The rules, field by field, are in `validate.mjs` itself and in
+`reviews/TUN-83-real-songs-and-progress.md`. In short:
+
+- **Known keys only, closed lists for every string.** A song is a v3 song (`SAVE-SHARE.md` § 3).
+  Numbers must be in range: pitch 0–127, column inside `cols`, length 1–1,920, lane 0–2, tempo
+  40–180, `cols` 16–1,920, groove 0–6, pickup inside one bar. Strings come from closed lists: the
+  palette, the voice (today's eight, plus the retired `pluck` and `pad`, which old settings still
+  carry), the track kind and the meter. A song may have at most 1,000 notes and 1,000 hits. Progress
+  is the shape `commitProgress()` writes. Its package and region names are closed lists too, checked
+  as set members, so `"constructor"` is no package. Anything else is refused.
+- **No free text but the title.** A song's `meta` (quest ids, `author`, `cloudId`…) is checked for
+  known keys and then dropped. The stored `meta` is `{ title, created, updated }`, and `meta.title`
+  is always the stored title (`sanitizeTitle`, unchanged). Progress `name` is still accepted
+  (removing it is a later ticket). It is cut to 20 characters and stripped of control characters.
+- **Writes are rebuilt.** What is stored is rebuilt from the checked fields, never the request as it
+  came. It is stored as JSON text (`payload`, `data`), so the stored size is the size the cap
+  measured. Reads are never checked: a row written before TUN-83 loads as it did, and an old map and
+  new text both read back the same.
+- **Refusals carry fixed messages.** A body that does not parse is `400 bad json`. One that fails a
+  check is `400 bad song`, `bad progress` or `bad request`. One over a size cap is `413 too large`,
+  checked before parsing. Anything unexpected is `500 server error`. The reason goes to CloudWatch,
+  never to the caller.
+
+| Cap | Value | Where |
+|---|---|---|
+| Stored song (UTF-8) | 16 KB (16,384 bytes) | `MAX_SONG_BYTES`; the owner, 2026-11-14 |
+| Song request body | 17 KB | `MAX_SONG_BODY_BYTES` (title and dropped `meta` ride along) |
+| Progress (request and stored) | 16 KB | `MAX_PROGRESS_BYTES`; the owner, 2026-11-14 |
+| Cloud songs per account | 50, **soft** | `MAX_PER_USER` |
+
+**Per-account ceiling: about 50 × 16 KB = 800 KB of songs** (stored twice: the table and the
+ALL-projection `byOwner` index), plus one progress row of at most 16 KB. The song count pages through
+the whole index, but it is a soft cap. Two shares at the same moment can both see 49, and the index
+lags writes slightly, so an account can pass 50 by one or two. Accounts already over a cap keep what
+they have.
+
+**What the caps cost.** With these caps, every route used flat out for a month costs about **$147**
+at the nominal throttle. That is TUN-82's corrected $119.62 plus about $27 for a 16 KB progress cap
+instead of 8 KB (`reviews/TUN-83-real-songs-and-progress.md`). It is a scenario, not a bound: the
+throttle measured about 5× looser than configured. The budget email and TUN-87's switch-off bound
+the month. Replacing an old row bigger than the cap is billed at the old size once.
+
+**When the game grows, check the caps.** The largest progress the game can write is every package
+completed, with every distinct tool crafted in each package that has Fuse. Today that is 13,310
+bytes. A new Fuse package, a wider palette or a new progress field makes it bigger.
+`tests/backend-validate.test.mjs` builds that progress through the real game and **fails once it no
+longer fits under `MAX_PROGRESS_BYTES` with 10% to spare**. When it does, raise the cap and redo the
+cost line above. Do the same for the song cap if the Studio's field or a song's fields grow
+(`MAX_COLS`, multi-voice, velocity).
+
+**Changing a format, or adding a package, region, voice, companion or meter:** change
+`validate.mjs` in the same PR. The drift tests in `tests/backend-validate.test.mjs` fail until you
+do. **Deploy the backend before the client merges.** An older client never sends the new value, but
+a newer client against the old backend is refused. A refused progress save is worse than a failed
+one: sign-in replaces local progress with the cloud copy, so the stale copy comes back over newer
+play.
+
+**Rolling back past TUN-83** would bring back unchecked storage and 400 KB writes. It would also
+break every song shared after the deploy, because older code returns the stored JSON text as a
+string, which the game cannot open. Fix forward instead.
 
 ## Notes
 - **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
