@@ -187,3 +187,91 @@ Syntax and diff-whitespace checks passed. The suite returned **716 passed, 75 fa
 - *Manual acceptance* — the procedure on #141: above. The authenticated sync: the owner's checklist.
 
 After the fixes: syntax check OK, the whole suite 797/797.
+
+### Round 2 — on `2ca6785`: changes requested
+
+<details><summary>GPT's PR review, round 2, verbatim</summary>
+
+**Changes requested** on `2ca67850cbd2ad38d99fcd435db85024ea6d2af7`, confirmed with `git rev-parse HEAD`. Reviewed only `b9f98d6..HEAD`. No files edited.
+
+Two changes remain required:
+
+1. **Medium — Errors and unfinished builds become the “fork PR” hand-off.**  
+   [browser.md:56](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-32/.claude/skills/work-ticket/browser.md:56), with the hand-off mapping at [line 73](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-32/.claude/skills/work-ticket/browser.md:73).
+
+   The check command’s status is discarded and stderr suppressed. I reproduced an API failure returning exit **3**, with `state: none`. A persistently pending or cancelled check also returns **3**. The instructions map that exit to `Preview: none — fork PR`, permitting an incorrect hand-off for a same-repository PR whose build status was never established.
+
+   Distinguish API errors, pending timeout, cancellation, and actual absence; establish that a PR is a fork before calling it one. Preserve comment-fetch errors too: currently those become “no Cloudflare comment names …” and can follow the missing-comment hand-off exception.
+
+2. **Low — An unrelated project comment hides a valid preview.**  
+   [browser.md:66](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-32/.claude/skills/work-ticket/browser.md:66).
+
+   `tail -n 1` selects a same-head comment **before** the project URL filter. I supplied a valid music-garden comment followed by another project’s comment naming the same SHA: the script exhausted retries and exited **1**, incorrectly claiming no comment names the head.
+
+   The URL restriction prevents returning another project’s URL, but does not prevent that comment from hiding the correct one. Filter for the project before selecting the final candidate. This affects the explicitly requested multi-project case; I accept that only music-garden currently builds this repository.
+
+The Bash block itself is valid after replacing `<n>`. Its `exit` statements correctly terminate the Bash tool invocation; no function wrapper is required.
+
+**Pending-check handling is not an exit-8 bug here.** In the current GitHub CLI implementation, `--json` returns through the exporter before the ordinary failed/pending exit-status logic. A successful JSON query can therefore print `pending` and return 0; the script correctly continues polling that output. The problem is its timeout/error classification. [GitHub CLI implementation](https://raw.githubusercontent.com/cli/cli/trunk/pkg/cmd/pr/checks/checks.go)
+
+Round-1 disposition:
+
+| Finding | Result |
+|---|---|
+| 1. Hand-off waits for Netlify | **Resolved for check isolation.** The query selects Cloudflare Pages, and SKILL.md invokes this script instead of watching all checks. |
+| 2. Unreliable preview discovery | **Partially resolved.** Head matching, retries, explicit nonzero outcomes, and optional-preview hand-offs are added. The two failures above remain. |
+| 3. Cloud-sync prerequisite unverified | **Resolved as disclosure; acceptance remains pending.** Round 1 explicitly allowed recording the prerequisite as outstanding. The record now does that. Unchanged application/API code does not itself establish authenticated sync. |
+| 4. “Both hosts” descriptions | **Resolved.** Both current descriptions now name Cloudflare Pages. |
+
+The tests **really execute the documented block**, including its exits: [extraction](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-32/tests/workflow-scripts.test.mjs:590) and [Bash invocation](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-32/tests/workflow-scripts.test.mjs:620). They substitute the PR number, remove indentation, and shorten the timeout loop in one case. However, the fake ignores `--jq`, so it does not test check-name or bot-author filtering.
+
+Round-1 missing tests and remaining concrete cases:
+
+| Requested coverage | Status / remaining case |
+|---|---|
+| Check selection | **Partial.** State transitions are covered; live filter checks are recorded. Add raw mixed-check fixtures—Cloudflare passing with Netlify pending or failed—and execute the actual filter. |
+| Comment selection | **Partial.** Current-head-before/after-stale cases exist. Add a same-head unrelated-project comment after the valid comment; require the valid URL. |
+| Unavailable preview / fork | **Partial.** Empty/stale comments, retries, absent checks, and head-fetch failure exist. Add check-fetch and comment-fetch API failures, pending timeout, cancellation, and an actual fork distinction; assert accurate outcomes and hand-off reasons. |
+| Destination coverage | **Resolved.** All four independent destination mutations are present; the path-rule test passed here. |
+| Manual acceptance | **Partial.** Execution on #141 is recorded, but authenticated progress write followed by a fresh authenticated read remains the owner’s pending check on the custom domains. |
+
+Validation: syntax passed. The full suite returned **716 passed, 81 failed**, all failures from sandbox-denied temporary-directory creation, including the six new preview tests. I reproduced the script failures above using the extracted block and in-memory Bash stubs. Live PR verification was blocked by denied GitHub CLI configuration access.
+
+</details>
+
+**My answers (Claude):**
+
+1. **Agreed — fixed.** The script now keeps `gh pr checks`' exit status and stderr. A failing call is
+   `error: gh pr checks: <its message>` (exit 1), except gh's *"no checks reported on the '…' branch"*,
+   which means no checks at all (gh's source returns it before the `--json` export — checked). `fail`,
+   `cancel` and `skipping` end the wait as `check <bucket> on <sha>` (exit 1); a check still `pending` after
+   20 minutes is `check still pending …` (exit 1). Only when there is no Cloudflare check **and**
+   `gh pr view --json isCrossRepository` says `true` is it `fork PR: …` (exit 3); a branch of this
+   repository with no check is `no Cloudflare Pages check …` (exit 1). A failing comments fetch is
+   `error: gh pr view comments failed` (exit 1). `browser.md` maps each line to what the worker does:
+   fix the build; run once more, then `ao report --stuck`; `CLAUDE.md` § When something external breaks;
+   or, for a passing check with no comment naming the head, hand off with *Preview: none — <line>*.
+2. **Agreed — fixed.** Each comment naming the head is reduced (by `awk`) to the URL after its *Branch
+   Preview URL*, and only `*.music-garden.pages.dev` URLs are kept before `tail -n 1` picks one.
+
+**Missing tests:**
+- *Comment selection* — **added**: another project's comment naming the same commit, after, before and
+  among the valid one and a stale one, never hides it; alone, it is no preview (exit 1).
+- *Unavailable preview / fork* — **added**: a checks-fetch failure and a comments-fetch failure (exit 1,
+  `error: …`); a check still pending at the end (exit 1); `fail`, `cancel`, `skipping` (exit 1, named);
+  no Cloudflare check — with other checks, and with none at all (gh's "no checks reported") — as a fork
+  (exit 3) and as a branch of this repository (exit 1).
+- *Check selection, executing the real filter* — **disagreed, not added.** The `--jq` filters run inside
+  `gh` (gojq); this machine has no `jq`, and the suite has no dependencies, so a test cannot run them
+  without the real `gh` and a real PR. They were run instead against live PRs: on #141 (Netlify's
+  checks *skipping*, its deploy preview *pass*) and #139 (Netlify's all passing), the block printed the
+  right branch preview. The filter is `.[] | select(.name == "Cloudflare Pages") | .bucket`, which reads
+  no other check's state, so a pending or failed Netlify check cannot reach it.
+- *Manual acceptance* — unchanged: the authenticated sync is the owner's first playtest item.
+
+Mutations of the doc's block, each restored: the last comment taken before the project filter → 1 red;
+every missing check called a fork → 1 red. Live, the new block printed
+`preview https://ao-cloudflare-migration-root.music-garden.pages.dev` on #141 (head `2ca6785`) and
+`preview https://ao-tun-86-headers-root.music-garden.pages.dev` on #139, exit 0.
+
+After the fixes: syntax check OK, the whole suite 798/798.
