@@ -98,13 +98,20 @@ sam build; sam deploy --confirm-changeset
 `UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
 new one — answer `n` and fix the template instead.
 
-**Rows that are normal even when `src/` is unchanged** (seen at TUN-76's deploy, 2026-11-14):
+**Rows that are normal even when `src/` is unchanged** (seen at TUN-76's and TUN-83's deploys,
+2026-11-14; the reasons are CloudFormation's own, from `aws cloudformation describe-change-set`):
 
 | Resource | Action / Replacement | Why |
 |---|---|---|
-| `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | `sam build` re-zips the code, and after a `git pull` the files' timestamps differ, so the zip gets a new upload key |
-| `UserPool` | Modify / `False` | its sign-up trigger refers to `PreSignUpFn`'s ARN |
-| `PreSignUpPermission` | Modify / `Conditional` | its `FunctionName` refers to `PreSignUpFn`, which is not replaced, so neither is the permission |
+| `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | `sam build` re-zips the code, and after a `git pull` the files' timestamps differ, so the zip gets a new upload key (`Code`, never recreated) |
+| `UserPool` | Modify / `False` | its sign-up trigger (`LambdaConfig`) refers to `PreSignUpFn`'s ARN |
+| `PreSignUpPermission` | Modify / `Conditional` | its `SourceArn` refers to `UserPool`'s ARN. It would be recreated only if the pool were replaced, and the pool is not |
+| `Api` | Modify / `False` | its route definitions (`Body`) refer to `SongsFn`'s and `ProgressFn`'s ARNs, so it shows whenever those functions change. Their ARNs stay the same |
+
+To see why any row is there, read the pending change set before answering:
+`aws cloudformation describe-change-set --stack-name music-garden --change-set-name <name>`.
+Each row's `Details` name the property and what caused it. `aws cloudformation list-change-sets
+--stack-name music-garden` gives the name.
 
 The stop rule does not change: `True` in the `Replacement` column on `UserPool`, `ProgressTable` or
 `SongsTable` means answer `n`.

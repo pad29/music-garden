@@ -506,6 +506,55 @@ Changes requested.
 
 Owner deploy acceptance stays pending, as GPT notes: it is in the deploy hand-off.
 
+### Round 3 — head `e8b6bca`, the delta since `0921c3c` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-14)
+
+Usage: in 431,223 (cached 377,216), out 1,793.
+
+<details><summary>GPT's PR review, round 3, verbatim</summary>
+
+**Changes required:** None.
+
+**Missing tests:** None. Round 2’s item is resolved in [tests/backend-handlers.test.mjs:242](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-29/tests/backend-handlers.test.mjs:242): raw historical saves pass through `getSaves()` → real `shareSong()` → POST → GET, preserving columns, retired voices and long holds. Both in-memory mutations—throwing from `shareSong()` and normalizing before sharing—correctly fail the test.
+
+All 29 backend tests and syntax checks passed. The full suite encountered temporary-directory `EPERM` failures in the read-only sandbox. Owner deployment acceptance remains pending as previously recorded. No files changed.
+
+**Verdict:** Approved at e8b6bca4f43eb0e4ae1d784f01ab1c0e2ec0f95d
+
+</details>
+
+The `EPERM` failures were GPT's read-only sandbox. The full suite passes here (§ Tests).
+
+## Owner's review — the deploy (2026-11-14)
+
+The owner deployed from this worktree at `e8b6bca` (`sam validate --lint`, `sam build`,
+`sam deploy --confirm-changeset`).
+
+- **Change set**, as the owner pasted it: Modify with Replacement `False` on `Api`, `PreSignUpFn`,
+  `ProgressFn`, `SongsFn` and `UserPool`, and Modify `Conditional` on `PreSignUpPermission`. There
+  were no adds or removes, and no table rows.
+- **The `Api` row was not on my list.** The owner held the prompt while I read the pending change set
+  (`describe-change-set`, read-only). `Api`'s `Body` was flagged *Dynamic* because it refers to
+  `SongsFn.Arn` and `ProgressFn.Arn`; it is never recreated. That is the same mechanism as
+  `UserPool` → `PreSignUpFn.Arn`. It went unlisted because TUN-76's deploy changed `Api` on purpose.
+  The same read showed `PreSignUpPermission`'s *Conditional* comes from `SourceArn` → `UserPool.Arn`,
+  not from `FunctionName` as the ticket's note said. `backend/README.md` § Future deploys now lists
+  `Api`, corrects that reason, and says how to read a change set's details. The owner answered `y`.
+- **Deployed:** the stack is `UPDATE_COMPLETE` at 03:37 UTC. `SongsFn` and `ProgressFn` were updated
+  03:37:06 UTC on nodejs24.x, each zip 11,687 bytes (all the new modules). Checked by CLI.
+- **Live checks (mine, no account, no data):**
+  - `GET /songs/<made-up id>` answered `404 {"error":"not found"}`, from the new handler, so Lambda
+    loads every module.
+  - A CORS preflight from `https://www.tunegarden.game` is still allowed.
+- **The owner's playtest on production** (www.tunegarden.game), all passed:
+  1. A `#song=` link shared before the deploy opened and played, signed out.
+  2. A new Studio song too big for a link was shared through the cloud, and opened and played.
+  3. A progress change survived a reload.
+
+  These close the ticket's "a cloud share link made before the deploy still opens" and GPT's round-1
+  item 7.
+- This record and the README rows are one docs-only commit on top of GPT's approved head `e8b6bca`.
+  No code or test changed.
+
 ## Tests
 
 `node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). **766/766** with PR review round 1's fixes (backend tests: 14 + 15), and again with round 2's. That includes the new
@@ -520,6 +569,8 @@ survivor was the equivalent "no song" guard (above). A no-op control survived, a
 
 **No browser check:** the game's code does not change. The fixtures run the real client in the harness instead.
 
-**Not verified here:** anything against real AWS. Whether the SDK's DocumentClient accepts these
+**Verified on AWS after the deploy:** see § Owner's review — the deploy.
+
+**Not verified before the deploy:** anything against real AWS. Whether the SDK's DocumentClient accepts these
 parameter objects, Lambda packaging of the four new files, and the live 413/400/500 responses are
 the owner's deploy checks.
