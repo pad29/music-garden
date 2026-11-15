@@ -168,7 +168,7 @@ async function shareSong(s){
   toast("☁️ Saving to the cloud…");
   const res=await cloudSongCreate(s, s.meta&&s.meta.title, "unlisted");
   if(res&&res.id){ if(s.meta) s.meta.cloudId=res.id; copyLink(cloudLink(res.id)); }
-  else toast("⚠️ Couldn't reach the cloud — please try again.");
+  else toast(CLOUD_RESTING.share);   // busy, or switched off at the month's budget (TUN-87): the same calm line
 }
 shareBtn.onclick=()=>shareSong(currentSong());
 function getSaves(){ return Store.get("saves",[]).filter(x=>x&&x.v===3); }   // clean break: ignore any v2 saves
@@ -232,14 +232,15 @@ async function openMelodies(){ const a=getSaves(); mlist.innerHTML="";
   if(signedIn()){
     mlist.appendChild(mhint("☁️ In the cloud", true));
     const loading=mhint("Loading…"); mlist.appendChild(loading);
-    const cloud=await cloudSongList(); loading.remove();
+    const cloud=await cloudSongList(); loading.remove();   // null: could not be listed, which is not "none" (TUN-87)
+    if(cloud===null){ mlist.appendChild(mhint(CLOUD_RESTING.list)); return; }
     if(!cloud.length) mlist.appendChild(mhint("Nothing here yet — share a big song to store it in the cloud."));
     cloud.forEach(it=>{ const row=document.createElement("div"); row.className="mrow";
       const nm=document.createElement("span"); nm.className="mname"; nm.textContent=(it.title||"Untitled")+" ☁️"; row.appendChild(nm);
-      row.appendChild(mkBtn("▶ Load",async()=>{ const res=await cloudSongGet(it.id);
-        if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=it.id; loadSong(res.song); } else toast("⚠️ Couldn't load that song."); }));
+      row.appendChild(mkBtn("▶ Load",async()=>{ const res=await cloudSongGet(it.id);   // null: no such song; false: the cloud is resting
+        if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=it.id; loadSong(res.song); } else toast(res===null ? "⚠️ Couldn't load that song." : CLOUD_RESTING.song); }));
       row.appendChild(mkBtn("🔗",()=>copyLink(cloudLink(it.id))));
-      row.appendChild(mkBtn("🗑",async()=>{ if(await cloudSongDelete(it.id)) openMelodies(); else toast("⚠️ Couldn't delete."); }));
+      row.appendChild(mkBtn("🗑",async()=>{ if(await cloudSongDelete(it.id)) openMelodies(); else toast(CLOUD_RESTING.song); }));
       mlist.appendChild(row); });
   }
 }

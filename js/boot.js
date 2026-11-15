@@ -56,7 +56,8 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
       if(tok!==songLoadToken || !isStudioScope()) return;
       if(res&&res.song){ if(res.song.meta) res.song.meta.cloudId=res.id; const cut=applySong(res.song); journalClear();   // the async load must not be the first undoable "edit"
         setStatus("🎵 A song from a friend — press <b>▶ Play</b> to listen, then remix it!"+(cut?SONG_CUT_NOTE:"")); toast("🎵 A song from a friend!"); }
-      else toast("⚠️ That song link didn't work — it may have been deleted."); }); }
+      // Only the API's own "no such song" (null) may say deleted; anything else is a cloud that didn't answer (TUN-87).
+      else toast(res===null ? "⚠️ That song link didn't work — it may have been deleted." : CLOUD_RESTING.songLink); }); }
 })();
 
 // ---------- dev-only jump (enable by adding ?dev or #dev to the URL) ----------
