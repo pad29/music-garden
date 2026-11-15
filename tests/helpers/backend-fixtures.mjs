@@ -59,6 +59,7 @@ export function clientGame({ local, saves } = {}) {
     };
   } });
   g.freshToken = async () => "test-token";      // signed in, as far as the cloud calls can tell
+  g.cloudSync = "ready";                         // …with the cloud copy read, so cloudPush may send (TUN-106)
   g.initAudio();                                 // the Craft button does this before craftFromCells
   return { g, requests, copied };
 }
