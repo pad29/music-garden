@@ -468,7 +468,8 @@ Netlify deploy-preview drawer) and the sign-in check.
    GPT round · **B** — no more review: the guard is a test-side regression net, the page itself is proven clean by
    the host captures, and each round now finds a deliberately obfuscated spelling · **C** — replace the scanner
    with a blunter rule (no `//host.tld` anywhere in the decoded page or `fonts.css`, the SVG namespace aside),
-   then one GPT round. Claude recommends B. — **open**
+   then one GPT round. Claude recommends B. — **B**: the owner, in the AO session, 2026-11-14. No further
+   GPT review; the PR goes to In Review without a GPT approval, by this decision.
 
 ### Round 4 — head `e51637e` (the owner's extra round, decision 3A)
 <details><summary>GPT's PR review, verbatim</summary>
