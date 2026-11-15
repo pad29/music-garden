@@ -42,6 +42,17 @@ produced it.**
   included, so what you made before a restart of `ao preview start` stays behind with the old port:
   make it on the server you test it on (measured 2026-11-09). Never point the game at
   `ao browser target chrome`: that is the owner's own Chrome and profile.
-- Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
-  deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
-  `https://deploy-preview-82--tunegarden.netlify.app`).
+- Once the PR exists, its Cloudflare preview opens the same way. The *Cloudflare Pages* check's link in
+  `gh pr checks <n>` opens the owner's Cloudflare dashboard, not the preview: the URLs are in the comment
+  Cloudflare posts on the PR and rewrites on each push. This prints the commit it last built — check it
+  is the PR's head — then that commit's preview, then the branch preview, which follows later pushes:
+
+  ```bash
+  gh pr view <n> --json comments --jq '[.comments[] | select(.author.login == "cloudflare-workers-and-pages")][-1].body' \
+    | grep -oE '<code>[0-9a-f]+</code>|https://[a-z0-9-]+\.music-garden\.pages\.dev' | uniq
+  ```
+
+  For PR #139: `d3dd7c1`, `https://cb6e2c72.music-garden.pages.dev`,
+  `https://ao-tun-86-headers-root.music-garden.pages.dev` (the branch name's `/` became `-`). Hand-offs
+  quote the branch preview. Cloud sync and cloud songs fail on every preview — the API's CORS list
+  allows only `tunegarden.game` — so sign-in is checked on production after the merge, not here.

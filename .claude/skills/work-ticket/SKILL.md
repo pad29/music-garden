@@ -181,9 +181,11 @@ one when the owner answers after more than an hour. **When the answer comes:** `
    A review loop that ends in Needs Input is not In Review, and not `--done`.
 6. **Hand off** — read `handoff.md`. An approval counts only for the head it names: check it is still the
    PR's head (`gh pr view <n> --json headRefOid`). Put the verdict, verbatim, in the PR body's **Review**
-   section — an edit is not a new head. Wait for Netlify (`gh pr checks <n> --watch`) and take the preview
-   URL from the deploy-preview check's link. Comment on the ticket in the **In Review** format, move the
-   ticket to **In Review**, end with the same text as your last message, and file its short form with
+   section — an edit is not a new head. Wait for the *Cloudflare Pages* check (`gh pr checks <n> --watch`),
+   then take the branch preview URL from Cloudflare's comment on the PR, once the commit it names is the
+   head (`browser.md` has the command; the check's own link is the owner's dashboard). Comment on the
+   ticket in the **In Review** format, move the ticket to **In Review**, end with the same text as your
+   last message, and file its short form with
    `ao report --done … --pr-created <url>`.
 
 ## Never

@@ -1,12 +1,12 @@
-// `_headers` — the security and caching headers both hosts send with the site (TUN-86) — must exist, be
-// published by both builds, and say what the game needs: a content security policy that lets the page
+// `_headers` — the security and caching headers Cloudflare Pages sends with the site (TUN-86) — must
+// exist, be published by the build, and say what the game needs: a content security policy that lets the page
 // load only from its own site and connect only to the backend and Cognito, no framing by other sites,
 // and a cache that keeps narration clips while always re-checking the page, the scripts and the packs.
 //
 // Why a test: the headers exist only on a real host. file:// and http-server send none, so nothing local
 // shows a policy that blocks the game — it breaks in production only, and silently. The preview is the
 // real proof (the review record has its curl -I output); this is the static half: it reads the file the
-// way the hosts do (tests/helpers/site-headers.mjs), and works out the headers for every file the build
+// way the host does (tests/helpers/site-headers.mjs), and works out the headers for every file the build
 // publishes.
 import { test } from "node:test";
 import assert from "node:assert";
@@ -20,7 +20,6 @@ const read = (p) => readFileSync(join(ROOT, p), "utf8").replace(/\r\n/g, "\n");
 const REAL = read("_headers");
 const CLOUD = read("js/cloud.js");
 const REAL_SH = read("cloudflare-build.sh");
-const REAL_TOML = read("netlify.toml");
 
 const REVALIDATE = "public, max-age=0, must-revalidate";
 // Clips: kept 30 days, exactly. Pinned rather than bounded (GPT's PR review, finding 2): "max-age=…,
@@ -68,11 +67,9 @@ const includesAll = (got, want) => {
   for (const w of want) assert.ok(got.includes(w), `expected problem:\n  ${w}\ngot:\n  ${got.slice(0, 12).join("\n  ")}`);
 };
 
-test("_headers exists, and both builds publish it", () => {
+test("_headers exists, and the build publishes it", () => {
   assert.ok(REAL.trim().length > 0);
   assert.ok(parseBuildScript(REAL_SH).copies.some((c) => c.src === "_headers" && c.dst === "_headers" && !c.recursive));
-  const cmd = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
-  assert.ok(cmd.split("&&").map((s) => s.trim()).includes("cp _headers site/_headers"), "netlify.toml copies _headers");
 });
 
 test("every published file — the page, its scripts, the packs, the vendored files, every clip — gets the right headers, each once", () => {

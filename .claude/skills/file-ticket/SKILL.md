@@ -62,7 +62,7 @@ Neither GPT's design nor the worker may reopen these.
 
 ## Constraints and traps
 The `AGENTS.md` invariants this touches (the `file://` rule, score-validated FAMOUS melodies, stable
-slugs, generated files, per-package toolbox, asset folders in both build configs), plus any known trap.
+slugs, generated files, per-package toolbox, asset folders in `cloudflare-build.sh`), plus any known trap.
 
 ## Open questions
 Decisions only the owner can make, each with the options you see. Empty is fine. Anything here means

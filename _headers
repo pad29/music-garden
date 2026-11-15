@@ -1,6 +1,5 @@
-# Response headers for Tune Garden (TUN-86). Both hosts read this file from the built site/ folder:
-# Cloudflare Pages and Netlify alike, so netlify.toml's build command and cloudflare-build.sh each copy
-# it there (`cp _headers site/_headers`). It is not served as a page. tests/site-headers.test.mjs pins it.
+# Response headers for Tune Garden (TUN-86). Cloudflare Pages reads this file from the built site/
+# folder, so cloudflare-build.sh copies it there (`cp _headers site/_headers`). It is not served as a page. tests/site-headers.test.mjs pins it.
 #
 # Form: a path line, then indented `Name: value` lines. `*` matches the rest of a path. A request gets
 # the headers of EVERY rule whose path matches it. Cloudflare joins a header two matching rules both set

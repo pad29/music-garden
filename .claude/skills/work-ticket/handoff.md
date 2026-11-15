@@ -55,7 +55,7 @@ This is how the owner spends his time, so it must be honest and short.
 ## In Review — the ticket comment
 
 ```markdown
-**Ready for review** · PR #<n> · Preview: <netlify deploy-preview URL> · Session: ao://sessions/music-garden/<session-id>
+**Ready for review** · PR #<n> · Preview: <Cloudflare branch preview URL> · Session: ao://sessions/music-garden/<session-id>
 
 **What changed for you**
 - One to three bullets, in the player's terms.

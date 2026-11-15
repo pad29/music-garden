@@ -6,14 +6,14 @@
 # no docs, backend/, tests/, tools/, reviews/, spike/ or .claude/. (vendor/ is the fonts and the sign-in
 # library the page loads from this site rather than a third party, TUN-81. _headers is the security and
 # caching headers, which Pages reads from site/ and does not serve, TUN-86.) If you add a folder the game loads
-# at run time, add it here AND to netlify.toml's build command while both hosts exist.
+# at run time, add it here (and to the list in tests/cloudflare-publish.test.mjs, and a cache rule in _headers).
 # tests/cloudflare-publish.test.mjs holds this file to a strict form: `set -eu`, then only
 # `rm -rf site`, `mkdir site` and `cp [-r] <name> site/<name>` steps joined by `&&`, all on ONE line.
 # It refuses anything else, so keep to that form. One line matters: under `set -e` a failure inside an
 # `&&` list does not stop the script, so a second line would run, and the build pass, after a failed copy.
 #
 # A path that is not a real file: with no 404.html in site/, Pages treats the project as a single-page
-# app and serves index.html in its place. So a missing js/ file is not a 404 here either: the browser
+# app and serves index.html in its place. So a missing js/ file is not a 404: the browser
 # gets HTML where it asked for JavaScript, and the game never starts. A 404.html anywhere in site/
 # would change that for its folder, and the test refuses one.
 set -eu

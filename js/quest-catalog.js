@@ -5,7 +5,7 @@
 //
 // Loading is an inline JSON string parsed at boot. Not fetch — AGENTS.md forbids it for local assets
 // and the game must survive being double-clicked; not a new folder — that would need adding to the
-// netlify.toml copy or it 404s silently in production.
+// cloudflare-build.sh copy or it goes missing silently in production.
 const QUEST_TEXT_MAX=240, QUEST_JSON_MAX=262144, QUEST_DEPTH_MAX=12, QUEST_NODES_MAX=10000;
 const QUEST_NUM_MAX=1000000000;
 const QUEST_SLUG=/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;

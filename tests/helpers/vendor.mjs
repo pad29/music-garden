@@ -3,7 +3,7 @@
 //
 // vendor/SHA256SUMS is the list of what vendor/ holds, in `sha256sum -c` format: every file but itself and
 // vendor/README.md. The tests read it for three jobs: the files are the released bytes (vendor.test.mjs),
-// and both build configs publish every one of them (netlify-publish / cloudflare-publish).
+// and the build publishes every one of them (cloudflare-publish).
 //
 // Zero dependencies, and no fetch: files are read from disk.
 

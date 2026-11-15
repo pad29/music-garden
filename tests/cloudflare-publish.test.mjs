@@ -1,13 +1,14 @@
 // cloudflare-build.sh (Cloudflare Pages' build, TUN-80) must publish exactly what the game loads —
 // index.html, js/, voice/, samples/, vendor/, and the hosts' headers file _headers (TUN-86) — at the paths
-// the page uses, and the same folders as netlify.toml while both hosts exist.
+// the page uses. Cloudflare Pages is the one host (Netlify was retired by TUN-85), so this is the one guard.
 //
 // Why a test: Pages' build command and output folder live in its dashboard (`sh cloudflare-build.sh`,
-// output `site`), so this script is the only part of the Cloudflare config the repository holds. As on
-// Netlify, a js/ file missing from the output is not a 404: with no 404.html, Pages serves index.html
-// for any path that is not a file, and the game never starts. Unlike the Netlify checker, this one is
-// strict — a step it cannot read fails the test (tests/helpers/cloudflare-publish.mjs says why) — and
-// it also runs the real script, under Git Bash on Windows, in a scratch folder.
+// output `site`), so this script is the only part of the Cloudflare config the repository holds. A js/
+// file missing from the output is not a 404: with no 404.html, Pages serves index.html for any path
+// that is not a file, and the game never starts. Nothing local shows that — http-server and file://
+// serve the repository itself. The checker is strict — a step it cannot read fails the test
+// (tests/helpers/cloudflare-publish.mjs says why) — and the test also runs the real script, under Git
+// Bash on Windows, in a scratch folder.
 import { test } from "node:test";
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";
@@ -15,22 +16,21 @@ import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { gameScripts, ROOT } from "./helpers/game-scripts.mjs";
-import { parseBuildScript, cloudflareProblems, publishedTree, custom404s } from "./helpers/cloudflare-publish.mjs";
+import { parseBuildScript, cloudflareProblems, copyGaps, publishedTree, custom404s } from "./helpers/cloudflare-publish.mjs";
 import { vendorFiles } from "./helpers/vendor.mjs";
 
 // LF, as git stores it and Cloudflare's Linux checkout gets it (a Windows checkout may hold CRLF).
 const REAL_SH = readFileSync(join(ROOT, "cloudflare-build.sh"), "utf8").replace(/\r\n/g, "\n");
-const REAL_TOML = readFileSync(join(ROOT, "netlify.toml"), "utf8");
 
-// The contract, independent of both configs: what the game loads, and nothing else. A new runtime
-// folder is added here on purpose, together with both configs.
+// The contract, independent of the script: what the game loads, and nothing else. A new runtime
+// folder is added here on purpose, together with the script.
 const ALLOWED = ["cp index.html site/index.html", "cp _headers site/_headers", "cp -r js site/js", "cp -r voice site/voice", "cp -r samples site/samples",
   "cp -r vendor site/vendor"];
 // What the page itself names: its game scripts, and every vendored file (TUN-81: the fonts and the sign-in library).
 const pageFiles = () => [...gameScripts().scripts, ...vendorFiles()];
 
-const problems = ({ script = REAL_SH, toml = REAL_TOML } = {}) =>
-  cloudflareProblems({ script, toml, scripts: pageFiles(), allowed: ALLOWED });
+const problems = ({ script = REAL_SH } = {}) =>
+  cloudflareProblems({ script, scripts: pageFiles(), allowed: ALLOWED });
 
 // Replace an anchor that must occur exactly once, so a mutation can never silently not apply.
 const swap = (text, from, to) => {
@@ -42,7 +42,7 @@ const includesAll = (got, want) => {
   for (const w of want) assert.ok(got.includes(w), `expected problem:\n  ${w}\ngot:\n  ${got.join("\n  ")}`);
 };
 
-test("cloudflare-build.sh publishes exactly index.html, _headers, js/, voice/, samples/ and vendor/, as netlify.toml does", () => {
+test("cloudflare-build.sh publishes exactly index.html, _headers, js/, voice/, samples/ and vendor/", () => {
   assert.deepEqual(problems(), []);
 });
 
@@ -109,100 +109,25 @@ test("a second command line is refused, even one that would publish correctly; c
 test("a valid copy of something the game does not load is caught — spike/ above all", () => {
   const last = "cp -r samples site/samples";
   assert.deepEqual(problems({ script: sh(last, `${last} && cp -r spike site/spike`) }),
-    ["cloudflare-build.sh publishes more than the game loads: cp -r spike site/spike",
-      "cloudflare-build.sh runs cp -r spike site/spike; netlify.toml [build] does not"]);
+    ["cloudflare-build.sh publishes more than the game loads: cp -r spike site/spike"]);
 });
 
-test("Netlify and Cloudflare must copy the same folders, in [build] and in every [context.*] override", () => {
-  // A context override that keeps the scripts but drops the asset folders: the script check alone
-  // would pass it (TUN-6's context lesson, one level down).
-  for (const ctx of ["production", "deploy-preview"]) {
-    const toml = REAL_TOML + `\n[context.${ctx}]\n  command = "mkdir -p site && cp index.html site/index.html && cp -r js site/js"\n`;
-    includesAll(problems({ toml }), [
-      `cloudflare-build.sh runs cp -r voice site/voice; netlify.toml [context.${ctx}] does not`,
-      `cloudflare-build.sh runs cp -r samples site/samples; netlify.toml [context.${ctx}] does not`,
-      `cloudflare-build.sh runs cp -r vendor site/vendor; netlify.toml [context.${ctx}] does not`]);
-  }
-  // A new folder in one config only fails parity; in both, it still fails the allowlist.
-  const extra = " && cp -r fonts site/fonts";
-  const tomlPlus = swap(REAL_TOML, "cp -r vendor site/vendor\"", "cp -r vendor site/vendor" + extra + "\"");
-  const shPlus = sh("cp -r vendor site/vendor", "cp -r vendor site/vendor" + extra);
-  assert.deepEqual(problems({ toml: tomlPlus }), ["netlify.toml [build] runs cp -r fonts site/fonts; cloudflare-build.sh does not"]);
-  assert.deepEqual(problems({ script: shPlus }), [
-    "cloudflare-build.sh publishes more than the game loads: cp -r fonts site/fonts",
-    "cloudflare-build.sh runs cp -r fonts site/fonts; netlify.toml [build] does not"]);
-  assert.deepEqual(problems({ script: shPlus, toml: tomlPlus }),
-    ["cloudflare-build.sh publishes more than the game loads: cp -r fonts site/fonts"]);
-});
-
-test("Netlify must publish site/, in [build] and in any override", () => {
-  assert.deepEqual(problems({ toml: swap(REAL_TOML, 'publish = "site"', 'publish = "."') }),
-    ['netlify.toml [build] publishes ".", not "site"']);
-  assert.deepEqual(problems({ toml: REAL_TOML + '\n[context.production]\n  publish = "dist"\n' }),
-    ['netlify.toml [context.production] publishes "dist", not "site"']);
-  assert.deepEqual(problems({ toml: swap(REAL_TOML, 'publish = "site"', "") }), ["netlify.toml [build] sets no publish directory"]);
-});
-
-// Parity reads Netlify's commands strictly too: the lenient Netlify checker skips a step it can't read,
-// so each of these passed parity before (GPT's PR review, finding 1), in [build] and in an override.
-test("a Netlify command with anything but plain copies is refused, in [build] and in every override", () => {
-  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
-  const mutants = [
-    [real + " && cp -R spike site/spike", "cp -R spike site/spike"],
-    [real + " && cp -r backend site", "cp -r backend site"],
-    [real + " && rm site/js/boot.js", "rm site/js/boot.js"],
-    ["exit 0 && " + real, "exit 0"],
-  ];
-  for (const [cmd, refused] of mutants) {
-    assert.deepEqual(problems({ toml: swap(REAL_TOML, `"${real}"`, `"${cmd}"`) }), [`netlify.toml [build]: refused "${refused}"`]);
-    for (const ctx of ["production", "deploy-preview"])
-      assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.${ctx}]\n  command = "${cmd}"\n` }),
-        [`netlify.toml [context.${ctx}]: refused "${refused}"`]);
-  }
-  // Control: an override that repeats the real command is fine.
-  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\n  command = "${real}"\n` }), []);
-});
-
-// Quoted keys are valid TOML; a reader that misses them would treat the setting as absent (finding 2).
-test("quoted and dotted command/publish keys are read, or refused — never ignored", () => {
-  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
-  const short = "mkdir -p site && cp index.html site/index.html && cp -r js site/js";
-  assert.deepEqual(problems({ toml: REAL_TOML + '\n[context.production]\n  "publish" = "."\n' }),
-    ['netlify.toml [context.production] publishes ".", not "site"']);
-  assert.deepEqual(problems({ toml: REAL_TOML + "\n[context.production]\n  'publish' = \"dist\"\n" }),
-    ['netlify.toml [context.production] publishes "dist", not "site"']);
-  includesAll(problems({ toml: REAL_TOML + `\n[context.deploy-preview]\n  "command" = "${short}"\n` }),
-    ["cloudflare-build.sh runs cp -r voice site/voice; netlify.toml [context.deploy-preview] does not"]);
-  // Controls: the same quoted keys with the right values.
-  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\n  "publish" = "site"\n  "command" = "${real}"\n` }), []);
-  // A dotted key can't be read here, so it is refused rather than taken as absent.
-  refusesLine(REAL_TOML + `\n[context]\n  production.command = "${short}"\n`, `production.command = "${short}"`);
-  refusesLine('build.publish = "."\n' + REAL_TOML, 'build.publish = "."');
-  // A command in a table that never deploys (Netlify Dev's [dev]) is plain TOML, and fine.
-  assert.deepEqual(problems({ toml: REAL_TOML + '\n[dev]\n  command = "npx http-server"\n' }), []);
-});
-
-// The six spellings GPT's round-2 review found passing: valid TOML for a production or deploy-preview
-// override that the readers would miss. Each must be refused, by line, not treated as absent.
-const refusesLine = (toml, text) => {
-  const got = problems({ toml });
-  assert.ok(got.some((p) => /^netlify\.toml line \d+: can't read /.test(p) && p.endsWith(`"${text}"`)),
-    `expected "${text}" to be refused; got:\n  ${got.join("\n  ")}`);
-};
-test("any other TOML spelling of a table or key is refused, never read as absent", () => {
-  for (const [extra, text] of [
-    ['["context".production]\npublish = "."', '["context".production]'],
-    ['[context . production]\npublish = "."', "[context . production]"],
-    ['[context]\nproduction . publish = "."', 'production . publish = "."'],
-    ["['context'.'deploy-preview']\ncommand = \"exit 0\"", "['context'.'deploy-preview']"],
-    ['[context.production]\n"\\u0070ublish" = "."', '"\\u0070ublish" = "."'],
-    ['[context]\nproduction = { publish = "." }', 'production = { publish = "." }'],
-    ['[context.production]\ncommand = """mkdir -p site"""', 'command = """mkdir -p site"""'],
-  ]) refusesLine(REAL_TOML + "\n" + extra + "\n", text);
-  // Controls: the plain spellings of correct overrides, and the real file itself, read cleanly.
-  const real = REAL_TOML.match(/^\s*command\s*=\s*"([^"]*)"/m)[1];
-  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.production]\npublish = "site"\ncommand = "${real}"\n` }), []);
-  assert.deepEqual(problems({ toml: REAL_TOML + `\n[context.deploy-preview]\n'publish' = 'site'\n'command' = '${real}'\n` }), []);
+// The path rule on layouts the real page does not have yet (GPT's test pass on TUN-6, first written
+// against Netlify's checker, retargeted by TUN-85): a script at the root needs the file itself copied, a
+// nested one its top folder with -r, and a spike/ script is not covered by js/. Mutations: drop each
+// copy alone — exactly its own script is reported, and nothing else.
+test("the path rule: root scripts, nested scripts and spike/ scripts each need their own copy", () => {
+  const scripts = ["boot.js", "js/nested/engine.js", "spike/probe.js"].map((name) => ({ name, inline: false }));
+  const all = [["index.html", false], ["boot.js", false], ["js", true], ["spike", true]]
+    .map(([name, recursive]) => ({ src: name, dst: name, recursive }));
+  assert.deepEqual(copyGaps(all, scripts), []);
+  for (const [drop, missing] of [["boot.js", "boot.js"], ["js", "js/nested/engine.js"], ["spike", "spike/probe.js"], ["index.html", "index.html"]])
+    assert.deepEqual(copyGaps(all.filter((c) => c.src !== drop), scripts), [missing]);
+  // A folder copied without -r, or a root file copied with it, is not a copy that publishes the script.
+  assert.deepEqual(copyGaps(all.map((c) => c.src === "js" ? { ...c, recursive: false } : c), scripts), ["js/nested/engine.js"]);
+  assert.deepEqual(copyGaps(all.map((c) => c.src === "boot.js" ? { ...c, recursive: true } : c), scripts), ["boot.js"]);
+  // Inline scripts need no copy.
+  assert.deepEqual(copyGaps(all, [...scripts, { name: "inline-1", inline: true }]), []);
 });
 
 // ---- A scratch repository: a few files in each folder, plus everything that must stay out. ----
