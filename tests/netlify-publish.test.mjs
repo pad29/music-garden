@@ -7,8 +7,10 @@
 // half, so the mistake is caught before a deploy.
 //
 // Scope, deliberately narrow: the page's static local <script src> files (as tests/helpers/game-scripts.mjs
-// reads them) and index.html itself. It does not cover folders the game loads at run time by other means
-// (samples/ through script tags it creates, voice/ through Audio elements), and it does not run the
+// reads them), index.html itself, and every file in vendor/ (the fonts and the sign-in library the page
+// loads from this site, TUN-81: tests/helpers/vendor.mjs). It does not cover folders the game loads at
+// run time by other means (samples/ through script tags it creates, voice/ through Audio elements), and
+// it does not run the
 // command — tests/helpers/netlify-publish.mjs reads its `cp` steps, which is how this build is written.
 import { test } from "node:test";
 import assert from "node:assert";
@@ -16,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gameScripts, ROOT } from "./helpers/game-scripts.mjs";
 import { publishGaps } from "./helpers/netlify-publish.mjs";
+import { vendorFiles } from "./helpers/vendor.mjs";
 
 const REAL_TOML = readFileSync(join(ROOT, "netlify.toml"), "utf8");
 
@@ -23,6 +26,23 @@ test("netlify.toml publishes index.html and every script the page loads, at the 
   const { scripts } = gameScripts();
   assert.ok(scripts.some((s) => !s.inline), "the page loads at least one local script file");
   assert.deepEqual(publishGaps(REAL_TOML, scripts), []);
+});
+
+// TUN-81: the vendored library, fonts and their licences, which no game script names. Mutation: drop the
+// vendor/ copy, or copy it elsewhere — every vendored file is then a gap, and the game scripts are not.
+test("netlify.toml publishes every file in vendor/, at the paths the page uses", () => {
+  const files = vendorFiles();
+  assert.ok(files.some((f) => f.name.endsWith(".woff2")) && files.some((f) => f.name.endsWith(".min.js")));
+  const all = [...gameScripts().scripts, ...files];
+  assert.deepEqual(publishGaps(REAL_TOML, all), []);
+  const variant = (from, to) => {
+    assert.strictEqual(REAL_TOML.split(from).length, 2, "variant anchor occurs once: " + from);
+    return REAL_TOML.replace(from, to);
+  };
+  const names = files.map((f) => f.name);
+  assert.deepEqual(publishGaps(variant(" && cp -r vendor site/vendor", ""), all), names);
+  assert.deepEqual(publishGaps(variant("cp -r vendor site/vendor", "cp -r vendor site/lib"), all), names);
+  assert.deepEqual(publishGaps(variant("cp -r vendor site/vendor", "cp vendor site/vendor"), all), names);
 });
 
 // The checker's own mutations, kept as tests so the guard cannot quietly go blind: each variant is the

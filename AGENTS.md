@@ -2,8 +2,9 @@
 
 A browser game that teaches music theory through play ("Minecraft for music"), aimed at kids 8+ but
 meant to appeal broadly. The app is `index.html` (markup and styles) plus the classic scripts in `js/`
-that hold all of its code (vanilla JS + Web Audio; no dependencies, framework or build step), and two
-runtime asset folders it loads at startup: `voice/` (narration mp3s) and `samples/` (instrument packs).
+that hold all of its code (vanilla JS + Web Audio; no dependencies, framework or build step), and three
+runtime asset folders it loads at startup: `voice/` (narration mp3s), `samples/` (instrument packs) and
+`vendor/` (the fonts and the Cognito sign-in library, as released).
 Live at https://tunegarden.game — every push to `main` deploys.
 
 ## Commands
@@ -53,6 +54,9 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - **No `fetch()` / XHR for local assets.** `index.html` must keep working when double-clicked
   (`file://`). Runtime data loads via `<script src>` (`samples/*.js`) or `Audio` elements
   (`voice/*.mp3`). https cloud APIs are exempt.
+- **The page makes no third-party requests** (owner, 2026-11-13): no CDN script, no Google Fonts. A
+  third-party file is copied into `vendor/` as released and pinned in `vendor/SHA256SUMS`
+  (`vendor/README.md`); `tests/vendor.test.mjs` guards both. The backend and Cognito are the exceptions.
 - **Never hand-edit generated files:** `samples/<instr>.js` (built from `samples/<instr>/*.mp3`),
   `voice/*.mp3`, `site/`, `backend/.aws-sam/`.
 - **Package and level IDs are stable slugs — never renumber or rename them.** Both `requires:` graphs
@@ -80,6 +84,8 @@ Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS cre
 - Where the editor is headed (notes-as-objects, lenses, chromatic lattice) → `EDITOR-DESIGN.md`
 - How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
+- The vendored fonts and sign-in library: versions, sources, licences, hashes, how to update →
+  `vendor/README.md`
 - Audio-scheduler playback goldens and the console-capture procedure → `tools/goldens/README.md`
 - Each ticket's design, what its reviews flagged, and what was done → `reviews/` (one file per ticket;
   older history in `REVIEW-LOG.md`, closed 2026-09-27)
@@ -117,7 +123,8 @@ fire, at which step). Re-capture per `tools/goldens/README.md` before and after 
 
 Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior verified in a real browser (and
 on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text changed → the design docs
-(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed → reported to
+(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed, and
+`vendor/README.md` with `SHA256SUMS` if a vendored file changed → reported to
 the owner. A required check you could not run (`file://`, the phone, sound by ear) is reported as
 pending, and stays the owner's to verify before merge. Merging to `main` happens only on the owner's
 explicit request.

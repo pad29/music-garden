@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gameScripts, applyPatches, countAcross, joinScripts, checkSyntax } from "./helpers/game-scripts.mjs";
+import { spawnSync } from "node:child_process";
+import { gameScripts, applyPatches, countAcross, joinScripts, checkSyntax, vendoredSources, ROOT } from "./helpers/game-scripts.mjs";
 import { loadGame } from "./harness.mjs";
 
 const TEMPO = '<input id="tempo" type="range" min="40" max="200" value="100">';
@@ -49,6 +50,50 @@ test("scripts come back in document order, CDN tags and commented-out tags skipp
     assert.equal(scripts[1].src, "\nconst B = A + 1;\n", "and in the page");
     assert.equal(scripts[1].line, 8, "the inline body starts on the <script> line of index.html");
     assert.equal(scripts[0].line, 1);
+  });
+});
+
+// TUN-81: a script under vendor/ is third-party code the site serves itself — listed apart, never a game
+// script, by where the file is rather than how the src is spelled. Mutations: drop the vendor/ test (the
+// library becomes scripts[0], ahead of the gate); match the src text instead of the path ("./vendor/" and
+// "js/vendor/" then go wrong); match "vendor" as a prefix ("vendorx/" becomes vendored).
+test("a vendor/ script is listed apart, unread, and still held to document order", () => {
+  const html = [
+    `<html>${TEMPO}`,
+    '<script src="vendor/lib.min.js"></script>',
+    '<script src="./vendor/other.js?v=1"></script>',
+    '<script src="js/a.js"></script>',
+    '<script src="js/vendor/b.js"></script>',
+    '<script src="vendorx/c.js"></script>',
+    "</html>",
+  ].join("\n");
+  const files = { "js/a.js": "const A = 1;", "js/vendor/b.js": "const B = 2;", "vendorx/c.js": "const C = 3;" };
+  page(html, files, (dir) => {
+    const { scripts, vendored } = gameScripts(dir);   // the vendor/ files do not exist: never read
+    assert.deepEqual(scripts.map((s) => s.name), ["js/a.js", "js/vendor/b.js", "vendorx/c.js"]);
+    assert.deepEqual(vendored.map((v) => [v.name, v.line]), [["vendor/lib.min.js", 2], ["./vendor/other.js", 3]]);
+    assert.throws(() => vendoredSources(vendored), /index\.html:2: cannot read vendored <script src="vendor\/lib\.min\.js">/);
+  });
+  for (const [tag, message] of [['<script async src="vendor/lib.js"></script>', /async/], ['<script type="module" src="vendor/lib.js"></script>', /module/]])
+    page(`<html>${TEMPO}${tag}<script src="js/a.js"></script></html>`, { "js/a.js": "const A=1;", "vendor/lib.js": "1" }, (dir) => {
+      assert.throws(() => gameScripts(dir), message, tag);
+    });
+});
+
+// GPT's design review, finding 3: AGENTS.md has every local <script src> file syntax-checked, the vendored
+// library included. Mutation: leave vendoredSources out of tools/check-syntax.mjs — the broken copy passes.
+test("tools/check-syntax.mjs compiles the vendored scripts too, and fails on a broken one", () => {
+  const run = (dir) => spawnSync(process.execPath, [join(ROOT, "tools", "check-syntax.mjs"), dir], { encoding: "utf8" });
+  const html = `<html>${TEMPO}<script src="vendor/lib.js"></script><script src="js/a.js"></script></html>`;
+  page(html, { "js/a.js": "const A = 1;", "vendor/lib.js": "var Lib = {};" }, (dir) => {
+    const ok = run(dir);
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.match(ok.stdout, /^syntax OK \(1 script: js\/a\.js; vendored: vendor\/lib\.js\)/);
+  });
+  page(html, { "js/a.js": "const A = 1;", "vendor/lib.js": "var Lib = {;" }, (dir) => {
+    const bad = run(dir);
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /vendor\/lib\.js:1/);
   });
 });
 

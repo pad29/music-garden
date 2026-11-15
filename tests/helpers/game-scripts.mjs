@@ -8,11 +8,16 @@
 // type="module", async, defer, nomodule — throws instead of being quietly skipped, because a tool
 // that silently drops a script tests less than it says (and gen-voice would prune its narration).
 //
+// Third-party code the site serves itself (vendor/, TUN-81: the Cognito sign-in library) is not a game
+// script. A local <script src> under vendor/ is listed apart, in `vendored`, never in `scripts`, so the
+// harness never runs it, gen-voice never reads it and the mutation audits never patch it, as when it came
+// from a CDN. tools/check-syntax.mjs still compiles it (AGENTS.md: every local <script src> file).
+//
 // Zero dependencies, and no fetch: files are read from disk.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import vm from "node:vm";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -43,7 +48,10 @@ const PAGE_TOKENS = new RegExp(
   `|<script${TAG_END}([\\s\\S]*?)<\\/script\\s*>`, "gi");
 
 /**
- * index.html's scripts in document order: `{ html, scripts }`, each script `{ name, src, inline, line }`.
+ * index.html's scripts in document order: `{ html, scripts, vendored }`, each script
+ * `{ name, src, inline, line }`. Each vendored script is `{ name, file, line }` (`line`: its tag's line in
+ * `page`), named but not read — `vendoredSources` reads them — so a copy of the page and its game scripts
+ * alone still loads.
  * `line` is the 1-based line in `name` where `src` starts (pass `lineOffset: line - 1` to vm).
  * HTML comments and text-only elements (<style>, <textarea>, …) are skipped in the same left-to-right
  * pass, so a commented-out tag is not loaded and a `<!--` inside a script body is left alone. Local
@@ -51,7 +59,7 @@ const PAGE_TOKENS = new RegExp(
  */
 export function gameScripts(root = ROOT, page = "index.html") {
   const html = readFileSync(join(root, page), "utf8").replace(/\r\n/g, "\n");
-  const scripts = [];
+  const scripts = [], vendored = [];
   let inlineCount = 0;
   for (const m of html.matchAll(PAGE_TOKENS)) {
     if (m[0].startsWith("<!--") || m[1]) continue; // a comment, or a text-only element
@@ -72,6 +80,11 @@ export function gameScripts(root = ROOT, page = "index.html") {
       // HTML character references and read a different file than the browser would.
       if (/[%&]/.test(rel)) throw new Error(`${where}: src "${src}" is encoded — use a plain relative path`);
       const file = resolve(root, dirname(page), rel);
+      // Judged by where the file is, not how the src is spelled: "./vendor/a.js" is vendored too.
+      if (relative(resolve(root), file).split(sep)[0] === "vendor") {
+        vendored.push({ name: rel, file, line: lineAt(html, m.index) });
+        continue;
+      }
       let text;
       try { text = readFileSync(file, "utf8"); }
       catch (err) { throw new Error(`${where}: cannot read <script src="${src}">: ${err.message}`); }
@@ -84,7 +97,17 @@ export function gameScripts(root = ROOT, page = "index.html") {
     }
   }
   if (!scripts.length) throw new Error(`No local scripts found in ${page}`);
-  return { html, scripts };
+  return { html, scripts, vendored };
+}
+
+/** Vendored scripts as `checkSyntax` takes them: read from disk, CRLF-normalised. Compile them; never run them. */
+export function vendoredSources(vendored) {
+  return vendored.map((v) => {
+    let text;
+    try { text = readFileSync(v.file, "utf8"); }
+    catch (err) { throw new Error(`index.html:${v.line}: cannot read vendored <script src="${v.name}">: ${err.message}`); }
+    return { name: v.name, src: text.replace(/\r\n/g, "\n"), inline: false, line: 1 };
+  });
 }
 
 /**
