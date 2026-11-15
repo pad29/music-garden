@@ -190,7 +190,9 @@ TUN-87 every such failure says one calm thing, "the cloud is resting" (`CLOUD_RE
   work — it may have been deleted." — a switched-off API answers 404 too, with API Gateway's body.
 - Making an account when Cognito cannot run the sign-up trigger (the switch is off, or the trigger
   failed): "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is
-  saved on this device — and try again another day."
+  saved on this device — and try again another day." Cognito's own text, which the game no longer shows, is
+  "PreSignUp invocation failed due to error TooManyRequestsException." (measured with the switch off,
+  2026-11-15).
 
 To change a limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the
 comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the arithmetic. The

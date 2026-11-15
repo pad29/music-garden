@@ -817,8 +817,39 @@ and the owner decides question 1.
      check a minute after every on or off catches anything that landed late. Costs nothing. *(Claude)*
    - **B)** Reconcile: record the wanted state and have a schedule re-apply it every few minutes. Catches it
      without you, but runs while idle (pennies, not nothing) and is more to test. *(GPT's first option)*
-2. **Pending — the deploy and the by-hand trip test** (the ticket's last *Done* bullet): the hand-off's steps.
+2. **Done — the deploy and the by-hand trip test** (the ticket's last *Done* bullet), 2026-11-15: see *Owner's review*.
    The owner's answer to 1: "Accept the late-applied-write risk and add the status check a minute later
    (no reconciling schedule)." The check was already in the runbook (§ The cost switch, after every on or
    off) and the hand-off's switch-on step; the rehearsal steps now name it after the trip too. No change to
    the switch's logic, so no further GPT round.
+
+## Owner's review — the deploy and the trip by hand (2026-11-15)
+
+The owner deployed `594a44d` from this worktree (spend that month: $12, under the cap, so the replaced budget
+could not trip the switch).
+
+- **Change set** (checked before `y`): 9 additions — `CloudSwitchAlarmTopic`, `…TopicPolicy`, `…Subscription`,
+  `…Permission`, `CloudSwitchNoticeTopic`, `CloudSwitchState`, `CloudSwitchFn`, `CloudSwitchFnRole`,
+  `CloudSwitchFnEventInvokeConfig`; `MonthlyBudget` Modify, Replacement `True` (expected); `Api`, the three
+  functions and `UserPool` Modify `False`, `PreSignUpPermission` `Conditional` — the usual rows. No table
+  touched, nothing deleted. The deploy succeeded, so Budgets accepted the SNS subscriber.
+- **Trip:** `aws sns publish … --message rehearsal` returned a `MessageId`; the "switched OFF" email
+  arrived; **status** said `"cloud":"off"` with the three functions at 0 and the endpoint disabled.
+- **Today's game (tunegarden.game, `main`) while off:** guest play worked; the signed-in panel showed
+  TUN-106's failed-load message; sign-in worked. **Create account showed Cognito's own text: "⚠️ PreSignUp
+  invocation failed due to error TooManyRequestsException."** — the message the new mapping catches (it
+  names `PreSignUp`); the test's first refusal case is this exact text.
+- **This PR's game** (the Cloudflare branch preview, `ao-cost-cap-root.music-garden.pages.dev`, client
+  files byte-identical to the branch; the API refuses that origin, but sign-up and sign-in go to Cognito
+  directly): **Create account showed "🌱 The garden isn't taking new accounts just now. Keep playing as a
+  guest — your garden is saved on this device — and try again another day."** Home, a `#song=` link and
+  Melodies showed their resting lines.
+- **Switch-on:** no `FunctionError`, the "switched back ON" email, and a minute later **status**
+  `"cloud":"on"`; on tunegarden.game a signed-in reload loaded the cloud progress and said it syncs.
+
+Correction to the hand-off: its checklist sent the message checks to tunegarden.game, which runs `main`
+until this PR merges; the new messages were checked on the branch preview instead.
+
+**Still not verified:** AWS Budgets itself publishing to the topic at $30 (only real spend does that);
+whether a `sam deploy` while off resets the switch (TUN-102); the new client's messages against the
+switched-off API from the production origin (they ship with the merge).
