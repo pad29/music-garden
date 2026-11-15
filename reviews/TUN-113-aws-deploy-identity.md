@@ -103,3 +103,67 @@ All answered by the owner, relayed by the orchestrator (music-garden-5), 2026-11
 
 **What no test can reach:** whether AWS accepts every action name, and whether CloudFormation's handlers
 call an API the list misses. Only the owner's deploys show that, which is why the root key goes last.
+
+## PR review (temporarily GPT through `ask.sh`, Astra)
+
+Round 1, on `bd2130b` — **CHANGES REQUESTED**. GPT's opening: *"I found **no confirmed missing deployment
+permission in the current policy**. PR #147's changes appear covered. That is not a guarantee"*. It
+checked the SNS handler schemas and SAM's source directly, and inferred the rest, marking each row as
+inference. It found no invented action name, and judged the conditions valid.
+
+1. **High — `lambda:*` lets the identity invoke the player functions directly.** *"Their handlers trust
+   `event.requestContext.authorizer.jwt.claims.sub`; a direct Lambda caller supplies that event without
+   passing through the JWT authorizer. I verified locally with a stub database that a fabricated `sub`
+   returns HTTP 200 and reads that player's progress."* **Agreed.** Fixed in the opposite direction from
+   GPT's suggestion. GPT suggested listing the Lambda management actions. I added a `Deny` on
+   `lambda:Invoke*` with `NotResource` set to the cost switch, so management stays `lambda:*` (no handler
+   call to miss) and invoking anything else is refused. The README now says why.
+2. **Medium — the test did not evaluate conditions** (removing the region conditions, or pinning
+   `Functions` to another region, still passed). **Agreed.** The test now evaluates `StringEquals` and
+   `ArnEquals` on the three keys the policy uses, with a context per request, and reports any other
+   operator or key. Mutation cases cover all three.
+3. **Medium — the resource extraction was a regex that silently dropped what it couldn't read** (a quoted
+   `Type` vanished). **Agreed on fail-closed; disagreed on sharing `backend-template.test.mjs`'s parser.**
+   That file is being edited by TUN-88 (PR #147), and extracting its parser means touching it. Instead,
+   the reader now reports any resource without exactly one readable `Type`, accepts quotes, and reports
+   names that are not literals (`!Sub`, block form) and explicit function roles. Each case has a mutation
+   test, plus a harmless-quoting case that must stay clean.
+4. **Medium — the test checked only its author's list; SNS subscription calls authorize against the
+   topic; change-set calls against the stack; lifecycle reads missing.** **Agreed, except the "sourced,
+   versioned operation table".** SNS calls are now checked on the topic. Change-set calls are checked on
+   both the stack and the change-set ARN (the policy allows both). `NEEDS` adds the topic read handler's
+   calls, role, function and event-invoke reads, API tag paths, DynamoDB reads, budget tags, and SAM's
+   bucket creation. The claims in `tests/README.md` and the test's header now say `NEEDS` is a model, not
+   proof. A sourced, versioned table of every handler call is more than an S ticket should carry. The
+   owner's deploy is the real check, and the README says how to repair a refusal. (The Build section
+   above overstates this: read "the actions in `NEEDS`".)
+5. **Medium — the README overstated region, account and data claims.** **Agreed on the wording;
+   disagreed on adding an S3 location condition.** The README now says IAM, S3 and Budgets are global,
+   what `*` for the account does and doesn't limit, and that the identity can turn off deletion
+   protection and delete the player stores. No S3 region condition: the SAM bucket already exists, a
+   look-alike bucket elsewhere holds nothing, and a wrong condition is one more way for the first real
+   deploy to fail. The account ID stays out of the README, as the ticket requires.
+6. **Medium — Windows credential precedence and cleanup.** **Agreed.** The README now sets `AWS_PROFILE`
+   in the current shell too, checks and clears key variables in the Process, User and Machine scopes,
+   says to reopen terminal apps, checks the identity in the deploy shell, names TUN-88 as the real deploy,
+   and searches for every copy of the key ID (CSV downloads, scripts, `.env`, PowerShell history).
+7. **Medium — recovery when the rollback fails** (`UPDATE_ROLLBACK_FAILED`). **Agreed.** Added
+   `describe-stack-events`, the status check, and `continue-update-rollback` until
+   `UPDATE_ROLLBACK_COMPLETE`.
+8. **Low — wording.** **Agreed** on "no key is stored" (now: no long-term access key; temporary
+   credentials are cached), on Deploy's "us-east-1 (or your choice)", and on Organizations' free-plan
+   catch. **Deferred:** `backend/template.yaml:99`'s comment calls the owner an "IAM user". The
+   orchestrator put `template.yaml` off-limits while TUN-88 edits it, so it goes to a follow-up.
+
+Missing tests GPT listed:
+- Added: invocation scope; mandatory conditions; the unusable-region grant; a quoted type and a missing
+  type; non-literal names and an explicit role; SNS on the topic; change sets on the stack; lifecycle
+  removals (role reads, budget tags, API tags, TTL, the topic read handler); SAM bucket creation; an
+  unknown service prefix; the size limit; an account ID.
+- **Not added:** "an invented action such as `iam:NoSuchAction` fails". There is no catalog of real
+  action names here, so the test checks the format and the service prefix only. "Matching-prefix S3
+  creation outside the permitted region": no such condition, per 5. "A retained PR #147 fixture": once
+  PR #147 merges, its template is `main`'s, and a frozen copy would go stale. Its table, TTL and
+  role-policy calls are in `NEEDS`, and the test passes against PR #147's template (scratch copy).
+
+**871 tests pass** (the policy test: 26, of which 22 are mutation cases).

@@ -27,7 +27,7 @@ backend/
 
 You need an AWS account, a deploy identity and two CLIs. Deploys run as an **IAM Identity Center** user
 with the `mg-deploy` permission set below. `aws sso login` gives the CLI credentials that expire on their
-own, so no key is stored on disk (owner, TUN-113, 2026-11-15).
+own, so no long-term access key is ever created (owner, TUN-113, 2026-11-15).
 
 **Never create or use an access key for the root user**, the account's email sign-in. A root key can do
 anything to the account, including its billing and closing it, and no policy can limit it. If
@@ -41,7 +41,9 @@ Sign in as the root user → the account menu (top right) → **Security credent
 ### 2. Create the deploy identity (IAM Identity Center)
 In the AWS Console, with the region set to **us-east-1** (N. Virginia):
 1. **IAM Identity Center → Enable.** It offers to enable AWS Organizations: accept. This account becomes
-   the organization's management account. That is free, and nothing changes for the stack.
+   the organization's management account. Organizations itself costs nothing, and nothing changes for
+   the stack. One catch, from AWS: an account still on AWS's *free plan* moves to the paid plan when it
+   creates an organization, which ends its free-plan credits.
 2. **Settings → Authentication → Multi-factor authentication → Configure:** check that users are
    prompted for MFA *every time they sign in*, and that a user without a device must register one at
    sign-in. Both are the defaults.
@@ -88,6 +90,9 @@ What deploying this stack needs, and what [the cost switch's commands](#the-cost
     { "Sid": "Functions", "Effect": "Allow", "Action": "lambda:*", "Resource": [
         "arn:aws:lambda:us-east-1:*:function:music-garden-*",
         "arn:aws:lambda:us-east-1:*:function:music-garden-*:*" ] },
+    { "Sid": "InvokeOnlyTheCostSwitch", "Effect": "Deny", "Action": "lambda:Invoke*", "NotResource": [
+        "arn:aws:lambda:us-east-1:*:function:music-garden-cloud-switch",
+        "arn:aws:lambda:us-east-1:*:function:music-garden-cloud-switch:*" ] },
     { "Sid": "TablesNotTheirData", "Effect": "Allow", "Resource": "arn:aws:dynamodb:us-east-1:*:table/music-garden-*",
       "Action": [
         "dynamodb:CreateTable", "dynamodb:UpdateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable",
@@ -123,24 +128,39 @@ What deploying this stack needs, and what [the cost switch's commands](#the-cost
   ]
 }
 ```
-- **What it allows.** This stack (`music-garden`) and SAM's bucket stack, plus anything named
-  `music-garden-*`: roles, functions, tables (the sign-up counter's included) and topics, and the
-  `/music-garden/` parameters. Cognito user pools, HTTP APIs and budgets have random IDs that can't be
-  matched by name, so those are allowed across the account, in us-east-1. Polly is allowed for the voice
-  clips.
-- **What it does not.** No other service, so no EC2, which is the usual abuse of a leaked key. No other
-  region, no IAM users or keys, and no billing or account settings: use the root user in the console for
-  those. **Players' data is excluded:** no reading or writing table items, and no listing or changing
-  Cognito users. A role can be passed only to Lambda, and the only managed policy it may attach is
-  Lambda's basic logging policy.
-- **Its limit.** It can still create roles for this stack's functions and put inline policies on them,
-  so someone holding its credentials could, on purpose, run code with more power through a Lambda. A
-  permissions boundary on the functions' roles would close that. That is a template change, not made yet.
+- **What it allows.** It covers this stack (`music-garden`) and SAM's bucket stack. Within those,
+  anything named `music-garden-*`: roles, functions, tables (the sign-up counter's included) and topics,
+  plus the `/music-garden/` parameters, all in us-east-1. Cognito user pools, HTTP APIs and budgets have
+  random IDs that can't be matched by name, so those are allowed for any pool or API in us-east-1 and
+  any budget. It also allows SAM's bucket (`aws-sam-cli-managed-default-samclisourcebucket-*`), a few
+  read-only lookups, and Polly for the voice clips. IAM, S3 and Budgets are global services, so a region
+  does not limit those grants. The account is `*` in the ARNs, so that this public file names no account
+  ID. That reaches another account's resource only if that resource's own policy already lets this
+  identity in.
+- **What it does not.** No other service, so no EC2, which is the usual abuse of a leaked key. No IAM
+  users or keys, and no billing or account settings: use the root user in the console for those. It
+  cannot read or write table items, list or change Cognito users, or **invoke** any function but the
+  cost switch. (Invoking `ProgressFn` or `SongsFn` directly would skip the API's sign-in check and read
+  any player's progress.) A role can be passed only to Lambda, and the only managed policy it may attach
+  is Lambda's basic logging policy.
+- **Its limits.** It is still a deploy identity, so it can do destructive things to this stack. It can
+  turn off deletion protection and delete the user pool or a table with every player in it. It can also
+  create roles for this stack's functions and put inline policies on them. So someone holding its
+  credentials could, on purpose, deploy code that reads players' data or runs with more power through a
+  Lambda. A permissions boundary on the functions' roles would close the second gap. That is a template
+  change, not made yet. What protects the account is that these credentials expire, and that the login
+  needs your password and MFA.
 - **A deploy refused with `AccessDenied`** names the action it lacks. That happens when `template.yaml`
-  gains a new kind of resource, or CloudFormation starts calling a new API. CloudFormation rolls the
-  deploy back. Sign in to the console as the root user, open **IAM Identity Center → Permission sets →
-  `mg-deploy` → Inline policy**, add the action, scoped like its neighbours, and deploy again. Add it
-  here too, in the same commit as the template change if there is one.
+  gains a new kind of resource, or CloudFormation starts calling a new API. Then:
+  1. Read what happened: `aws cloudformation describe-stack-events --stack-name music-garden --max-items 30`.
+  2. Sign in to the console as the root user, open **IAM Identity Center → Permission sets → `mg-deploy`
+     → Inline policy**, add the action (scoped like its neighbours), and save. The permission set
+     re-provisions to the account, which takes a minute.
+  3. Check the stack's status: `aws cloudformation describe-stacks --stack-name music-garden --query "Stacks[0].StackStatus"`.
+     If it is `UPDATE_ROLLBACK_FAILED`, the rollback also lacked a permission. Run
+     `aws cloudformation continue-update-rollback --stack-name music-garden`, and wait until the status
+     is `UPDATE_ROLLBACK_COMPLETE`. A new deploy cannot start before that.
+  4. Deploy again. Add the action here too, in the same commit as the template change if there is one.
 
 ### 3. Install the AWS CLI v2
 Download & run the MSI: https://awscli.amazonaws.com/AWSCLIV2.msi  — then in a **new** PowerShell:
@@ -159,17 +179,20 @@ aws configure sso
 # Default client Region:     us-east-1
 # CLI default output format: json
 # Profile name:              mg-deploy
-[Environment]::SetEnvironmentVariable("AWS_PROFILE", "mg-deploy", "User")   # every new shell uses it
+[Environment]::SetEnvironmentVariable("AWS_PROFILE", "mg-deploy", "User")   # programs started from now on
+$env:AWS_PROFILE = "mg-deploy"                                               # and this shell
 ```
-Then, in a **new** PowerShell:
+A user variable reaches only programs started after it is set. Close and reopen Windows Terminal, VS Code
+and any other app you open shells from: a new tab in an old window keeps the old environment. Then, in a
+PowerShell from a freshly opened app:
 ```powershell
 aws sso login                   # the browser: your password and MFA
 aws sts get-caller-identity     # Arn: …:assumed-role/AWSReservedSSO_mg-deploy_…/<you> — never one ending in :root
 ```
 `sam`, `aws` and `node tools/gen-voice.mjs` all use this profile. The login lasts about 8 hours. After
 that, a command says the token or SSO session has expired: run `aws sso login` again. `~/.aws/config`
-holds the portal URL, the account ID and the role name, and `~/.aws/sso/cache` holds the login token
-until it expires. No access key is stored.
+holds the portal URL, the account ID and the role name. `~/.aws/sso/cache` and `~/.aws/cli/cache` hold
+the login token and temporary credentials until they expire. No long-term access key is involved.
 
 ### 5. Install the AWS SAM CLI
 Download & run the MSI: https://github.com/aws/aws-sam-cli/releases/latest/download/AWS_SAM_CLI_64_PY3.msi — then in a **new** PowerShell:
@@ -181,10 +204,17 @@ sam --version          # expect: SAM CLI, version 1.x
 ### Moving off a root access key
 Follow these steps on a machine whose CLI signs in with the root user's key. Keep this order: the root key
 is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-113, 2026-11-15).
-1. Do steps 1, 2 and 4 above. Leave the root key where it is for now: `AWS_PROFILE` makes the CLI use
-   `mg-deploy` even while `~/.aws/credentials` still holds the root key.
-2. In a new PowerShell, run `aws sts get-caller-identity`. It must show `AWSReservedSSO_mg-deploy`, not
-   `:root`.
+1. Do steps 1, 2 and 4 above. Leave the root key in `~/.aws/credentials` for now: `AWS_PROFILE` makes
+   the CLI use `mg-deploy` instead. **Key variables override `AWS_PROFILE`**, though, so make sure none
+   is set in any scope. This lists any that are:
+   ```powershell
+   foreach ($s in "Process","User","Machine") { foreach ($v in "AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY","AWS_SESSION_TOKEN") {
+     if ([Environment]::GetEnvironmentVariable($v, $s)) { "$s $v is set" } } }
+   ```
+   Clear each one it lists, with `[Environment]::SetEnvironmentVariable("<name>", $null, "<scope>")`.
+   `Machine` needs an administrator PowerShell. Then reopen your terminal apps, as step 4 says.
+2. In the shell you will deploy from, run `aws sts get-caller-identity`. It must show
+   `AWSReservedSSO_mg-deploy`, not `:root`.
 3. **A deploy with nothing to change, as `mg-deploy`:** run [Future deploys](#future-deploys)' commands
    from `backend/`, on an up-to-date `main`. Expect *No changes to deploy*, or only the rows that
    section calls normal. If it shows those rows, answering `y` deploys them, as usual. This proves the
@@ -192,16 +222,25 @@ is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-11
    resources.
 4. **Deactivate the root key:** as the root user, **Security credentials → Access keys →** the key **→
    Actions → Deactivate**.
-5. **The first real deploy as `mg-deploy`** is the next one that changes `template.yaml` or `src/`. If it
-   fails with `AccessDenied`, fix the policy as [its section](#the-mg-deploy-policy) says. Do not turn
-   the root key back on.
+5. **The first real deploy as `mg-deploy`** is the next one that changes `template.yaml` or `src/`:
+   TUN-88's daily sign-up limit (its new counter table, a role policy and the sign-up function). If it
+   fails with `AccessDenied`, fix the policy as [its section](#the-mg-deploy-policy) says, including a
+   failed rollback. Do not turn the root key back on.
 6. Once that deploy has succeeded, **delete the root key:** **Security credentials → Access keys →** the
    key **→ Actions → Delete**. It should no longer be listed.
-7. **Remove it from the machine.** Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and
-   delete the profile whose `aws_access_key_id` is the deleted key's ID, usually `[default]`. Check that
-   `~/.aws/config` holds no `aws_access_key_id`, and that `Get-ChildItem env:AWS_*` lists only
-   `AWS_PROFILE`. Leave the Polly-only key that `.claude/gpt/ask.sh` loads from
-   `~/.codex/tunegarden-aws.env` alone: it is not the root key.
+7. **Remove every copy from the machine.** Note the deleted key's ID (it starts `AKIA`; the console showed
+   it). Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and delete every profile holding
+   that ID, usually `[default]`. Check that `~/.aws/config` holds no `aws_access_key_id`, and run the
+   variable check from step 1 again. Then search for the ID anywhere else it could be: a downloaded
+   `rootkey.csv` or `*_accessKeys.csv`, scripts and `.env` files, and PowerShell's history:
+   ```powershell
+   Get-ChildItem $HOME -Recurse -File -ErrorAction SilentlyContinue -Include *.csv,*.env,*.txt,*.ps1,*.sh,credentials,config |
+     Select-String -SimpleMatch "<the key ID>" -List | Select-Object Path
+   Select-String -SimpleMatch "<the key ID>" (Get-PSReadLineOption).HistorySavePath
+   ```
+   Delete what it finds (for a history line, edit that file). The key no longer works once deleted, but
+   it should not be lying around. Leave alone the Polly-only key that `.claude/gpt/ask.sh` loads from
+   `~/.codex/tunegarden-aws.env`: it is a different key.
 
 ---
 
@@ -215,7 +254,7 @@ sam deploy --guided
 
 `--guided` will prompt — sensible answers:
 - **Stack Name:** `music-garden`
-- **AWS Region:** `us-east-1` (or your choice)
+- **AWS Region:** `us-east-1`. The [`mg-deploy` policy](#the-mg-deploy-policy) allows only us-east-1, so another region means changing the policy too.
 - **Confirm changes before deploy:** `N`
 - **Allow SAM CLI IAM role creation:** `Y`  ← required (the app needs IAM roles)
 - **Disable rollback:** `N`
