@@ -28,12 +28,13 @@ const sns = (over = {}, rec = {}) => ({ Records: [{ EventSource: "aws:sns", ...r
 // `late` names calls AWS had already received when the deadline aborted them: they apply 10 ms after the abort,
 // and only then does the client's promise reject.
 // `soon` names calls that succeed 5 ms after the abort (inside the grace); `deaf` ones ignore the abort and
-// succeed 200 ms later, after the grace has run out.
+// settle 200 ms later, after the grace has run out — succeeding, or failing if `deaf[key] === "fail"`.
 function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {}, late = {}, soon = {}, deaf = {} } = {}) {
   const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, onAt, writes: [], mails: [], aborted: [], events: [], clock: { now: T0 + 60e3 } };
   const act = (key, fn, signal) => {
     if (soon[key]) return new Promise(res => { signal.addEventListener("abort", () => setTimeout(() => res(fn()), 5)); });
-    if (deaf[key]) return new Promise(res => setTimeout(() => { a.events.push("deaf " + key); res(fn()); }, 200));
+    if (deaf[key]) return new Promise((res, rej) => setTimeout(() => { a.events.push("deaf " + key);
+      if (deaf[key] === "fail") rej(new Error(`${key} failed late`)); else res(fn()); }, 200));
     if (late[key]) return new Promise((_, rej) => { signal.addEventListener("abort", () => setTimeout(() => { fn(); a.events.push("settled " + key); rej(signal.reason); }, 10)); });
     if (hang[key]) return new Promise((_, rej) => { signal && signal.addEventListener("abort", () => { a.aborted.push(key); rej(signal.reason); }); });
     if (fail[key]) return Promise.reject(new Error(`${key} denied`));
@@ -327,7 +328,7 @@ test("a write that succeeds after its deadline, inside the grace, still makes th
 });
 
 test("a call that ignores the abort is waited for no longer than the grace, and its later success is harmless", async () => {
-  const a = account({ start: 0, endpointDisabled: true, deaf: { setApi: true, getOnAt: true } });
+  const a = account({ start: 0, endpointDisabled: true, deaf: { setApi: true } });
   const started = Date.now();
   await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)({ switch: "on" }), /not everything took/);
   assert.ok(Date.now() - started < 4 * (CFG.stepMs + CFG.graceMs) + 100, "bounded by the step budget");
@@ -335,4 +336,21 @@ test("a call that ignores the abort is waited for no longer than the grace, and 
   await new Promise(r => setTimeout(r, 250));
   assert.deepEqual(a.events.filter(e => e.startsWith("deaf")), ["deaf setApi"], "it landed later — what the status check a minute on is for");
   assert.equal((await makeCloudSwitchHandler(a.aws, CFG)({ switch: "status" })).cloud, "on");
+});
+
+// PR review round 4, missing test 2: every round of a trip ignores the abort — the switch-on time, the writes,
+// the read-back and the email — some calls later succeeding, some later failing. The trip still ends within
+// four rounds of (deadline + grace), fails visibly, and the late results land without an unhandled rejection.
+test("a trip whose every call ignores the abort ends within its budget, and late results are harmless", async () => {
+  const deaf = { getOnAt: true, ["put:" + FNS[0]]: true, ["put:" + FNS[1]]: "fail", setApi: true,
+    ["get:" + FNS[0]]: "fail", ["get:" + FNS[2]]: true, getApi: true, notify: "fail" };
+  const a = account({ deaf });
+  const started = Date.now();
+  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns()), /not everything took/);
+  const took = Date.now() - started;
+  assert.ok(took >= 4 * CFG.stepMs, `waited through four rounds (${took} ms)`);
+  assert.ok(took < 4 * (CFG.stepMs + CFG.graceMs) + 150, `and no longer than their budget (${took} ms)`);
+  assert.equal(a.mails.length, 0, "the email itself timed out");
+  await new Promise(r => setTimeout(r, 300));   // every deaf call settles now; an unhandled rejection would fail this file
+  assert.equal(a.events.filter(e => e.startsWith("deaf")).length, Object.keys(deaf).length);
 });

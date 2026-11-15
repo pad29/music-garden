@@ -853,3 +853,46 @@ until this PR merges; the new messages were checked on the branch preview instea
 **Still not verified:** AWS Budgets itself publishing to the topic at $30 (only real spend does that);
 whether a `sam deploy` while off resets the switch (TUN-102); the new client's messages against the
 switched-off API from the production origin (they ship with the merge).
+
+## PR review — round 4 (Astra, through `ask.sh`, the code delta `c5b3548..9147e3d`, head `3a38367`; the owner asked for it after § 8's three rounds)
+
+<details><summary>GPT's review, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+**FINDINGS**
+
+1. **should-fix — [js/cloud.js:59](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/js/cloud.js:59): queuing a save does not invalidate an already-displayed success.**  
+   Reproduced in memory: let the initial upload succeed → panel says “saved to cloud” → change progress and call `commitProgress()` → leave the queued upload pending. The panel still says “saved to cloud,” although the changed progress has not saved. This occurs for signup and sign-in with an empty cloud account.
+
+   Incrementing `_pushSeq` fixes round 3’s exact ordering—queue first, initial response second—but only prevents a subsequent `onSignedIn` completion from adding the message. It never removes an existing message. Clear the transient success when newer progress becomes pending, preserving any open authentication form, or remove that message entirely.
+
+Round-3 finding **2 is fixed**: the latch precedes abort, subsequent settlement cannot turn timeout into success, and timer cleanup worked in controlled probes. `_pushSeq`’s increments and its sole consumer are otherwise consistent; `_cloudRun` still protects session changes. The runbook honestly acknowledges the owner-accepted late-write risk and specifies the follow-up status check.
+
+**MISSING TESTS**
+
+1. **Previously displayed success:** complete the first upload successfully, commit changed progress, and assert “saved to cloud” disappears before the debounce fires and remains absent while the next upload hangs. Exercise both signup and an empty-account sign-in. This currently fails.
+
+2. **Complete grace-exhaustion and cleanup regression:** hold operations pending despite abort across an SNS invocation’s state-read, writes, read-back, and notification rounds. Using controlled timers, assert termination at 48 seconds, no remaining wrapper timers, and safe late resolution **and rejection**. Also assert timer cleanup for early settlement and synchronous settlement during abort. My in-memory probes passed; committed coverage remains incomplete. The new test at [tests/backend-cloud-switch.test.mjs:329](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/tests/backend-cloud-switch.test.mjs:329) exercises only one delayed write—its configured `getOnAt` delay is unused by the direct ON command.
+
+Verification: syntax and **73 targeted tests passed**. No files changed. Full-suite, live AWS, and browser checks were not rerun.
+
+</details>
+
+### My answers
+
+1. **Agree (should-fix).** A "saved to cloud" already on the panel now goes as soon as newer progress is
+   queued: `scheduleCloud` redraws the panel when it shows that line (`_authSaysSaved`), only while the panel
+   shows the signed-in row, so an open sign-in form is never redrawn. Missing test 1 added for sign-up and
+   for sign-in to an empty account, plus a test that a queued save leaves an open form alone.
+2. **Missing test 2 — agree, in part.** Added: an SNS trip in which every round's calls ignore the abort
+   (the switch-on time, two writes, two reads and the email; some settle later as successes, some as
+   failures). It ends after at least four deadlines and within four rounds of deadline plus grace, fails
+   visibly, sends no email (the email timed out too), and every late result lands without an unhandled
+   rejection. The round-3 test that wrongly made `getOnAt` deaf on a direct `on` (GPT: "its configured
+   `getOnAt` delay is unused") no longer does. Not added: fake timers to assert that no wrapper timer is left
+   — GPT's own probes found the cleanup correct, and the file has no fake-timer harness.
+
+The fix is client code only: nothing the owner deployed changes, so no new deploy is needed.
+
+**Mutation check** (each restored): no redraw on a queued save (1 fail), the flag never set (1).

@@ -18,7 +18,7 @@ let cloudResting=false, _callSeq=0, _seenSeq=0;
 // only in the run it began in and only if no later-started call has already reported, so a slow old success
 // cannot hide a newer failure, nor an old failure a newer success. The panel is redrawn only while it shows the
 // signed-in row: never over a sign-in form the player may be typing into.
-let _authShowsSignedIn=false;
+let _authShowsSignedIn=false, _authSaysSaved=false;   // the panel shows the signed-in row; …and "saved to cloud" in it
 function cloudCall(){ const run=_cloudRun, seq=++_callSeq;
   return ok=>{ if(run!==_cloudRun || seq<=_seenSeq) return; _seenSeq=seq;
     if(cloudResting===!ok) return; cloudResting=!ok; if(_authShowsSignedIn) renderAuth(); }; }
@@ -56,7 +56,8 @@ async function cloudPush(){ if(cloudSync!=="ready") return false;   // never ove
   if(!t){ done(false); return false; }
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(progress)});
     done(r.ok); return r.ok; }catch(e){ done(false); return false; } }
-let _pushT; function scheduleCloud(){ if(!cloudOn||cloudSync!=="ready") return; _pushSeq++; clearTimeout(_pushT); _pushT=setTimeout(()=>cloudPush(),900); }
+let _pushT; function scheduleCloud(){ if(!cloudOn||cloudSync!=="ready") return; _pushSeq++; clearTimeout(_pushT); _pushT=setTimeout(()=>cloudPush(),900);
+  if(_authSaysSaved && _authShowsSignedIn) renderAuth(); }   // newer progress is pending: "saved to cloud" no longer holds (TUN-87)
 // ---- Cloud songs (SAVE-SHARE.md P3): store/share creations in DynamoDB via the /songs API ----
 const signedIn = () => !!(userPool && userPool.getCurrentUser());
 async function cloudSongCreate(song,title,visibility){ const done=cloudCall(); const t=await freshToken(); if(!t){ done(false); return null; }
@@ -112,11 +113,11 @@ async function onSignedIn(uploadLocal){ const run=++_cloudRun; cloudSync="off"; 
   // the current progress is in the cloud. A failure needs no word here: cloudResting already says so, calmly.
   renderAuth(ok && _pushSeq===push ? "saved to cloud" : undefined); }
 const authbox=document.getElementById("authbox");
-function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false;
+function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false; _authSaysSaved=false;
   if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";
     d.textContent="Cloud sign-in unavailable right now — your progress is still saved on this device."; authbox.appendChild(d); return; }
   const u=userPool.getCurrentUser();
-  if(u && cloudOn){ _authShowsSignedIn=true; const row=document.createElement("div"); row.className="authrow";
+  if(u && cloudOn){ _authShowsSignedIn=true; _authSaysSaved=status==="saved to cloud"; const row=document.createElement("div"); row.className="authrow";
     row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=u.getUsername();
     row.appendChild(b); row.appendChild(document.createTextNode(
       cloudSync==="ready" ? (cloudResting ? CLOUD_RESTING.save : " — progress syncs across your devices.")

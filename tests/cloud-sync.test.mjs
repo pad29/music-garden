@@ -583,3 +583,31 @@ test("TUN-87: a save queued while the sign-up's first save is out stops it sayin
   assert.doesNotMatch(panel(), /saved to cloud/);
   second.resolve(reply(200, { ok: true })); await queued;
 });
+
+// ---------- PR review round 4 (TUN-87) ----------
+test("TUN-87: a 'saved to cloud' already shown goes away once newer progress is queued, and stays away while it hangs", async () => {
+  for (const [what, signUp, get] of [["sign-up", true, undefined], ["sign-in to an empty account", false, () => reply(200, null)]]) {
+    const { g, net, runSaves, panel } = cloudGame();
+    const pending = deferred(); let n = 0;
+    net.answer = routes({ get, put: () => (++n === 1 ? reply(200, { ok: true }) : pending.promise) });
+    await g.onSignedIn(signUp);
+    assert.match(panel(), /saved to cloud/, what);
+    g.progress.name = "Ann, changed"; g.commitProgress();
+    assert.doesNotMatch(panel(), /saved to cloud/, `${what}: gone before the debounce fires`);
+    assert.match(panel(), SYNCS, `${what}: the sync line stays`);
+    const queued = runSaves(); await tick();
+    assert.equal(n, 2); assert.doesNotMatch(panel(), /saved to cloud/, `${what}: still gone while the save hangs`);
+    pending.resolve(reply(200, { ok: true })); await queued;
+  }
+});
+
+test("TUN-87: queuing a save never redraws over a sign-in form", async () => {
+  const { g, net, signIn, authbox } = cloudGame();
+  net.answer = routes({ get: () => reply(200, null) });
+  await g.onSignedIn(false);
+  assert.match(authbox.textContent, /saved to cloud/);
+  signIn(null); g.renderAuth(); g.showAuthForm("in");
+  const form = authbox.kids[0];
+  g.commitProgress();
+  assert.equal(authbox.kids[0], form, "the form is the same element");
+});
