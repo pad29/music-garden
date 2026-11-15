@@ -76,9 +76,10 @@ library's webpack `globalThis` shim is allowed once, by its exact text. The brow
 
 **Cloud progress sync (TUN-106).** `cloud-sync.test.mjs` signs a stub Cognito user in (a protocol stub,
 not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load that returns progress, `null`,
-429, 500, 503, a network error or a body that is not JSON. A failed load must send no `PUT` — not at
-sign-in, not on a later save, not from `cloudPush` — and the sign-in panel must say the cloud couldn't be
-reached. `scheduleCloud`'s 900 ms timer is caught and run by hand, and the panel's text is read through
+429, 500, 503, a network error, a body that is not JSON, or a 200 that is not progress. A failed load must
+send no `PUT` — not at sign-in, not on a later save, not from `cloudPush` — and the sign-in panel must say
+the cloud couldn't be reached. Users can switch and their tokens can be held back, so a load or push that
+returns after sign-out or another player's sign-in is shown to do nothing. `scheduleCloud`'s 900 ms timer is caught and run by hand, and the panel's text is read through
 recording elements over the harness's stubs.
 
 **The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a

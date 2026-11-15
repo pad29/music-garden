@@ -165,11 +165,12 @@ automatic retry:
 - **Misleading:** a friend's `#song=` link says "⚠️ That song link didn't work — it may have been
   deleted.", and a failed Melodies list shows "Nothing here yet — share a big song to store it in the
   cloud." as if the player's cloud songs were gone (TUN-107).
-- A failed progress load at sign-in or page load leaves the cloud copy alone (TUN-106): nothing is
-  pushed until a later load succeeds, the player plays on this device's progress, and the panel says
-  "couldn't reach the cloud just now. Your cloud progress is safe; reload the page later to load it."
-  The next page load or sign-in tries again; a success replaces this device's progress with the cloud
-  copy, as every load does.
+- A failed progress load at sign-in or page load — or a 200 that is neither `null` nor progress —
+  leaves the cloud copy alone (TUN-106): nothing is pushed until a later load succeeds, the player plays
+  on this device's progress, and the panel says "couldn't reach the cloud just now. Your cloud progress
+  is safe, but what you play now stays on this device: reloading later loads your cloud progress in its
+  place." The next page load or sign-in tries again; a success replaces this device's progress with the
+  cloud copy, as every load does.
 
 To change a limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the
 comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the arithmetic. The
