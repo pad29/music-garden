@@ -579,3 +579,105 @@ test("ask.sh: with no codex on PATH it exits 127 and says so", { skip }, () => {
     assert.strictEqual(r.stderr.trim(), "ask.sh: codex CLI not on PATH");
   } finally { sb.cleanup(); }
 });
+
+// --- the preview finder, as work-ticket/browser.md prints it (TUN-85) ---
+// Its jq filters run inside gh, which this fake does not: they were run against live PRs (#139, #141,
+// both with Netlify's checks beside Cloudflare's — reviews/TUN-85-retire-netlify.md). The fake answers
+// what those filters print — the Cloudflare check's bucket, and one flattened body per Cloudflare
+// comment — so what is tested here is the script's own logic: which check state ends the wait, which
+// comment names the head, which URL is taken, and that no preview never exits 0.
+
+const previewFinder = (() => {
+  const doc = readFileSync(join(root, ".claude/skills/work-ticket/browser.md"), "utf8").replace(/\r\n/g, "\n");
+  const m = doc.match(/```bash\n {2}(pr=<n>; head=[\s\S]*?)\n {2}```/);
+  assert.ok(m, "browser.md holds the preview block");
+  return m[1].replace(/^ {2}/gm, "").replace("pr=<n>;", "pr=141;") + "\n";
+})();
+
+const HEAD = "b9f98d654538c77828a2d4cba8c58e27fa0b01da";
+// One Cloudflare comment, flattened as the filter prints it: commit, commit preview, branch preview.
+const cfComment = (sha, hash, branch) => `## Deploying music-garden with Cloudflare Pages <table><tr><td><strong>Latest commit:</strong> </td><td> <code>${sha.slice(0, 7)}</code> </td></tr> <tr><td><strong>Preview URL:</strong></td><td> <a href='https://${hash}.music-garden.pages.dev'>https://${hash}.music-garden.pages.dev</a> </td></tr> <tr><td><strong>Branch Preview URL:</strong></td><td> <a href='https://${branch}.music-garden.pages.dev'>https://${branch}.music-garden.pages.dev</a> </td></tr> </table>`;
+
+// What each fake gh call prints, per call (the last repeats): checks — the Cloudflare check's bucket
+// ("" when there is none); comments — one flattened body per Cloudflare comment. "FAIL:<message>" makes
+// that call print the message to stderr and exit 1, as gh does. fork — what isCrossRepository prints.
+function findPreview({ checks = ["pass"], comments = [cfComment(HEAD, "9867f21c", "ao-x-root")], headFails = false, fork = "false", script = previewFinder }) {
+  const sb = sandbox();
+  try {
+    writeFileSync(join(sb.dir, "bin", "gh"), `#!/usr/bin/env bash
+s="$FAKE_STATE"
+pick() { n=$(( $(cat "$s/$1.n" 2>/dev/null || echo 0) + 1 )); echo $n > "$s/$1.n"
+  while [ $n -gt 1 ] && [ ! -e "$s/$1$n" ]; do n=$((n-1)); done
+  if grep -q '^FAIL:' "$s/$1$n"; then sed 's/^FAIL://' "$s/$1$n" >&2; exit 1; fi; cat "$s/$1$n"; }
+case "$1 $2 $5" in
+  "pr view headRefOid") [ -e "$s/head.fail" ] && { echo "gh: boom" >&2; exit 1; }; echo "${HEAD}" ;;
+  "pr view isCrossRepository") echo "$(cat "$s/fork")" ;;
+  "pr view comments") pick comments ;;
+  "pr checks name,bucket") pick checks ;;
+  *) echo "fake gh: unexpected $*" >&2; exit 2 ;;
+esac
+`, { mode: 0o755 });
+    checks.forEach((c, i) => writeFileSync(join(sb.state, `checks${i + 1}`), c ? c + "\n" : ""));
+    comments.forEach((c, i) => writeFileSync(join(sb.state, `comments${i + 1}`), c ? c + "\n" : ""));
+    writeFileSync(join(sb.state, "fork"), fork);
+    if (headFails) writeFileSync(join(sb.state, "head.fail"), "");
+    const res = spawnSync(bash, ["-c", PRELUDE + script], { env: sb.env, encoding: "utf8" });
+    const calls = k => existsSync(join(sb.state, `${k}.n`)) ? Number(readFileSync(join(sb.state, `${k}.n`), "utf8")) : 0;
+    return { code: res.status, out: res.stdout.trim(), checks: calls("checks"), comments: calls("comments") };
+  } finally { sb.cleanup(); }
+}
+const short40 = () => { assert.ok(previewFinder.includes("for i in $(seq 40); do"), "about 20 minutes: 40 polls 30 s apart");
+  return previewFinder.replace("seq 40", "seq 3"); };   // the same loop, shortened for speed
+const NO_CHECKS = "FAIL:no checks reported on the 'feature' branch";
+
+test("preview: waits out a pending check, then prints the branch preview of the comment naming the head", { skip }, () => {
+  assert.deepStrictEqual(findPreview({ checks: ["pending", "pending", "pass"] }),
+    { code: 0, out: "preview https://ao-x-root.music-garden.pages.dev", checks: 3, comments: 1 });
+});
+
+test("preview: a failed, cancelled or skipped Cloudflare build exits 1, says so, and reads no comment", { skip }, () => {
+  for (const bucket of ["fail", "cancel", "skipping"])
+    assert.deepStrictEqual(findPreview({ checks: ["pending", bucket] }),
+      { code: 1, out: `check ${bucket} on b9f98d6: see gh pr checks 141`, checks: 2, comments: 0 });
+});
+
+test("preview: a check still pending at the end of the wait exits 1, never 3 or 0", { skip }, () => {
+  assert.deepStrictEqual(findPreview({ checks: ["pending"], script: short40() }),
+    { code: 1, out: "check still pending on b9f98d6 after 20 minutes", checks: 3, comments: 0 });
+});
+
+test("preview: no Cloudflare check is a fork PR (exit 3) only when GitHub says it is a fork", { skip }, () => {
+  const script = short40();
+  for (const checks of [[""], [NO_CHECKS]]) {   // other checks but no Cloudflare one; no checks at all
+    assert.deepStrictEqual(findPreview({ checks, fork: "true", script }),
+      { code: 3, out: "fork PR: Cloudflare builds no preview for it", checks: 3, comments: 0 });
+    assert.deepStrictEqual(findPreview({ checks, fork: "false", script }),
+      { code: 1, out: "no Cloudflare Pages check on b9f98d6 after 20 minutes", checks: 3, comments: 0 });
+  }
+});
+
+test("preview: gh failing — on the head, the checks or the comments — exits 1 with an error, never a hand-off reason", { skip }, () => {
+  assert.deepStrictEqual(findPreview({ headFails: true }), { code: 1, out: "error: gh pr view failed", checks: 0, comments: 0 });
+  assert.deepStrictEqual(findPreview({ checks: ["pending", "FAIL:HTTP 502: Bad Gateway"] }),
+    { code: 1, out: "error: gh pr checks: HTTP 502: Bad Gateway", checks: 2, comments: 0 });
+  assert.deepStrictEqual(findPreview({ comments: ["FAIL:HTTP 502: Bad Gateway"] }),
+    { code: 1, out: "error: gh pr view comments failed", checks: 1, comments: 1 });
+});
+
+test("preview: only a stale comment, or none, exits 1 — and a comment rewritten for the head on a retry is taken", { skip }, () => {
+  const stale = cfComment("0123456789abcdef", "aaaa1111", "ao-x-root");
+  assert.deepStrictEqual(findPreview({ comments: [stale] }), { code: 1, out: "no Cloudflare comment names b9f98d6", checks: 1, comments: 5 });
+  assert.deepStrictEqual(findPreview({ comments: [""] }), { code: 1, out: "no Cloudflare comment names b9f98d6", checks: 1, comments: 5 });
+  assert.deepStrictEqual(findPreview({ comments: [stale, cfComment(HEAD, "9867f21c", "ao-x-root")] }),
+    { code: 0, out: "preview https://ao-x-root.music-garden.pages.dev", checks: 1, comments: 2 });
+});
+
+test("preview: of several comments, the head's music-garden comment wins, wherever it sits", { skip }, () => {
+  const head = cfComment(HEAD, "9867f21c", "ao-head-root"), stale = cfComment("0123456789abcdef", "aaaa1111", "ao-old-root");
+  // Another Pages project's comment naming the same commit (GPT's PR review, round 2, finding 2).
+  const other = cfComment(HEAD, "bbbb2222", "ao-head-root").replaceAll("music-garden.pages.dev", "other-project.pages.dev");
+  for (const order of [[head, stale], [stale, head], [head, other], [other, head], [stale, head, other]])
+    assert.strictEqual(findPreview({ comments: [order.join("\n")] }).out, "preview https://ao-head-root.music-garden.pages.dev",
+      order.length + " comments");
+  assert.strictEqual(findPreview({ comments: [other] }).code, 1, "another project's comment alone is no preview");
+});

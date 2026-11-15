@@ -42,6 +42,51 @@ produced it.**
   included, so what you made before a restart of `ao preview start` stays behind with the old port:
   make it on the server you test it on (measured 2026-11-09). Never point the game at
   `ao browser target chrome`: that is the owner's own Chrome and profile.
-- Once the PR exists, its Netlify deploy preview opens the same way. Take its URL from the
-  deploy-preview check's link in `gh pr checks <n>` (for PR #82 it was
-  `https://deploy-preview-82--tunegarden.netlify.app`).
+- Once the PR exists, its Cloudflare preview opens the same way. The *Cloudflare Pages* check's link in
+  `gh pr checks <n>` opens the owner's Cloudflare dashboard, not the preview: the URLs are in the comment
+  Cloudflare posts on the PR and rewrites on each push — a *Preview URL* per commit and a *Branch
+  Preview URL* that follows the branch (the branch name's `/` becomes `-`). This waits for that check on
+  the PR's head — that check alone: a bare `gh pr checks --watch` waits on every check — then prints
+  `preview <branch preview URL>` from the comment that names the head:
+
+  ```bash
+  pr=<n>; head=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) || { echo "error: gh pr view failed"; exit 1; }
+  short=${head:0:7}; st=; err=$(mktemp)
+  for i in $(seq 40); do      # the Cloudflare Pages check on the head: up to 20 minutes
+    if ! st=$(gh pr checks "$pr" --json name,bucket --jq '.[] | select(.name == "Cloudflare Pages") | .bucket' 2>"$err"); then
+      grep -q "no checks reported" "$err" || { echo "error: gh pr checks: $(head -c 300 "$err")"; exit 1; }; st=
+    fi
+    case "$st" in pass|fail|cancel|skipping) break ;; esac; sleep 30
+  done
+  case "$st" in
+    pass) ;;
+    fail|cancel|skipping) echo "check $st on $short: see gh pr checks $pr"; exit 1 ;;
+    pending) echo "check still pending on $short after 20 minutes"; exit 1 ;;
+    *) fork=$(gh pr view "$pr" --json isCrossRepository --jq .isCrossRepository) || { echo "error: gh pr view failed"; exit 1; }
+       [ "$fork" = true ] && { echo "fork PR: Cloudflare builds no preview for it"; exit 3; }
+       echo "no Cloudflare Pages check on $short after 20 minutes"; exit 1 ;;
+  esac
+  for i in $(seq 5); do       # the comment, rewritten for the head: up to 2 minutes more
+    bodies=$(gh pr view "$pr" --json comments --jq '.comments[] | select(.author.login == "cloudflare-workers-and-pages") | .body | gsub("\n"; " ")') \
+      || { echo "error: gh pr view comments failed"; exit 1; }
+    url=$(printf '%s\n' "$bodies" | grep -F "<code>$short</code>" \
+      | awk 'match($0, /Branch Preview URL:/) { s = substr($0, RSTART); if (match(s, /https:\/\/[a-z0-9.-]+\.pages\.dev/)) print substr(s, RSTART, RLENGTH) }' \
+      | grep -E '^https://[a-z0-9-]+\.music-garden\.pages\.dev$' | tail -n 1)
+    [ -n "$url" ] && { echo "preview $url"; exit 0; }; sleep 30
+  done
+  echo "no Cloudflare comment names $short"; exit 1
+  ```
+
+  - **Exit 0** — `preview <URL>`: the URL hand-offs quote.
+  - **Exit 3** — `fork PR: …` (GitHub says the PR comes from a fork, and it has no Cloudflare check):
+    hand off with *Preview: none — fork PR*.
+  - **Exit 1** — anything else, and the line says which. `check fail|cancel|skipping`: the build did
+    not deploy — look at the check and fix it before the hand-off. `still pending` or `no Cloudflare
+    Pages check` on a branch of this repository: Cloudflare is not building it — run once more, then
+    `ao report --stuck` with the line. `error: …`: `gh` broke — `CLAUDE.md` § When something external
+    breaks. `no Cloudflare comment names …` after a passing check: run once more, then hand off with
+    *Preview: none — <the line>*, and say so.
+
+  `tests/workflow-scripts.test.mjs` runs this block. Cloud sync and cloud songs fail on every preview —
+  the API's CORS list allows only `tunegarden.game` — so sign-in is checked on production after the
+  merge, not here.

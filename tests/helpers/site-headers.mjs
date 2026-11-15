@@ -1,22 +1,21 @@
-// Reads `_headers`, the response-header rules Cloudflare Pages and Netlify both take from site/ (TUN-86),
-// and checks them. Used by tests/site-headers.test.mjs.
+// Reads `_headers`, the response-header rules Cloudflare Pages takes from site/ (TUN-86), and checks
+// them. Used by tests/site-headers.test.mjs.
 //
 // STRICT, like the Cloudflare build checker: a line it cannot read is refused, never skipped. The form
-// it accepts is the part of the format the two hosts share and this file needs:
+// it accepts is the part of the format this file needs (written, while Netlify also served the site, to
+// be the part the two hosts shared):
 //
 //   # a comment (a line whose first non-space character is #)
 //   /path/or/prefix/*            <- a rule: starts at column 0 with "/"; `*` matches the rest of a path
 //     Header-Name: value         <- indented, belongs to the rule above
 //
 // Refused: an indented line before any rule; a rule line that is not a path (Cloudflare also accepts
-// full URLs, keyed by host); a `:placeholder` in a path (the hosts spell and bound placeholders
-// differently); a detach line (`! Name`, Cloudflare only); a header line with no `Name:`; a rule with
-// no headers.
+// full URLs, keyed by host); a `:placeholder` in a path (nothing needs one); a detach line (`! Name`);
+// a header line with no `Name:`; a rule with no headers.
 //
-// The two hosts' matching agrees for these paths: every rule that matches a request applies, and `*`
-// takes everything after it, slashes included. What they do when two matching rules set the SAME
-// header is where they differ — Cloudflare joins the values with a comma, Netlify's docs do not say —
-// so headersFor() reports that as a problem instead of picking a winner.
+// Cloudflare's matching, for these paths: every rule that matches a request applies, and `*` takes
+// everything after it, slashes included. When two matching rules set the SAME header, Cloudflare joins
+// the values with a comma, so headersFor() reports that as a problem instead of picking a winner.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
