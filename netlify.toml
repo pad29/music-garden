@@ -6,16 +6,17 @@
 
 [build]
   # Copy the app (index.html + its js/ scripts) + the pre-baked narration clips (voice/) + the instrument
-  # sample packs (samples/) into a clean publish dir. If you add a new folder the game loads at runtime, add
+  # sample packs (samples/) + the fonts and the Cognito sign-in library the page loads from this site, not a
+  # third party (vendor/, TUN-81) into a clean publish dir. If you add a new folder the game loads at runtime, add
   # it here AND to cloudflare-build.sh, Cloudflare's copy of this step, while both hosts exist
   # (tests/cloudflare-publish.test.mjs fails when the two differ). A missing js/ file is not a 404: the
   # rewrite below serves index.html in its place, the browser fails to parse it as JavaScript, and the game
   # never starts.
-  command = "mkdir -p site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples"
+  command = "mkdir -p site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples && cp -r vendor site/vendor"
   publish = "site"
 
 # Single-page app: serve index.html for any path that is not a real file (existing files win).
-# Not harmless at a NESTED path: at /a/ the page's relative js/, samples/ and voice/ URLs resolve under
+# Not harmless at a NESTED path: at /a/ the page's relative js/, samples/, voice/ and vendor/ URLs resolve under
 # /a/, get index.html back, and the game cannot start. The game lives at the root; TUN-68 decides what a
 # nested path should do instead.
 [[redirects]]

@@ -168,7 +168,7 @@ The visible things that move us out of the "toy" category: the **growing toolbox
 ## 10. Feature log (running; started 2026-06-07)
 
 A working, dependency-free browser game with no build step: `index.html` (markup and styles) plus the classic scripts in `js/` it loads, which hold all of its code (vanilla Web Audio). It was a single file until 2026-09-28; TUN-6 and TUN-7 (2026-09-28/29) moved its script into 28 files cut at the section landmarks, plus a load gate that keeps the split from changing how the page loads, so parallel work stops colliding in one file (`README.md` § How the game's code is organized).
-**Live: https://tunegarden.game/** — git-based Netlify deploy (every push to `main` auto-builds; `netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` into the publish dir). Cloudflare Pages builds the same pushes at https://music-garden.pages.dev/ (`cloudflare-build.sh`, TUN-80) until the domain moves there; README § Deployment. Backend (accounts/progress/songs) deployed on AWS. Validated: share-links open the exact melody on any device.
+**Live: https://tunegarden.game/** — git-based Netlify deploy (every push to `main` auto-builds; `netlify.toml` copies `index.html` + `js/` + `voice/` + `samples/` + `vendor/` into the publish dir). The page makes no third-party requests: its fonts and the Cognito sign-in library are served from `vendor/` (TUN-81, 2026-11-14). Cloudflare Pages builds the same pushes at https://music-garden.pages.dev/ (`cloudflare-build.sh`, TUN-80) until the domain moves there; README § Deployment. Backend (accounts/progress/songs) deployed on AWS. Validated: share-links open the exact melody on any device.
 
 **Implemented:**
 - Pentatonic grid — horizontal = time, vertical = pitch; click to hear instantly.

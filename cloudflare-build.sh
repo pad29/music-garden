@@ -3,7 +3,8 @@
 # settings live only in the dashboard; this file is the part the repository can pin.
 #
 # It copies the page and the folders the game loads at run time into a clean `site/`, and nothing else:
-# no docs, backend/, tests/, tools/, reviews/, spike/ or .claude/. If you add a folder the game loads
+# no docs, backend/, tests/, tools/, reviews/, spike/ or .claude/. (vendor/ is the fonts and the sign-in
+# library the page loads from this site rather than a third party, TUN-81.) If you add a folder the game loads
 # at run time, add it here AND to netlify.toml's build command while both hosts exist.
 # tests/cloudflare-publish.test.mjs holds this file to a strict form: `set -eu`, then only
 # `rm -rf site`, `mkdir site` and `cp [-r] <name> site/<name>` steps joined by `&&`, all on ONE line.
@@ -15,4 +16,4 @@
 # gets HTML where it asked for JavaScript, and the game never starts. A 404.html anywhere in site/
 # would change that for its folder, and the test refuses one.
 set -eu
-rm -rf site && mkdir site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples
+rm -rf site && mkdir site && cp index.html site/index.html && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples && cp -r vendor site/vendor
