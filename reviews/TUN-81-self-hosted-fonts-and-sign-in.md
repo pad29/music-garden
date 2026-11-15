@@ -464,7 +464,7 @@ Netlify deploy-preview drawer) and the sign-in check.
 3. *Round 3's fixes (`99072f7`) have had no GPT review (the three-round budget is spent).* **A** — one more
    GPT review round after the answers · **B** — merge without it. Claude recommends A. — **A**: the owner, in the
    AO session, 2026-11-14. Round 4 below.
-4. *Round 4 (the extra round) requested changes; they are fixed (`127c70c`) but unreviewed.* **A** — one more
+4. *Round 4 (the extra round) requested changes; they are fixed (`f507732`) but unreviewed.* **A** — one more
    GPT round · **B** — no more review: the guard is a test-side regression net, the page itself is proven clean by
    the host captures, and each round now finds a deliberately obfuscated spelling · **C** — replace the scanner
    with a blunter rule (no `//host.tld` anywhere in the decoded page or `fonts.css`, the SVG namespace aside),
