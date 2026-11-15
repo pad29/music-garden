@@ -124,28 +124,36 @@ YAML". A reference keeps its meaning: `!Ref X` and the block form `Ref: X` both 
 
 **The deploy policy.** `backend-deploy-policy.test.mjs` (TUN-113) reads the `mg-deploy` IAM policy
 from the JSON block in `backend/README.md` § One-time setup, and checks it against `template.yaml`
-with a small IAM evaluator. The evaluator handles Allow and Deny, `Resource` and `NotResource`, `*`,
-and the conditions the policy uses. It reports any other condition rather than guessing. `problems()`
-lists everything wrong:
+with a small IAM evaluator. The evaluator handles Allow and Deny (a Deny wins whatever the order),
+`Resource` and `NotResource`, `*`, and the conditions the policy uses: `StringEquals`, and `ArnEquals`
+/ `ArnLike` with wildcards, as AWS treats them. Any other operator or key is reported, and every
+statement's conditions are validated before anything is evaluated. `problems()` lists everything wrong:
 
 - for every resource in the template, the policy allows the actions in the test's `NEEDS` for its
   type, on the ARN the resource would get (`music-garden-*` names, from the stack name in
   `samconfig.toml`). `NEEDS` is the test's model of what CloudFormation's handlers call to create,
   read, update, delete and roll back, written from AWS's authorization reference. It is not proof;
 - a new resource type fails until it is added to both the policy and `NEEDS`. The template's resources
-  are read fail-closed: a resource without a readable `Type`, a name that is not a literal (`!Sub`, a
-  block form), a name outside the prefix, or an explicit function `Role` is reported;
-- SAM's own calls (the change set against both the stack and the change-set ARN, the Serverless
-  transform, its bucket's creation and objects), the cost switch's runbook commands, and Polly for
+  are read structurally, one map level at a time, with plain or quoted keys at whatever indentation the
+  level uses. Anything else at that level is an error, never skipped. A resource without a readable
+  `Type`, a name that is not a literal (`!Sub`, a block form), a name outside the prefix, an explicit
+  function `Role`, or a `Lambda::Permission` whose `FunctionName` is not a literal or a `!Ref` /
+  `!GetAtt …Arn` of a function in the template, is reported;
+- SAM's own calls (change-set calls on the stack they authorize against, the Serverless transform, its
+  bucket's creation and objects), the cost switch's runbook commands, and Polly for
   `tools/gen-voice.mjs`;
 - what it must not allow: players' table items, Cognito users, **invoking any function but the cost
   switch**, EC2, IAM users and keys, roles or functions outside the prefix, us-east-1-only grants in
   another region, `PassRole` to anything but Lambda, and `AttachRolePolicy` for anything but Lambda's
   basic logging policy;
-- no account ID (the repository is public), and the inline-policy size limit.
+- no account ID (the repository is public), and both Identity Center inline-policy limits (32,768
+  bytes, and 10,240 without whitespace), tested at their boundaries.
 
 Its mutation cases, kept as tests, each break the policy or the template one way and require the
-matching report. It cannot prove AWS accepts the policy: the owner's deploys do.
+matching report. Harmless changes (quoting, deeper indentation, `!GetAtt` for `!Ref`, dropping the extra
+change-set grant) must report nothing. An evaluator matrix pins Deny precedence in both orders, the cost
+switch's exemption (unqualified, `$LATEST`, a version, an alias) against a look-alike name, and
+missing condition keys. It cannot prove AWS accepts the policy: the owner's deploys do.
 
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the

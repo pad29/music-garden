@@ -128,9 +128,10 @@ What deploying this stack needs, and what [the cost switch's commands](#the-cost
   ]
 }
 ```
-- **What it allows.** It covers this stack (`music-garden`) and SAM's bucket stack. Within those,
-  anything named `music-garden-*`: roles, functions, tables (the sign-up counter's included) and topics,
-  plus the `/music-garden/` parameters, all in us-east-1. Cognito user pools, HTTP APIs and budgets have
+- **What it allows.** It covers this stack (`music-garden`) and SAM's bucket stack. It also covers
+  anything named `music-garden-*` — roles, functions, tables (the sign-up counter's included) and
+  topics — plus the `/music-garden/` parameters, all in us-east-1. Those grants go by **name**, not by
+  stack: a resource with a matching name is covered even if it was made outside these stacks. Cognito user pools, HTTP APIs and budgets have
   random IDs that can't be matched by name, so those are allowed for any pool or API in us-east-1 and
   any budget. It also allows SAM's bucket (`aws-sam-cli-managed-default-samclisourcebucket-*`), a few
   read-only lookups, and Polly for the voice clips. IAM, S3 and Budgets are global services, so a region
@@ -228,18 +229,30 @@ is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-11
    failed rollback. Do not turn the root key back on.
 6. Once that deploy has succeeded, **delete the root key:** **Security credentials → Access keys →** the
    key **→ Actions → Delete**. It should no longer be listed.
-7. **Remove every copy from the machine.** Note the deleted key's ID (it starts `AKIA`; the console showed
-   it). Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and delete every profile holding
-   that ID, usually `[default]`. Check that `~/.aws/config` holds no `aws_access_key_id`, and run the
-   variable check from step 1 again. Then search for the ID anywhere else it could be: a downloaded
-   `rootkey.csv` or `*_accessKeys.csv`, scripts and `.env` files, and PowerShell's history:
+7. **Remove every copy from the machine.** Note the deleted key's ID: it starts `AKIA`, and the console
+   showed it. Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and remove each profile
+   holding that ID, usually `[default]`, keeping any other profile. Check that `~/.aws/config` holds no
+   `aws_access_key_id`, and run the variable check from step 1 again. Then search the likely places for
+   the ID, hidden files included. These are: all of `~/.aws` (backups like `credentials.bak` too), any
+   credential or config file an `AWS_SHARED_CREDENTIALS_FILE` or `AWS_CONFIG_FILE` variable points to, the
+   files directly in your home folder (`.bash_history`, `.env`…), Downloads, Desktop and Documents (a
+   `rootkey.csv` download), and PowerShell's history:
    ```powershell
-   Get-ChildItem $HOME -Recurse -File -ErrorAction SilentlyContinue -Include *.csv,*.env,*.txt,*.ps1,*.sh,credentials,config |
-     Select-String -SimpleMatch "<the key ID>" -List | Select-Object Path
-   Select-String -SimpleMatch "<the key ID>" (Get-PSReadLineOption).HistorySavePath
+   $id = "<the key ID>"
+   $files = foreach ($v in "AWS_SHARED_CREDENTIALS_FILE","AWS_CONFIG_FILE") { foreach ($s in "Process","User","Machine") {
+     [Environment]::GetEnvironmentVariable($v, $s) } }
+   $places = @("$HOME\.aws", "$HOME\Downloads", "$HOME\Desktop", "$HOME\Documents",
+     (Split-Path (Get-PSReadLineOption).HistorySavePath)) + $files | Where-Object { $_ -and (Test-Path $_) }
+   $found = @(Get-ChildItem $places -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable unread) +
+     @(Get-ChildItem $HOME -File -Force) | Select-String -SimpleMatch $id -List
+   $found | Select-Object Path
+   $unread | ForEach-Object { "could not read: $($_.TargetObject)" }
    ```
-   Delete what it finds (for a history line, edit that file). The key no longer works once deleted, but
-   it should not be lying around. Leave alone the Polly-only key that `.claude/gpt/ask.sh` loads from
+   For each file it lists, remove the line or profile holding the key. Delete the whole file only when
+   it is the key's own download, like `rootkey.csv`. Look by hand at anything it could not read. **This
+   is a partial search:** it does not look in other folders, password managers, notes apps or cloud
+   drives, so think of anywhere else you may have pasted the key. A deleted key no longer works, but it
+   should not be lying around. Leave alone the Polly-only key that `.claude/gpt/ask.sh` loads from
    `~/.codex/tunegarden-aws.env`: it is a different key.
 
 ---

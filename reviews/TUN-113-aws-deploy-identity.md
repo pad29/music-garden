@@ -167,3 +167,43 @@ Missing tests GPT listed:
   role-policy calls are in `NEEDS`, and the test passes against PR #147's template (scratch copy).
 
 **871 tests pass** (the policy test: 26, of which 22 are mutation cases).
+
+Round 2, on `b9cd600` (the delta from `bd2130b`) — **CHANGES REQUESTED**. *"I found no confirmed
+deployment failure caused by the invocation deny."* GPT **accepted** the Deny/`NotResource` fix, not
+sharing the parser, dropping the versioned handler table, no S3 location condition, the deferred template
+comment, no invented-action detector and no frozen PR #147 fixture. It did **not accept** checking
+CloudFormation calls against both ARN kinds (finding 3).
+
+1. **Medium — the reader still isn't fail-closed.** *"`prop()` still recognizes only unquoted keys at
+   exactly six spaces. Unrecognized properties become 'absent,' and the checker substitutes generated
+   names."* Its examples: a quoted `"TableName"`, deeper property indentation, a quoted `"Role"`, and a
+   permission's `FunctionName: other`. **Agreed.** The reader now reads each map level structurally
+   (`mapOf`): plain or quoted keys at the level's own indentation, and any other line at that level is an
+   error. A permission's `FunctionName` must be a literal in the prefix, or a `!Ref` / `!GetAtt …Arn` of a
+   function in the template, and its checks use that function's ARN.
+2. **Medium — conditions.** *"`ArnEquals` uses literal equality. AWS permits wildcards in `ArnEquals`"*;
+   a policy with `Admin*` added passed. Also, the early return on a missing key skipped validating later
+   operators. **Agreed.** `ArnEquals` and `ArnLike` now glob, and every statement's operators and keys
+   are validated before any evaluation.
+3. **Medium — "Checking CloudFormation actions against both ARN kinds preserves the incorrect
+   authorization model."** **Agreed.** Change-set calls are now checked on the two stacks only. The
+   policy keeps its `changeSet/*` grant as harmless belt-and-braces, and a test proves dropping it
+   reports nothing.
+4. **Medium — "Root-key cleanup remains incomplete"** (hidden files, `credentials.bak`,
+   `.bash_history`, `AWS_SHARED_CREDENTIALS_FILE`, suppressed errors). **Agreed.** The search now covers
+   all of `~/.aws` and the files the two variables point to (all scopes). It also covers the home
+   folder's own files, Downloads, Desktop, Documents and the history folder, hidden files included. It
+   reports what it couldn't read, and says plainly it is a partial search. It also says to remove the
+   matching line or profile, deleting a whole file only for the key's own download.
+5. **Low — the 32,768-byte limit and size tests.** **Agreed:** both limits are checked in bytes and
+   tested at their boundaries.
+6. **Low — "'Within those' incorrectly implies stack-membership enforcement."** **Agreed:** the README
+   now says the grants go by name, not by stack.
+
+Missing tests GPT listed, all added: quoted keys and deeper indentation (reported or read correctly),
+an unrelated, missing or `!Sub` permission target, `ArnEquals` with `Admin*`, an unsupported operator
+after a failing supported one, an unsupported key, an evaluator matrix, change sets (dropping the extra
+grant passes; dropping either stack fails), independent removals, and both size limits.
+
+**891 tests pass** (the policy test: 46). The test also passes against PR #147's template, in a scratch
+copy.
