@@ -122,6 +122,24 @@ misreading it: flow collections (`{…}`, `[…]`), anchors, aliases, folded or 
 YAML". A reference keeps its meaning: `!Ref X` and the block form `Ref: X` both count, while a quoted
 `"!Ref X"` is a literal string, as CloudFormation reads it.
 
+**The deploy policy.** `backend-deploy-policy.test.mjs` (TUN-113) reads the `mg-deploy` IAM policy
+from the JSON block in `backend/README.md` § One-time setup, and checks it against `template.yaml`
+with a small IAM matcher (Allow statements, `*` in actions and resources; conditions are checked by
+their shape, not evaluated):
+
+- for every resource in the template, the policy allows the actions CloudFormation calls to create,
+  update and delete it, on the ARN it would get (`music-garden-*` names, from the stack name in
+  `samconfig.toml`); a new resource type fails until it is added to both the policy and the test's
+  `NEEDS`; explicit names must stay under `music-garden-` (and SSM under `/music-garden/`);
+- SAM's own calls (the change set, the Serverless transform, its bucket), the cost switch's runbook
+  commands, and Polly for `tools/gen-voice.mjs`;
+- what it must not allow: reading or writing players' table items, listing or changing Cognito users,
+  EC2, IAM users and keys, roles or functions outside the prefix, other regions; `PassRole` only to
+  Lambda, and `AttachRolePolicy` only for Lambda's basic logging policy;
+- no account ID in the policy (the repository is public).
+
+It cannot prove AWS accepts the policy: the owner's deploys do.
+
 **The AO preview config.** `ao-launch.test.mjs` (GPT's test pass) pins what `work-ticket` § 6 relies on
 in `.ao/launch.json`: one configuration, so a bare `ao preview start` works; `http-server` serving the
 worktree uncached, bound to `127.0.0.1` on AO's `${PORT}`; the url on that same origin; and

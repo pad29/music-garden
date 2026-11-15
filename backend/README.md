@@ -25,36 +25,183 @@ backend/
 
 ## One-time setup (Windows / PowerShell)
 
-You already have an AWS account; you need credentials + two CLIs.
+You need an AWS account, a deploy identity and two CLIs. Deploys run as an **IAM Identity Center** user
+with the `mg-deploy` permission set below. `aws sso login` gives the CLI credentials that expire on their
+own, so no key is stored on disk (owner, TUN-113, 2026-11-15).
 
-### 1. Create deploy credentials (IAM access key)
-In the AWS Console:
-1. **IAM → Users → Create user** (e.g. `mg-deployer`). *Skip* console access.
-2. Attach policy **`AdministratorAccess`** (simplest for setup; you can scope it down later).
-3. Open the user → **Security credentials → Create access key → "Command Line Interface (CLI)"**.
-4. Copy the **Access key ID** and **Secret access key**. (The secret is shown once — keep it private; never commit it.)
+**Never create or use an access key for the root user**, the account's email sign-in. A root key can do
+anything to the account, including its billing and closing it, and no policy can limit it. If
+`aws sts get-caller-identity` shows an ARN ending in `:root`, follow
+[Moving off a root access key](#moving-off-a-root-access-key).
 
-### 2. Install the AWS CLI v2
+### 1. Protect the root user
+Sign in as the root user → the account menu (top right) → **Security credentials** →
+**Multi-factor authentication (MFA)** → **Assign MFA device** (an authenticator app or a security key).
+
+### 2. Create the deploy identity (IAM Identity Center)
+In the AWS Console, with the region set to **us-east-1** (N. Virginia):
+1. **IAM Identity Center → Enable.** It offers to enable AWS Organizations: accept. This account becomes
+   the organization's management account. That is free, and nothing changes for the stack.
+2. **Settings → Authentication → Multi-factor authentication → Configure:** check that users are
+   prompted for MFA *every time they sign in*, and that a user without a device must register one at
+   sign-in. Both are the defaults.
+3. **Users → Add user:** a username, and your email address (never commit it), with *Send an email to this
+   user with password setup instructions*. Open the email, set a password, and register an authenticator
+   app.
+4. **Permission sets → Create permission set → Custom permission set → Inline policy:** paste
+   [the `mg-deploy` policy](#the-mg-deploy-policy). Name it `mg-deploy` and leave the session duration
+   at 1 hour: the CLI renews the credentials from your login.
+5. **AWS accounts →** this account **→ Assign users or groups:** your user, then `mg-deploy`.
+6. **Dashboard:** copy the **AWS access portal URL** (`https://d-…awsapps.com/start`) for step 4 below.
+
+#### The `mg-deploy` policy
+What deploying this stack needs, and what [the cost switch's commands](#the-cost-switch) and
+`tools/gen-voice.mjs` need. `tests/backend-deploy-policy.test.mjs` checks it against `template.yaml`.
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "Stacks", "Effect": "Allow", "Action": "cloudformation:*", "Resource": [
+        "arn:aws:cloudformation:us-east-1:*:stack/music-garden/*",
+        "arn:aws:cloudformation:us-east-1:*:stack/aws-sam-cli-managed-default/*",
+        "arn:aws:cloudformation:us-east-1:*:changeSet/*" ] },
+    { "Sid": "SamTransform", "Effect": "Allow", "Action": "cloudformation:CreateChangeSet",
+      "Resource": "arn:aws:cloudformation:us-east-1:aws:transform/Serverless-2016-10-31" },
+    { "Sid": "ReadOnlyLookups", "Effect": "Allow", "Resource": "*", "Action": [
+        "cloudformation:ValidateTemplate", "cloudformation:GetTemplateSummary", "cloudformation:ListStacks",
+        "iam:ListPolicies" ] },
+    { "Sid": "SamBucket", "Effect": "Allow", "Action": "s3:*", "Resource": [
+        "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*",
+        "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*" ] },
+    { "Sid": "FunctionRoles", "Effect": "Allow", "Resource": "arn:aws:iam::*:role/music-garden-*", "Action": [
+        "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:UpdateRole", "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
+        "iam:PutRolePolicy", "iam:GetRolePolicy", "iam:DeleteRolePolicy", "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies", "iam:DetachRolePolicy" ] },
+    { "Sid": "AttachOnlyLambdaLogging", "Effect": "Allow", "Action": "iam:AttachRolePolicy",
+      "Resource": "arn:aws:iam::*:role/music-garden-*",
+      "Condition": { "ArnEquals": {
+        "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" } } },
+    { "Sid": "PassRolesToLambdaOnly", "Effect": "Allow", "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::*:role/music-garden-*",
+      "Condition": { "StringEquals": { "iam:PassedToService": "lambda.amazonaws.com" } } },
+    { "Sid": "Functions", "Effect": "Allow", "Action": "lambda:*", "Resource": [
+        "arn:aws:lambda:us-east-1:*:function:music-garden-*",
+        "arn:aws:lambda:us-east-1:*:function:music-garden-*:*" ] },
+    { "Sid": "TablesNotTheirData", "Effect": "Allow", "Resource": "arn:aws:dynamodb:us-east-1:*:table/music-garden-*",
+      "Action": [
+        "dynamodb:CreateTable", "dynamodb:UpdateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive",
+        "dynamodb:DescribeContinuousBackups", "dynamodb:UpdateContinuousBackups",
+        "dynamodb:DescribeContributorInsights", "dynamodb:DescribeKinesisStreamingDestination",
+        "dynamodb:GetResourcePolicy", "dynamodb:TagResource", "dynamodb:UntagResource",
+        "dynamodb:ListTagsOfResource" ] },
+    { "Sid": "UserPoolsNotTheirUsers", "Effect": "Allow", "Resource": "arn:aws:cognito-idp:us-east-1:*:userpool/*",
+      "Action": [
+        "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool", "cognito-idp:DeleteUserPool",
+        "cognito-idp:GetUserPoolMfaConfig", "cognito-idp:SetUserPoolMfaConfig",
+        "cognito-idp:AddCustomAttributes",
+        "cognito-idp:CreateUserPoolClient", "cognito-idp:DescribeUserPoolClient",
+        "cognito-idp:UpdateUserPoolClient", "cognito-idp:DeleteUserPoolClient",
+        "cognito-idp:TagResource", "cognito-idp:UntagResource", "cognito-idp:ListTagsForResource" ] },
+    { "Sid": "NewUserPool", "Effect": "Allow", "Action": "cognito-idp:CreateUserPool", "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } } },
+    { "Sid": "HttpApis", "Effect": "Allow", "Resource": [
+        "arn:aws:apigateway:us-east-1::/apis", "arn:aws:apigateway:us-east-1::/apis/*",
+        "arn:aws:apigateway:us-east-1::/tags/*" ],
+      "Action": [ "apigateway:GET", "apigateway:POST", "apigateway:PUT", "apigateway:PATCH",
+        "apigateway:DELETE" ] },
+    { "Sid": "Topics", "Effect": "Allow", "Action": "sns:*",
+      "Resource": "arn:aws:sns:us-east-1:*:music-garden-*" },
+    { "Sid": "Parameters", "Effect": "Allow", "Action": "ssm:*",
+      "Resource": "arn:aws:ssm:us-east-1:*:parameter/music-garden/*" },
+    { "Sid": "Budgets", "Effect": "Allow", "Resource": "arn:aws:budgets::*:budget/*", "Action": [
+        "budgets:ViewBudget", "budgets:ModifyBudget",
+        "budgets:TagResource", "budgets:UntagResource", "budgets:ListTagsForResource" ] },
+    { "Sid": "VoiceClips", "Effect": "Allow", "Action": "polly:SynthesizeSpeech", "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } } }
+  ]
+}
+```
+- **What it allows.** This stack (`music-garden`) and SAM's bucket stack, plus anything named
+  `music-garden-*`: roles, functions, tables (the sign-up counter's included) and topics, and the
+  `/music-garden/` parameters. Cognito user pools, HTTP APIs and budgets have random IDs that can't be
+  matched by name, so those are allowed across the account, in us-east-1. Polly is allowed for the voice
+  clips.
+- **What it does not.** No other service, so no EC2, which is the usual abuse of a leaked key. No other
+  region, no IAM users or keys, and no billing or account settings: use the root user in the console for
+  those. **Players' data is excluded:** no reading or writing table items, and no listing or changing
+  Cognito users. A role can be passed only to Lambda, and the only managed policy it may attach is
+  Lambda's basic logging policy.
+- **Its limit.** It can still create roles for this stack's functions and put inline policies on them,
+  so someone holding its credentials could, on purpose, run code with more power through a Lambda. A
+  permissions boundary on the functions' roles would close that. That is a template change, not made yet.
+- **A deploy refused with `AccessDenied`** names the action it lacks. That happens when `template.yaml`
+  gains a new kind of resource, or CloudFormation starts calling a new API. CloudFormation rolls the
+  deploy back. Sign in to the console as the root user, open **IAM Identity Center → Permission sets →
+  `mg-deploy` → Inline policy**, add the action, scoped like its neighbours, and deploy again. Add it
+  here too, in the same commit as the template change if there is one.
+
+### 3. Install the AWS CLI v2
 Download & run the MSI: https://awscli.amazonaws.com/AWSCLIV2.msi  — then in a **new** PowerShell:
 ```powershell
 aws --version          # expect: aws-cli/2.x ...
 ```
 
-### 3. Configure credentials
+### 4. Configure the CLI to sign in through IAM Identity Center
 ```powershell
-aws configure
-# AWS Access Key ID:     <paste>
-# AWS Secret Access Key: <paste>
-# Default region name:   us-east-1        # or your preferred region
-# Default output format: json
+aws configure sso
+# SSO session name:          mg
+# SSO start URL:             <your AWS access portal URL, from step 2>
+# SSO region:                us-east-1
+# SSO registration scopes:   sso:account:access      (the default)
+#   a browser opens: allow it; with one account and one permission set, both are picked for you
+# Default client Region:     us-east-1
+# CLI default output format: json
+# Profile name:              mg-deploy
+[Environment]::SetEnvironmentVariable("AWS_PROFILE", "mg-deploy", "User")   # every new shell uses it
 ```
+Then, in a **new** PowerShell:
+```powershell
+aws sso login                   # the browser: your password and MFA
+aws sts get-caller-identity     # Arn: …:assumed-role/AWSReservedSSO_mg-deploy_…/<you> — never one ending in :root
+```
+`sam`, `aws` and `node tools/gen-voice.mjs` all use this profile. The login lasts about 8 hours. After
+that, a command says the token or SSO session has expired: run `aws sso login` again. `~/.aws/config`
+holds the portal URL, the account ID and the role name, and `~/.aws/sso/cache` holds the login token
+until it expires. No access key is stored.
 
-### 4. Install the AWS SAM CLI
+### 5. Install the AWS SAM CLI
 Download & run the MSI: https://github.com/aws/aws-sam-cli/releases/latest/download/AWS_SAM_CLI_64_PY3.msi — then in a **new** PowerShell:
 ```powershell
 sam --version          # expect: SAM CLI, version 1.x
 ```
 *(No Docker needed — these Lambdas have no dependencies; the AWS SDK is provided by the Node.js 24 runtime, `nodejs24.x`.)*
+
+### Moving off a root access key
+Follow these steps on a machine whose CLI signs in with the root user's key. Keep this order: the root key
+is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-113, 2026-11-15).
+1. Do steps 1, 2 and 4 above. Leave the root key where it is for now: `AWS_PROFILE` makes the CLI use
+   `mg-deploy` even while `~/.aws/credentials` still holds the root key.
+2. In a new PowerShell, run `aws sts get-caller-identity`. It must show `AWSReservedSSO_mg-deploy`, not
+   `:root`.
+3. **A deploy with nothing to change, as `mg-deploy`:** run [Future deploys](#future-deploys)' commands
+   from `backend/`, on an up-to-date `main`. Expect *No changes to deploy*, or only the rows that
+   section calls normal. If it shows those rows, answering `y` deploys them, as usual. This proves the
+   identity can read the stack and make a change set. It does not yet prove it can create or change
+   resources.
+4. **Deactivate the root key:** as the root user, **Security credentials → Access keys →** the key **→
+   Actions → Deactivate**.
+5. **The first real deploy as `mg-deploy`** is the next one that changes `template.yaml` or `src/`. If it
+   fails with `AccessDenied`, fix the policy as [its section](#the-mg-deploy-policy) says. Do not turn
+   the root key back on.
+6. Once that deploy has succeeded, **delete the root key:** **Security credentials → Access keys →** the
+   key **→ Actions → Delete**. It should no longer be listed.
+7. **Remove it from the machine.** Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and
+   delete the profile whose `aws_access_key_id` is the deleted key's ID, usually `[default]`. Check that
+   `~/.aws/config` holds no `aws_access_key_id`, and that `Get-ChildItem env:AWS_*` lists only
+   `AWS_PROFILE`. Leave the Polly-only key that `.claude/gpt/ask.sh` loads from
+   `~/.codex/tunegarden-aws.env` alone: it is not the root key.
 
 ---
 
@@ -85,7 +232,7 @@ UserPoolClientId  xxxxxxxxxxxxxxxxxxxxxxxxxx
 ApiUrl            https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com
 ```
 
-Those four values are *public* identifiers (the kind that ship inside any web app), safe to commit — unlike your IAM secret key, which stays on your machine. They're already wired into the client (the `AUTH` object in `js/cloud.js`); if you ever recreate the stack, update `AUTH` with the new outputs.
+Those four values are *public* identifiers (the kind that ship inside any web app), safe to commit — unlike your AWS sign-in, which stays on your machine. They're already wired into the client (the `AUTH` object in `js/cloud.js`); if you ever recreate the stack, update `AUTH` with the new outputs.
 
 ---
 
@@ -246,7 +393,7 @@ in `reviews/TUN-87-cloud-switch.md`. The throttle is the real cap; this is the b
 **What trips it.** When the month's **actual** spend passes $30, `MonthlyBudget`'s 100 % alert posts to
 the SNS topic `CloudSwitchAlarmTopic`, which runs `music-garden-cloud-switch` (`CloudSwitchFn`,
 `src/cloud-switch.mjs`). Any message on that topic means **off** — a message can never switch the cloud
-on. Only AWS Budgets (and IAM users of this account, like you) can publish there. When you switch back
+on. Only AWS Budgets (and identities in this account allowed to publish, like `mg-deploy`) can publish there. When you switch back
 on, the switch records the time in the SSM parameter `/music-garden/cloud-switch/on-at`
 (`CloudSwitchState`); a trip message **published before that time** is ignored, and emailed about — Lambda
 and SNS can deliver a message again, even hours later, and it must not undo your switch-on. A trip
@@ -396,7 +543,7 @@ break every song shared after the deploy, because older code returns the stored 
 string, which the game cannot open. Fix forward instead.
 
 ## Notes
-- **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
+- **What's secret vs not:** your AWS sign-in (the `aws sso login` token in `~/.aws/sso/cache`, which expires on its own) is secret. An access key never belongs in the repository, and the root user never has one ([One-time setup](#one-time-setup-windows--powershell)). `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
 - **CORS** is scoped to `https://tunegarden.game` and `https://www.tunegarden.game` in `template.yaml` — nothing else: Cloudflare's previews (`*.music-garden.pages.dev`) and the retired `music-garden.netlify.app` cannot call the API (TUN-76). Adding an origin is the owner's decision; `tests/backend-template.test.mjs` holds the list, so change both. To see what the live API allows, send it a preflight; an allowed origin comes back in an `access-control-allow-origin` line, any other gets none:
   ```powershell
   curl.exe -s -i -X OPTIONS https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/songs/x -H "Origin: https://tunegarden.game" -H "Access-Control-Request-Method: GET"
