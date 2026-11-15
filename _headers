@@ -21,7 +21,7 @@
   Referrer-Policy: no-referrer
 
 # Always re-checked: these names do not change when their content does, so a long cache would keep
-# players on old code after a deploy. (Both hosts send this by default; it is written down so it stays.)
+# players on old code after a deploy. (Cloudflare Pages sends this by default; it is written down so it stays.)
 /
   Cache-Control: public, max-age=0, must-revalidate
 

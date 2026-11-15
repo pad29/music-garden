@@ -123,6 +123,10 @@ test("the path rule: root scripts, nested scripts and spike/ scripts each need t
   assert.deepEqual(copyGaps(all, scripts), []);
   for (const [drop, missing] of [["boot.js", "boot.js"], ["js", "js/nested/engine.js"], ["spike", "spike/probe.js"], ["index.html", "index.html"]])
     assert.deepEqual(copyGaps(all.filter((c) => c.src !== drop), scripts), [missing]);
+  // Copied, but to another destination: exactly that path is missing (GPT's PR review of TUN-85 — with the
+  // destination check removed, every other publish test stayed green).
+  for (const [moved, missing] of [["boot.js", "boot.js"], ["js", "js/nested/engine.js"], ["spike", "spike/probe.js"], ["index.html", "index.html"]])
+    assert.deepEqual(copyGaps(all.map((c) => c.src === moved ? { ...c, dst: "elsewhere" } : c), scripts), [missing]);
   // A folder copied without -r, or a root file copied with it, is not a copy that publishes the script.
   assert.deepEqual(copyGaps(all.map((c) => c.src === "js" ? { ...c, recursive: false } : c), scripts), ["js/nested/engine.js"]);
   assert.deepEqual(copyGaps(all.map((c) => c.src === "boot.js" ? { ...c, recursive: true } : c), scripts), ["boot.js"]);

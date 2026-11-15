@@ -59,7 +59,7 @@ fonts and loads the library from `vendor/`. Its scanner refuses any `src`/`href`
 the game's own scripts may name only the backend. The network half is the browser check in
 `reviews/TUN-81-self-hosted-fonts-and-sign-in.md`.
 
-**The site's headers (TUN-86).** `site-headers.test.mjs` reads `_headers` the way both hosts do
+**The site's headers (TUN-86).** `site-headers.test.mjs` reads `_headers` the way Cloudflare Pages does
 (`helpers/site-headers.mjs`, strict: a line it cannot read is refused) and works out the headers for
 every file the build publishes. Each header must come from one rule per path (Cloudflare joins
 duplicates with a comma). The policy may allow only the site itself, plus, for connections, the
@@ -111,8 +111,11 @@ static check: that AO really starts, serves and stops the server was measured, i
 
 **The workflow's scripts and cross-references.** `workflow-scripts.test.mjs` runs `.claude/gpt/gpt-lock.sh`
 (one GPT job at a time, `CLAUDE.md` § Cost), the review poller printed in
-`.claude/skills/work-ticket/pr-review.md` and the test-output recipe in `CLAUDE.md` § Working lean — the
-last two taken from the docs, so the docs are what is tested — under Git Bash (or bash), with fake `ao`,
+`.claude/skills/work-ticket/pr-review.md`, the preview finder in `work-ticket/browser.md` (TUN-85: it waits
+for the *Cloudflare Pages* check alone, takes the branch preview only from the comment naming the head,
+and never exits 0 without one — its `gh --jq` filters are not run by the fake, and were checked on live
+PRs) and the test-output recipe in `CLAUDE.md` § Working lean — the last three taken from the docs, so
+the docs are what is tested — under Git Bash (or bash), with fake `ao`,
 `gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins; a dead holder's lock
 is never broken automatically, and `status`, a busy `acquire` and `wait` print the command that clears
 it by hand, which works; a lock it can't create, or (on Windows, where a busy directory can't be

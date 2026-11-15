@@ -44,15 +44,36 @@ produced it.**
   `ao browser target chrome`: that is the owner's own Chrome and profile.
 - Once the PR exists, its Cloudflare preview opens the same way. The *Cloudflare Pages* check's link in
   `gh pr checks <n>` opens the owner's Cloudflare dashboard, not the preview: the URLs are in the comment
-  Cloudflare posts on the PR and rewrites on each push. This prints the commit it last built — check it
-  is the PR's head — then that commit's preview, then the branch preview, which follows later pushes:
+  Cloudflare posts on the PR and rewrites on each push — a *Preview URL* per commit and a *Branch
+  Preview URL* that follows the branch (the branch name's `/` becomes `-`). This waits for that check on
+  the PR's head — that check alone: a bare `gh pr checks --watch` waits on every check — then prints
+  `preview <branch preview URL>` from the comment that names the head:
 
   ```bash
-  gh pr view <n> --json comments --jq '[.comments[] | select(.author.login == "cloudflare-workers-and-pages")][-1].body' \
-    | grep -oE '<code>[0-9a-f]+</code>|https://[a-z0-9-]+\.music-garden\.pages\.dev' | uniq
+  pr=<n>; head=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) || { echo "error: gh pr view failed"; exit 1; }
+  short=${head:0:7}; st=
+  for i in $(seq 40); do      # the Cloudflare Pages check on the head: up to 20 minutes
+    st=$(gh pr checks "$pr" --json name,bucket --jq '.[] | select(.name == "Cloudflare Pages") | .bucket' 2>/dev/null)
+    case "$st" in pass|fail) break ;; esac; sleep 30
+  done
+  case "$st" in
+    pass) ;;
+    fail) echo "check failed: see gh pr checks $pr"; exit 1 ;;
+    *) echo "no finished Cloudflare Pages check on $short (state: ${st:-none}); a fork PR gets none"; exit 3 ;;
+  esac
+  for i in $(seq 5); do       # the comment, rewritten for the head: up to 2 minutes more
+    url=$(gh pr view "$pr" --json comments --jq '.comments[] | select(.author.login == "cloudflare-workers-and-pages") | .body | gsub("\n"; " ")' \
+      | grep -F "<code>$short</code>" | tail -n 1 | grep -oE 'Branch Preview URL:.*' \
+      | grep -oE 'https://[a-z0-9-]+\.music-garden\.pages\.dev' | head -n 1)
+    [ -n "$url" ] && { echo "preview $url"; exit 0; }; sleep 30
+  done
+  echo "no Cloudflare comment names $short"; exit 1
   ```
 
-  For PR #139: `d3dd7c1`, `https://cb6e2c72.music-garden.pages.dev`,
-  `https://ao-tun-86-headers-root.music-garden.pages.dev` (the branch name's `/` became `-`). Hand-offs
-  quote the branch preview. Cloud sync and cloud songs fail on every preview — the API's CORS list
-  allows only `tunegarden.game` — so sign-in is checked on production after the merge, not here.
+  Exit 0 — the URL hand-offs quote. Exit 3 — no check: a PR from a fork gets no preview; hand off with
+  *Preview: none — fork PR*. Exit 1 — a failed build, or no comment for the head: look at
+  `gh pr checks <n>` and the PR's comments; a build failure is yours to fix before the hand-off; a
+  missing comment, after one more run, goes in the hand-off as *Preview: none — <the script's line>*.
+  `tests/workflow-scripts.test.mjs` runs this block. Cloud sync and cloud songs fail on every preview —
+  the API's CORS list allows only `tunegarden.game` — so sign-in is checked on production after the
+  merge, not here.
