@@ -359,7 +359,7 @@ Built the revised plan with the owner's caps (both 16,384 bytes).
 
 ## Tests
 
-`node --test "tests/*.test.mjs"`: 750/750 before the docs commit. That includes the new
+`node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). That includes the new
 `backend-validate.test.mjs` (14) and `backend-handlers.test.mjs` (10). Syntax: `tools/check-syntax.mjs`,
 plus `node --check` on every backend module.
 
@@ -368,6 +368,8 @@ plus `node --check` on every backend module.
 one-page count; an unconditional `PUT`; a 500 that echoes `e.message`; storing the raw song or the raw
 progress; counting UTF-16 units; ignoring base64; a rename that drops the stored title. The only
 survivor was the equivalent "no song" guard (above). A no-op control survived, as it should.
+
+**No browser check:** the game's code does not change. The fixtures run the real client in the harness instead.
 
 **Not verified here:** anything against real AWS. Whether the SDK's DocumentClient accepts these
 parameter objects, Lambda packaging of the four new files, and the live 413/400/500 responses are
