@@ -60,7 +60,8 @@ The shipped save/share (song format **v2**, `index.html` ~L2208) was a quick pro
 | Field | Today | Reserves (roadmap) |
 |---|---|---|
 | `meta.title/created/updated` | set on save | library/cloud/gallery keys |
-| `meta.author` | Cognito sub if signed in | ownership for cloud + galleries |
+| `meta.author` | `null` (`currentSong`); `"Tune Garden"` (`famousToSong`) — never a Cognito sub yet | ownership for cloud + galleries |
+| `meta.famous` / `localId` / `source` / `cloudId` | a Jukebox tune's id; a quest offering's artifact id and provenance (`questArtifactUpsert`); the cloud id once shared | — local only: the cloud drops them (§ 6) |
 | `palette` | `"pentatonic"` / `"diatonic"` | chromatic / style / multi-instrument palettes (DESIGN §11) |
 | `time.cols/tempo/groove` | as v2 | — |
 | `time.swing` | unused | per-song swing (R-tier rhythm) |
@@ -152,7 +153,7 @@ New serverless storage alongside the existing progress API (same `music-garden` 
 
 **DynamoDB — `music-garden-songs`** (PAY_PER_REQUEST):
 - PK `songId` (short random url-safe id, ~10 chars, collision-checked; **random not sequential** so ids aren't enumerable).
-- Attributes: `ownerId` (Cognito sub), `title`, `visibility` (`private | unlisted`), `palette`, `payload` (v3 JSON, capped), `created`, `updated`.
+- Attributes: `ownerId` (Cognito sub), `title`, `visibility` (`private | unlisted`), `palette`, `payload` (the checked v3 song as JSON text, ≤ 16 KB; rows from before TUN-83 hold a map), `created`, `updated`.
 - GSI `byOwner` (`ownerId` HASH, `updated` RANGE) for "my cloud songs" listing.
 
 **API (HTTP API, reuses the Cognito JWT authorizer):**
@@ -169,9 +170,19 @@ New serverless storage alongside the existing progress API (same `music-garden` 
 - **CORS:** add the `songs` routes to the same allow-list already tightened to `https://tunegarden.game` (+ `www`, + Netlify fallback). *The fallback, `music-garden.netlify.app`, was removed by TUN-76 (2026-11-14): it no longer serves the app.*
 
 **Limits / abuse:**
-- Payload cap (e.g. ≤ 100 KB; DynamoDB item limit is 400 KB — stay well under).
-- Per-user song-count cap; create-rate throttle.
-- Title: length cap + profanity filter (it's the only free-text field — the real moderation surface).
+- **Only real songs are stored (TUN-83, 2026-11-14).** `backend/src/validate.mjs` checks every write
+  against § 3. Only known keys are allowed. Numbers must be in range, and strings must come from
+  closed lists (palette, voice, track kind, meter). A song may have at most 1,000 notes and 1,000
+  hits. Anything else is refused with `400`. What is stored is rebuilt from the checked fields.
+  `meta` keeps only the title, which always equals the row's title, plus the times. Reads are never
+  checked, so a link shared before TUN-83 still opens.
+- **Caps:** 16 KB per stored song, counted in UTF-8 bytes (`413` over it). 50 songs per account, a
+  soft cap (`409`). The ceiling is about 800 KB per account. The route throttle is TUN-82's.
+- **Title:** today's length cap and control-character strip (`sanitizeTitle`). It is the only free
+  text the cloud stores; checking it against allowed words is TUN-94.
+- **A change to the song format changes `validate.mjs` too, and the backend deploys first.** An
+  older backend refuses a newer client's new field. `backend/README.md` § What the API accepts has
+  the rules, the cost, and when to raise a cap.
 
 ---
 

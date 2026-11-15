@@ -26,7 +26,7 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
   ```bash
   node --test "tests/*.test.mjs"
   ```
-  It covers the game's logic — detectors and pulses, meter and grooves, persistence, pinch and zoom, the script load order, the quest engine — by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
+  It covers the game's logic — detectors and pulses, meter and grooves, persistence, pinch and zoom, the script load order, the quest engine, the backend's validator and handlers — by loading the game into a stubbed-DOM vm context, and cannot reach rendering or audio. Read `tests/README.md` before writing one.
 - **Dev URL flags:** append `?dev` to reveal a level-jump dropdown, "🔒 Relock instruments" (replays the region discovery cards without touching progress), "🗝️ Unlock quests" (marks every quest's prerequisite packages complete, so its Home card appears without playing them) and "🧹 Clear quest runs" (deletes every quest run and completion record, so the quests are unplayed again); `?reset` asks first, then wipes local progress and quest runs (saved melodies stay) — a link is something a stranger can send, so it never wipes unasked — and either answer takes `reset` out of the address bar, so a reload doesn't ask again.
 - **⚠️ file:// constraint:** the game must keep working when `index.html` is double-clicked. That means **no `fetch()`/XHR for local assets** — runtime data loads via `<script src>` tags (see `samples/*.js`) or `Audio` elements (`voice/*.mp3`) — and the game's own code in `js/` is **classic scripts, never ES modules**, which do not load from file://. Cloud APIs (https) are exempt.
 
@@ -212,7 +212,7 @@ The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection
 
 ## Backend
 
-Deployed serverless stack (`music-garden`, us-east-1): Cognito User Pool → API Gateway (JWT authorizer) → Lambdas → DynamoDB. Two APIs: `GET/PUT /progress` (per-user progress row) and the **songs API** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage; `GET /songs/{id}` is unauthenticated for link-resolution). The client embeds the **public** Cognito/API IDs (safe to commit). Anonymous play is fully local; creating an account turns on cloud sync. CORS is scoped to `tunegarden.game` and its `www` host, so deploy previews cannot call the API.
+Deployed serverless stack (`music-garden`, us-east-1): Cognito User Pool → API Gateway (JWT authorizer) → Lambdas → DynamoDB. Two APIs: `GET/PUT /progress` (per-user progress row) and the **songs API** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage; `GET /songs/{id}` is unauthenticated for link-resolution). The client embeds the **public** Cognito/API IDs (safe to commit). Anonymous play is fully local; creating an account turns on cloud sync. CORS is scoped to `tunegarden.game` and its `www` host, so deploy previews cannot call the API. The API stores only songs and progress the game really writes: 16 KB each at most, 50 songs per account, and no free text but a song's title. A new package, region, voice or format field changes `backend/src/validate.mjs`, and the backend deploys first (`backend/README.md` § What the API accepts).
 
 To redeploy backend changes:
 ```bash

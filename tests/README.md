@@ -37,6 +37,23 @@ TOML — plain headers, bare keys, no inline tables — so no spelling of a sett
 be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
 as in `workflow-scripts.test.mjs`).
 
+**The backend's code** (TUN-83). The Lambdas are ES modules, imported directly, with no `vm`. They need
+no install because the code the tests reach imports no AWS SDK: `backend/src/validate.mjs` (the
+formats), `http.mjs`, and `songs-api.mjs` / `progress-api.mjs`, which take their DynamoDB access as
+four plain functions. `songs.mjs` and `progress.mjs` only wire the real SDK into those, and no test
+loads them. `backend-validate.test.mjs` runs every song and progress the real client writes
+through the validator. `helpers/backend-fixtures.mjs` makes them by running the game: `currentSong`,
+every `famousToSong`, a quest's offering, `savePackageProgress` with every distinct tool crafted
+through `craftFromCells`, `cloudPush` of an old guest's localStorage. A browser-like `#instr` select
+is passed through `loadGame`'s `elements`, and a per-test `fetch` answers only the game's own API.
+The file also checks each refusal by its reason (`why`), each closed list against the client it
+describes, and that the largest real progress fits `MAX_PROGRESS_BYTES` with 10% to spare.
+`backend-handlers.test.mjs` drives the real handlers against an in-memory table. It covers the
+client's real `cloudSongCreate` body through `POST`, `GET` and back into the Studio, fixed error
+messages and no write on every refusal, byte caps before parsing (base64 and multibyte), the paged
+song count, the conditional `PUT`, and reads of old rows. The handlers' log lines are captured
+there, not printed.
+
 **No third-party requests (TUN-81).** `vendor.test.mjs` holds `vendor/` to `vendor/SHA256SUMS`
 (`helpers/vendor.mjs`: a changed, added or missing file fails, byte for byte — `.gitattributes` keeps
 `vendor/` out of line-ending conversion), checks `vendor/README.md` states the library's version and hash,
