@@ -242,17 +242,24 @@ is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-11
    $files = foreach ($v in "AWS_SHARED_CREDENTIALS_FILE","AWS_CONFIG_FILE") { foreach ($s in "Process","User","Machine") {
      [Environment]::GetEnvironmentVariable($v, $s) } }
    $places = @("$HOME\.aws", "$HOME\Downloads", "$HOME\Desktop", "$HOME\Documents",
-     (Split-Path (Get-PSReadLineOption).HistorySavePath)) + $files | Where-Object { $_ -and (Test-Path $_) }
-   $found = @(Get-ChildItem $places -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable unread) +
-     @(Get-ChildItem $HOME -File -Force) | Select-String -SimpleMatch $id -List
+     (Split-Path (Get-PSReadLineOption).HistorySavePath)) + $files | Where-Object { $_ }
+   $places | Where-Object { -not (Test-Path -LiteralPath $_) } | ForEach-Object { "not found, look by hand: $_" }
+   $found = @(Get-ChildItem -LiteralPath ($places | Where-Object { Test-Path -LiteralPath $_ }) -Recurse -File -Force `
+       -ErrorAction SilentlyContinue -ErrorVariable unread) +
+     @(Get-ChildItem -LiteralPath $HOME -File -Force) | Select-String -SimpleMatch $id -List
    $found | Select-Object Path
    $unread | ForEach-Object { "could not read: $($_.TargetObject)" }
    ```
-   For each file it lists, remove the line or profile holding the key. Delete the whole file only when
-   it is the key's own download, like `rootkey.csv`. Look by hand at anything it could not read. **This
-   is a partial search:** it does not look in other folders, password managers, notes apps or cloud
-   drives, so think of anywhere else you may have pasted the key. A deleted key no longer works, but it
-   should not be lying around. Leave alone the Polly-only key that `.claude/gpt/ask.sh` loads from
+   (`-LiteralPath` reads a path like `C:\AWS\[work]\credentials` as written, not as a wildcard.)
+   For each file it lists, **remove the whole root credential, not just the line with the ID.** That
+   means the key ID line, the secret access key next to it (`aws_secret_access_key`,
+   `AWS_SECRET_ACCESS_KEY`, or the CSV's second column), and any session token. In `~/.aws/credentials`
+   that is the whole profile block. In a history file, remove every command that set or pasted either
+   value. Keep every other credential and profile in the same file. Delete the whole file only when it
+   is the key's own download, like `rootkey.csv`. Look by hand at anything it could not read or could
+   not find. **This is a partial search:** it does not look in other folders, password managers, notes
+   apps or cloud drives, so think of anywhere else you may have pasted the key. A deleted key no longer
+   works, but it should not be lying around. Leave alone the Polly-only key that `.claude/gpt/ask.sh` loads from
    `~/.codex/tunegarden-aws.env`: it is a different key.
 
 ---

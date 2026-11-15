@@ -126,7 +126,8 @@ YAML". A reference keeps its meaning: `!Ref X` and the block form `Ref: X` both 
 from the JSON block in `backend/README.md` § One-time setup, and checks it against `template.yaml`
 with a small IAM evaluator. The evaluator handles Allow and Deny (a Deny wins whatever the order),
 `Resource` and `NotResource`, `*`, and the conditions the policy uses: `StringEquals`, and `ArnEquals`
-/ `ArnLike` with wildcards, as AWS treats them. Any other operator or key is reported, and every
+/ `ArnLike` matched component by component (a wildcard never spans a colon), as AWS treats them.
+An ARN operand that is not a six-part ARN is reported, as is any other operator or key, and every
 statement's conditions are validated before anything is evaluated. `problems()` lists everything wrong:
 
 - for every resource in the template, the policy allows the actions in the test's `NEEDS` for its
@@ -135,7 +136,8 @@ statement's conditions are validated before anything is evaluated. `problems()` 
   read, update, delete and roll back, written from AWS's authorization reference. It is not proof;
 - a new resource type fails until it is added to both the policy and `NEEDS`. The template's resources
   are read structurally, one map level at a time, with plain or quoted keys at whatever indentation the
-  level uses. Anything else at that level is an error, never skipped. A resource without a readable
+  level uses. Anything else at that level is an error, never skipped, and so is an inline
+  `Properties: {…}` map. A resource without a readable
   `Type`, a name that is not a literal (`!Sub`, a block form), a name outside the prefix, an explicit
   function `Role`, or a `Lambda::Permission` whose `FunctionName` is not a literal or a `!Ref` /
   `!GetAtt …Arn` of a function in the template, is reported;

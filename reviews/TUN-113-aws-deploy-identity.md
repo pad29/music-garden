@@ -207,3 +207,38 @@ grant passes; dropping either stack fails), independent removals, and both size 
 
 **891 tests pass** (the policy test: 46). The test also passes against PR #147's template, in a scratch
 copy.
+
+Round 3, on `41d14b0` (the delta from `b9cd600`) — **CHANGES REQUESTED**. GPT confirmed round 2's
+findings 3, 5 and 6 fixed, and 1, 2 and 4 partly fixed. It probed the PowerShell on Windows PowerShell 5.1,
+read-only. Its words: *"both arrays reach `Select-String`, null entries are filtered, and `-ErrorVariable`
+captures errors with `-ErrorAction SilentlyContinue`."*
+
+1. **Medium — "Inline `Properties` maps still disappear."** `Properties: {TopicName: unrelated}` and an
+   inline `Role` passed. **Agreed.** Inline `Properties` content is now an error ("write them as a block
+   map"). Two mutation cases cover it.
+2. **Medium — "ARN conditions use whole-string globbing instead of ARN-component matching."**
+   `arn:aws:iam::*AWSLambdaBasicExecutionRole` passed. **Agreed.** `ArnEquals` and `ArnLike` now match
+   the six components separately, and an operand that is not a six-part ARN is reported. There is a
+   mutation case, and matrix cases for valid in-component wildcards.
+3. **Medium — "Alternate credential paths are interpreted as wildcard patterns."** **Agreed, and
+   confirmed.** On a scratch fixture (Windows PowerShell 5.1), plain `Test-Path` returned `False` for an
+   existing `…\[work]\credentials`. Step 7 now uses `-LiteralPath`, and lists configured or expected
+   paths it cannot find. Re-run on the fixture, it found the key in the `[work]` file, a hidden file and a
+   `.bak`, and reported both missing paths. PowerShell 7 is not installed here: not verified on 7.
+4. **Medium — "Removing only the matching line can leave the root secret behind."** **Agreed.** Step 7
+   now says to remove the whole credential: the ID line, its secret and any token. In `credentials` that
+   is the profile block, and in history, every command that set either value. Other credentials stay.
+
+Missing tests GPT listed:
+- Added: inline `Properties` with an out-of-prefix name; inline `Properties` with a role; the shortened
+  ARN operand, plus valid in-component wildcards.
+- **Not added as repository tests:** the PowerShell cases, a bracket path searched literally, an
+  unreadable path reported, and the credential-pair removal. The suite runs Node, not the README's
+  PowerShell, and the removal is the owner's manual edit. The search was checked once on a 5.1 fixture
+  (above); the pair removal is an instruction, not code.
+
+**This was the third review round** (`work-ticket` § 8): the fixes are pushed without a fourth review,
+and the PR stops at Needs Input.
+
+**894 tests pass** (the policy test: 49). The test also passes against PR #147's template, in a scratch
+copy.

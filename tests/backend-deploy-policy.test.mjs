@@ -51,15 +51,30 @@ const glob = (pattern, flags) =>
   new RegExp("^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", flags);
 const actionMatches = (pattern, action) => glob(pattern, "i").test(action);
 const resourceMatches = (pattern, arn) => glob(pattern, "").test(arn);
-// StringEquals is literal; ArnEquals and ArnLike both take `*` and `?` (AWS's condition operators).
-const OPS = { StringEquals: (want, got) => want === got, ArnEquals: resourceMatches, ArnLike: resourceMatches };
+// An ARN's six components: arn, partition, service, region, account, resource (which may hold colons).
+const arnParts = (s) => {
+  const p = s.split(":");
+  return p.length < 6 || p[0] !== "arn" ? null : [...p.slice(0, 5), p.slice(5).join(":")];
+};
+// ArnEquals and ArnLike match component by component, each with `*` and `?` (AWS's ARN condition operators),
+// so a wildcard never runs across a colon. StringEquals is literal.
+const arnMatches = (pattern, value) => {
+  const [p, v] = [arnParts(pattern), arnParts(value)];
+  return !!p && !!v && p.every((c, i) => glob(c, "").test(v[i]));
+};
+const OPS = { StringEquals: (want, got) => want === got, ArnEquals: arnMatches, ArnLike: arnMatches };
 const KEYS = ["aws:RequestedRegion", "iam:PassedToService", "iam:PolicyARN"];
 
-// Every operator and key is checked before anything is evaluated, so nothing hides behind a failed match.
+// Every operator, key and ARN operand is checked before anything is evaluated, so nothing hides behind a
+// failed match.
 function validateCondition(cond) {
   for (const [op, kv] of Object.entries(cond ?? {})) {
     if (!OPS[op]) throw new Error(`unsupported condition operator ${op}`);
-    for (const key of Object.keys(kv)) if (!KEYS.includes(key)) throw new Error(`unsupported condition key ${key}`);
+    for (const [key, want] of Object.entries(kv)) {
+      if (!KEYS.includes(key)) throw new Error(`unsupported condition key ${key}`);
+      if (op.startsWith("Arn")) for (const w of list(want))
+        if (!arnParts(w)) throw new Error(`${op} operand ${w} is not a six-part ARN`);
+    }
   }
 }
 function conditionHolds(cond, ctx) {
@@ -124,6 +139,8 @@ function resources(template) {
     const type = scalar(body.Type);
     if (typeof type !== "string" || !/^AWS::[A-Za-z0-9]+::[A-Za-z0-9]+$/.test(type))
       throw new Error(`${name}: unreadable Type ${JSON.stringify(type)}`);
+    const inline = body.Properties?.raw.replace(/\s+#.*$/, "").trim();
+    if (inline) throw new Error(`${name}: inline Properties (${inline}) are not read — write them as a block map`);
     const props = body.Properties ? mapOf(body.Properties.lines, `${name}.Properties`) : {};
     return { name, type, props };
   });
@@ -385,6 +402,9 @@ const MUTATIONS = {
     p.Statement.push({ Sid: "Extra", Effect: "Allow", Action: "sns:Publish", Resource: "arn:aws:sns:us-east-1:*:music-garden-*",
       Condition: { StringEquals: { "iam:PassedToService": "nothing" }, StringLike: { "aws:RequestedRegion": "us-*" } } });
   }, /Extra: unsupported condition operator StringLike/],
+  "an ARN operand whose wildcard would run across components": [(p) => {
+    stmt(p, "AttachOnlyLambdaLogging").Condition.ArnEquals["iam:PolicyARN"] = "arn:aws:iam::*AWSLambdaBasicExecutionRole";
+  }, /AttachOnlyLambdaLogging: ArnEquals operand arn:aws:iam::\*AWSLambdaBasicExecutionRole is not a six-part ARN/],
   "an unsupported key in a supported operator": [(p) => {
     stmt(p, "VoiceClips").Condition.StringEquals["aws:SourceIp"] = "1.2.3.4";
   }, /VoiceClips: unsupported condition key aws:SourceIp/],
@@ -450,6 +470,11 @@ test("the evaluator: Deny wins in either order, NotResource exempts, missing con
     Condition: { ArnEquals: { "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/*" } } }] };
   assert.ok(allowed(attach, "iam:AttachRolePolicy", role, { "iam:PolicyARN": BASIC_LOGGING }), "ArnEquals takes wildcards");
   assert.ok(!allowed(attach, "iam:AttachRolePolicy", role, { "iam:PolicyARN": "arn:aws:iam::aws:policy/AdministratorAccess" }));
+  // Component by component: a wildcard inside the resource part matches; it never spans a colon.
+  assert.ok(arnMatches("arn:aws:iam::aws:policy/*AWSLambdaBasicExecutionRole", BASIC_LOGGING));
+  assert.ok(arnMatches("arn:aws:iam::*:policy/service-role/AWSLambdaBasicExecutionRole", BASIC_LOGGING));
+  assert.ok(!arnMatches("arn:aws:iam::*AWSLambdaBasicExecutionRole", BASIC_LOGGING));
+  assert.ok(!arnMatches("arn:aws:iam::aws:policy/*", "arn:aws:s3:::aws:policy/x"));
 });
 
 test("both Identity Center size limits, at their boundaries", () => {
@@ -489,6 +514,12 @@ const TEMPLATE_MUTATIONS = {
     /PreSignUpPermission: FunctionName !Ref Nope is not a function in this template/],
   "a permission target built by !Sub": [(t) => t.replace("FunctionName: !Ref PreSignUpFn", 'FunctionName: !Sub "${PreSignUpFn}"'),
     /PreSignUpPermission: FunctionName !Sub .* is not a function in this template/],
+  "an inline Properties map with a name outside the prefix": [(t) => t.replace(/^Outputs:/m,
+    "  ExtraTopic:\n    Type: AWS::SNS::Topic\n    Properties: {TopicName: unrelated}\n\nOutputs:"),
+    /ExtraTopic: inline Properties \(\{TopicName: unrelated\}\) are not read/],
+  "an inline Properties map with an explicit role": [(t) => t.replace(/^Outputs:/m,
+    "  ExtraFn:\n    Type: AWS::Serverless::Function\n    Properties: {CodeUri: src/, Handler: songs.handler, Role: 'arn:aws:iam::123456789012:role/other'}\n\nOutputs:"),
+    /ExtraFn: inline Properties .* are not read/],
   "a line the reader cannot parse": [(t) => t.replace("      Handler: songs.handler", "      Handler: songs.handler\n      - stray"),
     /SongsFn.Properties: unreadable line "- stray"/],
   "a table named outside the prefix": [(t) => t.replace("TableName: music-garden-songs", "TableName: mg-songs"),
