@@ -91,14 +91,17 @@ Those four values are *public* identifiers (the kind that ship inside any web ap
 
 ## Future deploys
 After any change to `template.yaml` or `src/`. **First ask the [cost switch](#the-cost-switch) for its
-status** (once TUN-87 is deployed)**: if it says `"cloud": "off"`, don't deploy** — see *Deploying while it
-is off* there.
+status** (once TUN-87 is deployed). **Deploy only if the command prints no `"FunctionError"` and
+`status.json` says `"cloud": "on"`.** `"off"`, `"mixed"` (a partial switch, or a setting it could not
+read), a `FunctionError` or no answer all mean stop — see *Deploying while it is off* there.
 ```powershell
 cd backend   # from the repo root
 aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json; type status.json
 sam validate --lint
 sam build; sam deploy --confirm-changeset
+aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json; type status.json
 ```
+The last line asks again after the deploy: it should still say `"cloud": "on"`.
 `--confirm-changeset` shows the change set and waits for `y`. **Read its `Replacement` column first:** a
 `True` on `UserPool`, `ProgressTable` or `SongsTable` means CloudFormation wants a new one. Their
 `UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
@@ -253,9 +256,12 @@ Lambda runs, no DynamoDB read or write, and Cognito cannot run the sign-up trigg
 — and **disables the API's default endpoint**, so calls stop at API Gateway before any route,
 authorizer or throttle. It reads all four back, then emails `BudgetEmail` (through
 `CloudSwitchNoticeTopic`) what tripped it and what each setting now is. A step that fails or hangs does
-not stop the others — at its deadline (12 seconds) its AWS call is cancelled, retries and all, so it
-cannot land after a later command; the email says "NOT COMPLETE" and gives the command to run again, and
-an automatic trip is retried twice. It **never switches back on by itself** — not at the start of a month
+not stop the others — at its deadline (10 seconds) its AWS call is cancelled, retries and all, and the
+switch waits up to 2 seconds more for it to settle before reading every setting back. A request AWS had
+already received still applies (these settings take effect when AWS receives them), so the read-back
+shows it. Any step that failed or timed out makes the email say "NOT COMPLETE", with the command to run
+again, and an automatic trip is retried twice. **A minute after any on or off, ask for the status once
+more**: it should say what you asked for. It **never switches back on by itself** — not at the start of a month
 either.
 
 **What players see.** The game plays on as for a guest: levels, the Studio, local saves, `#s=` links.

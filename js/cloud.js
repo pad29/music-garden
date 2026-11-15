@@ -49,8 +49,9 @@ function freshToken(){ return new Promise(res=>{ const u=userPool&&userPool.getC
 async function cloudPull(){ const done=cloudCall(); const t=await freshToken(); if(!t){ done(false); return { ok:false }; }
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{headers:{Authorization:"Bearer "+t}}); if(!r.ok){ done(false); return { ok:false }; }
     const progress=await r.json(); done(true); return { ok:true, progress }; }catch(e){ done(false); return { ok:false }; } }
+let _pushSeq=0;   // counts progress saves begun: a save's success says "saved" only if no newer save began since
 async function cloudPush(){ if(cloudSync!=="ready") return false;   // never over a cloud copy we haven't read
-  const run=_cloudRun; const done=cloudCall(); const t=await freshToken();
+  _pushSeq++; const run=_cloudRun; const done=cloudCall(); const t=await freshToken();
   if(run!==_cloudRun || cloudSync!=="ready") return false;   // signed out, or someone else signed in, while the token came
   if(!t){ done(false); return false; }
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(progress)});
@@ -106,8 +107,10 @@ async function onSignedIn(uploadLocal){ const run=++_cloudRun; cloudSync="off"; 
     cloudSync="ready";
     if(cloud){ progress=cloud; Store.set("progress",progress); applyProgress(); enterPlay(); renderAuth("loaded from cloud"); return; } }
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
-  const ok=await cloudPush(); if(run!==_cloudRun) return;
-  renderAuth(ok && !cloudResting ? "saved to cloud" : undefined); }   // failed, or a newer save failed since: cloudResting says so, calmly
+  const push=_pushSeq+1; const ok=await cloudPush(); if(run!==_cloudRun) return;
+  // "saved to cloud" only for the newest progress save: once a newer one began, this success no longer says
+  // the current progress is in the cloud. A failure needs no word here: cloudResting already says so, calmly.
+  renderAuth(ok && _pushSeq===push ? "saved to cloud" : undefined); }
 const authbox=document.getElementById("authbox");
 function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false;
   if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";

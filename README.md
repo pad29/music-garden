@@ -214,10 +214,11 @@ The long-term threads live in `DESIGN.md` §12 (living-world visuals, collection
 
 Deployed serverless stack (`music-garden`, us-east-1): Cognito User Pool → API Gateway (JWT authorizer) → Lambdas → DynamoDB. Two APIs: `GET/PUT /progress` (per-user progress row) and the **songs API** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage; `GET /songs/{id}` is unauthenticated for link-resolution). The client embeds the **public** Cognito/API IDs (safe to commit). Anonymous play is fully local; creating an account turns on cloud sync. CORS is scoped to `tunegarden.game` and its `www` host, so deploy previews cannot call the API. The API stores only songs and progress the game really writes: 16 KB each at most, 50 songs per account, and no free text but a song's title. A new package, region, voice or format field changes `backend/src/validate.mjs`, and the backend deploys first (`backend/README.md` § What the API accepts).
 
-To redeploy backend changes:
+To redeploy backend changes, follow `backend/README.md` § Future deploys — it starts by asking the cost
+switch for its status, and you deploy only while it says the cloud is on:
 ```bash
 cd backend
-sam build && sam deploy
+sam build && sam deploy --confirm-changeset
 ```
 See `backend/README.md` for first-time setup. The API is throttled to a nominal 5 requests a second in total (AWS throttles best-effort), each function has a small reserved concurrency, an AWS Budget emails the owner at $15, $24 and $30 of the month's $30 and when the forecast passes $30 (once the address is verified), and the user pool and both tables are protected from deletion (both tables with point-in-time recovery) — `backend/README.md` § Limits and budget. At $30 of actual spend the **cost switch** (TUN-87) switches the cloud off by itself — no API work, no new accounts — and emails the owner; the game plays on as a guest and every cloud failure says "the cloud is resting". The owner switches it back on with one command — `backend/README.md` § The cost switch.
 

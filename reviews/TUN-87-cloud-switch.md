@@ -618,3 +618,105 @@ Missing test 11 is the owner's rehearsal (the hand-off lists it).
 cloud" after a newer failure (1), no superseded check (2), switch-on recording no time (3), a deadline that
 doesn't abort (2), the adapter dropping the signal (2), an unreadable switch-on time ignoring the trip (1),
 a failed switch-on-time write not reported (1), `PutParameter` without `Overwrite` (1).
+
+## PR review — round 2 (Astra, through `ask.sh`, the delta `35225de..3733f5a`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+**FINDINGS**
+
+1. **blocker — [backend/src/cloud-switch-api.mjs:40](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:40): cancellation still does not establish that a write cannot land after recovery.**
+
+   Signal plumbing is correct, but aborting the HTTP request cannot retract a write already accepted by AWS. `capped` also races ahead without waiting for the underlying operation to settle. The immediate read-back cannot establish what an outstanding server operation will do later. Smithy’s cancellation implementation destroys the client request and rejects its promise; it does not cancel the service operation. [Smithy implementation](https://github.com/smithy-lang/smithy-typescript/blob/main/packages/node-http-handler/src/node-http-handler.ts)
+
+   Reproduced in memory with a transport that **honours abort**, while separately retaining an accepted server write: ON times out → OFF returns `done:true, cloud:"off"` → release the accepted ON write → status becomes `mixed`. This reproduced for progress concurrency, the endpoint, and pre-signup concurrency.
+
+   Round-1 finding 2 is therefore **partially fixed**. Handle uncertain writes across commands and reconcile them before declaring recovery complete. Correct the unconditional guarantee in [backend/README.md:256](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/README.md:256). The current test at [tests/backend-cloud-switch.test.mjs:179](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/tests/backend-cloud-switch.test.mjs:179) only observes an abort event; it never executes the later OFF or releases a late write.
+
+2. **should-fix — [js/cloud.js:110](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/js/cloud.js:110): availability is still being used as proof that current progress was saved.**
+
+   Reproduced with the existing fixture:
+
+   - Initial signup PUT A remains pending.
+   - Change progress; newer PUT B fails.
+   - A song-list GET succeeds, clearing `cloudResting`.
+   - A succeeds.
+
+   The panel now says **“saved to cloud”**, although the changed progress in B was never saved. A’s result correctly loses the sequence comparison, but `!cloudResting` lets its success message through.
+
+   Round-1 finding 5’s exact two-request reproduction is fixed; the ordering defect remains. Tie this message to an accepted progress-save result, or remove the transient message.
+
+3. **should-fix — [backend/README.md:94](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/README.md:94): the deployment precondition permits an indeterminate switch state.**
+
+   The instructions stop only for `cloud:"off"`. A failed status read returns `cloud:"mixed"` without `FunctionError`; a partial shutdown also returns `mixed`. Neither establishes that reopening the protected resources is intended.
+
+   Require a successful, fresh `cloud:"on"` result before an ordinary deployment; stop on OFF, mixed, unknown reads, or invocation failure. Restore the ordinary post-deploy status check and route the root README’s deployment shortcut through this procedure.
+
+   **Your partial disagreement holds:** an automated wrapper is not inherently required for this owner-operated workflow. A precise manual precondition is sufficient. The emergency deployment exception now acknowledges its exposure honestly; the controlled deployment rehearsal can remain pending.
+
+Round-1 disposition:
+
+| Finding | Assessment on `3733f5a` |
+|---|---|
+| 1 — superseded trips | Fixed for the reported recovery/redelivery and delayed-first-delivery cases. |
+| 2 — cancellation | Partially fixed; finding 1 above remains. |
+| 3 — maintenance procedure | Substantially improved; manual approach accepted, with finding 3 above outstanding. |
+| 4 — authentication form | Fixed for background availability callbacks: `_authShowsSignedIn` is cleared when the form opens. |
+| 5 — first-upload ordering | Exact reproduction fixed; finding 2 above remains. |
+| 6 — template guard | Fixed for retry count, explicit roles, and function URLs. |
+| 7 — recovery email | Fixed: the warning is conditional on the actual alert having fired. |
+
+Other requested checks:
+
+- **SSM:** the cutoff is SNS publication time versus Lambda `Date.now()` at ON invocation start, not SSM write completion. This preserves alarms published during the ON operation, assuming comparable clocks; it is not a strict cross-service causal-order guarantee. `never` produces no cutoff, unreadable state acts OFF, and failed ignored-message notifications now throw. Omitting `Type` when updating an existing parameter is valid. The ARN correctly contains `parameter/music-garden/...`, without a doubled slash. [PutParameter](https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_PutParameter.html), [SSM resource ARNs](https://docs.aws.amazon.com/systems-manager/latest/userguide/security_iam_service-with-iam.html)
+- **SDK and budget:** all adapter calls receive `{ abortSignal }`. The request-handler shorthand and `throwOnRequestTimeout` setting are valid in supporting SDK versions. Four capped rounds total 48 seconds against the 60-second timeout; that bounds waiting, not remote write completion. [Shorthand configuration](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/node-configuring-maxsockets.html), [timeout configuration](https://github.com/aws/aws-sdk-js-v3/blob/main/UPGRADING.md)
+- **Template and harness:** no additional defect found in `CloudSwitchState`, `21600/2`, `SWITCH_PROPS`, or the new `cloudGame` options. The state-reset risk on resource updates is documented. Boot and landing tests reach the intended application entry paths, with Cognito still stubbed.
+
+**MISSING TESTS**
+
+Original missing-test disposition: **1 covered; 2 partially covered; 3 not covered as requested; 4 partially covered; 5 covered by form identity, without populated-field assertions; 6 covered for the original sequence; 7, 8, 9 covered; 10 covered; 11 remains pending by design.**
+
+1. **Accepted write after transport abort:** hold an accepted ON mutation, reject its client promise on abort, execute OFF, then release the server mutation. Repeat for endpoint and both relevant concurrency levers. Verify the chosen uncertainty/reconciliation policy prevents a false completed-OFF guarantee.
+
+2. **SDK settlement and timeout behavior:** delay cancellation settlement and exercise cancellation during retry backoff. Assert read-back does not precede the required settlement. Test that the actual SDK timeout configuration rejects a stalled request; asserting the options object alone does not prove enforcement.
+
+3. **Three-request first-upload ordering:** initial PUT A pending → changed-progress PUT B fails → song GET succeeds → A succeeds. Assert A cannot announce that the changed progress was saved.
+
+4. **Delayed partial-shutdown retry:** fail one lever on an alarm just before the former one-hour boundary, then retry the same alarm after that boundary without an intervening ON. Assert the remaining lever is shut down and completion reported.
+
+5. **Owner rehearsal — still an acceptance task, not a newly discovered code defect:** both production origins; refused signup; existing-user sign-in/refresh; levels, Studio, local saves and `#s=`; known `#song=`; received email; recovery with newly advanced progress surviving a fresh session; controlled deployment/rollback behavior while OFF.
+
+Verification: syntax and **93 targeted tests passed**. SAM lint reported a valid template, with sandbox permission errors accessing its global metadata file. No files changed; no AWS or real-browser acceptance performed.
+
+</details>
+
+### My answers
+
+1. **Partly agree (blocker).** Agreed: `capped` raced ahead of the call, and the README's "cannot land
+   after a later command" overclaimed. Now, at the deadline the signal fires and the step waits up to
+   `graceMs` (2 s; steps are 10 s, so four rounds still take 48 s) for the call to settle, so the read-back
+   follows it and reports any write AWS had already received; a timed-out step always makes the command NOT
+   COMPLETE; the runbook says a request AWS already received still applies, and asks for a status check a
+   minute after every on or off. **Disagree** that the switch needs cross-command reconciliation of
+   "uncertain writes": `PutFunctionConcurrency` and `UpdateApi` are synchronous control-plane calls — AWS
+   applies the setting when it receives the request, not later — and the switch runs one command at a time
+   (reserved concurrency 1), so the next command starts after this one's read-back. GPT's reproduction holds
+   a received write for an arbitrary time after the abort, which these APIs do not do. Tests: a write AWS
+   received applying 10 ms after the abort shows in the read-back and email (for the endpoint), the command
+   is NOT COMPLETE, and a following `off` holds — nothing lands after it (for the endpoint and both
+   concurrency levers). Not added: a test that the real SDK's timeout rejects a stalled request — the SDK is
+   not installed here (the Lambda runtime provides it), and the abort signal enforces the deadline either way.
+2. **Agree.** "saved to cloud" is now tied to the progress saves themselves: it shows only if no newer save
+   began since (`_pushSeq`), not whether the cloud answers. Missing test 3 added as written, plus the plain
+   case still saying it.
+3. **Agree.** [Future deploys] now deploys only on a fresh `"cloud": "on"` with no `FunctionError`; `off`,
+   `mixed` (a partial switch or an unreadable setting), a `FunctionError` or no answer mean stop; a status
+   check after the deploy is back; `README.md`'s and `AGENTS.md`'s deploy lines point there.
+
+Missing test 4 added: a partial shutdown at 59 minutes, retried five hours after the trip with no switch-on
+between, finishes the job. Missing test 5 is the owner's rehearsal.
+
+**Mutation check of the round's fixes** (each restored): no wait for the call to settle (1 fail), "saved to
+cloud" decided by availability again (1).

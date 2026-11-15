@@ -33,17 +33,24 @@ export function readCommand(event, cfg) {
 }
 
 // A step that hangs must not stop the others, or the email: each gets `ms`, then its AbortSignal fires — the
-// SDK stops the request and its retries (cloud-switch.mjs passes the signal to every call), so an abandoned
-// write cannot land after a later command.
-function capped(fn, ms) {
-  const ac = new AbortController(); let timer;
-  const limit = new Promise((_, rej) => { timer = setTimeout(() => { const e = new Error(`timed out after ${ms} ms`); ac.abort(e); rej(e); }, ms); });
-  return Promise.race([Promise.resolve().then(() => fn(ac.signal)), limit]).finally(() => clearTimeout(timer));
+// SDK stops the request and its retries (sdkAdapter passes the signal to every call) — and the step waits up
+// to `graceMs` more for the call to settle, so the read-back that follows sees what it did. A request AWS had
+// already received is not undone by the abort: these settings apply when AWS receives the request, so the
+// read-back shows it, and a timed-out step always makes the command NOT COMPLETE.
+function capped(fn, ms, graceMs) {
+  const ac = new AbortController(); let timer, graceTimer;
+  const op = Promise.resolve().then(() => fn(ac.signal));
+  const limit = new Promise((_, rej) => { timer = setTimeout(() => {
+    const e = new Error(`timed out after ${ms} ms`); ac.abort(e);
+    const grace = new Promise(r => { graceTimer = setTimeout(r, graceMs); });
+    Promise.race([op.then(() => {}, () => {}), grace]).then(() => rej(e));
+  }, ms); });
+  return Promise.race([op, limit]).finally(() => { clearTimeout(timer); clearTimeout(graceTimer); });
 }
 const why = e => (e && e.message) || String(e);
 
 export function makeCloudSwitchHandler(aws, cfg) {
-  const step = fn => capped(fn, cfg.stepMs);
+  const step = fn => capped(fn, cfg.stepMs, cfg.graceMs);
   const want = action => action === "off" ? { concurrency: 0, endpointDisabled: true }
     : { concurrency: cfg.onConcurrency, endpointDisabled: false };
 
@@ -152,7 +159,8 @@ export const switchConfig = env => ({
   functions: [env.PROGRESS_FN, env.SONGS_FN, env.PRESIGNUP_FN],
   onConcurrency: Number(env.ON_CONCURRENCY),
   alarmTopicArn: env.ALARM_TOPIC_ARN,
-  stepMs: 12e3,   // ≤ 4 rounds (switch-on time, writes, read-back, email): 48 s, inside the 60-second Timeout
+  stepMs: 10e3,   // + graceMs, ≤ 4 rounds (switch-on time, writes, read-back, email): 48 s, inside the 60-second Timeout
+  graceMs: 2e3,
 });
 // SDK client options: at most 3 attempts, and a request that stalls fails instead of only warning.
 export const CLIENT_OPTIONS = { maxAttempts: 3, requestHandler: { connectionTimeout: 3000, requestTimeout: 5000, throwOnRequestTimeout: true } };

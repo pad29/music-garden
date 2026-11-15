@@ -550,3 +550,20 @@ test("TUN-87: signing in from the landing screen against a resting cloud keeps t
   g.commitProgress(); await runSaves();
   assert.deepEqual(puts(net), []);
 });
+
+// ---------- PR review round 2 (TUN-87) ----------
+test("TUN-87: a sign-up's first save never says 'saved to cloud' once a newer save began, even if the cloud answers again", async () => {
+  const { g, net, runSaves, panel } = cloudGame();
+  const first = deferred(); let n = 0;
+  net.answer = routes({ put: () => (++n === 1 ? first.promise : reply(503, {})), songs: () => reply(200, { songs: [] }) });
+  const signUp = g.onSignedIn(true); await tick();
+  g.progress.name = "Ann, changed"; g.commitProgress(); await runSaves();   // B: the changed progress, refused
+  assert.deepEqual(await g.cloudSongList(), []);                           // the cloud answers again
+  first.resolve(reply(200, { ok: true })); await signUp;                   // A: the old progress, stored
+  assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress was never saved");
+  // and the plain case still says it
+  const fresh = cloudGame();
+  fresh.net.answer = routes();
+  await fresh.g.onSignedIn(true);
+  assert.match(fresh.panel(), /progress syncs across your devices\. — saved to cloud/);
+});

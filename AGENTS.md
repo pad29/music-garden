@@ -47,7 +47,7 @@ Regenerators — slow, overwrite generated files, run only when their inputs cha
   explicitly asks — it regenerates all ~250 clips on Polly's `generative` engine, which costs real money.
 - `node tools/build-samples.mjs` — after changing anything under `samples/<instr>/`.
 
-Backend (rarely touched): `cd backend && sam build && sam deploy`. Needs AWS credentials.
+Backend (rarely touched): `backend/README.md` § Future deploys — the owner's, with AWS credentials; deploy only while the cost switch says the cloud is on.
 
 ## Hard invariants — never violate
 

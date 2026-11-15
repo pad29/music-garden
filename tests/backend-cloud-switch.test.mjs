@@ -15,7 +15,7 @@ console.error = (...a) => logged.push(["error", ...a]);
 const FNS = ["music-garden-ProgressFn-A", "music-garden-SongsFn-B", "music-garden-PreSignUpFn-C"];
 const ALARM = "arn:aws:sns:us-east-1:123456789012:music-garden-CloudSwitchAlarmTopic-X";
 const T0 = Date.parse("2026-11-20T12:00:00Z");
-const CFG = { functions: FNS, onConcurrency: 2, alarmTopicArn: ALARM, stepMs: 50 };
+const CFG = { functions: FNS, onConcurrency: 2, alarmTopicArn: ALARM, stepMs: 50, graceMs: 30 };
 const iso = ms => new Date(ms).toISOString();
 const sns = (over = {}, rec = {}) => ({ Records: [{ EventSource: "aws:sns", ...rec,
   Sns: { TopicArn: ALARM, Timestamp: iso(T0), Subject: "AWS Budgets: budget has exceeded your alert threshold", Message: "…", ...over } }] });
@@ -25,9 +25,12 @@ const sns = (over = {}, rec = {}) => ({ Records: [{ EventSource: "aws:sns", ...r
  * `fail` / `hang` name calls to break; a hung call honours its AbortSignal (as the SDK does) and records it.
  * `clock.now` is the time the handler sees.
  */
-function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {} } = {}) {
-  const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, onAt, writes: [], mails: [], aborted: [], clock: { now: T0 + 60e3 } };
+// `late` names calls AWS had already received when the deadline aborted them: they apply 10 ms after the abort,
+// and only then does the client's promise reject.
+function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {}, late = {} } = {}) {
+  const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, onAt, writes: [], mails: [], aborted: [], events: [], clock: { now: T0 + 60e3 } };
   const act = (key, fn, signal) => {
+    if (late[key]) return new Promise((_, rej) => { signal.addEventListener("abort", () => setTimeout(() => { fn(); a.events.push("settled " + key); rej(signal.reason); }, 10)); });
     if (hang[key]) return new Promise((_, rej) => { signal && signal.addEventListener("abort", () => { a.aborted.push(key); rej(signal.reason); }); });
     if (fail[key]) return Promise.reject(new Error(`${key} denied`));
     return Promise.resolve().then(fn);
@@ -35,7 +38,7 @@ function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {
   a.aws = {
     getConcurrency: (fn, s) => act("get:" + fn, () => a.conc[fn], s),
     putConcurrency: (fn, n, s) => act("put:" + fn, () => { a.writes.push(["put", fn, n]); a.conc[fn] = n; }, s),
-    getEndpointDisabled: s => act("getApi", () => a.endpointDisabled, s),
+    getEndpointDisabled: s => act("getApi", () => (a.events.push("read api"), a.endpointDisabled), s),
     setEndpointDisabled: (d, s) => act("setApi", () => { a.writes.push(["api", d]); a.endpointDisabled = d; }, s),
     getOnAt: s => act("getOnAt", () => a.onAt, s),
     setOnAt: (v, s) => act("setOnAt", () => { a.writes.push(["onAt", v]); a.onAt = v; }, s),
@@ -257,7 +260,7 @@ test("the SDK adapter sends the right commands, each with the step's abort signa
   assert.ok(sent.every(x => x.signal === sig), "every call carries the abort signal");
   const cfg = switchConfig(env);
   assert.deepEqual(cfg.functions, FNS); assert.equal(cfg.onConcurrency, 2); assert.equal(cfg.alarmTopicArn, ALARM);
-  assert.ok(cfg.stepMs * 4 < 60e3, "four rounds of steps fit the function's 60-second timeout");
+  assert.ok((cfg.stepMs + cfg.graceMs) * 4 < 60e3, "four rounds of steps, grace included, fit the function's 60-second timeout");
   assert.equal(CLIENT_OPTIONS.requestHandler.throwOnRequestTimeout, true, "a stalled request fails, not only warns");
   assert.equal(CLIENT_OPTIONS.maxAttempts, 3);
 });
@@ -271,4 +274,40 @@ test("through the adapter, a deadline aborts the SDK call itself", async () => {
   const aws = sdkAdapter({ lambda: ok, apigw: hung, sns: ok, ssm: ok }, C, { API_ID: "a" });
   await assert.rejects(makeCloudSwitchHandler(aws, CFG)({ switch: "on" }), /not everything took/);
   assert.ok(aborted.includes("UpdateApiCommand"), "the hung UpdateApi was aborted");
+});
+
+// PR review round 2, finding 1: a write AWS had already received is not undone by the abort. The step waits
+// for the call to settle, so the read-back reports what really happened, the command is NOT COMPLETE, and the
+// next command sets everything again — nothing lands after it.
+test("a timed-out write AWS had already received shows in the read-back, and the next command still wins", async () => {
+  for (const key of ["setApi", "put:" + FNS[0], "put:" + FNS[2]]) {
+    const a = account({ start: 0, endpointDisabled: true, late: { [key]: true } });
+    const h = makeCloudSwitchHandler(a.aws, CFG);
+    await assert.rejects(h({ switch: "on" }), /not everything took/, key);
+    if (key === "setApi") {
+      assert.ok(a.events.indexOf("settled setApi") < a.events.lastIndexOf("read api"), "the read-back follows the call's settling");
+      assert.match(a.mails[0].message, /API default endpoint: enabled/, "the email reports the write that landed");
+    }
+    assert.match(a.mails[0].subject, /NOT COMPLETE/);
+    const landed = () => a.events.filter(e => e.startsWith("settled")).length, settled = landed();
+    const off = await makeCloudSwitchHandler({ ...a.aws, setEndpointDisabled: (d, s) => (a.writes.push(["api", d]), Promise.resolve().then(() => { a.endpointDisabled = d; })),
+      putConcurrency: (fn, n) => Promise.resolve().then(() => { a.conc[fn] = n; }) }, CFG)({ switch: "off" });
+    assert.equal(off.cloud, "off", key);
+    await new Promise(r => setTimeout(r, 40));
+    assert.equal(landed(), settled, "nothing from the old command lands afterwards");
+    assert.equal((await h({ switch: "status" })).cloud, "off", key);
+  }
+});
+
+test("a partial shutdown retried hours later, with no switch-on between, finishes the job", async () => {
+  const a = account({ fail: { ["put:" + FNS[1]]: true } });
+  const h = makeCloudSwitchHandler(a.aws, CFG);
+  const trip = sns({ Timestamp: iso(T0) });
+  a.clock.now = T0 + 59 * 60e3;
+  await assert.rejects(h(trip), /not everything took/);
+  assert.equal(a.conc[FNS[1]], 2, "one lever failed");
+  a.clock.now = T0 + 5 * 3600e3;   // Lambda's retry, long after
+  const r = await makeCloudSwitchHandler({ ...a.aws, putConcurrency: (fn, n, s) => Promise.resolve().then(() => { a.writes.push(["put", fn, n]); a.conc[fn] = n; }) }, CFG)(trip);
+  assert.equal(r.done, true); assert.equal(r.cloud, "off");
+  assert.match(a.mails.at(-1).subject, /switched OFF$/);
 });
