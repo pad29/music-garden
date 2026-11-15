@@ -75,13 +75,19 @@ export function headersFor(rules, path) {
 }
 
 /** A Content-Security-Policy as Map(directive → [sources]). */
+// A browser takes a repeated directive's FIRST occurrence and ignores the rest (CSP3 § 2.2.1), so a
+// later, correct copy would hide an earlier, wrong one from a checker that kept the last. Like the
+// browser, this keeps the first, and lists every repeat so the caller can refuse it.
 export function parseCsp(value) {
-  const out = new Map();
+  const directives = new Map(), repeated = [];
   for (const part of value.split(";")) {
-    const [name, ...sources] = part.trim().split(/\s+/);
-    if (name) out.set(name.toLowerCase(), sources);
+    const [raw, ...sources] = part.trim().split(/\s+/);
+    if (!raw) continue;
+    const name = raw.toLowerCase();
+    if (directives.has(name)) repeated.push(name);
+    else directives.set(name, sources);
   }
-  return out;
+  return { directives, repeated };
 }
 
 /** AUTH's region and API origin, read from js/cloud.js — the two the policy's connect-src must allow. */
@@ -105,9 +111,10 @@ export const EXPECTED_CSP = ({ api, cognito }) => new Map([
   ["object-src", NONE], ["base-uri", NONE], ["form-action", NONE], ["frame-ancestors", NONE],
 ]);
 
-/** Problems with one CSP value: a directive missing, extra, or allowing other sources than expected. */
+/** Problems with one CSP value: a directive repeated, missing, extra, or allowing other sources than expected. */
 export function cspProblems(value, endpoints) {
-  const got = parseCsp(value), want = EXPECTED_CSP(endpoints), out = [];
+  const { directives: got, repeated } = parseCsp(value), want = EXPECTED_CSP(endpoints);
+  const out = repeated.map((d) => `CSP repeats ${d} (a browser uses only the first)`);
   for (const [d, sources] of want) {
     const have = got.get(d);
     if (!have) out.push(`CSP has no ${d}`);
@@ -118,8 +125,3 @@ export function cspProblems(value, endpoints) {
   return out;
 }
 
-/** max-age in seconds, or null. */
-export const maxAge = (cacheControl) => {
-  const m = /(?:^|,)\s*max-age=(\d+)\s*(?:,|$)/i.exec(cacheControl || "");
-  return m ? Number(m[1]) : null;
-};

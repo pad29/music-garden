@@ -202,3 +202,73 @@ moved to `/index.html` — each turned `site-headers.test.mjs` red (3 to 5 faili
   names exactly `AUTH.apiUrl`'s origin, the same origin the API calls use, and the sign-in reached
   Cognito under the policy.
 - Firefox and Safari: the flows ran in Chrome only.
+
+## PR review (GPT through `ask.sh`, Astra — AO's reviewer is out of service)
+
+### Round 1 — on `d77c3fb`: changes requested
+
+<details><summary>GPT's review, verbatim</summary>
+
+**CHANGES REQUESTED on d77c3fb.**
+
+I reproduced two false negatives in the new header checker using in-memory mutations. These findings concern the regression guards; the current `_headers` does not contain these faults.
+
+1. **Medium — Duplicate CSP directives are interpreted backwards.**  
+   [tests/helpers/site-headers.mjs:82](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-30/tests/helpers/site-headers.mjs:82)
+
+   `Map.set()` keeps the **last** occurrence, whereas browsers use the **first** and ignore subsequent duplicates. [CSP parsing specification](https://www.w3.org/TR/CSP3/#parse-serialized-policy)
+
+   Prepending any of these to the current policy makes the actual `problems()` checker return `[]`:
+
+   ```text
+   script-src * 'unsafe-inline' 'unsafe-eval';
+   script-src 'none';
+   connect-src *;
+   ```
+
+   The first permits external and inline scripts and eval; the second prevents the game loading; the third permits arbitrary connections. The later, expected directives conceal each fault from the checker.
+
+   **Required change:** reject duplicate directive names, case-insensitively.
+
+   **Missing tests:** prepend each example independently to the real CSP; expect a duplicate-directive diagnostic. Include `SCRIPT-SRC 'none';` to verify case normalization. The unchanged policy must remain accepted.
+
+2. **Medium — The narration cache check accepts policies that disable caching or exceed the documented bound.**  
+   [tests/site-headers.test.mjs:54](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-30/tests/site-headers.test.mjs:54)
+
+   The check only requires `max-age >= WEEK` and absence of `immutable`. Replacing the voice cache value with any of these also makes `problems()` return `[]`:
+
+   ```text
+   public, max-age=2592000, no-store
+   public, max-age=2592000, no-cache
+   public, max-age=315360000
+   ```
+
+   `no-store` prohibits storage; unqualified `no-cache` requires validation before reuse, defeating the intended reduction in repeated requests. [HTTP caching specification](https://www.rfc-editor.org/rfc/rfc9111.html#section-5.2.2) The final example permits ten years, defeating the chosen limit for re-voiced clips and cached fallback HTML.
+
+   **Required change:** pin the intended `public, max-age=2592000` policy, or validate equivalent semantics with an explicit upper bound and rejection of conflicting directives.
+
+   **Missing tests:** substitute each value above into `/voice/*`; expect a cache-policy diagnostic. Keep `public, max-age=2592000` as the passing control.
+
+Syntax checking and all **10 header tests passed**. The full suite encountered sandbox `EPERM` failures creating temporary fixtures, so I cannot independently confirm the recorded full-suite pass. I reviewed the supplied browser evidence but did not independently rerun those flows. No files were edited.
+
+</details>
+
+**My answers**
+
+1. **Medium — a repeated CSP directive was read last-wins.** **Agreed.** A browser obeys the first copy,
+   so a wrong directive put in front of the real one would have passed. `parseCsp` now keeps the first,
+   as the browser does, and lists every repeat; `cspProblems` refuses one ("CSP repeats …"). New test
+   with GPT's four cases (`script-src * 'unsafe-inline' 'unsafe-eval'`, `script-src 'none'`,
+   `connect-src *`, `SCRIPT-SRC 'none'`), plus a repeat placed after the real one, and the unchanged
+   policy as the control.
+2. **Medium — the clip-cache check accepted `no-store`, `no-cache` and ten years.** **Agreed.** The check
+   now pins the exact value, `public, max-age=2592000`, rather than a bound. Test: GPT's three values,
+   plus `immutable`, `max-age=0` and one year, each refused; the real rule as the control. The unused
+   `maxAge` helper is gone.
+
+Both fixes were audited in reverse: putting back last-wins parsing, or the old "a week or more, not
+immutable" check, turns the new test red. `_headers` is unchanged, so the preview verification above
+still holds.
+
+GPT noted that its sandbox could not run the full suite (`EPERM` creating temporary fixtures) and that it
+did not rerun the browser flows; both stay my own evidence.

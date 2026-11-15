@@ -14,7 +14,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { gameScripts, ROOT } from "./helpers/game-scripts.mjs";
 import { parseBuildScript, publishedTree } from "./helpers/cloudflare-publish.mjs";
-import { parseHeaders, headersFor, cspProblems, authEndpoints, maxAge } from "./helpers/site-headers.mjs";
+import { parseHeaders, headersFor, cspProblems, authEndpoints } from "./helpers/site-headers.mjs";
 
 const read = (p) => readFileSync(join(ROOT, p), "utf8").replace(/\r\n/g, "\n");
 const REAL = read("_headers");
@@ -23,7 +23,10 @@ const REAL_SH = read("cloudflare-build.sh");
 const REAL_TOML = read("netlify.toml");
 
 const REVALIDATE = "public, max-age=0, must-revalidate";
-const WEEK = 7 * 24 * 3600;
+// Clips: kept 30 days, exactly. Pinned rather than bounded (GPT's PR review, finding 2): "max-age=…,
+// no-store" or "no-cache" would quietly stop the caching, and a year or "immutable" would keep a
+// re-voiced clip, or the index.html a clip not yet baked was answered with, far too long.
+const CLIP = "public, max-age=2592000";
 
 // Every path the build publishes, as a request path, plus the page's root and a path that is no file
 // (the single-page fallback answers it with index.html). `_headers` itself is read by the host, not served.
@@ -49,10 +52,7 @@ function problems({ text = REAL, cloud = CLOUD, paths = PATHS() } = {}) {
     if (path === "/a/path/that/is/no/file") continue;   // its cache is the host's default, like index.html's
     const cc = headers.get("cache-control");
     if (path.startsWith("/voice/")) {
-      // Clips are named by a hash of their text, so they may be kept — but not forever: gen-voice --force
-      // re-voices under the same names, and a clip not baked yet is answered with index.html.
-      if (!(maxAge(cc) >= WEEK)) out.push(`${path}: a narration clip is not cached for a week or more (${cc})`);
-      if (/immutable/i.test(cc || "")) out.push(`${path}: a narration clip is immutable`);
+      if (cc !== CLIP) out.push(`${path}: a narration clip's Cache-Control is "${cc}", expected "${CLIP}"`);
     } else if (cc !== REVALIDATE) out.push(`${path}: Cache-Control is "${cc}", expected "${REVALIDATE}"`);
   }
   return [...new Set(out)];
@@ -89,7 +89,7 @@ test("the page's cache: always re-checked; the clips' cache: long", () => {
   for (const p of ["/", "/index.html", "/js/boot.js", "/samples/piano.js", "/vendor/cognito/amazon-cognito-identity.min.js"])
     assert.strictEqual(cc(p), REVALIDATE, p);
   const clip = published().find((p) => p.startsWith("voice/"));
-  assert.ok(maxAge(cc("/" + clip)) >= WEEK);
+  assert.strictEqual(cc("/" + clip), CLIP);
 });
 
 test("connect-src follows js/cloud.js: moving the API or the region is caught here, not in production", () => {
@@ -119,7 +119,21 @@ test("a loosened policy is caught: inline scripts, eval, a third party, a missin
   includesAll(problems({ text: hdr("\n/*\n", "\n/index.html\n"), paths: ["/js/boot.js"] }), ["/js/boot.js gets no Content-Security-Policy"]);
 });
 
-test("a wrong cache is caught: scripts or packs kept long, a clip immutable or not kept, a published folder with no rule", () => {
+// GPT's PR review, finding 1: a browser uses a repeated directive's FIRST occurrence, so a wrong copy
+// in front of the real one must be caught, not hidden by it — whatever its case.
+test("a repeated directive is caught, in any case: the browser would obey the first copy", () => {
+  for (const [extra, name] of [["script-src * 'unsafe-inline' 'unsafe-eval'; ", "script-src"], ["script-src 'none'; ", "script-src"],
+    ["connect-src *; ", "connect-src"], ["SCRIPT-SRC 'none'; ", "script-src"]]) {
+    includesAll(problems({ text: hdr("Content-Security-Policy: default-src", "Content-Security-Policy: " + extra + "default-src"), paths: ["/"] }),
+      [`/: CSP repeats ${name} (a browser uses only the first)`]);
+  }
+  // A repeat after the real one is refused too: the policy must say each thing once.
+  includesAll(problems({ text: hdr("; frame-ancestors 'none'", "; frame-ancestors 'none'; frame-ancestors *"), paths: ["/"] }),
+    ["/: CSP repeats frame-ancestors (a browser uses only the first)"]);
+  assert.deepEqual(problems({ paths: ["/"] }), []);   // the control: the real policy, unchanged
+});
+
+test("a wrong cache is caught: scripts or packs kept long, a clip cached any other way, a published folder with no rule", () => {
   const long = "public, max-age=31536000";
   const jsRule = `/js/*\n  Cache-Control: ${REVALIDATE}`, packRule = `/samples/*\n  Cache-Control: ${REVALIDATE}`;
   includesAll(problems({ text: hdr(jsRule, `/js/*\n  Cache-Control: ${long}`), paths: ["/js/boot.js"] }),
@@ -129,8 +143,13 @@ test("a wrong cache is caught: scripts or packs kept long, a clip immutable or n
   includesAll(problems({ text: hdr(`/index.html\n  Cache-Control: ${REVALIDATE}\n`, ""), paths: ["/index.html"] }),
     [`/index.html: Cache-Control is "undefined", expected "${REVALIDATE}"`]);
   const clip = "/" + published().find((p) => p.startsWith("voice/"));
-  includesAll(problems({ text: hdr("max-age=2592000", "max-age=2592000, immutable"), paths: [clip] }), [`${clip}: a narration clip is immutable`]);
-  includesAll(problems({ text: hdr("max-age=2592000", "max-age=0"), paths: [clip] }), [`${clip}: a narration clip is not cached for a week or more (public, max-age=0)`]);
+  // GPT's PR review, finding 2: each of these passed the old "a week or more, not immutable" check.
+  for (const wrong of ["public, max-age=2592000, immutable", "public, max-age=0", "public, max-age=2592000, no-store",
+    "public, max-age=2592000, no-cache", "public, max-age=315360000", "public, max-age=31536000"]) {
+    includesAll(problems({ text: hdr(`Cache-Control: ${CLIP}`, `Cache-Control: ${wrong}`), paths: [clip] }),
+      [`${clip}: a narration clip's Cache-Control is "${wrong}", expected "${CLIP}"`]);
+  }
+  assert.deepEqual(problems({ paths: [clip] }), []);   // the control: the real rule passes
   // A folder added to the build later, with no cache rule of its own.
   includesAll(problems({ paths: ["/images/logo.svg"] }), [`/images/logo.svg: Cache-Control is "undefined", expected "${REVALIDATE}"`]);
 });

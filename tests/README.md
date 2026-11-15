@@ -50,8 +50,9 @@ the game's own scripts may name only the backend. The network half is the browse
 (`helpers/site-headers.mjs`, strict: a line it cannot read is refused) and works out the headers for
 every file the build publishes. Each header must come from one rule per path (Cloudflare joins
 duplicates with a comma). The policy may allow only the site itself, plus, for connections, the
-backend and Cognito endpoint read from `js/cloud.js`. Clips are cached for a week or more, but never
-`immutable`, and everything else is always re-checked. It also checks that the page has nothing
+backend and Cognito endpoint read from `js/cloud.js`, and may name each directive only once (a browser
+obeys the first copy). Clips are cached for exactly 30 days (`public, max-age=2592000`), and everything
+else is always re-checked. It also checks that the page has nothing
 `script-src 'self'` would block: no inline script, no `on…=` attribute, no `eval`. The vendored Cognito
 library's webpack `globalThis` shim is allowed once, by its exact text. The browser half, with the
 `curl -I` output, is in `reviews/TUN-86-security-cache-headers.md`.
