@@ -16,10 +16,12 @@ let _cloudRun=0;   // bumped by every sign-in and sign-out: a load or push begun
 let cloudResting=false, _callSeq=0, _seenSeq=0;
 // Call at the START of a cloud call; call what it returns with true/false when the call ends. A result applies
 // only in the run it began in and only if no later-started call has already reported, so a slow old success
-// cannot hide a newer failure, nor an old failure a newer success.
+// cannot hide a newer failure, nor an old failure a newer success. The panel is redrawn only while it shows the
+// signed-in row: never over a sign-in form the player may be typing into.
+let _authShowsSignedIn=false;
 function cloudCall(){ const run=_cloudRun, seq=++_callSeq;
   return ok=>{ if(run!==_cloudRun || seq<=_seenSeq) return; _seenSeq=seq;
-    if(cloudResting===!ok) return; cloudResting=!ok; if(cloudOn) renderAuth(); }; }
+    if(cloudResting===!ok) return; cloudResting=!ok; if(_authShowsSignedIn) renderAuth(); }; }
 const CLOUD_RESTING={
   load:" — ☁️ the cloud is resting just now. Your cloud garden is safe there, and what you play now is kept on this device. When the cloud wakes, reloading brings your cloud garden back in its place.",
   save:" — ☁️ the cloud is resting just now. What you play is kept on this device, and goes up with your next save after it wakes, while this page stays open. Opening the game again after it wakes brings your cloud garden back in its place.",
@@ -105,13 +107,13 @@ async function onSignedIn(uploadLocal){ const run=++_cloudRun; cloudSync="off"; 
     if(cloud){ progress=cloud; Store.set("progress",progress); applyProgress(); enterPlay(); renderAuth("loaded from cloud"); return; } }
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
   const ok=await cloudPush(); if(run!==_cloudRun) return;
-  renderAuth(ok ? "saved to cloud" : undefined); }   // a failed first save: cloudResting already says so, calmly
+  renderAuth(ok && !cloudResting ? "saved to cloud" : undefined); }   // failed, or a newer save failed since: cloudResting says so, calmly
 const authbox=document.getElementById("authbox");
-function renderAuth(status){ if(!authbox) return; authbox.innerHTML="";
+function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false;
   if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";
     d.textContent="Cloud sign-in unavailable right now — your progress is still saved on this device."; authbox.appendChild(d); return; }
   const u=userPool.getCurrentUser();
-  if(u && cloudOn){ const row=document.createElement("div"); row.className="authrow";
+  if(u && cloudOn){ _authShowsSignedIn=true; const row=document.createElement("div"); row.className="authrow";
     row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=u.getUsername();
     row.appendChild(b); row.appendChild(document.createTextNode(
       cloudSync==="ready" ? (cloudResting ? CLOUD_RESTING.save : " — progress syncs across your devices.")
@@ -124,7 +126,7 @@ function renderAuth(status){ if(!authbox) return; authbox.innerHTML="";
   const row=document.createElement("div"); row.className="pkgactions";
   row.append(mkBtn("Create account",()=>showAuthForm("up")), mkBtn("Sign in",()=>showAuthForm("in")));
   authbox.appendChild(row); }
-function showAuthForm(mode){ authbox.innerHTML="";
+function showAuthForm(mode){ authbox.innerHTML=""; _authShowsSignedIn=false;
   const form=document.createElement("div"); form.className="authform";
   const user=document.createElement("input"); user.placeholder="Username"; user.maxLength=24;
   const pass=document.createElement("input"); pass.placeholder="Password (8+ characters)"; pass.type="password";

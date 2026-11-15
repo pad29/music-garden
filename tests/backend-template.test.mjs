@@ -116,17 +116,22 @@ export function parseYaml(text) {
 // API and its own notice topic — compared as exact JSON, so an extra action, a `*`, a quoted (literal)
 // reference or the switch naming itself is a difference. backend/README.md § The cost switch.
 const SWITCH_CONCURRENCY = 1;
-const SWITCH_STALE_SECONDS = 3600;   // = cloud-switch.mjs's staleMs: an older trip message is ignored
+const SWITCH_INVOKE = { MaximumEventAgeInSeconds: "21600", MaximumRetryAttempts: "2" };   // a late real trip still lands; a failed one is retried
+const STATE_NAME = "/music-garden/cloud-switch/on-at";
+// Everything CloudSwitchFn may set: no Role (it would bypass the checked Policies), no Events, no FunctionUrlConfig.
+const SWITCH_PROPS = ["CodeUri", "Environment", "EventInvokeConfig", "FunctionName", "Handler", "Policies", "ReservedConcurrentExecutions", "Timeout"];
 const ref = (n) => ({ Ref: n }), att = (s) => ({ "Fn::GetAtt": s }), sub = (s) => ({ "Fn::Sub": s });
 const SWITCH_ENV = {
   PROGRESS_FN: ref("ProgressFn"), SONGS_FN: ref("SongsFn"), PRESIGNUP_FN: ref("PreSignUpFn"), API_ID: ref("Api"),
   ON_CONCURRENCY: String(RESERVED_CONCURRENCY), ALARM_TOPIC_ARN: ref("CloudSwitchAlarmTopic"), NOTICE_TOPIC_ARN: ref("CloudSwitchNoticeTopic"),
+  STATE_PARAM: ref("CloudSwitchState"),
 };
 const SWITCH_POLICY = [{ Statement: [
   { Effect: "Allow", Action: ["lambda:GetFunctionConcurrency", "lambda:PutFunctionConcurrency"],
     Resource: [att("ProgressFn.Arn"), att("SongsFn.Arn"), att("PreSignUpFn.Arn")] },
   { Effect: "Allow", Action: ["apigateway:GET", "apigateway:PATCH"], Resource: sub("arn:aws:apigateway:${AWS::Region}::/apis/${Api}") },
   { Effect: "Allow", Action: "sns:Publish", Resource: ref("CloudSwitchNoticeTopic") },
+  { Effect: "Allow", Action: ["ssm:GetParameter", "ssm:PutParameter"], Resource: sub("arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter" + STATE_NAME) },
 ] }];
 const BUDGETS_PUBLISH = { Version: "2012-10-17", Statement: [{
   Sid: "BudgetsPublish", Effect: "Allow", Principal: { Service: "budgets.amazonaws.com" }, Action: "SNS:Publish",
@@ -161,8 +166,18 @@ function switchProblems(t) {
     && f.FunctionName === "music-garden-cloud-switch", "CloudSwitchFn is not the switch (music-garden-cloud-switch, cloud-switch.handler)");
   need(num(f.Timeout) === 60, `CloudSwitchFn timeout is ${f.Timeout}, approved 60`);
   need(num(f.ReservedConcurrentExecutions) === SWITCH_CONCURRENCY, `CloudSwitchFn reserved concurrency is ${f.ReservedConcurrentExecutions}, approved ${SWITCH_CONCURRENCY}`);
-  need(num((f.EventInvokeConfig || {}).MaximumEventAgeInSeconds) === SWITCH_STALE_SECONDS, "CloudSwitchFn's event age must match its stale window");
+  need(same(f.EventInvokeConfig, SWITCH_INVOKE), "CloudSwitchFn's EventInvokeConfig must be exactly a 21600-second event age and 2 retries");
   need(!("Events" in f), "CloudSwitchFn has Events (its only trigger is CloudSwitchAlarmSubscription)");
+  const extra = Object.keys(f).filter((k) => !SWITCH_PROPS.includes(k));
+  need(!extra.length, `CloudSwitchFn sets ${extra.join(", ")} (only ${SWITCH_PROPS.join(", ")} are checked)`);
+  need((R.CloudSwitchState || {}).Type === "AWS::SSM::Parameter" && same(P("CloudSwitchState"), { Name: STATE_NAME, Type: "String", Value: "never",
+    Description: P("CloudSwitchState").Description }), "CloudSwitchState must be the String parameter " + STATE_NAME);
+  const gf = (t.Globals || {}).Function || {};
+  for (const k of ["Role", "FunctionUrlConfig", "Events", "Policies"]) need(!(k in gf), `Globals.Function sets ${k}`);
+  for (const [name, r] of Object.entries(R)) {
+    if (r.Type === "AWS::Lambda::Url" || (r.Properties || {}).FunctionUrlConfig) problems.push(`${name} gives a function a public URL`);
+    if (r.Type === "AWS::Serverless::Function" && "Role" in (r.Properties || {})) problems.push(`${name} sets an explicit Role`);
+  }
   need(same((f.Environment || {}).Variables, SWITCH_ENV), "CloudSwitchFn's environment is not exactly the three functions, Api, ON_CONCURRENCY = Globals and its topics");
   need(same(f.Policies, SWITCH_POLICY), "CloudSwitchFn's role must be exactly: concurrency of the three game functions, GET/PATCH on Api, publish to its notice topic");
   for (const [name, r] of Object.entries(R)) {
@@ -369,7 +384,15 @@ test("the template check refuses each mistake it guards against, with the right 
     ["a switch target on the wrong function", TEMPLATE.replace("          SONGS_FN: !Ref SongsFn\n", "          SONGS_FN: !Ref ProgressFn\n"), /CloudSwitchFn's environment is not exactly/],
     ["two switches at once", TEMPLATE.replace("      ReservedConcurrentExecutions: 1 ", "      ReservedConcurrentExecutions: 2 "), /CloudSwitchFn reserved concurrency is 2, approved 1/],
     ["a short switch timeout", TEMPLATE.replace("      Timeout: 60 ", "      Timeout: 10 "), /CloudSwitchFn timeout is 10, approved 60/],
-    ["a longer event age than the stale window", TEMPLATE.replace("MaximumEventAgeInSeconds: 3600", "MaximumEventAgeInSeconds: 21600"), /event age must match its stale window/],
+    ["a shorter event age", TEMPLATE.replace("MaximumEventAgeInSeconds: 21600", "MaximumEventAgeInSeconds: 3600"), /EventInvokeConfig must be exactly/],
+    ["no retries", TEMPLATE.replace("MaximumRetryAttempts: 2", "MaximumRetryAttempts: 0"), /EventInvokeConfig must be exactly/],
+    ["an explicit role", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      Role: arn:aws:iam::123456789012:role/admin\n"), /CloudSwitchFn sets an explicit Role/],
+    ["a public function URL", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      FunctionUrlConfig:\n        AuthType: NONE\n"), /CloudSwitchFn gives a function a public URL/],
+    ["a public URL on a game function", TEMPLATE.replace("      Handler: songs.handler\n", "      Handler: songs.handler\n      FunctionUrlConfig:\n        AuthType: NONE\n"), /SongsFn gives a function a public URL/],
+    ["a role from Globals", TEMPLATE.replace("    ReservedConcurrentExecutions: 2\n", "    ReservedConcurrentExecutions: 2\n    Role: arn:aws:iam::123456789012:role/admin\n"), /Globals\.Function sets Role/],
+    ["the state parameter elsewhere", TEMPLATE.replace("parameter/music-garden/cloud-switch/on-at", "parameter/*"), /CloudSwitchFn's role must be exactly/],
+    ["no switch-on state", TEMPLATE.replace("          STATE_PARAM: !Ref CloudSwitchState\n", ""), /CloudSwitchFn's environment is not exactly/],
+    ["a renamed state parameter", TEMPLATE.replace("      Name: /music-garden/cloud-switch/on-at", "      Name: /other"), /CloudSwitchState must be the String parameter/],
     ["a second trigger", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      Events:\n        Daily:\n          Type: Schedule\n          Properties:\n            Schedule: rate(1 day)\n"), /CloudSwitchFn has Events/],
     ["no rehearsal output", TEMPLATE.replace(/  CloudSwitchAlarmTopicArn:\n[^\n]*\n[^\n]*\n/, ""), /CloudSwitchAlarmTopicArn output/],
   ];
@@ -396,13 +419,10 @@ test("an email address anywhere in the backend config is refused, comments inclu
   assert.ok(templateProblems(TEMPLATE, SAMCONFIG + '\nparameter_overrides = "X=1"\n').some((p) => /parameter_overrides/.test(p)));
 });
 
-// TUN-87: the runbook's payload files ask for exactly what they are named, and the handler's stale window is
-// the template's event age — so a redelivered trip can never outlive the window that ignores it.
-test("the cost switch's payload files and stale window match the template", () => {
+// TUN-87: the runbook's payload files ask for exactly what they are named.
+test("the cost switch's payload files match the runbook", () => {
   for (const action of ["on", "off", "status"]) {
     const text = readFileSync(join(ROOT, "backend", "events", `switch-${action}.json`), "utf8");
     assert.deepEqual(JSON.parse(text), { switch: action }, `switch-${action}.json`);
   }
-  const wiring = readFileSync(join(ROOT, "backend", "src", "cloud-switch.mjs"), "utf8");
-  assert.match(wiring, new RegExp(`staleMs: ${SWITCH_STALE_SECONDS}e3,`));
 });

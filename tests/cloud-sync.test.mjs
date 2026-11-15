@@ -55,9 +55,10 @@ function recording(stub) {
  * them, with the token each was sent with. `signIn(name)` switches the stored user; `holdTokens(name)` makes
  * that user's sessions asked for from then on wait until the function it returns is called.
  */
-function cloudGame({ local = LOCAL } = {}) {
-  const net = { requests: [], answer: () => { throw new Error("no answer set for this request"); } };
-  let current = null; const holds = new Map();
+function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {} } = {}) {
+  // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
+  const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
+  let current = bootUser; const holds = new Map();
   const saves = new Map(); let serial = 1e6;
   const authbox = { kids: [], set innerHTML(v) { this.kids = []; }, get innerHTML() { return ""; },
     appendChild(c) { this.kids.push(c); return c; },
@@ -67,7 +68,7 @@ function cloudGame({ local = LOCAL } = {}) {
       const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "token-" + name }) });
       const h = holds.get(name); if (h) h.then(give); else give();
     } });
-  const g = loadGame({ fresh: true, elements: { authbox }, setup: w => {
+  const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
     w.localStorage.setItem("mg_progress", JSON.stringify(local));
     w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return current ? userNamed(current) : null; } } };
     w.fetch = async (url, opts = {}) => {
@@ -83,10 +84,10 @@ function cloudGame({ local = LOCAL } = {}) {
   const doc = g.__window.document, make = doc.createElement;
   Object.defineProperty(doc, "createElement", { value: (...a) => recording(make(...a)), configurable: true });
   Object.defineProperty(doc, "createTextNode", { value: t => ({ textContent: String(t) }), configurable: true });
-  current = "ann";   // now the player has a stored session, as on a reload or after cogSignIn
+  current = bootUser || "ann";   // now the player has a stored session, as on a reload or after cogSignIn
   const runSaves = async () => { const fns = [...saves.values()]; saves.clear(); for (const f of fns) await f(); };
   const holdTokens = name => { let release; holds.set(name, new Promise(r => { release = r; })); return () => { holds.delete(name); release(); }; };
-  return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent,
+  return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent, authbox,
     signIn: name => { current = name; }, holdTokens };
 }
 
@@ -492,4 +493,60 @@ test("TUN-87: a share the cloud answers without an id counts as not answering", 
   net.answer = () => reply(200, { id: "s1" });
   assert.deepEqual(await g.cloudSongCreate({ v: 3 }, "t", "unlisted"), { id: "s1" });
   assert.equal(g.cloudResting, false);
+});
+
+// ---------- PR review round 1 (TUN-87) ----------
+test("TUN-87: a cloud result never redraws over a sign-in form", async () => {
+  const { g, net, signIn, authbox } = cloudGame();
+  const list = deferred();
+  net.answer = routes({ songs: () => list.promise });
+  await g.onSignedIn(false);
+  const pending = g.cloudSongList(); await tick();
+  signIn(null);   // the stored session is gone (signed out in another tab); cloudOn is still true
+  g.renderAuth(); g.showAuthForm("in");
+  const form = authbox.kids[0], shown = authbox.textContent;
+  assert.equal(authbox.kids.length, 1);
+  list.resolve(reply(503, {})); await pending;
+  assert.equal(g.cloudResting, true, "the result still counts");
+  assert.equal(authbox.kids[0], form, "the form the player is typing into is the same element");
+  assert.equal(authbox.textContent, shown);
+});
+
+test("TUN-87: a sign-up's first save succeeding after a newer save failed does not say 'saved to cloud'", async () => {
+  const { g, net, runSaves, panel } = cloudGame();
+  const first = deferred(); let n = 0;
+  net.answer = routes({ put: () => (++n === 1 ? first.promise : reply(503, {})) });
+  const signUp = g.onSignedIn(true); await tick();
+  assert.equal(n, 1, "the first save is out");
+  g.commitProgress(); await runSaves();
+  first.resolve(reply(200, { ok: true })); await signUp;
+  assert.match(panel(), RESTING_SAVE);
+  assert.doesNotMatch(panel(), /saved to cloud/);
+});
+
+test("TUN-87: a stored session resumed at page load against a resting cloud keeps this device's progress and pushes nothing", async () => {
+  const { g, net, runSaves, panel } = cloudGame({ bootUser: "ann", answer: routes({ get: () => reply(503, {}), put: () => assert.fail("no PUT") }) });
+  await tick(); await tick();
+  assert.deepEqual(methods(net), ["GET"], "boot's resume read, and nothing else");
+  assert.equal(g.cloudSync, "unreachable");
+  assert.equal(g.progress.name, "Ann", "this device's progress stays");
+  assert.match(panel(), UNREACHABLE);
+  g.commitProgress(); await runSaves();
+  assert.deepEqual(puts(net), []);
+});
+
+test("TUN-87: signing in from the landing screen against a resting cloud keeps this device's progress and pushes nothing", async () => {
+  const field = value => ({ value, focus() {}, addEventListener() {} });
+  const msg = { textContent: "" };
+  const { g, net, runSaves, panel } = cloudGame({ elements: { landingUser: field("ann"), landingPass: field("password1"), landingMsg: msg } });
+  net.answer = routes({ get: () => { throw new TypeError("Failed to fetch"); }, put: () => assert.fail("no PUT") });
+  g.cogSignIn = async () => {};
+  await g.doLandingSignIn();
+  assert.deepEqual(methods(net), ["GET"]);
+  assert.equal(g.cloudSync, "unreachable");
+  assert.equal(g.progress.name, "Ann");
+  assert.match(panel(), UNREACHABLE);
+  assert.doesNotMatch(msg.textContent, /⚠️/, "no error on the landing screen");
+  g.commitProgress(); await runSaves();
+  assert.deepEqual(puts(net), []);
 });

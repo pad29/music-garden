@@ -142,8 +142,20 @@ Resources:
         - Protocol: email
           Endpoint: !Ref BudgetEmail
 
+  # When the owner last switched the cloud back on. A trip message published before it is that switch-on's
+  # past, delivered again, and is ignored. Free (a standard parameter). A deploy leaves its value alone unless
+  # this resource itself changes, which resets it to "never" — then an old trip delivered again would act.
+  CloudSwitchState:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /music-garden/cloud-switch/on-at
+      Type: String
+      Value: never
+      Description: When the owner last switched the cloud back on (TUN-87). Written by music-garden-cloud-switch.
+
   # Fixed name, so the runbook's commands need no lookup. Its role may change exactly three functions'
-  # concurrency, this one API, and publish to its own notice topic — nothing else, and never itself.
+  # concurrency, this one API and its own switch-on time, and publish to its own notice topic — nothing else,
+  # and never itself.
   CloudSwitchFn:
     Type: AWS::Serverless::Function
     Properties:
@@ -153,7 +165,7 @@ Resources:
       Timeout: 60                       # each step is capped well inside this (cloud-switch-api.mjs)
       ReservedConcurrentExecutions: 1   # one command at a time: an off and an on never interleave
       EventInvokeConfig:
-        MaximumEventAgeInSeconds: 3600
+        MaximumEventAgeInSeconds: 21600   # Lambda's longest: a late real trip still lands (CloudSwitchState tells old ones)
         MaximumRetryAttempts: 2
       Environment:
         Variables:
@@ -164,6 +176,7 @@ Resources:
           ON_CONCURRENCY: "2"           # = Globals' ReservedConcurrentExecutions (tests hold them equal)
           ALARM_TOPIC_ARN: !Ref CloudSwitchAlarmTopic
           NOTICE_TOPIC_ARN: !Ref CloudSwitchNoticeTopic
+          STATE_PARAM: !Ref CloudSwitchState
       Policies:
         - Statement:
             - Effect: Allow
@@ -182,6 +195,11 @@ Resources:
             - Effect: Allow
               Action: sns:Publish
               Resource: !Ref CloudSwitchNoticeTopic
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:PutParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/music-garden/cloud-switch/on-at"
 
   # --- Auth: a Cognito User Pool. Username + password sign-in; email is OPTIONAL (recovery only). ---
   # Every account lives here: never deleted with the stack, never silently replaced, and protected from

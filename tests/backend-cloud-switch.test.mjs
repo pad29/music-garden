@@ -1,11 +1,12 @@
 // The cost switch (TUN-87), driven without AWS: backend/src/cloud-switch-api.mjs takes its AWS calls as plain
 // functions, and here they are a fake account that records every change and email. cloud-switch.mjs only
-// wires the real SDK in. What it must do: at a message on the alarm topic, switch OFF — the three game
-// functions to concurrency 0 and the API's default endpoint disabled — and email; switch ON only when the
-// owner sends {"switch":"on"}; report, never act, on "status"; and fail visibly when a step did not take.
+// imports the SDK. What it must do: at a message on the alarm topic, switch OFF — the three game functions to
+// concurrency 0 and the API's default endpoint disabled — and email; switch ON only when the owner sends
+// {"switch":"on"}, recording when; ignore a trip published before that switch-on; report, never act, on
+// "status"; stop a step at its deadline; and fail visibly when anything did not take.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeCloudSwitchHandler, readCommand, COMMAND } from "../backend/src/cloud-switch-api.mjs";
+import { makeCloudSwitchHandler, readCommand, sdkAdapter, switchConfig, CLIENT_OPTIONS, COMMAND } from "../backend/src/cloud-switch-api.mjs";
 
 const logged = [];
 console.log = (...a) => logged.push(["log", ...a]);
@@ -13,31 +14,38 @@ console.error = (...a) => logged.push(["error", ...a]);
 
 const FNS = ["music-garden-ProgressFn-A", "music-garden-SongsFn-B", "music-garden-PreSignUpFn-C"];
 const ALARM = "arn:aws:sns:us-east-1:123456789012:music-garden-CloudSwitchAlarmTopic-X";
-const NOW = Date.parse("2026-11-20T12:00:00Z");
-const CFG = { functions: FNS, onConcurrency: 2, alarmTopicArn: ALARM, staleMs: 3600e3, stepMs: 50 };
+const T0 = Date.parse("2026-11-20T12:00:00Z");
+const CFG = { functions: FNS, onConcurrency: 2, alarmTopicArn: ALARM, stepMs: 50 };
+const iso = ms => new Date(ms).toISOString();
 const sns = (over = {}, rec = {}) => ({ Records: [{ EventSource: "aws:sns", ...rec,
-  Sns: { TopicArn: ALARM, Timestamp: new Date(NOW - 60e3).toISOString(), Subject: "AWS Budgets: budget has exceeded your alert threshold", Message: "…", ...over } }] });
+  Sns: { TopicArn: ALARM, Timestamp: iso(T0), Subject: "AWS Budgets: budget has exceeded your alert threshold", Message: "…", ...over } }] });
 
-/** A fake account: every function at `start` concurrency, the endpoint enabled. `fail` / `hang` name calls to break. */
-function account({ start = 2, endpointDisabled = false, fail = {}, hang = {} } = {}) {
-  const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, writes: [], mails: [], reads: 0 };
-  const act = (key, fn) => {
-    if (hang[key]) return new Promise(() => {});
+/**
+ * A fake account: every function at `start` concurrency, the endpoint enabled, the switch-on time `onAt`.
+ * `fail` / `hang` name calls to break; a hung call honours its AbortSignal (as the SDK does) and records it.
+ * `clock.now` is the time the handler sees.
+ */
+function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {} } = {}) {
+  const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, onAt, writes: [], mails: [], aborted: [], clock: { now: T0 + 60e3 } };
+  const act = (key, fn, signal) => {
+    if (hang[key]) return new Promise((_, rej) => { signal && signal.addEventListener("abort", () => { a.aborted.push(key); rej(signal.reason); }); });
     if (fail[key]) return Promise.reject(new Error(`${key} denied`));
     return Promise.resolve().then(fn);
   };
   a.aws = {
-    getConcurrency: fn => act("get:" + fn, () => { a.reads++; return a.conc[fn]; }),
-    putConcurrency: (fn, n) => act("put:" + fn, () => { a.writes.push(["put", fn, n]); a.conc[fn] = n; }),
-    getEndpointDisabled: () => act("getApi", () => { a.reads++; return a.endpointDisabled; }),
-    setEndpointDisabled: d => act("setApi", () => { a.writes.push(["api", d]); a.endpointDisabled = d; }),
-    notify: (subject, message) => act("notify", () => { a.mails.push({ subject, message }); }),
-    now: () => NOW,
+    getConcurrency: (fn, s) => act("get:" + fn, () => a.conc[fn], s),
+    putConcurrency: (fn, n, s) => act("put:" + fn, () => { a.writes.push(["put", fn, n]); a.conc[fn] = n; }, s),
+    getEndpointDisabled: s => act("getApi", () => a.endpointDisabled, s),
+    setEndpointDisabled: (d, s) => act("setApi", () => { a.writes.push(["api", d]); a.endpointDisabled = d; }, s),
+    getOnAt: s => act("getOnAt", () => a.onAt, s),
+    setOnAt: (v, s) => act("setOnAt", () => { a.writes.push(["onAt", v]); a.onAt = v; }, s),
+    notify: (subject, message, s) => act("notify", () => { a.mails.push({ subject, message }); }, s),
+    now: () => a.clock.now,
   };
   return a;
 }
 const OFF_WRITES = [...FNS.map(f => ["put", f, 0]), ["api", true]];
-const ON_WRITES = [...FNS.map(f => ["put", f, 2]), ["api", false]];
+const onWrites = at => [...FNS.map(f => ["put", f, 2]), ["api", false], ["onAt", iso(at)]];
 
 test("a message on the alarm topic switches every lever off and emails what it did", async () => {
   const a = account();
@@ -68,21 +76,61 @@ test("a message on the alarm topic always means off, whatever it says, and a rep
   assert.deepEqual(two.writes, OFF_WRITES, "several records still switch off once");
 });
 
-test("the owner's on, off and status commands", async () => {
+test("the owner's on, off and status commands; on records when", async () => {
   const a = account({ start: 0, endpointDisabled: true });
   const h = makeCloudSwitchHandler(a.aws, CFG);
   const before = await h({ switch: "status" });
   assert.deepEqual(a.writes, []); assert.equal(a.mails.length, 0);
   assert.equal(before.cloud, "off");
   const on = await h({ switch: "on" });
-  assert.deepEqual(a.writes, ON_WRITES);
+  assert.deepEqual(a.writes, onWrites(a.clock.now));
   assert.equal(on.cloud, "on"); assert.equal(on.done, true);
   assert.equal(a.mails[0].subject, "Tune Garden: the cloud is switched back ON");
-  assert.match(a.mails[0].message, /does not trip again this month/);
+  assert.match(a.mails[0].message, /If this month's \$30 alert has already fired, the budget will not trip the switch again until next month/);
   a.writes.length = 0;
   const off = await h({ switch: "off" });
-  assert.deepEqual(a.writes, OFF_WRITES); assert.equal(off.cloud, "off");
+  assert.deepEqual(a.writes, OFF_WRITES, "the owner's off does not touch the switch-on time"); assert.equal(off.cloud, "off");
   assert.match(a.mails[1].message, /Why: the owner's command/);
+});
+
+// Design review 7 / PR review round 1, finding 1: Lambda and SNS can deliver a message again after it was
+// handled, hours later. Age cannot tell that from a late real trip; the owner's switch-on time can.
+test("a trip delivered again after the owner switched on is ignored; a new alarm after it still trips", async () => {
+  const a = account();
+  const h = makeCloudSwitchHandler(a.aws, CFG);
+  const trip = sns({ Timestamp: iso(T0) });
+  a.clock.now = T0 + 60e3; await h(trip);                              // 12:01 off
+  a.clock.now = T0 + 6 * 60e3; await h({ switch: "on" });              // 12:06 on
+  assert.equal(a.onAt, iso(T0 + 6 * 60e3));
+  a.writes.length = 0; a.mails.length = 0;
+  a.clock.now = T0 + 7 * 60e3;
+  const again = await h(trip);                                         // 12:07 the 12:00 message again
+  assert.equal(again.ignored, "published before the last switch-on");
+  assert.deepEqual(a.writes, [], "recovery stands");
+  assert.equal((await h({ switch: "status" })).cloud, "on");
+  assert.equal(a.mails.length, 1); assert.match(a.mails[0].subject, /old cost-switch message was ignored/);
+  a.clock.now = T0 + 30 * 60e3;
+  await h(sns({ Timestamp: iso(T0 + 29 * 60e3) }));                    // a new alarm, published after the switch-on
+  assert.deepEqual(a.writes, OFF_WRITES);
+});
+
+test("a trip that arrives late, with no switch-on since, still trips; so does one whose switch-on time cannot be read", async () => {
+  for (const [what, opts] of [["three hours late", {}], ["the state never written", { onAt: "never" }], ["the state unreadable", { fail: { getOnAt: true } }],
+    ["the state hanging", { hang: { getOnAt: true } }], ["a switch-on long before", { onAt: iso(T0 - 86400e3) }]]) {
+    const a = account(opts); a.clock.now = T0 + 3 * 3600e3;
+    const r = await makeCloudSwitchHandler(a.aws, CFG)(sns({ Timestamp: iso(T0) }));
+    assert.deepEqual(a.writes, OFF_WRITES, what); assert.equal(r.cloud, "off", what);
+    if (opts.fail || opts.hang) assert.match(a.mails[0].message, /last switch-on time could not be read/, what);
+  }
+  const noTime = account({ onAt: iso(T0 + 3600e3) });
+  await makeCloudSwitchHandler(noTime.aws, CFG)(sns({ Timestamp: undefined }));
+  assert.deepEqual(noTime.writes, OFF_WRITES, "a record with no timestamp is not taken for an old one");
+});
+
+test("an ignored old trip whose notice cannot be sent fails, so it is retried and the owner hears of it", async () => {
+  const a = account({ onAt: iso(T0 + 60e3), fail: { notify: true } });
+  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns({ Timestamp: iso(T0) })), /notify denied/);
+  assert.deepEqual(a.writes, []);
 });
 
 test("status reports a function with no reservation, or a mixed state, and changes nothing", async () => {
@@ -113,26 +161,10 @@ test("SNS records from another topic or source, or malformed ones, are ignored",
   }
 });
 
-test("a trip published over an hour ago cannot undo the owner's later switch-on", async () => {
-  for (const ts of [new Date(NOW - 3600e3 - 1000).toISOString(), new Date(NOW - 3 * 86400e3).toISOString(), "not a date", undefined]) {
-    const a = account();   // the owner switched back on; an old delivery arrives
-    const r = await makeCloudSwitchHandler(a.aws, CFG)(sns({ Timestamp: ts }));
-    assert.equal(r.ignored, "old message", String(ts));
-    assert.deepEqual(a.writes, []);
-    assert.equal(a.mails.length, 1); assert.match(a.mails[0].subject, /old cost-switch message was ignored/);
-  }
-  const fresh = account();
-  await makeCloudSwitchHandler(fresh.aws, CFG)(sns({ Timestamp: new Date(NOW - 3600e3 + 1000).toISOString() }));
-  assert.deepEqual(fresh.writes, OFF_WRITES, "just inside the hour still trips");
-  const stale = account({ fail: { notify: true } });
-  const r = await makeCloudSwitchHandler(stale.aws, CFG)(sns({ Timestamp: "2026-01-01T00:00:00Z" }));
-  assert.equal(r.ignored, "old message", "an old message is not retried even when its email fails");
-});
-
 test("one failing or hanging step does not stop the others; the email says so and the call fails", async () => {
   for (const broken of [{ fail: { ["put:" + FNS[1]]: true } }, { hang: { setApi: true } }, { fail: { ["put:" + FNS[2]]: true }, hang: { ["put:" + FNS[0]]: true } }]) {
     const a = account(broken);
-    await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns()), /not every setting took/, JSON.stringify(broken));
+    await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns()), /not everything took/, JSON.stringify(broken));
     const ok = OFF_WRITES.filter(([k, f]) => !(broken.fail || {})["put:" + f] && !(broken.hang || {})["put:" + f]
       && !(k === "api" && (broken.hang || {}).setApi));
     assert.deepEqual(a.writes, ok, "every other step still ran");
@@ -143,16 +175,29 @@ test("one failing or hanging step does not stop the others; the email says so an
   }
 });
 
-test("switching on reports a step that did not take, too", async () => {
+// PR review round 1, finding 2: a deadline must stop the call, not just stop waiting for it.
+test("a step past its deadline is aborted, so it cannot land after a later command", async () => {
+  for (const key of ["put:" + FNS[0], "setApi", "put:" + FNS[2]]) {
+    const a = account({ start: 0, endpointDisabled: true, hang: { [key]: true } });
+    const h = makeCloudSwitchHandler(a.aws, CFG);
+    await assert.rejects(h({ switch: "on" }), /not everything took/);
+    assert.deepEqual(a.aborted, [key], `${key}: its signal fired`);
+  }
+});
+
+test("switching on reports a step that did not take, the switch-on time included", async () => {
   const a = account({ start: 0, endpointDisabled: true, fail: { setApi: true } });
-  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)({ switch: "on" }), /not every setting took/);
+  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)({ switch: "on" }), /not everything took/);
   assert.match(a.mails[0].subject, /back ON — NOT COMPLETE/);
   assert.match(a.mails[0].message, /API default endpoint: disabled/);
+  const b = account({ start: 0, endpointDisabled: true, fail: { setOnAt: true } });
+  await assert.rejects(makeCloudSwitchHandler(b.aws, CFG)({ switch: "on" }), /not everything took/);
+  assert.match(b.mails[0].message, /the switch-on time: setOnAt denied/);
 });
 
 test("a setting that cannot be read back counts as not done", async () => {
   const a = account({ fail: { getApi: true } });
-  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns()), /not every setting took/);
+  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)(sns()), /not everything took/);
   assert.deepEqual(a.writes, OFF_WRITES);
   assert.match(a.mails[0].message, /API default endpoint: unknown \(getApi denied\)/);
   const s = account({ hang: { ["get:" + FNS[0]]: true } });
@@ -175,9 +220,55 @@ test("a misconfigured switch changes nothing", async () => {
   }
 });
 
-test("readCommand on its own: only a fresh alarm-topic record is off", () => {
-  assert.equal(readCommand(sns(), CFG, NOW).action, "off");
-  assert.equal(readCommand({ switch: "status" }, CFG, NOW).action, "status");
-  assert.ok(readCommand(sns({ Timestamp: new Date(NOW + 5 * 60e3).toISOString() }), CFG, NOW).stale, "a timestamp far in the future is not trusted");
-  assert.equal(readCommand(sns({ Timestamp: new Date(NOW + 30e3).toISOString() }), CFG, NOW).action, "off", "a little clock skew is");
+test("readCommand on its own", () => {
+  assert.equal(readCommand(sns(), CFG).action, "off");
+  assert.equal(readCommand(sns(), CFG).publishedAt, T0);
+  assert.ok(Number.isNaN(readCommand(sns({ Timestamp: "not a date" }), CFG).publishedAt));
+  assert.equal(readCommand({ switch: "status" }, CFG).action, "status");
+});
+
+// PR review round 1, missing test 4: the real adapter, with recording SDK clients and command classes.
+test("the SDK adapter sends the right commands, each with the step's abort signal", async () => {
+  const sent = [];
+  const client = name => ({ send: async (cmd, opts) => { sent.push({ client: name, cmd: cmd.constructor.name, input: cmd.input, signal: opts && opts.abortSignal });
+    return { ReservedConcurrentExecutions: 0, DisableExecuteApiEndpoint: true, Parameter: { Value: "2026-11-20T12:06:00.000Z" } }; } });
+  const C = Object.fromEntries(["GetFunctionConcurrencyCommand", "PutFunctionConcurrencyCommand", "GetApiCommand", "UpdateApiCommand",
+    "PublishCommand", "GetParameterCommand", "PutParameterCommand"].map(n => [n, { [n]: class { constructor(input) { this.input = input; } } }[n]]));
+  const env = { API_ID: "api1", NOTICE_TOPIC_ARN: "arn:notice", STATE_PARAM: "/music-garden/cloud-switch/on-at",
+    PROGRESS_FN: FNS[0], SONGS_FN: FNS[1], PRESIGNUP_FN: FNS[2], ON_CONCURRENCY: "2", ALARM_TOPIC_ARN: ALARM };
+  const aws = sdkAdapter({ lambda: client("lambda"), apigw: client("apigw"), sns: client("sns"), ssm: client("ssm") }, C, env);
+  const sig = new AbortController().signal;
+  assert.equal(await aws.getConcurrency("f", sig), 0);
+  await aws.putConcurrency("f", 0, sig);
+  assert.equal(await aws.getEndpointDisabled(sig), true);
+  await aws.setEndpointDisabled(true, sig);
+  assert.equal(await aws.getOnAt(sig), "2026-11-20T12:06:00.000Z");
+  await aws.setOnAt("2026-11-20T13:00:00.000Z", sig);
+  await aws.notify("s", "m", sig);
+  assert.deepEqual(sent.map(x => [x.client, x.cmd, x.input]), [
+    ["lambda", "GetFunctionConcurrencyCommand", { FunctionName: "f" }],
+    ["lambda", "PutFunctionConcurrencyCommand", { FunctionName: "f", ReservedConcurrentExecutions: 0 }],
+    ["apigw", "GetApiCommand", { ApiId: "api1" }],
+    ["apigw", "UpdateApiCommand", { ApiId: "api1", DisableExecuteApiEndpoint: true }],
+    ["ssm", "GetParameterCommand", { Name: "/music-garden/cloud-switch/on-at" }],
+    ["ssm", "PutParameterCommand", { Name: "/music-garden/cloud-switch/on-at", Value: "2026-11-20T13:00:00.000Z", Overwrite: true }],
+    ["sns", "PublishCommand", { TopicArn: "arn:notice", Subject: "s", Message: "m" }],
+  ]);
+  assert.ok(sent.every(x => x.signal === sig), "every call carries the abort signal");
+  const cfg = switchConfig(env);
+  assert.deepEqual(cfg.functions, FNS); assert.equal(cfg.onConcurrency, 2); assert.equal(cfg.alarmTopicArn, ALARM);
+  assert.ok(cfg.stepMs * 4 < 60e3, "four rounds of steps fit the function's 60-second timeout");
+  assert.equal(CLIENT_OPTIONS.requestHandler.throwOnRequestTimeout, true, "a stalled request fails, not only warns");
+  assert.equal(CLIENT_OPTIONS.maxAttempts, 3);
+});
+
+test("through the adapter, a deadline aborts the SDK call itself", async () => {
+  const aborted = [];
+  const hung = { send: (cmd, opts) => new Promise((_, rej) => opts.abortSignal.addEventListener("abort", () => { aborted.push(cmd.constructor.name); rej(new Error("aborted")); })) };
+  const ok = { send: async () => ({ ReservedConcurrentExecutions: 2, DisableExecuteApiEndpoint: false, Parameter: { Value: "never" } }) };
+  const C = Object.fromEntries(["GetFunctionConcurrencyCommand", "PutFunctionConcurrencyCommand", "GetApiCommand", "UpdateApiCommand",
+    "PublishCommand", "GetParameterCommand", "PutParameterCommand"].map(n => [n, { [n]: class { constructor(input) { this.input = input; } } }[n]]));
+  const aws = sdkAdapter({ lambda: ok, apigw: hung, sns: ok, ssm: ok }, C, { API_ID: "a" });
+  await assert.rejects(makeCloudSwitchHandler(aws, CFG)({ switch: "on" }), /not everything took/);
+  assert.ok(aborted.includes("UpdateApiCommand"), "the hung UpdateApi was aborted");
 });

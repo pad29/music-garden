@@ -90,8 +90,10 @@ is told the cloud is resting — on a `#song=` link at boot, in Melodies' list, 
 sharing a big song — and that only the API's own `{"error":"not found"}` says a song may be deleted. It
 also maps Cognito's sign-up trigger failures to the calm refusal. `backend-cloud-switch.test.mjs` drives
 `backend/src/cloud-switch-api.mjs` against a fake account: off from any alarm-topic message, never on;
-the owner's on/off/status; refusals; other topics and stale messages ignored; failing and hanging steps;
-the read-back; a failed email.
+the owner's on/off/status; refusals; other topics ignored; a trip published before the owner's last
+switch-on ignored, a later or late one acted on; failing, hanging (aborted) steps;
+the read-back; a failed email; and the SDK adapter, with recording clients, sending each command with
+the step's abort signal.
 
 **The backend template.** `backend-template.test.mjs` (TUN-82) parses `backend/template.yaml` with a
 small structural parser for its block-YAML subset and pins its cost limits and data protection, each
@@ -108,7 +110,8 @@ at its effective path, so the same text under `Metadata` doesn't count:
   policy, subscription, permission, notice topic, the switch's timeout, concurrency 1, event age,
   environment and role, each compared as exact JSON (key order aside), so an extra action, a `*`, the
   switch naming itself or a quoted reference is a difference; no function invokable by a non-AWS
-  principal; the payload files and the handler's stale window.
+  principal, no function URL, no explicit role; the SSM parameter holding the switch-on time; the payload
+  files.
 
 It also refuses any email address other than an `@example.com` placeholder in the template or
 `samconfig.toml`, comments included: the repository is public. It is a static check, not

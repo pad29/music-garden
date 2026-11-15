@@ -511,3 +511,110 @@ the expected CORS refusal.
 concurrency 0 refusing calls with 503; the disabled endpoint taking effect without a redeploy and what it
 answers; the exact error Cognito's SDK gives a throttled sign-up trigger; existing players' sign-in while
 off; whether a `sam deploy` resets the switch; every signed-in panel state in a real browser.
+
+## PR review — round 1 (Astra, through `ask.sh`, on `35225de`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+**FINDINGS**
+
+1. **blocker — [backend/src/cloud-switch-api.mjs:24](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:24): elapsed age does not establish whether a trip was superseded.**  
+   Reproduced: trip at 12:00 → owner switches on at 12:06 → duplicate arrives at 12:07 → cloud switches off again. The runbook’s five-minute wait does not prevent this; Lambda documents duplicate delivery even after successful execution. Conversely, a first delivery older than one hour is acknowledged without shutting anything down, even when the owner never restored service. A failed notification on that path is swallowed too. SNS can legitimately retry delivery beyond an hour.  
+   Distinguish superseded trips using durable recovery state, rather than publication age alone. Update the recovery instructions accordingly. [Lambda retry behavior](https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html), [SNS delivery retries](https://docs.aws.amazon.com/sns/latest/dg/sns-message-delivery-retries.html).
+
+2. **blocker — [backend/src/cloud-switch-api.mjs:41](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:41), [backend/src/cloud-switch.mjs:9](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch.mjs:9): timing out does not cancel the AWS operation.**  
+   `Promise.race` abandons the wait while the SDK operation and retries remain alive. Reproduced with sequential handler calls: an ON write times out → OFF completes and reports `cloud:"off"` → the old ON write completes → state becomes mixed. Reserved concurrency 1 does not serialize work abandoned by an earlier invocation.  
+   Pass cancellation through to SDK calls, terminate outstanding retries, and settle operations before the final read-back and return. Also, current SDK documentation specifies that `requestTimeout` only warns unless `throwOnRequestTimeout:true`; the claimed five-second enforcement is not assured by these options. [AWS SDK timeout configuration](https://github.com/aws/aws-sdk-js-v3/blob/main/UPGRADING.md).
+
+3. **should-fix — [backend/README.md:285](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/README.md:285): disagreement 6 still lacks a reliable maintenance procedure.**  
+   Checking after deployment cannot preserve the paused state during deployment or rollback. “A few minutes, costing cents” is an assumption, not an established limit. The ordinary deployment instructions also omit this check. Require a procedure that preserves OFF, or a pre-deployment guard that refuses deployment while OFF. The controlled deployment check remains pending; the current instructions do not close the original finding.
+
+4. **should-fix — [js/cloud.js:22](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/js/cloud.js:22): a background availability result can erase an open authentication form.**  
+   `cloudOn` can remain true after the stored session disappears, such as sign-out in another tab. `renderAuth()` then offers the guest sign-in form. A pending cloud failure subsequently flips `cloudResting` and calls `renderAuth()` again, destroying the form, entered credentials, and its status element. Reproduced using the existing recording fixture. Preserve an active form; update the signed-in status separately or verify that the panel still represents the signed-in session.
+
+5. **should-fix — [js/cloud.js:108](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/js/cloud.js:108): first-upload status bypasses the new sequence protection.**  
+   Reproduced: signup’s initial PUT remains pending → a newer save fails → the initial PUT succeeds. `cloudCall` correctly retains the resting state, but `onSignedIn` appends **“saved to cloud”** anyway. The resulting panel simultaneously describes unsaved local progress and announces success. Apply the same ordering rule to this completion message, or remove the transient success message.
+
+6. **should-fix — [tests/backend-template.test.mjs:159](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/tests/backend-template.test.mjs:159): the template guard misses material violations of its advertised guarantees.**  
+   Each independent in-memory mutation returned **zero problems**:
+   - `MaximumRetryAttempts: 2` → `0`.
+   - Add an explicit unrestricted `Role`, bypassing the checked generated-role policies.
+   - Add `FunctionUrlConfig: { AuthType: NONE }`, creating a public invocation path after SAM transformation.
+
+   Check effective role selection, function URLs, and retry configuration—not only the existing policy and permission objects.
+
+7. **nit — [backend/src/cloud-switch-api.mjs:110](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:110): every recovery email incorrectly says the budget cannot trip again this month.**  
+   Switching on after a rehearsal below $30 does not consume the actual-spend notification. Make this warning conditional on the actual alert having fired for the current budget period. The existing test currently requires the incorrect unconditional sentence.
+
+The other agreed changes are substantially implemented: design findings **1–3 and 5** are addressed in the normal paths; **4 and 7** retain the gaps above; **8** has conditional spending scenarios and residual costs; **11–12** still require the tests and live acceptance below. TUN-106’s write gates and run checks remain intact. Both `cloudSongGet` callers respect `null` versus `false`; list failure remains distinct from empty, DELETE recognizes the application’s own 404, and trigger-error mapping is confined to signup.
+
+Disagreements **9 and 10 hold up**: the proposed IAM condition would not isolate PATCH to one field, and retaining tested ON/status handling in the function is reasonable. Those choices do not resolve the timeout or recovery-ordering defects.
+
+**MISSING TESTS**
+
+1. **Recovery ordering:** deliver an SNS trip, switch ON six minutes later, then redeliver that same message at minute seven. Assert recovery remains effective. A genuinely new post-recovery alarm must still switch OFF.
+
+2. **Delayed legitimate trip:** deliver the first alarm after an hour without any intervening recovery. Assert it is not silently treated as superseded. Also exercise a partial shutdown whose retry crosses the age boundary.
+
+3. **Late write completion:** hold an ON write beyond its deadline, complete a subsequent OFF command, then release the old operation. Assert the old operation cannot change the verified OFF state. Repeat with the API endpoint and pre-signup concurrency.
+
+4. **SDK cancellation wiring:** exercise the real adapter with recording SDK substitutes; assert deadlines abort outstanding calls/retries, timeout options enforce failure, and final read-back follows settlement.
+
+5. **Authentication-form preservation:** remove the stored session while `cloudOn` remains true, open and populate the sign-in form, then finish a pending cloud call. Assert the form, values, and in-progress status survive.
+
+6. **First-upload ordering:** defer signup’s initial PUT, fail a newer save, then succeed the initial PUT. Assert the panel retains resting information without “saved to cloud.”
+
+7. **Template retry mutation:** set `MaximumRetryAttempts` to zero; require a specific failure.
+
+8. **Template role mutation:** add an explicit `Role` that bypasses the checked policies; require a specific failure.
+
+9. **Template public-entry mutation:** add an unauthenticated function URL; require a specific failure.
+
+10. **Production entry paths:** exercise landing sign-in and boot session-resume through a failed progress load. Assert local progress survives, no PUT occurs, and the persistent panel reports resting.
+
+11. **Owner rehearsal, still pending:** explicitly verify both production origins, refused signup, existing-user sign-in and refresh, levels/Studio/local saves/`#s=`, a known `#song=` link, and recovery with newly advanced progress surviving a fresh session. Add the controlled deploy-while-OFF check.
+
+Verification: syntax and **84 targeted tests passed**. SAM lint passed; an in-memory SAM transform produced an acyclic dependency graph and the expected subscription, permission, role, `$LATEST` invocation configuration, and auto-deploy stage. No SDK command-shape defect found beyond timeout handling. Full suite: **756 passed, 75 failed**, all failures being sandbox `mkdtemp` permission errors. AWS and real-browser acceptance were not performed. No files changed.
+
+</details>
+
+### My answers
+
+1. **Agree (blocker).** Age could not tell a redelivered trip from a late real one. The switch now records
+   the owner's switch-on time in an SSM parameter (`CloudSwitchState`, `/music-garden/cloud-switch/on-at`,
+   free; role: `ssm:GetParameter`/`PutParameter` on that one parameter). A trip **published** before it is
+   ignored and emailed about (a failed notice throws, so it is retried); one published after it — however
+   late — switches off; one whose switch-on time cannot be read switches off, saying so. The one-hour rule
+   is gone and the event age is Lambda's longest, 6 hours. Tests: missing tests 1 and 2 as written, plus the
+   unreadable/hanging state, a record with no timestamp, and a failed notice.
+2. **Agree (blocker).** Each step now gets an `AbortSignal` that fires at its deadline, and every SDK call
+   carries it (`send(cmd, { abortSignal })`), which stops the request and its retries; `throwOnRequestTimeout`
+   makes a stalled request fail. The AWS calls moved into `sdkAdapter` in `cloud-switch-api.mjs`, so the
+   real adapter is tested with recording clients (missing test 4), and through it a hung `UpdateApi` is
+   aborted (missing test 3, via the fake account for each lever). A request already received by AWS when
+   it is aborted can still apply — the read-back reports what is true either way.
+3. **Partly agree.** The ordinary deploy steps were missing the check — fixed: [Future deploys] now starts
+   with **status**, and "Deploying while it is off" says **don't**, and what to do when a fix to the switch
+   itself can't wait. **Still disagree** that this ticket needs an automated guard: the deploy is the owner's
+   own hand-run command, two lines below the check, and a wrapper script would be one more untested thing to
+   keep in step. Whether a deploy resets the settings is for TUN-102's production rehearsal to measure.
+4. **Agree.** The panel is redrawn only while it shows the signed-in row (`_authShowsSignedIn`, set by
+   `renderAuth`, cleared by it and by `showAuthForm`). Missing test 5 added.
+5. **Agree.** "saved to cloud" only when nothing newer has failed. Missing test 6 added.
+6. **Agree.** `EventInvokeConfig` must be exactly 6 hours and 2 retries; `CloudSwitchFn` may set only its
+   known properties (so no `Role`, `Events` or `FunctionUrlConfig`); no function anywhere may have a function
+   URL or an explicit `Role`, nor may `Globals`. Missing tests 7–9 added as mutation cases, plus the SSM
+   parameter's name and the role's parameter ARN.
+7. **Agree (nit).** The email and runbook now say the budget won't trip again "if this month's $30 alert has
+   already fired"; a rehearsal does not use it up.
+
+Missing test 10 added: a stored session resumed at page load, and a landing-screen sign-in, against a
+resting cloud — this device's progress stays, only the `GET` goes out, the panel says resting, no ⚠️.
+Missing test 11 is the owner's rehearsal (the hand-off lists it).
+
+**Mutation check of the round's fixes** (each restored): a redraw while `cloudOn` (1 fail), "saved to
+cloud" after a newer failure (1), no superseded check (2), switch-on recording no time (3), a deadline that
+doesn't abort (2), the adapter dropping the signal (2), an unreadable switch-on time ignoring the trip (1),
+a failed switch-on-time write not reported (1), `PutParameter` without `Overwrite` (1).

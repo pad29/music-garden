@@ -90,9 +90,12 @@ Those four values are *public* identifiers (the kind that ship inside any web ap
 ---
 
 ## Future deploys
-After any change to `template.yaml` or `src/`:
+After any change to `template.yaml` or `src/`. **First ask the [cost switch](#the-cost-switch) for its
+status** (once TUN-87 is deployed)**: if it says `"cloud": "off"`, don't deploy** — see *Deploying while it
+is off* there.
 ```powershell
 cd backend   # from the repo root
+aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://events/switch-status.json status.json; type status.json
 sam validate --lint
 sam build; sam deploy --confirm-changeset
 ```
@@ -238,17 +241,22 @@ in `reviews/TUN-87-cloud-switch.md`. The throttle is the real cap; this is the b
 **What trips it.** When the month's **actual** spend passes $30, `MonthlyBudget`'s 100 % alert posts to
 the SNS topic `CloudSwitchAlarmTopic`, which runs `music-garden-cloud-switch` (`CloudSwitchFn`,
 `src/cloud-switch.mjs`). Any message on that topic means **off** — a message can never switch the cloud
-on. Only AWS Budgets (and IAM users of this account, like you) can publish there. A message published
-more than an hour before it arrives is ignored, and emailed about, so a late redelivery cannot undo your
-switch-on. Nothing is running while it waits: it costs nothing.
+on. Only AWS Budgets (and IAM users of this account, like you) can publish there. When you switch back
+on, the switch records the time in the SSM parameter `/music-garden/cloud-switch/on-at`
+(`CloudSwitchState`); a trip message **published before that time** is ignored, and emailed about — Lambda
+and SNS can deliver a message again, even hours later, and it must not undo your switch-on. A trip
+published after it, however late it arrives, switches off. Nothing is running while it waits: it costs
+nothing.
 
 **What it does.** It sets `ProgressFn`, `SongsFn` and `PreSignUpFn` to reserved concurrency **0** — no
 Lambda runs, no DynamoDB read or write, and Cognito cannot run the sign-up trigger, so **no new accounts**
 — and **disables the API's default endpoint**, so calls stop at API Gateway before any route,
 authorizer or throttle. It reads all four back, then emails `BudgetEmail` (through
 `CloudSwitchNoticeTopic`) what tripped it and what each setting now is. A step that fails or hangs does
-not stop the others; the email says "NOT COMPLETE" and gives the command to run again, and an automatic
-trip is retried twice. It **never switches back on by itself** — not at the start of a month either.
+not stop the others — at its deadline (12 seconds) its AWS call is cancelled, retries and all, so it
+cannot land after a later command; the email says "NOT COMPLETE" and gives the command to run again, and
+an automatic trip is retried twice. It **never switches back on by itself** — not at the start of a month
+either.
 
 **What players see.** The game plays on as for a guest: levels, the Studio, local saves, `#s=` links.
 Existing players can still sign in (sign-in never runs the sign-up trigger), and every cloud call fails
@@ -277,21 +285,25 @@ fully work** — open the `.json` file it wrote to see which setting did not tak
 `on.json`, `status.json` and `off.json` are gitignored.
 
 **Before switching back on**, look at the month's spend (Billing and Cost Management → Budgets).
-**The budget alerts once per budget per month**: switched on while the month is still over $30, the
-switch will not trip again until next month — only the throttle stands in the way. After a trip email
-that said NOT COMPLETE, wait five minutes before switching on: Lambda retries a failed trip twice, a
-minute or two apart, and a retry arriving after your switch-on would switch the cloud off again.
+**The budget alerts once per budget per month**: if this month's $30 alert has already fired (not a
+rehearsal — that does not use it up), switching on while the month is still over $30 means the switch
+will not trip again until next month — only the throttle stands in the way.
 
-**Deploying while it is off.** A `sam deploy` may or may not switch the functions or the endpoint back
-on (CloudFormation compares templates, not live settings; not yet measured). Run the **status** command
-after any deploy; if the cloud should be off, run the **off** command again.
+**Deploying while it is off.** Don't. A `sam deploy` may or may not switch the functions or the endpoint
+back on (CloudFormation compares templates, not live settings; not yet measured — TUN-102 can), and
+nothing can hold them off during the deploy itself. So [Future deploys](#future-deploys) starts with the
+**status** command. If a deploy can't wait — the switch itself needs fixing — deploy, then at once run
+the **off** command and **status** again; the functions may have run for the minutes in between.
+A change to the `CloudSwitchState` resource resets the recorded switch-on time to `never`; that is
+harmless unless an old trip message is delivered again afterwards.
 
 **Setting it up — the first deploy after TUN-87:**
 1. Look at the month's spend first. The deploy **replaces** the budget (its notifications change), and a
    new budget already over $30 notifies at its first check — the switch would trip right after the deploy.
 2. `sam build; sam deploy --confirm-changeset`. New in the change set: `CloudSwitchAlarmTopic`,
    `CloudSwitchAlarmTopicPolicy`, `CloudSwitchAlarmSubscription`, `CloudSwitchAlarmPermission`,
-   `CloudSwitchNoticeTopic`, `CloudSwitchFn` and its role (Add); `MonthlyBudget` (Modify, Replacement
+   `CloudSwitchNoticeTopic`, `CloudSwitchState`, `CloudSwitchFn` with its role and invoke config (Add);
+   `MonthlyBudget` (Modify, Replacement
    `True` — expected; only `UserPool`, `ProgressTable` and `SongsTable` must never show `True`). Budgets
    checks it may publish to a subscriber topic when a budget is saved (the console's "Invalid SNS
    topic" error), so a deploy that succeeds should mean the topic policy works. The rehearsal cannot
