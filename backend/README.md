@@ -7,7 +7,7 @@ backend/
   template.yaml        # all the AWS resources (Cognito, DynamoDB ×3, API, Lambdas, the $30 budget, the cost switch)
   src/
     presignup.mjs      # the sign-up trigger Lambda: AWS SDK wiring only
-    presignup-api.mjs  # auto-confirms new accounts (no email step), at most 100 a UTC day (TUN-88; no SDK)
+    presignup-api.mjs  # auto-confirms new accounts (no email step); at most 100 sign-ups counted a UTC day (TUN-88; no SDK)
     progress.mjs       # the progress Lambda: AWS SDK wiring only
     progress-api.mjs   # GET/PUT the caller's own progress (no SDK, so it is testable)
     songs.mjs          # the songs Lambda: AWS SDK wiring only
@@ -141,11 +141,16 @@ address already verified in this account through another AWS service shows Activ
 **The first deploy after TUN-88** (the [daily sign-up limit](#the-daily-sign-up-limit)) shows, besides
 the usual rows above: `SignUpCountTable` **Add**; `PreSignUpFn` Modify / `False` (its code and its new
 environment) and `PreSignUpFnRole` Modify / `False` (its new `UpdateItem` permission) — the role SAM
-generated for it, kept, not replaced. Nothing else is new; the stop rule is unchanged. Then check it:
-1. Make an account on https://tunegarden.game. It works as before. In the DynamoDB console,
-   `music-garden-signup-count` → Explore items shows today's UTC date with `signups` 1 (or more).
+generated for it, kept, not replaced. Nothing else is new; the stop rule is unchanged. Then check it. The
+backend deploys before the client, so until TUN-88's PR is merged, https://tunegarden.game still shows
+TUN-87's message for every refusal: check the message on the PR's branch preview (sign-up talks to Cognito
+directly, so it works there; only the API's cloud sync fails on a preview), and on the live site after the
+merge.
+1. In the DynamoDB console, `music-garden-signup-count` → Explore items: note today's UTC row's `signups`
+   (no row means 0). Make an account. It works as before, and `signups` is one higher.
 2. Set `DAILY_SIGNUP_LIMIT` in the console to that count (*In a hurry*, in the limit's section) and wait for
-   **Successful**. Try to make another account: "the garden is full" message; the game plays on as a guest.
+   **Successful**. Signed out, try to make another account: "the garden is full" message, the game plays on
+   as a guest, and no new user appears in the pool.
 3. Put `DAILY_SIGNUP_LIMIT` back to `100`, wait for **Successful**, and check the value.
 
 ## Tear down (if you ever want to remove everything)
@@ -347,12 +352,15 @@ Set in `template.yaml` by TUN-88; the design and the cost arithmetic are in
 never sees them: this is their limit.
 
 **What it does.** The sign-up trigger (`PreSignUpFn`, `src/presignup-api.mjs`) counts each sign-up
-against its **UTC day** before confirming the account. Past **100** in a day it refuses, until 00:00 UTC
-(18:00 in Chicago, 19:00 in summer). The count is one row a day in the DynamoDB table
-`music-garden-signup-count` (`SignUpCountTable`): `day` (`2026-11-15`), `signups`, and `expiresAt`, from
-which DynamoDB's time-to-live deletes the row a few days later, free. Each sign-up is one atomic
-conditional write — so at most 100 sign-ups are let through per UTC day, however many arrive at once —
-and the function may do nothing else with the table (`dynamodb:UpdateItem` on it, no read).
+against its **UTC day** — the day it starts in — before confirming the account. Past **100** in a day it
+refuses, until 00:00 UTC (18:00 in Chicago, 19:00 in summer). The count is one row a day in the DynamoDB
+table `music-garden-signup-count` (`SignUpCountTable`): `day` (`2026-11-15`), `signups`, and `expiresAt`,
+from which DynamoDB's time-to-live deletes the row a few days later, free. Each sign-up is one atomic
+conditional write, so **at most 100 public sign-ups are counted against each UTC day**, however many
+arrive at once; the function may do nothing else with the table (`dynamodb:UpdateItem` on it, no read).
+That is a cap on sign-ups let through, not an exact count of accounts made on a calendar date: one begun
+at 23:59:59 counts against that day even if Cognito finishes it after midnight, accounts you make
+yourself are not counted, and a counted sign-up can still fail to become an account (*What is counted*).
 
 - **What players see.** Past the limit: "🌱 So many new gardeners joined today that the garden is full!
   Keep playing as a guest — your garden is saved on this device — and make your account tomorrow."
@@ -372,8 +380,11 @@ and the function may do nothing else with the table (`dynamodb:UpdateItem` on it
   low. Accounts you create yourself with `aws cognito-idp admin-create-user` are not counted. Any other
   kind of sign-up (a social login, say — none is configured) is refused until the trigger knows it.
 - **What it costs.** One write per counted sign-up — about $0.002 a month at 100 a day. A refused sign-up
-  costs one short Lambda call and its log lines; a flood of them could reach the $30 budget by itself, and
-  then the [cost switch](#the-cost-switch) stops the trigger altogether.
+  costs one short Lambda call and its log lines. A month-long flood of them is a scenario the review
+  record prices at about $19–$38 a month (depending on log bytes per call, not yet measured), before log
+  storage and cache misses. The [cost switch](#the-cost-switch) stops the trigger altogether, but only
+  hours after the month's spend passes $30 (billing data reaches Budgets hours late): a delay, not a
+  ceiling.
 - **What it cannot bound.** Each day's 100 accounts can each fill TUN-83's per-account allowance (about
   1.7 MB) and, if signed in every month, stay Cognito monthly active users: the review record works out
   both, month by month. The cap makes that grow over months rather than minutes; it does not stop it.
@@ -389,7 +400,10 @@ until the function's *Last update status* says **Successful** before trusting it
 drift: a later deploy may or may not put the template's value back, so **put it back by hand** when you
 are done, and check it.
 
-**Deleting the table, or its row for today,** resets today's count to 0 — that is all it holds.
+**Don't delete the table or today's row to "reset" the day.** Deleting the table makes every sign-up fail
+closed until a deploy recreates it. Deleting today's row loses the day's count, so up to another 100 get
+through — yet a warm function that has already seen the day full keeps refusing from memory, without
+looking at the table, until the next UTC day. To let more through today, raise the limit instead.
 
 ## What the API accepts
 

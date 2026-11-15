@@ -253,7 +253,7 @@ Resources:
         RefreshToken: days
 
   # Pre-sign-up trigger: auto-confirm the user (and auto-verify email if one was supplied) — at most
-  # DAILY_SIGNUP_LIMIT new accounts a UTC day (TUN-88); past it, and whenever the counter cannot be reached,
+  # DAILY_SIGNUP_LIMIT public sign-ups counted against each UTC day (TUN-88); past it, and whenever the counter cannot be reached,
   # sign-ups are refused and the game plays on as a guest. backend/README.md § "The daily sign-up limit".
   PreSignUpFn:
     Type: AWS::Serverless::Function

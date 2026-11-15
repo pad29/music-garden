@@ -5,6 +5,7 @@
 // syntax, IAM or Cognito's error shape: the owner's playtest does (reviews/TUN-88-daily-signup-limit.md).
 import { test } from "node:test";
 import assert from "node:assert";
+import { registerHooks } from "node:module";
 import {
   makePreSignUpHandler, signUpConfig, counterParams, sdkAdapter, utcDay,
   FULL, UNAVAILABLE, UNSUPPORTED, KEEP_DAYS, DEADLINE_MS, CLIENT_OPTIONS,
@@ -254,6 +255,62 @@ test("the SDK settings answer well inside Cognito's 5 seconds, in one attempt", 
   assert.equal(r.throwOnRequestTimeout, true, "without it the SDK only warns on a request timeout");
   assert.ok(r.connectionTimeout + r.requestTimeout <= DEADLINE_MS);
   assert.ok(DEADLINE_MS <= 3000, "headroom under Cognito's 5 s");
+});
+
+// The deployed entry point, backend/src/presignup.mjs, with the two AWS SDK packages it imports swapped for
+// recording stand-ins (the Lambda runtime provides the real ones; nothing is installed here). It checks the
+// wiring nothing else reaches: the client options, the DocumentClient wrap, the environment read, the signal on
+// the real send — and, at the real 2.5 s deadline, that an answer arriving late changes nothing.
+test("the deployed entry point: SDK options, the environment, the signal on send, and late answers after the real deadline", { timeout: 20000 }, async () => {
+  const sdk = globalThis.__tun88Sdk = { sends: [], send: null };
+  const stubs = {
+    "@aws-sdk/client-dynamodb": "export class DynamoDBClient { constructor(o) { globalThis.__tun88Sdk.options = o; } }",
+    "@aws-sdk/lib-dynamodb": "export class UpdateCommand { constructor(input) { this.input = input; } }\n" +
+      "export const DynamoDBDocumentClient = { from(c) { globalThis.__tun88Sdk.base = c; " +
+      "return { send: (cmd, opts) => { globalThis.__tun88Sdk.sends.push({ cmd, opts }); return globalThis.__tun88Sdk.send(cmd, opts); } }; } };",
+  };
+  const hooks = registerHooks({ resolve(spec, ctx, next) {
+    return stubs[spec] ? { url: "data:text/javascript," + encodeURIComponent(stubs[spec]), shortCircuit: true } : next(spec, ctx);
+  } });
+  const env = { DAILY_SIGNUP_LIMIT: process.env.DAILY_SIGNUP_LIMIT, SIGNUP_COUNT_TABLE: process.env.SIGNUP_COUNT_TABLE };
+  process.env.DAILY_SIGNUP_LIMIT = "2"; process.env.SIGNUP_COUNT_TABLE = TABLE;
+  const console0 = { log: console.log, error: console.error };
+  console.log = () => {}; console.error = () => {};
+  try {
+    const { handler } = await import("../backend/src/presignup.mjs");
+    assert.equal(sdk.options, CLIENT_OPTIONS, "the client gets the one-attempt, short-timeout options");
+    assert.equal(sdk.base.constructor.name, "DynamoDBClient", "…and is wrapped in a DocumentClient");
+
+    sdk.send = async () => ({});
+    const ok = await handler(signUp());
+    assert.equal(ok.response.autoConfirmUser, true);
+    const { cmd, opts } = sdk.sends[0];
+    assert.equal(cmd.constructor.name, "UpdateCommand");
+    assert.equal(cmd.input.TableName, TABLE, "the table from SIGNUP_COUNT_TABLE");
+    assert.equal(cmd.input.ExpressionAttributeValues[":max"], 2, "the limit from DAILY_SIGNUP_LIMIT");
+    assert.equal(cmd.input.Key.day, utcDay(Date.now()));
+    assert.ok(opts.abortSignal instanceof AbortSignal && !opts.abortSignal.aborted);
+
+    for (const late of ["resolve", "reject"]) {
+      let settle;
+      sdk.send = () => new Promise((res, rej) => { settle = { resolve: () => res({}), reject: () => rej(conditionFailed()) }; });
+      const ev = signUp("parent@example.com"), started = Date.now();
+      await assert.rejects(handler(ev), (e) => e.message === UNAVAILABLE, `held past the deadline, then ${late}d`);
+      const took = Date.now() - started;
+      assert.ok(took >= DEADLINE_MS - 50 && took < 4500, `refused at the deadline, inside Cognito's 5 s (${took} ms)`);
+      assert.equal(sdk.sends.at(-1).opts.abortSignal.aborted, true, "the real send was told to stop");
+      settle[late]();
+      await new Promise((r) => setTimeout(r, 10));
+      assert.deepStrictEqual(ev.response, {}, `a late ${late} never confirms or verifies the refused sign-up`);
+    }
+    sdk.send = async () => ({});
+    assert.equal((await handler(signUp())).response.autoConfirmUser, true, "a late condition failure did not mark the day full");
+  } finally {
+    hooks.deregister();
+    Object.assign(console, console0);
+    for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    delete globalThis.__tun88Sdk;
+  }
 });
 
 test("sdkAdapter sends an UpdateCommand of the handler's parameters, with the deadline's signal", async () => {

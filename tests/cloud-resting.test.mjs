@@ -6,6 +6,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadGame } from "./harness.mjs";
+import vm from "node:vm";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ROOT } from "./helpers/game-scripts.mjs";
 
 const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const notJson = (status = 200) => ({ ok: status < 300, status, json: async () => { throw new SyntaxError("Unexpected token <"); } });
@@ -200,4 +204,55 @@ test("a sign-up past the day's limit says the garden is full today; the trigger'
     await g.submitAuth("up", "kid", "password1", "", msg);
     assert.equal(msg.textContent, "⚠️ daily-signup-limit", "only a trigger failure carrying the token is the daily limit");
   } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; }
+});
+
+// The same refusals through the vendored Cognito library as released (vendor/, run in a context of its own) and
+// the game's real cogSignUp and submitAuth: Cognito's HTTP answer is all that is synthetic. Each shape below is
+// one the library meets; it turns each into the error object the game sees.
+function realCognito(answer) {
+  const calls = [];
+  const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, crypto: globalThis.crypto,
+    navigator: { userAgent: "node" },
+    fetch: async (url, opts) => { calls.push(opts.headers["X-Amz-Target"]); return answer(); } };
+  ctx.window = ctx; ctx.self = ctx; ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(readFileSync(join(ROOT, "vendor", "cognito", "amazon-cognito-identity.min.js"), "utf8"), ctx);
+  return { lib: ctx.AmazonCognitoIdentity, calls };
+}
+const cognitoSays = (body, errorType = null) => () => ({ ok: false, status: 400,
+  headers: { get: (h) => (/x-amzn-errortype/i.test(h) ? errorType : null) },
+  json: async () => { if (body === null) throw new SyntaxError("Unexpected end of JSON input"); return body; }, text: async () => "" });
+
+test("through the real Cognito library: the day's limit says the garden is full; nothing signs in, uploads or changes the guest's garden", async () => {
+  const FULL = "🌱 So many new gardeners joined today that the garden is full! Keep playing as a guest — your garden is saved on this device — and make your account tomorrow.";
+  const CLOSED = "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is saved on this device — and try again another day.";
+  const LIMIT = "PreSignUp failed with error daily-signup-limit.";
+  const cases = [
+    ["__type", cognitoSays({ __type: "UserLambdaValidationException", message: LIMIT }), FULL],
+    ["a namespaced __type", cognitoSays({ __type: "com.amazonaws.cognito.identity.idp.model#UserLambdaValidationException", message: LIMIT }), FULL],
+    ["code", cognitoSays({ code: "UserLambdaValidationException", message: LIMIT }), FULL],
+    ["the counter unavailable", cognitoSays({ __type: "UserLambdaValidationException", message: "PreSignUp failed with error signup-counter-unavailable." }), CLOSED],
+    ["the error type in a header only (the message is lost)", cognitoSays(null, "UserLambdaValidationException:http://internal.amazon.com/coral/"), CLOSED],
+  ];
+  const pool = g.userPool, w = g.__window, hadLib = "AmazonCognitoIdentity" in w, lib = w.AmazonCognitoIdentity;
+  try {
+    for (const [what, answer, want] of cases) {
+      const real = realCognito(answer), api = [];
+      w.AmazonCognitoIdentity = real.lib;
+      g.userPool = new real.lib.CognitoUserPool({ UserPoolId: g.AUTH.userPoolId, ClientId: g.AUTH.clientId });
+      answerWith((url) => { api.push(url); throw new Error("no API call expected"); });
+      const progress = JSON.stringify(g.progress), stored = JSON.stringify(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))]));
+      const msg = { textContent: "" };
+      await g.submitAuth("up", "kid", "password1", "parent@example.com", msg);
+      assert.equal(msg.textContent, want, what);
+      assert.deepEqual(real.calls, ["AWSCognitoIdentityProviderService.SignUp"], `${what}: Cognito saw the sign-up and nothing else — no sign-in`);
+      assert.deepEqual(api, [], `${what}: no upload`);
+      assert.equal(JSON.stringify(g.progress), progress, `${what}: the guest's garden is untouched`);
+      assert.equal(JSON.stringify(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))])), stored, `${what}: nothing saved`);
+      assert.equal(g.cloudSync, "off", `${what}: still a guest`);
+    }
+  } finally {
+    g.userPool = pool;
+    if (hadLib) w.AmazonCognitoIdentity = lib; else delete w.AmazonCognitoIdentity;
+  }
 });

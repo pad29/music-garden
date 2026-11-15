@@ -215,6 +215,16 @@ function signUpLimitProblems(t) {
   need((R.SignUpCountTable || {}).Type === "AWS::DynamoDB::Table" && same(P("SignUpCountTable"), COUNT_TABLE),
     "SignUpCountTable must be exactly the on-demand, day-keyed music-garden-signup-count table with TTL on expiresAt");
   need(same(P("UserPool").LambdaConfig, { PreSignUp: att("PreSignUpFn.Arn") }), "UserPool's sign-up trigger must be exactly PreSignUpFn");
+  need((R.PreSignUpPermission || {}).Type === "AWS::Lambda::Permission" && same(P("PreSignUpPermission"),
+    { Action: "lambda:InvokeFunction", FunctionName: ref("PreSignUpFn"), Principal: "cognito-idp.amazonaws.com", SourceArn: att("UserPool.Arn") }),
+    "PreSignUpPermission must let exactly this user pool invoke PreSignUpFn");
+  // The trigger gives up on the counter at 2.5 s (DEADLINE_MS) and Cognito at 5 s: a Lambda timeout under 3 s
+  // would kill it before it could refuse calmly. PreSignUpFn sets no Timeout of its own (PRESIGNUP_PROPS).
+  const timeout = num(((t.Globals || {}).Function || {}).Timeout);
+  need(timeout >= 3, `PreSignUpFn's timeout (Globals) is ${timeout} s; it must be at least 3, above the counter's 2.5 s deadline`);
+  // Disposable on purpose (losing it only resets today's count): no Retain, no deletion protection.
+  const lifecycle = Object.keys(R.SignUpCountTable || {}).filter((k) => k !== "Type" && k !== "Properties");
+  need(!lifecycle.length, `SignUpCountTable sets ${lifecycle.join(", ")}; it is meant to be deleted with the stack`);
   return problems;
 }
 
@@ -438,6 +448,10 @@ test("the template check refuses each mistake it guards against, with the right 
     ["no expiry on the count", TEMPLATE.replace("        Enabled: true\n", "        Enabled: false\n"), /SignUpCountTable must be exactly/],
     ["a provisioned counter table", TEMPLATE.replace("      TableName: music-garden-signup-count\n      BillingMode: PAY_PER_REQUEST\n", "      TableName: music-garden-signup-count\n      BillingMode: PROVISIONED\n"), /SignUpCountTable must be exactly/],
     ["the trigger pointed elsewhere", TEMPLATE.replace("        PreSignUp: !GetAtt PreSignUpFn.Arn\n", "        PreSignUp: !GetAtt SongsFn.Arn\n"), /UserPool's sign-up trigger must be exactly PreSignUpFn/],
+    ["no invoke permission for the pool", TEMPLATE.replace(/  PreSignUpPermission:\n(?:    .*\n|      .*\n)+/, ""), /PreSignUpPermission must let exactly this user pool invoke PreSignUpFn/],
+    ["the pool's permission on another function", TEMPLATE.replace("      FunctionName: !Ref PreSignUpFn\n", "      FunctionName: !Ref SongsFn\n"), /PreSignUpPermission must let exactly/],
+    ["a timeout under the counter's deadline", TEMPLATE.replace("    Timeout: 10\n", "    Timeout: 2\n"), /PreSignUpFn's timeout \(Globals\) is 2 s/],
+    ["a kept counter table", TEMPLATE.replace("  SignUpCountTable:\n    Type: AWS::DynamoDB::Table\n", "  SignUpCountTable:\n    Type: AWS::DynamoDB::Table\n    DeletionPolicy: Retain\n"), /SignUpCountTable sets DeletionPolicy/],
   ];
   for (const [what, mutated, expect] of cases) {
     assert.notEqual(mutated, TEMPLATE, `the "${what}" mutation must change the template`);

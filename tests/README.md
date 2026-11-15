@@ -86,7 +86,7 @@ is told the cloud is resting — on a `#song=` link at boot, in Melodies' list, 
 sharing a big song — and that only the API's own `{"error":"not found"}` says a song may be deleted. It
 also maps Cognito's sign-up trigger failures to the calm refusal, and the day's limit (TUN-88, the token
 `daily-signup-limit` on a trigger failure) to "the garden is full" — no sign-in, the guest's progress
-untouched. `backend-cloud-switch.test.mjs` drives
+untouched — also through the vendored Cognito library itself, run in a context of its own with only its HTTP answer synthetic (`__type`, namespaced, `code`, and a header-only error that loses the token and gets the generic line). `backend-cloud-switch.test.mjs` drives
 `backend/src/cloud-switch-api.mjs` against a fake account: off from any alarm-topic message, never on;
 the owner's on/off/status; refusals; other topics ignored; a trip published before the owner's last
 switch-on ignored, a later or late one acted on; failing, hanging (aborted) steps;
@@ -112,7 +112,7 @@ at its effective path, so the same text under `Metadata` doesn't count:
   files;
 - the daily sign-up limit (TUN-88): `PreSignUpFn`'s environment (`DAILY_SIGNUP_LIMIT` = the approved
   `"100"`, the counter table), its role (exactly `UpdateItem` on that table) and nothing else set on it,
-  the counter table (on-demand, keyed by `day`, TTL on `expiresAt`), and the pool's trigger.
+  the counter table (on-demand, keyed by `day`, TTL on `expiresAt`, deleted with the stack), the pool's trigger and its invoke permission, and a Lambda timeout above the counter's deadline.
 
 **The daily sign-up limit (TUN-88).** `backend-presignup.test.mjs` drives `backend/src/presignup-api.mjs`
 against an in-memory day table that applies the conditional `ADD` atomically and throws on any
@@ -121,7 +121,7 @@ exactly N through, several containers share a count, a changed limit keeps the d
 remembered without another write, midnight (a write begun on one day counts there; a late refusal never
 marks the new day full), limit 0, trigger sources, the settings' validation, a failing counter (no AWS
 text out, recovery), a lost answer, a hanging counter cut off at the deadline with its signal aborted, the
-SDK settings and the SDK adapter.
+SDK settings and the SDK adapter — and the deployed entry point, `presignup.mjs`, imported with its two AWS SDK packages swapped for recording stand-ins (`registerHooks`): the client options, the environment, the signal on the real send, and late answers after the real 2.5 s deadline.
 
 It also refuses any email address other than an `@example.com` placeholder in the template or
 `samconfig.toml`, comments included: the repository is public. It is a static check, not

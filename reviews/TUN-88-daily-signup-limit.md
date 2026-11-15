@@ -380,10 +380,14 @@ allowance are the owner's to confirm (`describe-user-pool`, above) before deploy
 | CloudWatch Logs ingestion | $0.50/GB; bytes per execution **to be measured** at the rehearsal | $8.04 at 300 B, $13.39 at 500 B, $26.78 at 1,000 B |
 | Counter writes | one per cache miss (a cold or new container, or a container's first refusal of the day) | $0.625 per million misses; $33.48 if every execution missed |
 
-Log storage adds $0.03 per GB-month, kept forever (no retention is set). With warm containers, a
-realistic flood is roughly **$25–$40 a month** — over the $30 by itself, so the **cost switch** is what
-bounds it: at $30 it sets `PreSignUpFn` to concurrency 0, after which Cognito refuses sign-ups without
-running the trigger, at no cost to us. Before TUN-88 the same flood would have been 53.6M new accounts, each an MAU.
+Log storage adds $0.03 per GB-month, kept forever (no retention is set). *(Corrected in PR review round
+1 — I had called $25–$40 "realistic" and said the cost switch "bounds it".)* At 5 ms of billed duration,
+requests + duration + log ingestion come to **$19.31, $24.66 or $38.06 a month** for 300, 500 or 1,000
+log bytes per execution, before log storage and cache misses. These are unmeasured scenarios, and not
+all of them pass $30. The **cost switch** sets `PreSignUpFn` to concurrency 0 once the budget notices
+$30 — after which Cognito refuses sign-ups without running the trigger, at no cost to us — but Budgets
+sees billing data hours late (AWS: typically 8–12 hours apart), so it is a delayed shutdown, not a $30
+ceiling. Before TUN-88 the same flood would have been 53.6M new accounts, each an MAU.
 
 **The counter, when nobody attacks:** 3,100 successful increments a month at N = 100, $0.002, plus one
 write per cache miss on refused days.
@@ -411,7 +415,88 @@ owner's list; their text and precedence are proven in Node.
 
 ## Tests
 
-`node --test "tests/*.test.mjs"`: 862 pass, 0 fail (before the PR review). **Not verified here** — the
+`node --test "tests/*.test.mjs"`: 862 pass, 0 fail (before the PR review); 864 pass, 0 fail after round 1. **Not verified here** — the
 owner's, after deploying: Cognito's real error object for a refusal; the conditional write, the
 `UpdateItem` permission and TTL on the live table; the message on the live site; the pool's tier
 (`describe-user-pool`); a refused sign-up's log bytes (the arithmetic's log line).
+
+## PR review
+
+### Round 1 — head `b340295` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-15)
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+Changes requested
+
+1. **Medium — [backend/README.md:145](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/backend/README.md:145): the acceptance checklist tests the wrong client before merge.**  
+   `tunegarden.game` serves `main`, whose client maps this refusal to TUN-87’s generic message. Deploying the backend cannot make production display this PR’s “garden is full” message. Use this PR’s verified branch preview for pre-merge signup/message checks, then check production after merge. Explicitly start the refusal check signed out, and compare the counter before/after the successful signup rather than accepting any existing positive count.
+
+2. **Medium — [reviews/TUN-88-daily-signup-limit.md:384](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/reviews/TUN-88-daily-signup-limit.md:384): the revised arithmetic still overstates its conclusions.**  
+   The individual calculations reproduce. At the stated 5 ms duration, requests + duration + ingestion total **$19.31, $24.66 and $38.06/month** for 300, 500 and 1,000 bytes/execution, before retained logs and cache misses. These are unmeasured scenarios; “realistic” is unsupported, and they do not all exceed $30. Replace that conclusion with conditional scenarios. Also replace “bounds it: at $30” with a delayed shutdown after the budget notification: billing updates typically occur 8–12 hours apart, so this is not a $30 spending ceiling. [AWS Budgets documentation](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html)
+
+3. **Low — [README.md:222](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/README.md:222), [backend/README.md:349](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/backend/README.md:349): the published guarantee remains stronger than the implementation.**  
+   “At most 100 accounts can be made a UTC day” is false: an admission begun before midnight can complete afterward, alongside the following day’s allowance; administrator-created accounts are exempt. State the agreed guarantee consistently: **at most 100 public-signup admissions assigned to each UTC day, captured at invocation start**. Explain that uncertain writes and subsequent Cognito failures can consume allowance without creating an account. Update the corresponding DESIGN wording too.
+
+4. **Low — [backend/README.md:392](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/backend/README.md:392): deleting the counter is not the documented immediate reset.**  
+   Deleting the table causes uncached requests to fail closed until it is recreated. Deleting today’s row leaves warm handlers’ `fullDay` caches intact. I reproduced a cached handler refusing after its stored row was removed, without another database call. Describe deletion/recreation as invalidating the stored quota history and potentially allowing additional admissions, while cached handlers can continue refusing. Do not present deletion as a reliable reset operation.
+
+The ten earlier design findings are addressed as follows:
+
+| Earlier finding | Assessment |
+|---|---|
+| 1. Deadlines | **Addressed in code.** One attempt, throwing request timeout, overall deadline and abort forwarding. Production SDK execution remains unverified. |
+| 2. Storage ceiling | **Addressed.** Revised figures are explicitly soft-cap scenarios; all four storage rows reproduce. |
+| 3. Refusal costs | **Partly addressed.** Executions, logging and cache misses are separated correctly; finding 2 above remains. |
+| 4. Zero/configuration | **Addressed.** Zero bypasses DynamoDB; invalid limits and empty table settings fail closed. |
+| 5. Trigger sources | **Addressed.** Explicit public-signup/admin dispatch; unknown and external-provider sources refuse before writing. |
+| 6. Configuration changes | **Addressed.** Shared count survives limit changes; caches belong to handler instances; update completion and manual drift restoration are documented. |
+| 7. Midnight | **Code and tests addressed; documentation incomplete.** One captured timestamp drives the key, expiry and refusal cache; finding 3 above remains. |
+| 8. Cost remedies | **Addressed.** Lite reduces price, deletion leaves application data, and continuing MAUs remain billable. |
+| 9. Test realism | **Partly addressed.** Recovery, lost responses and multiple handlers are covered; production-boundary coverage below remains missing. |
+| 10. Deployment/docs | **Mostly addressed.** Generated-role/change-set description, run-rate qualifications, PITR and DESIGN updates landed; findings 1 and 4 remain. |
+
+The conditional `SET … ADD …` expression, aliases, DocumentClient values and atomic condition are sound. `day` appears only in `Key`, so its reserved-word status causes no problem. [DynamoDB expression syntax](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.UpdateExpressions.html)
+
+The `CLIENT_OPTIONS` object is a supported SDK v3 shorthand; the abort adapter is correctly wired. [AWS SDK shorthand](https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/node-configuring-maxsockets.html)
+
+The template is sound: an in-memory SAM transform adds only `SignUpCountTable` and modifies `PreSignUpFn` and its existing `PreSignUpFnRole`. Familiar packaging/dependency rows may also appear in the deployed change set.
+
+The client mapping is sound: daily-token precedence is correct, refusals return before sign-in/upload, and backend exceptions expose fixed tokens. Running the actual vendored library against synthetic HTTP responses confirmed normal and namespaced error types preserve the token; its header-only fallback loses the message and correctly receives the generic refusal.
+
+**Missing tests**
+
+1. **Production entry-point wiring and timeout completion** — [tests/backend-presignup.test.mjs:259](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/tests/backend-presignup.test.mjs:259). Import `presignup.mjs` with recording SDK substitutes and assert constructor options, DocumentClient wrapping, parsed environment and the exact signal reaching `send`. Hold that send past the deadline, then separately resolve and reject it; assert refusal remains final and the event never acquires confirmation/verification flags. Current tests exercise the adapter separately and cover late rejection only.
+
+2. **Effective trigger deployment guards** — [tests/backend-template.test.mjs:204](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/tests/backend-template.test.mjs:204). Add mutations removing `PreSignUpPermission`, pointing it at `SongsFn`, reducing the inherited Lambda timeout below the operation deadline, and adding counter-table retention attributes. All four currently return **zero problems**. Pin the invoke permission, effective timeout and intended table lifecycle with specific diagnostics.
+
+3. **Vendored Cognito through the real signup wrapper** — [tests/cloud-resting.test.mjs:169](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/tests/cloud-resting.test.mjs:169). Exercise the bundled library with synthetic normal/namespaced `__type`, `code`, and header-only responses, through real `cogSignUp` and `submitAuth`. Record authentication and API calls directly; assert no sign-in/upload, unchanged persisted guest progress, and the correct specific/generic message. The current test replaces `cogSignUp` entirely.
+
+Syntax and **70 focused tests passed**; the installed CloudFormation linter reported no findings. No files changed. Full-suite, real-browser and live-AWS acceptance were not rerun; the documented live increment/refusal, pool-tier and log-volume checks remain pending.
+
+</details>
+
+**My answers — all agreed:**
+
+1. **Medium — the acceptance check used the wrong client. Agreed.** `tunegarden.game` serves `main`
+   until the merge, and the backend deploys first. `backend/README.md` (*The first deploy after TUN-88*)
+   and the playtest list now check the message on the PR's branch preview (sign-up talks to Cognito
+   directly, which a preview may do) and on the live site after the merge; the refusal is tried signed out,
+   and the count is compared before and after the successful sign-up.
+2. **Medium — the refusal-flood conclusion overstated. Agreed; recomputed: $19.31 / $24.66 / $38.06.**
+   *The arithmetic, revised* now gives conditional scenarios, and calls the cost switch a delayed
+   shutdown, not a ceiling. `backend/README.md`'s *What it costs* says the same.
+3. **Low — "at most 100 accounts a day" is stronger than the code. Agreed.** Now "at most 100 public
+   sign-ups counted against each UTC day (the day each starts in)", with what that does not mean, in
+   `backend/README.md`, `README.md`, `DESIGN.md`, `template.yaml` and `presignup.mjs`.
+4. **Low — deleting the counter is no reset. Agreed** (GPT reproduced a warm handler refusing from memory
+   after its row was deleted). The README now says not to, and why, and to raise the limit instead.
+
+**Missing tests — all added:** (1) `presignup.mjs` itself, imported with recording SDK stand-ins via
+`registerHooks`: the options, the DocumentClient wrap, the environment, the signal on the real send, and a
+send held past the real 2.5 s deadline then resolved, and then rejected, without confirming the sign-up or
+marking the day full; (2) the template: `PreSignUpPermission` pinned, a timeout under 3 s refused, the
+counter table refused with lifecycle attributes — four broken templates added, each with its diagnostic;
+(3) the vendored library itself through the real `cogSignUp` and `submitAuth`: `__type`, namespaced,
+`code`, the counter unavailable, and header-only (no token → the generic line), each with no sign-in call,
+no API call, and the guest's progress and storage unchanged. Mutations: 3/3 on the entry point, 4/4 on the
+client mapping against the extended tests.
