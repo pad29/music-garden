@@ -189,6 +189,9 @@ $0.20 per GB-month — cents at this size.
 
 ## Notes
 - **What's secret vs not:** the IAM access key (on your machine, in `~/.aws`) is secret. `UserPoolId` / `UserPoolClientId` / `ApiUrl` are **not** secret.
-- **CORS** is scoped to `https://tunegarden.game` (+ `www` + the Netlify fallback origin) in `template.yaml`. Update `AllowOrigins` there if the deploy URL changes.
+- **CORS** is scoped to `https://tunegarden.game` and `https://www.tunegarden.game` in `template.yaml` — nothing else: deploy previews and the retired `music-garden.netlify.app` cannot call the API (TUN-76). Adding an origin is the owner's decision; `tests/backend-template.test.mjs` holds the list, so change both. To see what the live API allows, send it a preflight; an allowed origin comes back in an `access-control-allow-origin` line, any other gets none:
+  ```powershell
+  curl.exe -s -i -X OPTIONS https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/songs/x -H "Origin: https://tunegarden.game" -H "Access-Control-Request-Method: GET"
+  ```
 - **Recovery:** accounts are username+password with no email by default (no password reset). A user can optionally add an email at sign-up to enable forgot-password; a custom "recovery code" flow can be added later.
 - **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. The throttle, the reserved concurrency and the $30 budget alert are in [Limits and budget](#limits-and-budget).
