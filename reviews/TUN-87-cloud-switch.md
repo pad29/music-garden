@@ -810,7 +810,7 @@ and the owner decides question 1.
 
 ## Owner's decisions
 
-1. **Open — a write AWS received but applied late (PR review rounds 2–3, finding 1).** If AWS applies a
+1. **Decided: A** (owner, 2026-11-15, relayed by the orchestrator) — **a write AWS received but applied late (PR review rounds 2–3, finding 1).** If AWS applies a
    switch write after the switch gave up on it, it could undo a later command (say, an `off` after an
    `on` that timed out). Never seen; not ruled out by AWS's documentation.
    - **A)** Accept it: every timed-out step already makes the command NOT COMPLETE, and the runbook's status
@@ -818,3 +818,7 @@ and the owner decides question 1.
    - **B)** Reconcile: record the wanted state and have a schedule re-apply it every few minutes. Catches it
      without you, but runs while idle (pennies, not nothing) and is more to test. *(GPT's first option)*
 2. **Pending — the deploy and the by-hand trip test** (the ticket's last *Done* bullet): the hand-off's steps.
+   The owner's answer to 1: "Accept the late-applied-write risk and add the status check a minute later
+   (no reconciling schedule)." The check was already in the runbook (§ The cost switch, after every on or
+   off) and the hand-off's switch-on step; the rehearsal steps now name it after the trip too. No change to
+   the switch's logic, so no further GPT round.

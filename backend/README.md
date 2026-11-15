@@ -318,9 +318,11 @@ harmless unless an old trip message is delivered again afterwards.
 3. An email "AWS Notification - Subscription Confirmation" arrives at `BudgetEmail`: **Confirm
    subscription**. Until you do, the switch works but emails no one.
 4. Rehearse: publish to the topic (above). Within a minute, an email "Tune Garden: the cloud is switched
-   OFF". Open https://tunegarden.game: the game plays, Home's panel says the cloud is resting, a cloud
-   song link says the same, and creating an account says the garden isn't taking new accounts.
-5. Switch back on (above); the email "…switched back ON" arrives, and **status** says `"cloud": "on"`.
+   OFF". **A minute after the trip, status** says `"cloud": "off"`. Open https://tunegarden.game: the game
+   plays, Home's panel says the cloud is resting, a cloud song link says the same, and creating an account
+   says the garden isn't taking new accounts.
+5. Switch back on (above); the email "…switched back ON" arrives, and **a minute later, status** says
+   `"cloud": "on"` — if it doesn't, run the switch-on command again.
 
 ## What the API accepts
 
