@@ -567,3 +567,19 @@ test("TUN-87: a sign-up's first save never says 'saved to cloud' once a newer sa
   await fresh.g.onSignedIn(true);
   assert.match(fresh.panel(), /progress syncs across your devices\. — saved to cloud/);
 });
+
+// ---------- PR review round 3 (TUN-87) ----------
+test("TUN-87: a save queued while the sign-up's first save is out stops it saying 'saved to cloud'", async () => {
+  const { g, net, runSaves, panel, queuedSaves } = cloudGame();
+  const first = deferred(), second = deferred(); let n = 0;
+  net.answer = routes({ put: () => (++n === 1 ? first.promise : second.promise) });
+  const signUp = g.onSignedIn(true); await tick();
+  g.progress.name = "Ann, changed"; g.commitProgress();
+  assert.equal(queuedSaves(), 1, "the changed progress waits on the debounce");
+  first.resolve(reply(200, { ok: true })); await signUp;
+  assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress is not in the cloud yet");
+  const queued = runSaves(); await tick();
+  assert.equal(n, 2, "the queued save is out, and hangs");
+  assert.doesNotMatch(panel(), /saved to cloud/);
+  second.resolve(reply(200, { ok: true })); await queued;
+});

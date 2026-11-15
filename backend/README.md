@@ -257,11 +257,12 @@ Lambda runs, no DynamoDB read or write, and Cognito cannot run the sign-up trigg
 authorizer or throttle. It reads all four back, then emails `BudgetEmail` (through
 `CloudSwitchNoticeTopic`) what tripped it and what each setting now is. A step that fails or hangs does
 not stop the others — at its deadline (10 seconds) its AWS call is cancelled, retries and all, and the
-switch waits up to 2 seconds more for it to settle before reading every setting back. A request AWS had
-already received still applies (these settings take effect when AWS receives them), so the read-back
-shows it. Any step that failed or timed out makes the email say "NOT COMPLETE", with the command to run
-again, and an automatic trip is retried twice. **A minute after any on or off, ask for the status once
-more**: it should say what you asked for. It **never switches back on by itself** — not at the start of a month
+switch waits up to 2 seconds more for it to settle before reading every setting back. Cancelling only
+stops the switch's side: a request AWS had already received may still apply — possibly after the
+read-back, or even after a later command (not seen, and not ruled out by AWS's documentation; the owner's
+call in TUN-87's review record). Any step that failed or timed out makes the email say "NOT COMPLETE",
+with the command to run again, and an automatic trip is retried twice. **A minute after any on or off,
+ask for the status once more**: it should say what you asked for — if not, run the command again. It **never switches back on by itself** — not at the start of a month
 either.
 
 **What players see.** The game plays on as for a guest: levels, the Studio, local saves, `#s=` links.

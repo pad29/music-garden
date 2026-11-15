@@ -720,3 +720,101 @@ between, finishes the job. Missing test 5 is the owner's rehearsal.
 
 **Mutation check of the round's fixes** (each restored): no wait for the call to settle (1 fail), "saved to
 cloud" decided by availability again (1).
+
+## PR review — round 3 (Astra, through `ask.sh`, the delta `3733f5a..c5b3548`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+**FINDINGS**
+
+1. **blocker — [backend/src/cloud-switch-api.mjs:37](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:37): round-2 finding 1 remains unresolved; client settlement does not establish remote settlement.**
+
+   Your disagreement **does not hold as a correctness argument**. [PutFunctionConcurrency](https://docs.aws.amazon.com/lambda/latest/api/API_PutFunctionConcurrency.html) and [UpdateApi](https://docs.aws.amazon.com/apigatewayv2/latest/api-reference/apis-apiid.html) document successful responses, but neither promises that a mutation finishes upon receipt or before an aborted client promise rejects. AWS explicitly warns that timeouts do not establish whether side effects happened. [AWS timeout guidance](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
+
+   Smithy’s abort handler destroys the client request and rejects locally; it receives no acknowledgement that server processing ended. Consequently, rejection can end the grace wait immediately. Reserved concurrency 1 serializes switch invocations, not outstanding processing inside downstream services. [Smithy implementation](https://github.com/smithy-lang/smithy-typescript/blob/main/packages/node-http-handler/src/node-http-handler.ts)
+
+   The new fixture assumes the disputed guarantee: it rejects the client promise **only after** applying the remote mutation. With those events separated, the same in-memory reproduction still produces `OFF done:true` followed by `mixed` when the old ON mutation lands, for the endpoint, progress concurrency and pre-signup concurrency. This demonstrates an unhandled failure model, **not an observed AWS incident**.
+
+   Preserve uncertainty across commands and reconcile against the latest requested state. Alternatively, this remains an explicit owner decision to accept a weaker guarantee. The assertion in [backend/README.md:261](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/README.md:261) that receipt implies application/read-back visibility must go. A one-minute status check improves detection; it does not establish that guarantee.
+
+2. **should-fix — [backend/src/cloud-switch-api.mjs:48](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/backend/src/cloud-switch-api.mjs:48): an operation that succeeds during grace escapes the timeout.**
+
+   `op` remains eligible to win the outer race after the deadline. Reproduced with a 20 ms deadline and an operation resolving 5 ms after abort: the handler returned `done:true`, `failures:[]`, and emailed success without “NOT COMPLETE.”
+
+   This contradicts the stated rule that every timed-out step makes the command incomplete. Once the deadline fires, latch the timeout outcome; use subsequent settlement only to determine when waiting ends.
+
+   I found no separate timer-cleanup defect. The nominal maximum remains four rounds × `(10 + 2)` seconds = **48 seconds**, assuming a responsive event loop. Grace expiration intentionally allows read-back before settlement, so the comments must acknowledge that case.
+
+3. **should-fix — [js/cloud.js:110](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-33/js/cloud.js:110): round-2 finding 2 is fixed for started uploads, but queued saves still permit a false success message.**
+
+   `_pushSeq` increments inside `cloudPush`; `scheduleCloud` waits 900 ms before calling it. Reproduced using the existing fixture:
+
+   Initial signup PUT contains `"Ann"` → change name and call `commitProgress()` → resolve the initial PUT before running the debounce.
+
+   The panel says **“saved to cloud”**, while current progress is `"Ann changed"` and one save remains queued. If that queued upload subsequently hangs, the old success text remains.
+
+   Both production callers were checked: `onSignedIn` and the timer in `scheduleCloud`. Track the progress revision/save intent when scheduling, and invalidate the displayed success when newer progress becomes pending; alternatively remove the transient success message.
+
+Round-2 finding **3 is fixed**: the deployment instructions require a successful ON status, stop on mixed/unreadable/failure, restore the post-deploy check, and have the requested README/AGENTS pointers. The three-request upload regression and delayed partial-shutdown retry are now covered.
+
+**MISSING TESTS**
+
+1. **Remote mutation independent of transport settlement:** reject the client promise immediately on abort, retain an accepted ON mutation, complete OFF, then release the mutation. Exercise endpoint, progress and pre-signup concurrency. Assert the chosen uncertainty policy prevents an unqualified completed-OFF guarantee.
+
+2. **Success during grace:** resolve a write after its deadline but before grace expires. Assert read-back observes its effect while the command still fails and the email says “NOT COMPLETE.”
+
+3. **Grace exhaustion and timer cleanup:** leave operations pending despite abort across the alarm’s state-read, writes, read-back and notification rounds. With controlled timers, verify the 48-second waiting budget, cleared wrapper timers, and safe handling of later resolution/rejection.
+
+4. **Queued progress revision:** keep signup PUT A pending, commit changed progress without firing the debounce, then succeed A. Assert no “saved to cloud.” Start queued PUT B and leave it pending; the stale success must remain absent.
+
+5. **Real SDK behavior:** using the runtime’s SDK version against a controlled endpoint, stall a request and separately abort during retry backoff. Verify timeout rejection, no additional HTTP attempt after abort, and settlement/grace ordering. Recording option objects does not cover this; the missing local SDK explains why it remains pending.
+
+6. **Owner rehearsal, still pending:** both production origins; refused signup; existing-user sign-in/refresh; local play/saves/`#s=`; known `#song=`; email delivery; recovery preserving advanced progress in a fresh session; deployment/rollback behavior while OFF; and the newly required one-minute status checks.
+
+Verification: syntax and **70 targeted tests passed**. Additional reproductions ran entirely in memory. No files changed; no live AWS or browser acceptance performed.
+
+</details>
+
+### My answers
+
+1. **The owner's decision (blocker, disputed).** GPT: my round-2 disagreement "does not hold as a
+   correctness argument" — AWS's documentation does not promise that `PutFunctionConcurrency` or `UpdateApi`
+   finish on receipt, an abort only stops the client, so a received write could in principle land after a
+   later command; GPT reproduced it in memory with the client's rejection and the remote write separated,
+   and says plainly this is "an unhandled failure model, **not an observed AWS incident**". It offers
+   reconciliation across commands, or the owner explicitly accepting the weaker guarantee. **Agreed and
+   fixed:** the runbook no longer says receipt implies the read-back sees it; it says such a write may land
+   after the read-back or a later command, that this has not been seen, and that the status check a minute
+   after every on or off is what catches it. **Still my view:** accept the weaker guarantee — detection, not
+   prevention. Real reconciliation needs something that runs later on its own (a schedule), which breaks
+   "costs nothing while idle", for a failure no one has seen. Open question 1 below.
+2. **Agree.** A step whose deadline has passed now fails whatever the call does next; settling only ends the
+   wait. The comment says the grace can run out with the call unsettled. Missing test 2 added; missing test
+   3 in part: a call that ignores the abort is waited for no longer than the grace, the command is NOT
+   COMPLETE, and its later success lands harmlessly (the status check's job). Not added: fake timers over
+   the whole 48 s budget.
+3. **Agree.** Queuing a save now counts as a newer save (`scheduleCloud` bumps `_pushSeq`), so the first
+   save's success no longer says "saved to cloud" while the changed progress waits. Missing test 4 added as
+   written.
+
+Not added: missing test 1 (it tests a policy the owner has not chosen yet) and 5 (the real SDK, which the
+Lambda runtime provides and this repository does not install). Missing test 6 is the owner's rehearsal.
+
+**Mutation check of the round's fixes** (each restored): a success after the deadline escaping it (1 fail),
+no bound on the grace (1), a queued save not counted (1).
+
+Three review rounds used: per `work-ticket` § 8 no fourth review — the round-3 fixes above are unreviewed,
+and the owner decides question 1.
+
+## Owner's decisions
+
+1. **Open — a write AWS received but applied late (PR review rounds 2–3, finding 1).** If AWS applies a
+   switch write after the switch gave up on it, it could undo a later command (say, an `off` after an
+   `on` that timed out). Never seen; not ruled out by AWS's documentation.
+   - **A)** Accept it: every timed-out step already makes the command NOT COMPLETE, and the runbook's status
+     check a minute after every on or off catches anything that landed late. Costs nothing. *(Claude)*
+   - **B)** Reconcile: record the wanted state and have a schedule re-apply it every few minutes. Catches it
+     without you, but runs while idle (pennies, not nothing) and is more to test. *(GPT's first option)*
+2. **Pending — the deploy and the by-hand trip test** (the ticket's last *Done* bullet): the hand-off's steps.

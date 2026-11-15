@@ -34,18 +34,22 @@ export function readCommand(event, cfg) {
 
 // A step that hangs must not stop the others, or the email: each gets `ms`, then its AbortSignal fires — the
 // SDK stops the request and its retries (sdkAdapter passes the signal to every call) — and the step waits up
-// to `graceMs` more for the call to settle, so the read-back that follows sees what it did. A request AWS had
-// already received is not undone by the abort: these settings apply when AWS receives the request, so the
-// read-back shows it, and a timed-out step always makes the command NOT COMPLETE.
+// to `graceMs` more for the call to settle before the read-back. Once the deadline has passed the step has
+// FAILED, whatever the call does next: the command is NOT COMPLETE. The abort only stops this client; a
+// request AWS had already received may still apply, possibly after the read-back (or after the grace runs
+// out with the call unsettled). The runbook's status check a minute after every on or off is what shows it.
 function capped(fn, ms, graceMs) {
-  const ac = new AbortController(); let timer, graceTimer;
+  const ac = new AbortController(); let timer, graceTimer, timedOut = false;
   const op = Promise.resolve().then(() => fn(ac.signal));
-  const limit = new Promise((_, rej) => { timer = setTimeout(() => {
-    const e = new Error(`timed out after ${ms} ms`); ac.abort(e);
-    const grace = new Promise(r => { graceTimer = setTimeout(r, graceMs); });
-    Promise.race([op.then(() => {}, () => {}), grace]).then(() => rej(e));
-  }, ms); });
-  return Promise.race([op, limit]).finally(() => { clearTimeout(timer); clearTimeout(graceTimer); });
+  return new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true; const e = new Error(`timed out after ${ms} ms`); ac.abort(e);
+      const grace = new Promise(r => { graceTimer = setTimeout(r, graceMs); });
+      Promise.race([op.then(() => {}, () => {}), grace]).then(() => { clearTimeout(graceTimer); reject(e); });
+    }, ms);
+    op.then(v => { if (!timedOut) { clearTimeout(timer); resolve(v); } },
+      err => { if (!timedOut) { clearTimeout(timer); reject(err); } });
+  });
 }
 const why = e => (e && e.message) || String(e);
 

@@ -27,9 +27,13 @@ const sns = (over = {}, rec = {}) => ({ Records: [{ EventSource: "aws:sns", ...r
  */
 // `late` names calls AWS had already received when the deadline aborted them: they apply 10 ms after the abort,
 // and only then does the client's promise reject.
-function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {}, late = {} } = {}) {
+// `soon` names calls that succeed 5 ms after the abort (inside the grace); `deaf` ones ignore the abort and
+// succeed 200 ms later, after the grace has run out.
+function account({ start = 2, endpointDisabled = false, onAt = "never", fail = {}, hang = {}, late = {}, soon = {}, deaf = {} } = {}) {
   const a = { conc: Object.fromEntries(FNS.map(f => [f, start])), endpointDisabled, onAt, writes: [], mails: [], aborted: [], events: [], clock: { now: T0 + 60e3 } };
   const act = (key, fn, signal) => {
+    if (soon[key]) return new Promise(res => { signal.addEventListener("abort", () => setTimeout(() => res(fn()), 5)); });
+    if (deaf[key]) return new Promise(res => setTimeout(() => { a.events.push("deaf " + key); res(fn()); }, 200));
     if (late[key]) return new Promise((_, rej) => { signal.addEventListener("abort", () => setTimeout(() => { fn(); a.events.push("settled " + key); rej(signal.reason); }, 10)); });
     if (hang[key]) return new Promise((_, rej) => { signal && signal.addEventListener("abort", () => { a.aborted.push(key); rej(signal.reason); }); });
     if (fail[key]) return Promise.reject(new Error(`${key} denied`));
@@ -310,4 +314,25 @@ test("a partial shutdown retried hours later, with no switch-on between, finishe
   const r = await makeCloudSwitchHandler({ ...a.aws, putConcurrency: (fn, n, s) => Promise.resolve().then(() => { a.writes.push(["put", fn, n]); a.conc[fn] = n; }) }, CFG)(trip);
   assert.equal(r.done, true); assert.equal(r.cloud, "off");
   assert.match(a.mails.at(-1).subject, /switched OFF$/);
+});
+
+// PR review round 3, finding 2: once its deadline passed, a step has failed — even if the call then succeeds.
+test("a write that succeeds after its deadline, inside the grace, still makes the command NOT COMPLETE", async () => {
+  const a = account({ start: 0, endpointDisabled: true, soon: { setApi: true } });
+  const r = makeCloudSwitchHandler(a.aws, CFG)({ switch: "on" });
+  await assert.rejects(r, /not everything took/);
+  assert.match(a.mails[0].subject, /back ON — NOT COMPLETE/);
+  assert.match(a.mails[0].message, /API default endpoint: timed out after 50 ms/);
+  assert.match(a.mails[0].message, /API default endpoint: enabled/, "the read-back sees the write that landed");
+});
+
+test("a call that ignores the abort is waited for no longer than the grace, and its later success is harmless", async () => {
+  const a = account({ start: 0, endpointDisabled: true, deaf: { setApi: true, getOnAt: true } });
+  const started = Date.now();
+  await assert.rejects(makeCloudSwitchHandler(a.aws, CFG)({ switch: "on" }), /not everything took/);
+  assert.ok(Date.now() - started < 4 * (CFG.stepMs + CFG.graceMs) + 100, "bounded by the step budget");
+  assert.deepEqual(a.events.filter(e => e.startsWith("deaf")), [], "it was still out when the command ended");
+  await new Promise(r => setTimeout(r, 250));
+  assert.deepEqual(a.events.filter(e => e.startsWith("deaf")), ["deaf setApi"], "it landed later — what the status check a minute on is for");
+  assert.equal((await makeCloudSwitchHandler(a.aws, CFG)({ switch: "status" })).cloud, "on");
 });
