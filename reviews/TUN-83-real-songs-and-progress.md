@@ -357,9 +357,118 @@ Built the revised plan with the owner's caps (both 16,384 bytes).
 - **Filed:** TUN-111 (Backlog, S): "too big to share" and "cloud full" messages instead of "Couldn't
   reach the cloud". The 409 at 50 songs shows the same misleading line, so it is included.
 
+## The arithmetic
+
+Saturated-rate scenario, TUN-82's method and prices (`reviews/TUN-82-throttle-budget-data-protection.md`
+§ The arithmetic). Every route runs at its nominal limit for 31 days. Per request there is a $1.62/M floor
+(API Gateway plus 200 ms of Lambda). Writes are $0.625/M per 1 KB unit, and eventually consistent reads
+$0.0625/M per 4 KB. Responses out are $0.09/GB. Free tiers are ignored. This is a scenario, not a
+bound: the throttle measured about 5× looser than configured (`backend/README.md` § Limits and budget).
+
+**Item sizes** (GPT's PR review round 1, finding 2):
+- A full progress row is `userId` + `data` (16,384 bytes) + `updated`, about 16,450 bytes. That is
+  **17 write units** and 2.5 read units.
+- A full song row is the payload (16,384 bytes) plus `songId`, `ownerId`, a title of up to ~240
+  bytes, `visibility`, `palette`, `created` and `updated`, about 16,600 bytes. That is **17 write
+  units**, on the table and again on the ALL-projection `byOwner` index.
+
+| Route | Limit | Requests/month | Per request | $ per million | $/month |
+|---|---|---|---|---|---|
+| `PUT /progress` | 2/s | 5.36M | floor + 17 WRU | $12.25 | $65.59 |
+| `GET /progress` | 1/s | 2.68M | floor + 2.5 RRU + 16.4 KB out | $3.31 | $8.87 |
+| `GET /songs/{id}` | 1/s | 2.68M | floor + 2.5 RRU + 16.6 KB out | $3.32 | $8.90 |
+| `POST /songs` | 0.25/s | 0.67M | floor + count of 50 × 16.6 KB (101.5 RRU) + 17 + 17 WRU | $35.56 | $23.81 |
+| `GET /songs` | 0.25/s | 0.67M | floor + 101.5 RRU + 7.5 KB out | $14.94 | $10.00 |
+| `PUT /songs/{id}` | 0.25/s | 0.67M | floor + 2.5 RRU + 17 WRU + index delete and put (34 WRU) | $33.81 | $22.64 |
+| `DELETE /songs/{id}` | 0.25/s | 0.67M | floor + 2.5 RRU + 17 + 17 WRU | $23.18 | $15.52 |
+| **Total** | 5/s | 13.39M | | | **$155.33** |
+
+Against TUN-82's corrected after-TUN-83 figure of $119.62 (8 KB progress, 16 KB songs, payload only),
+the difference is $35.71. About $29 of it is the 16 KB progress cap. About $7 is each full item's overhead: $3.7 on progress and $3.3 on songs. The question-1 figure the owner
+answered from (about $147) left out the overhead. Song storage growth is unchanged from TUN-82: up to
+21.4 GB/month across accounts. Per account the ceiling is about 800 KB (50 × 16 KB), twice over with
+the index.
+
+## PR review
+
+### Round 1 — head `5afee2b` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-14)
+
+Usage: in 2,179,156 (cached 2,048,000), out 10,055. **Verdict: Changes requested.**
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+**Changes required**
+
+1. **Medium — Legitimate legacy songs are rejected below the approved byte cap.**  
+   Evidence: `backend/src/validate.mjs:97`; `js/save-share.js:169,227`. Before TUN-84, `addColumns()` had no upper bound (`0de071b:js/editing.js:116`). Using that implementation, I produced a 1,928-column song: **4,147 bytes**, 1,828 packed characters, therefore requiring cloud sharing. Today’s real `shareSong()` sends it unchanged; this handler returns **400 `bad song`**, reason `time.cols`.  
+   Separate legacy input acceptance from the current editor’s `MAX_COLS`. Preserve strict numeric validation and byte caps while supporting previously written v3 songs. Add a historical fixture rather than deriving every compatibility fixture through today’s clamping loader.
+
+2. **Medium — The $147 saturation estimate omits billable overhead and larger progress reads.**  
+   Evidence: `backend/README.md:245`; `backend/src/progress-api.mjs:26`; `backend/src/songs-api.mjs:68,112`. A 16,384-byte JSON payload plus keys and other attributes exceeds 16 KiB: **17 write units and 2.5 eventually consistent read units** per full-sized item. String storage makes payload measurement straightforward, but does not eliminate wrapper attributes. AWS bills the complete item with size rounding. [Item sizing](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html), [capacity accounting](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html).  
+   Recalculate the route table, including GSI writes, queries and progress response transfer. Under TUN-82’s stated assumptions, the corrected scenario is approximately **$156/month**, not $147. Put the calculation in the review record—the README currently points there without a corresponding calculation.
+
+**Missing tests**
+
+1. **Historical sharing:** send the 1,928-column fixture above through My Melodies’ sharing path and POST. Expect successful storage within the byte cap. Also exercise raw saved songs with `pluck`, `pad`, and historical `len > 8`, without first passing them through `applySong()`.
+
+2. **Successful PUT replacement:** replace an existing song with different notes, drums and meter using a base64 body. Expect 200, the replacement stored as JSON text, GET returning the replacement, and the existing title preserved when omitted. `tests/backend-handlers.test.mjs:149` currently tests invalid replacement and successful renaming, but no successful replacement.
+
+3. **Song PUT refusal matrix:** on an existing owned row, submit absent/empty bodies, malformed JSON, `null`, arrays, scalars and unknown nested keys; expect the appropriate fixed 400 and no write. Test plain/base64 bodies at 17,408 and 17,409 bytes; expect acceptance and 413 respectively. Also test POST and replacement PUT with a valid rebuilt song exceeding 16,384 bytes while its request remains below 17,408; expect 413 and an unchanged database.
+
+4. **Progress byte boundaries:** submit valid multibyte JSON at exactly 16,384 bytes and one byte over, both plain and base64 encoded. Expect 200 and 413 respectively, with no write on refusal. Existing progress tests do not establish these boundaries.
+
+5. **Non-vacuous 500 assertions:** inject a failure into each operation that a selected route definitely executes, including replacement PUT and DELETE. Require exactly 500 `{"error":"server error"}`. The `continue` at `tests/backend-handlers.test.mjs:184` currently lets an incorrect non-500 response escape assertion.
+
+6. **DynamoDB-shaped pagination:** return a `LastEvaluatedKey` containing `ownerId`, `updated` and `songId`; require its unchanged forwarding as `ExclusiveStartKey`. Across pages, expect 49 songs to permit creation and 50 to refuse without writing. The current stub only exercises its invented `{i:…}` cursor.
+
+7. **Owner deployment acceptance, still pending:** verify an old cloud link while signed out, a newly created cloud-sized song, and newly advanced progress surviving a fresh-session reload. Record the change-set inspection and results. Harness fixtures do not satisfy these ticket and AGENTS.md acceptance checks.
+
+The 24 new backend tests and syntax checks passed. The full suite encountered temporary-directory `EPERM` failures in the read-only sandbox. No static Lambda/DocumentClient wiring defect was found; AWS execution remains unverified. No files changed.
+
+**Verdict**
+
+Changes requested.
+
+</details>
+
+**My answers:**
+
+1. **Medium — legacy songs wider than 1,920 columns are refused. Agreed.** I had taken `MAX_COLS` as a
+   format limit, but before TUN-84 `addColumns` had none, and `shareSong` sends a saved song raw. Fixed:
+   `SONG_COLS_LIMIT` = 100,000 bounds `cols` and `len`. `MAX_COLS` stays, as the Studio's ceiling, for
+   the drift test. The byte cap bounds the song whatever it claims, and `applySong` clamps it on load.
+2. **Medium — the $147 estimate omits item overhead and bigger progress reads. Agreed.** Recomputed in
+   § The arithmetic above: **$155.33**, matching GPT's ~$156. `backend/README.md` now says $155 and
+   points at the table. Owner question 1 was answered on "about $147". The difference is ~$8 in a
+   flood scenario, so I report it rather than re-ask: the reason for 1A (no lost progress) is unchanged.
+
+**Missing tests, each added** (`tests/backend-handlers.test.mjs`):
+1. *Historical sharing*: 1,928- and 2,400-column saves with `pluck`/`pad` and `len` 12/30. They are
+   built raw, too big for a link, sent through the real `cloudSongCreate` and stored exactly.
+2. *Successful `PUT` replacement*: base64, a different meter and drums, stored as text, the title kept.
+3. *`PUT` refusal matrix*: absent, empty, malformed, `null`, `[]`, scalar, an unknown nested key and
+   an unknown body key, each answered 400 with no write. The body cap is exact at 17,408/17,409, plain
+   and base64. Also *a valid song over 16 KB stored, under the body cap*: 413 on `POST` and `PUT`, with
+   no write.
+4. *Progress byte boundaries*: 16,384 accepted and 16,385 refused (413, no write), plain and base64.
+5. *Non-vacuous 500s*: eight route-and-call pairs, each certain to reach the failing call, each
+   exactly `500 {"error":"server error"}`.
+6. *DynamoDB-shaped pagination*: the test table now pages by `(updated, songId)` and returns
+   `{ownerId, updated, songId}` keys. The test asserts every `ExclusiveStartKey` equals a received
+   `LastEvaluatedKey`, and that 49 creates while 50 refuses with no write.
+7. *Owner deploy acceptance*: **agreed, not a code test.** These are the deploy checks in the Needs
+   Input hand-off, which stay pending until the owner runs them.
+
+**Mutation checks on the new tests, all caught:** a 1,920-column limit; a trimmed start key; a `PUT`
+that stores the raw song; a body cap off by one; the stored cap equal to the body cap; a replacement
+that drops the title.
+
+**GPT's note** that the full suite hit `EPERM` in its read-only sandbox applies to its run only: the
+suite passes here (Tests, below).
+
 ## Tests
 
-`node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). That includes the new
+`node --test "tests/*.test.mjs"`: 750/750 on the build, and **761/761** after merging `origin/main` (TUN-81's `vendor/`). **766/766** with PR review round 1's fixes (backend tests: 14 + 15). That includes the new
 `backend-validate.test.mjs` (14) and `backend-handlers.test.mjs` (10). Syntax: `tools/check-syntax.mjs`,
 plus `node --check` on every backend module.
 

@@ -210,8 +210,10 @@ it on every write. The rules, field by field, are in `validate.mjs` itself and i
 `reviews/TUN-83-real-songs-and-progress.md`. In short:
 
 - **Known keys only, closed lists for every string.** A song is a v3 song (`SAVE-SHARE.md` § 3).
-  Numbers must be in range: pitch 0–127, column inside `cols`, length 1–1,920, lane 0–2, tempo
-  40–180, `cols` 16–1,920, groove 0–6, pickup inside one bar. Strings come from closed lists: the
+  Numbers must be in range: pitch 0–127, column inside `cols`, lane 0–2, tempo 40–180, groove 0–6,
+  pickup inside one bar. `cols` may be 16–100,000 and a note's length 1–100,000
+  (`SONG_COLS_LIMIT`): a song saved before TUN-84 can be wider than today's 1,920-column Studio, and
+  the game clamps it on load. Strings come from closed lists: the
   palette, the voice (today's eight, plus the retired `pluck` and `pad`, which old settings still
   carry), the track kind and the meter. A song may have at most 1,000 notes and 1,000 hits. Progress
   is the shape `commitProgress()` writes. Its package and region names are closed lists too, checked
@@ -242,11 +244,13 @@ the whole index, but it is a soft cap. Two shares at the same moment can both se
 lags writes slightly, so an account can pass 50 by one or two. Accounts already over a cap keep what
 they have.
 
-**What the caps cost.** With these caps, every route used flat out for a month costs about **$147**
-at the nominal throttle. That is TUN-82's corrected $119.62 plus about $27 for a 16 KB progress cap
-instead of 8 KB (`reviews/TUN-83-real-songs-and-progress.md`). It is a scenario, not a bound: the
-throttle measured about 5× looser than configured. The budget email and TUN-87's switch-off bound
-the month. Replacing an old row bigger than the cap is billed at the old size once.
+**What the caps cost.** With these caps, every route used flat out for a month costs about
+**$155** at the nominal throttle. TUN-82's corrected figure was $119.62. The difference is the 16 KB
+progress cap instead of 8 KB, and each full item's keys and other attributes, which take it to 17
+write units, not 16. The route table is in `reviews/TUN-83-real-songs-and-progress.md` § The
+arithmetic. It is a scenario, not a bound: the throttle measured about 5× looser than configured.
+The budget email and TUN-87's switch-off bound the month. Replacing an old row bigger than the cap is
+billed at the old size, once.
 
 **When the game grows, check the caps.** The largest progress the game can write is every package
 completed, with every distinct tool crafted in each package that has Fuse. Today that is 13,310

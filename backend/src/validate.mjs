@@ -35,7 +35,11 @@ const METERS = new Set(Object.keys(METER_BAR_COLS));
 export const GROOVE_COUNT = 7;                     // GROOVES.length; appended to, never reordered
 export const DRUM_LANES = 3;                       // DRUMS.length
 export const MAX_VINE = 8;
-export const MIN_COLS = 16, MAX_COLS = 1920;
+export const MIN_COLS = 16, MAX_COLS = 1920;       // MAX_COLS: the Studio's ceiling since TUN-84
+// What a SAVED song may claim. Before TUN-84 the Studio grew without limit (addColumns), so a song in My
+// Melodies can be wider than MAX_COLS, and shareSong sends it as saved; applySong clamps it on load. A
+// number, never text, and the byte cap bounds the song whatever it claims (GPT's PR review, round 1).
+export const SONG_COLS_LIMIT = 100000;
 export const TEMPO_MIN = 40, TEMPO_MAX = 180;      // #tempo's widest range in history
 // Package slugs are stable forever (AGENTS.md); none has ever been retired.
 export const PACKAGES = set("intro", "follow-the-fireflies", "footsteps", "stepping-stones", "twin-blooms",
@@ -94,7 +98,7 @@ export function checkSong(s, title) {
   }
   const t = s.time;
   if (!isObj(t) || !onlyKeys(t, TIME_KEYS)) return bad("time key");
-  if (!int(t.cols, MIN_COLS, MAX_COLS)) return bad("time.cols");
+  if (!int(t.cols, MIN_COLS, SONG_COLS_LIMIT)) return bad("time.cols");
   const time = { cols: t.cols };
   if (has(t, "tempo")) { if (!num(t.tempo, TEMPO_MIN, TEMPO_MAX)) return bad("time.tempo"); time.tempo = t.tempo; }
   if (has(t, "groove")) { if (!int(t.groove, 0, GROOVE_COUNT - 1)) return bad("time.groove"); time.groove = t.groove; }
@@ -123,9 +127,9 @@ export function checkSong(s, title) {
           if (!int(n.p, 0, 127)) return bad("note.p");
           if (!int(n.c, 0, t.cols - 1)) return bad("note.c");
           const note = { p: n.p, c: n.c };
-          // up to the whole field: a retired time-insert could stretch a vine past 🌿 Grow's 8, and
+          // up to the widest saved field: a retired time-insert could stretch a vine past 🌿 Grow's 8, and
           // applySong clamps it on load. A number, never text.
-          if (has(n, "len")) { if (!int(n.len, 1, MAX_COLS)) return bad("note.len"); note.len = n.len; }
+          if (has(n, "len")) { if (!int(n.len, 1, SONG_COLS_LIMIT)) return bad("note.len"); note.len = n.len; }
           out.notes.push(note);
         }
       }

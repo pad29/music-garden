@@ -167,7 +167,7 @@ test("songs: unknown keys anywhere, and every closed list", () => {
 
 test("songs: numbers out of range, and numbers that are not plain numbers", () => {
   const cases = [
-    [s => { s.time.cols = 15; }, "time.cols"], [s => { s.time.cols = 1921; }, "time.cols"],
+    [s => { s.time.cols = 15; }, "time.cols"], [s => { s.time.cols = 100001; }, "time.cols"],
     [s => { s.time.cols = 16.5; }, "time.cols"], [s => { s.time.cols = "16"; }, "time.cols"],
     [s => { s.time.tempo = 39; }, "time.tempo"], [s => { s.time.tempo = 181; }, "time.tempo"],
     [s => { s.time.tempo = "120"; }, "time.tempo"], [s => { s.time.tempo = 1e300; }, "time.tempo"],
@@ -178,7 +178,7 @@ test("songs: numbers out of range, and numbers that are not plain numbers", () =
     [s => { s.time.meter = "4/4"; s.time.origin = "2"; }, "time.origin"],
     [s => { s.tracks[0].notes[0].p = 128; }, "note.p"], [s => { s.tracks[0].notes[0].p = 60.5; }, "note.p"],
     [s => { s.tracks[0].notes[0].c = 16; }, "note.c"], [s => { s.tracks[0].notes[0].c = -1; }, "note.c"],
-    [s => { s.tracks[0].notes[0].len = 0; }, "note.len"], [s => { s.tracks[0].notes[0].len = 1921; }, "note.len"],
+    [s => { s.tracks[0].notes[0].len = 0; }, "note.len"], [s => { s.tracks[0].notes[0].len = 100001; }, "note.len"],
     [s => { s.tracks[0].notes[0].len = null; }, "note.len"],
     [s => { s.tracks[1].hits[0].lane = 3; }, "hit.lane"], [s => { s.tracks[1].hits[0].c = 16; }, "hit.c"],
     [s => { s.tracks[0].notes[0] = [60, 0]; }, "note key"], [s => { s.tracks[0].notes[0] = null; }, "note key"],
