@@ -306,3 +306,40 @@ test("a save waiting for ann's token sends nothing once bea has signed in and lo
   assert.deepEqual(sent.map(r => [r.method, r.token]), [["GET", "token-bea"]],
     "only bea's load — no PUT with ann's token, and none of bea's progress into ann's account");
 });
+
+test("ann's sign-up whose token comes back after bea's failed load changes nothing (round 2)", async () => {
+  const { g, net, runSaves, holdTokens, signIn, panel } = cloudGame();
+  net.answer = answers(() => reply(429, {}), () => assert.fail("no PUT may be sent"));
+  const release = holdTokens("ann");
+  const annSignUp = g.onSignedIn(true);   // waiting for ann's token
+  g.doSignOut(); signIn("bea");
+  await g.onSignedIn(false);
+  const shown = panel();
+  assert.equal(g.cloudSync, "unreachable");
+  release(); await annSignUp;
+  assert.equal(g.cloudSync, "unreachable", "the stale sign-up does not turn saving on for bea");
+  assert.equal(panel(), shown);
+  assert.equal(g.progress.name, "Ann");
+  g.commitProgress(); await runSaves();
+  assert.deepEqual(puts(net), []);
+});
+
+test("ann's sign-up push finishing after bea's failed load leaves bea's panel alone (round 2)", async () => {
+  const { g, net, runSaves, signIn, panel } = cloudGame();
+  const annPut = deferred(); let putCount = 0;
+  net.answer = answers(() => reply(429, {}), () => { putCount++; return annPut.promise; });
+  const annSignUp = g.onSignedIn(true);
+  await tick();
+  assert.equal(putCount, 1, "ann's sign-up push is out");
+  g.doSignOut(); signIn("bea");
+  await g.onSignedIn(false);
+  const shown = panel();
+  annPut.resolve(reply(200, { ok: true }));
+  await annSignUp;
+  assert.equal(panel(), shown);
+  assert.doesNotMatch(panel(), /saved to cloud/);
+  assert.match(panel(), UNREACHABLE);
+  assert.equal(g.cloudSync, "unreachable");
+  g.commitProgress(); await runSaves();
+  assert.equal(putCount, 1, "no PUT after ann's");
+});

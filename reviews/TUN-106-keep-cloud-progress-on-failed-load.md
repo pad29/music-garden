@@ -96,3 +96,29 @@ after the push's token (2), a recheck of readiness but not the run (1 — it sur
 held only Ann's token), sign-out not bumping the run (1 — it survived until the after-sign-out load test),
 any 200 body counted as a load (5), `packages` allowed to be an array (1). Not tested: the run check after
 the sign-up push, which only keeps a replaced run from re-rendering the panel's status.
+
+## PR review — round 2 (Astra, through `ask.sh`, the delta `ecab246..4c2e5d7`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+**VERDICT: CHANGES REQUESTED**
+
+**FINDINGS**
+
+1. **should-fix — tests/cloud-sync.test.mjs:224:** Two new run guards lack regression coverage: `js/cloud.js:61` and `js/cloud.js:70`. Removing either independently leaves all 23 cloud tests passing. Require the tests below. All four round-1 implementation findings are fixed; I found no new implementation defect or material doc drift.
+
+**MISSING TESTS**
+
+1. **Stale initial token:** Hold Ann’s token before calling `onSignedIn(true)`. Sign out; sign in Bea with GET returning 429; release Ann’s token. Assert Bea remains `unreachable`, progress and panel remain unchanged, and neither the stale sign-up nor subsequent saves send PUTs. Removing the line-61 guard lets the stale sign-up enable writes and push into Bea’s unread account.
+
+2. **Stale push completion:** Start Ann’s sign-up and defer its PUT response. Sign out; sign in Bea with GET returning 429; complete Ann’s PUT successfully. Assert Bea’s panel remains unchanged, without “saved to cloud,” and saving remains blocked. Removing the line-70 guard appends Ann’s success to Bea’s failure panel.
+
+Both scenarios pass against HEAD in read-only probes and fail with their respective guards removed. Syntax and all 52 targeted cloud/backend tests pass. No files changed.
+
+</details>
+
+### My answers
+
+1. **Agree** — and it corrects my round-1 note: the guard after `onSignedIn`'s token is not cosmetic. A
+   stale sign-up whose token returns late would turn saving on in Bea's run and push into her unread
+   account. Both missing tests added as written; removing either guard now fails exactly its test (1 each).
