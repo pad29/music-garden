@@ -454,9 +454,12 @@ Netlify deploy-preview drawer) and the sign-in check.
 1. *Do Netlify deploy previews have to meet "no third-party requests"?* Netlify injects its feedback drawer
    into every deploy-preview URL (not production), and it calls `app.netlify.com` and `cdn.segment.com`.
    **A** — no, previews are outside the rule (they end with TUN-85) · **B** — yes: the owner turns the drawer
-   off in Netlify's settings and a worker repeats the capture. Claude recommends A. — **open**
+   off in Netlify's settings and a worker repeats the capture. Claude recommends A. — **A**: the owner, in the AO
+   session, 2026-11-14. Netlify deploy previews are outside the rule; production and the Cloudflare preview meet it.
 2. *How is a successful sign-up/sign-in verified?* **A** — the owner, on the deploy preview, with their own
    account · **B** — a worker creates one throwaway account in the live user pool, which the owner deletes
-   afterwards. Claude recommends A. — **open**
+   afterwards. Claude recommends A. — **A**: the owner, in the AO session, 2026-11-14. It is the first item on
+   the owner's playtest list; no account is created by a worker.
 3. *Round 3's fixes (`99072f7`) have had no GPT review (the three-round budget is spent).* **A** — one more
-   GPT review round after the answers · **B** — merge without it. Claude recommends A. — **open**
+   GPT review round after the answers · **B** — merge without it. Claude recommends A. — **A**: the owner, in the
+   AO session, 2026-11-14. Round 4 below.
