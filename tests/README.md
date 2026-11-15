@@ -86,7 +86,7 @@ is told the cloud is resting — on a `#song=` link at boot, in Melodies' list, 
 sharing a big song — and that only the API's own `{"error":"not found"}` says a song may be deleted. It
 also maps Cognito's sign-up trigger failures to the calm refusal, and the day's limit (TUN-88, the token
 `daily-signup-limit` on a trigger failure) to "the garden is full" — no sign-in, the guest's progress
-untouched — also through the vendored Cognito library itself, run in a context of its own with only its HTTP answer synthetic (`__type`, namespaced, `code`, and a header-only error that loses the token and gets the generic line). `backend-cloud-switch.test.mjs` drives
+untouched — also through the vendored Cognito library itself, run in a context of its own that shares the game's `localStorage` (the guest's saved progress checked unchanged), with only its HTTP answer synthetic (`__type`, namespaced, `code`, and a header-only error that loses the token and gets the generic line). `backend-cloud-switch.test.mjs` drives
 `backend/src/cloud-switch-api.mjs` against a fake account: off from any alarm-topic message, never on;
 the owner's on/off/status; refusals; other topics ignored; a trip published before the owner's last
 switch-on ignored, a later or late one acted on; failing, hanging (aborted) steps;

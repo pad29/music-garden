@@ -34,7 +34,8 @@ function), `js/cloud.js`, tests, `backend/README.md`.
 1. **A counter table, `SignUpCountTable`** (`music-garden-signup-count`): on-demand, key `day` (a
    string, the UTC date, `2026-11-15`), attributes `signups` (number) and `expiresAt` (epoch seconds),
    TTL on `expiresAt`. No point-in-time recovery, no deletion protection, no `Retain`: it holds nothing
-   worth keeping, and losing it only resets today's count. Its own table rather than a reserved key in
+   worth keeping, and losing it only resets today's count *(wrong — see PR review rounds 1–2: deleting the
+   table fails sign-ups closed until it is recreated, and warm functions remember a full day)*. Its own table rather than a reserved key in
    `ProgressTable`, so TTL is never switched on for the table that holds players' progress.
 2. **The sign-up function counts before it confirms.** One conditional `UpdateItem` per sign-up:
    `SET expiresAt = if_not_exists(expiresAt, :exp) ADD signups :one` if
@@ -415,7 +416,7 @@ owner's list; their text and precedence are proven in Node.
 
 ## Tests
 
-`node --test "tests/*.test.mjs"`: 862 pass, 0 fail (before the PR review); 864 pass, 0 fail after round 1. **Not verified here** — the
+`node --test "tests/*.test.mjs"`: 862 pass, 0 fail (before the PR review); 864 pass, 0 fail after rounds 1 and 2. **Not verified here** — the
 owner's, after deploying: Cognito's real error object for a refusal; the conditional write, the
 `UpdateItem` permission and TTL on the live table; the message on the live site; the pool's tier
 (`describe-user-pool`); a refused sign-up's log bytes (the arithmetic's log line).
@@ -500,3 +501,56 @@ counter table refused with lifecycle attributes — four broken templates added,
 `code`, the counter unavailable, and header-only (no token → the generic line), each with no sign-in call,
 no API call, and the guest's progress and storage unchanged. Mutations: 3/3 on the entry point, 4/4 on the
 client mapping against the extended tests.
+
+### Round 2 — head `6483851`, the delta since `b340295` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-15)
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+Changes requested
+
+1. **Medium — [tests/cloud-resting.test.mjs:214](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/tests/cloud-resting.test.mjs:214): the vendored-library test checks the wrong storage.**  
+   The Cognito context has no `localStorage`, so the library falls back to private memory. The assertions inspect the game’s separate localStorage. This cannot establish persisted guest-data safety through the real integration.
+
+   **Reproduced:** an in-memory mutation adding `userPool.storage.clear()` inside real `cogSignUp` passes all eight tests. Connecting Cognito to the game’s localStorage makes that mutation fail because it deletes `mg_progress`.
+
+   **Change:** give both contexts the same storage, seed guest progress before constructing the pool, and compare persisted contents after each refusal. Assert that `userPool.storage` is that shared storage.
+
+2. **Low — [backend/README.md:403](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/backend/README.md:403): deletion recovery remains misleading.**  
+   “Until a deploy recreates it” implies the normal deployment procedure repairs a manually deleted table. An unchanged deployment does not establish recreation; recovery requires an explicit resource-recreation operation. [AWS’s recovery procedure](https://repost.aws/knowledge-center/cfn-recreate-resource-deleted-outside) changes the template and references before updating.
+
+   **Change:** say signups fail closed until the table is explicitly recreated, without promising ordinary redeployment repairs it. Also remove “losing it only resets today’s count” from [backend/template.yaml:304](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/backend/template.yaml:304) and [tests/backend-template.test.mjs:229](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-35/tests/backend-template.test.mjs:229); those active comments retain the rejected reset claim.
+
+Round-1 disposition:
+
+| Item | Assessment |
+|---|---|
+| Finding 1: wrong acceptance client | **Addressed.** Branch preview before merge, production afterward; signed-out refusal and before/after counter comparison are specified. |
+| Finding 2: refusal arithmetic and spending bound | **Addressed.** $19.31 / $24.66 / $38.06 reproduce; assumptions and delayed shutdown are explicit. |
+| Finding 3: overstated daily guarantee | **Addressed.** Documentation distinguishes UTC-attributed public admissions from completed accounts and administrator-created accounts. |
+| Finding 4: deletion is not a reset | **Partly addressed.** The README explains cached refusals and recommends raising N; finding 2 above remains. |
+| Missing test 1: deployed entry point | **Addressed.** `registerHooks` exercises real wiring with recording substitutes, the real deadline, abort propagation, and both late settlement paths. It does not validate production SDK transport behavior. |
+| Missing test 2: template guards | **Addressed.** Permission, inherited timeout and lifecycle guards reject the requested mutations with specific diagnostics. Function-level timeout overrides are separately rejected. |
+| Missing test 3: vendored Cognito integration | **Partly addressed.** Real wrappers and error conversion run, with authentication/API traffic recorded; shared-storage coverage remains missing. |
+
+**Missing tests**
+
+1. Run all five vendored Cognito refusal cases against the game’s shared, populated localStorage. Assert unchanged persisted guest progress and retain the no-sign-in/no-upload assertions. Verify that clearing `userPool.storage` before refusal makes this test fail.
+
+Syntax and all **30 directly affected tests passed**. No additional production-code defect found. Full-suite, real-browser and live-AWS acceptance were not rerun. No files changed.
+
+</details>
+
+**My answers — both agreed:**
+
+1. **Medium — the vendored-library test checked the wrong storage. Agreed** (GPT reproduced a
+   `userPool.storage.clear()` in `cogSignUp` passing). The library's context now gets the game's own
+   `localStorage`; the test saves the guest's progress first, asserts `userPool.storage` is that storage,
+   and after each of the five refusals checks `mg_progress` and the whole storage unchanged. Mutations:
+   `userPool.storage.clear()` and `removeItem("mg_progress")` in `cogSignUp` are now killed, as is
+   TUN-87's mapping first.
+2. **Low — "until a deploy recreates it". Agreed.** The README now says sign-ups fail closed until the
+   table is recreated, that an ordinary deploy is not sure to do it, and where AWS's procedure is. The
+   "losing it only resets today's count" comments in `template.yaml` and the template test are gone, and
+   the plan's sentence above is marked wrong.
+
+**Missing test — added:** the five vendored refusal cases against the shared, populated storage (above).

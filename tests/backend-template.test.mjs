@@ -222,7 +222,7 @@ function signUpLimitProblems(t) {
   // would kill it before it could refuse calmly. PreSignUpFn sets no Timeout of its own (PRESIGNUP_PROPS).
   const timeout = num(((t.Globals || {}).Function || {}).Timeout);
   need(timeout >= 3, `PreSignUpFn's timeout (Globals) is ${timeout} s; it must be at least 3, above the counter's 2.5 s deadline`);
-  // Disposable on purpose (losing it only resets today's count): no Retain, no deletion protection.
+  // It holds only the day's count and is deleted with the stack: no Retain, no deletion protection.
   const lifecycle = Object.keys(R.SignUpCountTable || {}).filter((k) => k !== "Type" && k !== "Properties");
   need(!lifecycle.length, `SignUpCountTable sets ${lifecycle.join(", ")}; it is meant to be deleted with the stack`);
   return problems;

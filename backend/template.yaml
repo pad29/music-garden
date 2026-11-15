@@ -301,8 +301,9 @@ Resources:
           KeyType: HASH
 
   # --- The daily sign-up count (TUN-88): one row per UTC day (`day` = "2026-11-15"), `signups` added to
-  # atomically by PreSignUpFn, removed by TTL a few days after `expiresAt`. Disposable on purpose — no Retain, no
-  # deletion protection, no backups: losing it only resets today's count. Its own table, so TTL is never
+  # atomically by PreSignUpFn, removed by TTL a few days after `expiresAt`. It holds only the day's count — no Retain,
+  # no deletion protection, no backups; it is deleted with the stack. Never delete it by hand: sign-ups fail closed
+  # until it is recreated (backend/README.md § The daily sign-up limit). Its own table, so TTL is never
   # switched on for a table that holds players' data.
   SignUpCountTable:
     Type: AWS::DynamoDB::Table

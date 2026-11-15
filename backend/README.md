@@ -401,7 +401,9 @@ drift: a later deploy may or may not put the template's value back, so **put it 
 are done, and check it.
 
 **Don't delete the table or today's row to "reset" the day.** Deleting the table makes every sign-up fail
-closed until a deploy recreates it. Deleting today's row loses the day's count, so up to another 100 get
+closed until the table is recreated — and an ordinary `sam deploy` is not sure to do that, because
+CloudFormation still believes the table exists (AWS's knowledge-center article "How do I recreate a
+resource deleted outside CloudFormation" has the procedure). Deleting today's row loses the day's count, so up to another 100 get
 through — yet a warm function that has already seen the day full keeps refusing from memory, without
 looking at the table, until the next UTC day. To let more through today, raise the limit instead.
 

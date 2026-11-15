@@ -208,11 +208,12 @@ test("a sign-up past the day's limit says the garden is full today; the trigger'
 
 // The same refusals through the vendored Cognito library as released (vendor/, run in a context of its own) and
 // the game's real cogSignUp and submitAuth: Cognito's HTTP answer is all that is synthetic. Each shape below is
-// one the library meets; it turns each into the error object the game sees.
-function realCognito(answer) {
+// one the library meets; it turns each into the error object the game sees. The library gets the game's own
+// localStorage — as in the browser, where both share the page's — so anything it did to storage would show.
+function realCognito(answer, localStorage) {
   const calls = [];
   const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, crypto: globalThis.crypto,
-    navigator: { userAgent: "node" },
+    navigator: { userAgent: "node" }, localStorage,
     fetch: async (url, opts) => { calls.push(opts.headers["X-Amz-Target"]); return answer(); } };
   ctx.window = ctx; ctx.self = ctx; ctx.globalThis = ctx;
   vm.createContext(ctx);
@@ -235,20 +236,25 @@ test("through the real Cognito library: the day's limit says the garden is full;
     ["the error type in a header only (the message is lost)", cognitoSays(null, "UserLambdaValidationException:http://internal.amazon.com/coral/"), CLOSED],
   ];
   const pool = g.userPool, w = g.__window, hadLib = "AmazonCognitoIdentity" in w, lib = w.AmazonCognitoIdentity;
+  const saved = () => JSON.stringify(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))]).sort());
   try {
+    g.commitProgress();   // the guest's garden, saved on this device before they try to make an account
+    assert.ok(w.localStorage.getItem("mg_progress"), "the guest's progress is in storage");
     for (const [what, answer, want] of cases) {
-      const real = realCognito(answer), api = [];
+      const real = realCognito(answer, w.localStorage), api = [];
       w.AmazonCognitoIdentity = real.lib;
       g.userPool = new real.lib.CognitoUserPool({ UserPoolId: g.AUTH.userPoolId, ClientId: g.AUTH.clientId });
+      assert.equal(g.userPool.storage, w.localStorage, "the library and the game share one storage");
       answerWith((url) => { api.push(url); throw new Error("no API call expected"); });
-      const progress = JSON.stringify(g.progress), stored = JSON.stringify(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))]));
+      const progress = JSON.stringify(g.progress), stored = saved(), guest = w.localStorage.getItem("mg_progress");
       const msg = { textContent: "" };
       await g.submitAuth("up", "kid", "password1", "parent@example.com", msg);
       assert.equal(msg.textContent, want, what);
       assert.deepEqual(real.calls, ["AWSCognitoIdentityProviderService.SignUp"], `${what}: Cognito saw the sign-up and nothing else — no sign-in`);
       assert.deepEqual(api, [], `${what}: no upload`);
       assert.equal(JSON.stringify(g.progress), progress, `${what}: the guest's garden is untouched`);
-      assert.equal(JSON.stringify(Array.from({ length: w.localStorage.length }, (_, i) => [w.localStorage.key(i), w.localStorage.getItem(w.localStorage.key(i))])), stored, `${what}: nothing saved`);
+      assert.equal(w.localStorage.getItem("mg_progress"), guest, `${what}: the guest's saved progress is still there, unchanged`);
+      assert.equal(saved(), stored, `${what}: nothing in storage changed`);
       assert.equal(g.cloudSync, "off", `${what}: still a guest`);
     }
   } finally {
