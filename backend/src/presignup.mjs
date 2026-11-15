@@ -1,11 +1,10 @@
-// Cognito Pre-Sign-Up trigger.
-// Auto-confirm new accounts so there's no email/confirmation step for the common
-// (no-email) username+password case. If a user chose to add an email (for recovery),
-// auto-verify it so forgot-password can use it.
-export const handler = async (event) => {
-  event.response.autoConfirmUser = true;
-  if (event.request.userAttributes && event.request.userAttributes.email) {
-    event.response.autoVerifyEmail = true;
-  }
-  return event;
-};
+// Cognito Pre-Sign-Up trigger (template.yaml: PreSignUpFn, Handler presignup.handler). Only the AWS SDK wiring
+// lives here; what it does — auto-confirm, at most DAILY_SIGNUP_LIMIT new accounts a UTC day (TUN-88) — is in
+// presignup-api.mjs, tested without the SDK.
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { makePreSignUpHandler, sdkAdapter, signUpConfig, CLIENT_OPTIONS } from "./presignup-api.mjs";
+
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient(CLIENT_OPTIONS));
+
+export const handler = makePreSignUpHandler(sdkAdapter(ddb, UpdateCommand), { config: signUpConfig(process.env) });

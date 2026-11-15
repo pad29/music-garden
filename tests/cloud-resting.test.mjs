@@ -165,3 +165,39 @@ test("a sign-up the trigger refuses says the garden isn't taking new accounts, c
     assert.equal(inMsg.textContent, "⚠️ PreAuthentication failed", "the mapping is for sign-up only");
   } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; }
 });
+
+// ---------- making an account once the day's limit is reached (TUN-88) ----------
+test("a sign-up past the day's limit says the garden is full today; the trigger's other refusals keep TUN-87's line", async () => {
+  const FULL = "🌱 So many new gardeners joined today that the garden is full! Keep playing as a guest — your garden is saved on this device — and make your account tomorrow.";
+  const CLOSED = "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is saved on this device — and try again another day.";
+  const full = [   // Cognito's documented shape, and the same text on the error's name or message alone
+    { code: "UserLambdaValidationException", name: "UserLambdaValidationException", message: "PreSignUp failed with error daily-signup-limit." },
+    { name: "UserLambdaValidationException", message: "PreSignUp failed with error daily-signup-limit." },
+    { message: "PreSignUp failed with error daily-signup-limit." },
+  ];
+  const closed = [   // the backend's other refusals, the cost switch, and a non-trigger error naming the token
+    { code: "UserLambdaValidationException", message: "PreSignUp failed with error signup-counter-unavailable." },
+    { code: "UserLambdaValidationException", message: "PreSignUp failed with error signup-source-unsupported." },
+    { code: "UnexpectedLambdaException", message: "PreSignUp invocation failed due to error TooManyRequestsException." },
+  ];
+  const signUp = g.cogSignUp, signIn = g.cogSignIn;
+  try {
+    for (const [errs, want] of [[full, FULL], [closed, CLOSED]]) {
+      for (const err of errs) {
+        let signedIn = 0;
+        g.cogSignUp = async () => { throw err; };
+        g.cogSignIn = async () => { signedIn++; };
+        const before = JSON.stringify(g.progress), msg = { textContent: "" };
+        await g.submitAuth("up", "kid", "password1", "", msg);
+        assert.equal(msg.textContent, want, JSON.stringify(err));
+        assert.equal(signedIn, 0, "no sign-in, no upload, after a refused sign-up");
+        assert.equal(JSON.stringify(g.progress), before, "the guest's garden is untouched");
+        assert.equal(g.cloudSync, "off", "still a guest");
+      }
+    }
+    g.cogSignUp = async () => { throw { code: "InvalidParameterException", message: "daily-signup-limit" }; };
+    const msg = { textContent: "" };
+    await g.submitAuth("up", "kid", "password1", "", msg);
+    assert.equal(msg.textContent, "⚠️ daily-signup-limit", "only a trigger failure carrying the token is the daily limit");
+  } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; }
+});

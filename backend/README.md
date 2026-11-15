@@ -4,9 +4,10 @@
 
 ```
 backend/
-  template.yaml        # all the AWS resources (Cognito, DynamoDB ×2, API, Lambdas, the $30 budget, the cost switch)
+  template.yaml        # all the AWS resources (Cognito, DynamoDB ×3, API, Lambdas, the $30 budget, the cost switch)
   src/
-    presignup.mjs      # auto-confirms new accounts (no email step)
+    presignup.mjs      # the sign-up trigger Lambda: AWS SDK wiring only
+    presignup-api.mjs  # auto-confirms new accounts (no email step), at most 100 a UTC day (TUN-88; no SDK)
     progress.mjs       # the progress Lambda: AWS SDK wiring only
     progress-api.mjs   # GET/PUT the caller's own progress (no SDK, so it is testable)
     songs.mjs          # the songs Lambda: AWS SDK wiring only
@@ -137,12 +138,23 @@ budget's detail page (Billing and Cost Management → Budgets) shows the address
 *Inactive* means no alerts will arrive — use *Resend verification* or *Send Notification* there. An
 address already verified in this account through another AWS service shows Active at once.
 
+**The first deploy after TUN-88** (the [daily sign-up limit](#the-daily-sign-up-limit)) shows, besides
+the usual rows above: `SignUpCountTable` **Add**; `PreSignUpFn` Modify / `False` (its code and its new
+environment) and `PreSignUpFnRole` Modify / `False` (its new `UpdateItem` permission) — the role SAM
+generated for it, kept, not replaced. Nothing else is new; the stop rule is unchanged. Then check it:
+1. Make an account on https://tunegarden.game. It works as before. In the DynamoDB console,
+   `music-garden-signup-count` → Explore items shows today's UTC date with `signups` 1 (or more).
+2. Set `DAILY_SIGNUP_LIMIT` in the console to that count (*In a hurry*, in the limit's section) and wait for
+   **Successful**. Try to make another account: "the garden is full" message; the game plays on as a guest.
+3. Put `DAILY_SIGNUP_LIMIT` back to `100`, wait for **Successful**, and check the value.
+
 ## Tear down (if you ever want to remove everything)
 ```powershell
 sam delete --stack-name music-garden
 ```
-Since TUN-82 this **leaves the user pool and both tables behind**, with every account and song: they
-have `DeletionPolicy: Retain`. To really remove them, switch off deletion protection in the console
+Since TUN-82 this **leaves the user pool and both players' tables behind**, with every account and song:
+they have `DeletionPolicy: Retain`. (The sign-up count table, TUN-88, is deleted with the stack: it holds
+nothing worth keeping.) To really remove them, switch off deletion protection in the console
 (Cognito → the pool → Settings; DynamoDB → each table → Additional settings), then delete them by hand.
 
 ## Limits and budget
@@ -192,7 +204,8 @@ TUN-87 every such failure says one calm thing, "the cloud is resting" (`CLOUD_RE
   failed): "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is
   saved on this device — and try again another day." Cognito's own text, which the game no longer shows, is
   "PreSignUp invocation failed due to error TooManyRequestsException." (measured with the switch off,
-  2026-11-15).
+  2026-11-15). The day's sign-up limit has a message of its own ([The daily sign-up
+  limit](#the-daily-sign-up-limit)).
 
 To change a limit, edit `RouteSettings` on the route's event in `template.yaml`, update the sum in the
 comment on `Api`, this table and `tests/backend-template.test.mjs`, and redo the arithmetic. The
@@ -232,7 +245,7 @@ Change the amount in `BudgetLimit`. Change the address with
 budget has no fixed name — CloudFormation generates one, so look for it on the Budgets page by its
 $30.00 amount. Verify the new address the same way.
 
-**Data protection.** The user pool and both tables have `DeletionPolicy: Retain` and
+**Data protection.** The user pool and both players' tables (progress and songs) have `DeletionPolicy: Retain` and
 `UpdateReplacePolicy: Retain` (kept if the stack is deleted or a change would replace them) and AWS's
 own deletion protection. Both tables have point-in-time recovery: DynamoDB can restore either table to
 any second of the last 35 days, into a new table (console → the table → Backups → Restore). It costs
@@ -275,7 +288,8 @@ calmly — "the cloud is resting" (the list under [Limits and budget](#limits-an
 replaces it with their cloud copy, as every load does — the messages say so.
 
 **What it cannot stop.** API Gateway's charge for the calls it refuses, if refused calls are billed
-($1.00 per million; TUN-102 measures it), existing players' sign-ins (Cognito), storage and backups,
+($1.00 per million; TUN-102 measures it), existing players' sign-ins (Cognito) and the monthly-active-user
+charges they bring (TUN-88's review record), storage and backups,
 anything else in the account, and the hours of spend before the budget notices — billing data reaches
 Budgets hours late. The review record has the scenarios.
 
@@ -325,6 +339,57 @@ harmless unless an old trip message is delivered again afterwards.
    says the garden isn't taking new accounts.
 5. Switch back on (above); the email "…switched back ON" arrives, and **a minute later, status** says
    `"cloud": "on"` — if it doesn't, run the switch-on command again.
+
+## The daily sign-up limit
+
+Set in `template.yaml` by TUN-88; the design and the cost arithmetic are in
+`reviews/TUN-88-daily-signup-limit.md`. Sign-ups go to Cognito, not through the API, so the throttle
+never sees them: this is their limit.
+
+**What it does.** The sign-up trigger (`PreSignUpFn`, `src/presignup-api.mjs`) counts each sign-up
+against its **UTC day** before confirming the account. Past **100** in a day it refuses, until 00:00 UTC
+(18:00 in Chicago, 19:00 in summer). The count is one row a day in the DynamoDB table
+`music-garden-signup-count` (`SignUpCountTable`): `day` (`2026-11-15`), `signups`, and `expiresAt`, from
+which DynamoDB's time-to-live deletes the row a few days later, free. Each sign-up is one atomic
+conditional write — so at most 100 sign-ups are let through per UTC day, however many arrive at once —
+and the function may do nothing else with the table (`dynamodb:UpdateItem` on it, no read).
+
+- **What players see.** Past the limit: "🌱 So many new gardeners joined today that the garden is full!
+  Keep playing as a guest — your garden is saved on this device — and make your account tomorrow."
+  Cognito's own text, which the game does not show, is "PreSignUp failed with error
+  daily-signup-limit." Guests play on, and existing players sign in as usual: sign-in never runs this
+  trigger.
+- **The accepted trade.** A script can use up the day's 100 early and lock real children out of making an
+  account until the next UTC day. They keep playing as guests, and their garden stays on their device
+  until they can make the account. (Planning accepted this over a CAPTCHA or a paid firewall, 2026-11-13.)
+- **If the count cannot be reached** — DynamoDB fails or takes over 2.5 seconds (Cognito gives the
+  trigger 5), the table is missing, or the setting is not a whole number — **every sign-up is refused**,
+  with TUN-87's "The garden isn't taking new accounts just now" message. On purpose: allowing them would
+  let a broken deploy switch the limit off unseen; refusing them costs a child only the account, and
+  shows at once. The reason goes to CloudWatch (the function's log group), never to the player.
+- **What is counted.** Every sign-up the trigger lets through, even one Cognito then fails (a retry after a
+  slow answer, a taken username if Cognito checks it after the trigger): the count can only run high, never
+  low. Accounts you create yourself with `aws cognito-idp admin-create-user` are not counted. Any other
+  kind of sign-up (a social login, say — none is configured) is refused until the trigger knows it.
+- **What it costs.** One write per counted sign-up — about $0.002 a month at 100 a day. A refused sign-up
+  costs one short Lambda call and its log lines; a flood of them could reach the $30 budget by itself, and
+  then the [cost switch](#the-cost-switch) stops the trigger altogether.
+- **What it cannot bound.** Each day's 100 accounts can each fill TUN-83's per-account allowance (about
+  1.7 MB) and, if signed in every month, stay Cognito monthly active users: the review record works out
+  both, month by month. The cap makes that grow over months rather than minutes; it does not stop it.
+
+**To change the limit**, edit `DAILY_SIGNUP_LIMIT` on `PreSignUpFn` in `template.yaml`, the approved
+value in `tests/backend-template.test.mjs`, this section and the arithmetic in the review record, then
+deploy ([Future deploys](#future-deploys)). `0` refuses every sign-up. Changing it keeps the day's count:
+raising it lets the difference through today; lowering it takes back no account already made.
+
+**In a hurry** (no deploy): Lambda console → `PreSignUpFn`'s function (named
+`music-garden-PreSignUpFn-…`) → Configuration → Environment variables → edit `DAILY_SIGNUP_LIMIT`. Wait
+until the function's *Last update status* says **Successful** before trusting it. A console change is
+drift: a later deploy may or may not put the template's value back, so **put it back by hand** when you
+are done, and check it.
+
+**Deleting the table, or its row for today,** resets today's count to 0 — that is all it holds.
 
 ## What the API accepts
 

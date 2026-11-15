@@ -1,5 +1,5 @@
-// backend/template.yaml must keep TUN-82's cost limits and data protection and TUN-76's CORS origins, and the
-// repository must never hold the budget's email address.
+// backend/template.yaml must keep TUN-82's cost limits and data protection, TUN-76's CORS origins, TUN-87's
+// cost switch and TUN-88's daily sign-up limit, and the repository must never hold the budget's email address.
 //
 // Why a test: the backend has no deploy preview and the worker that edits the template has no AWS
 // credentials, so a dropped throttle, a lost Retain or a committed address would first show up in
@@ -187,8 +187,39 @@ function switchProblems(t) {
   return problems;
 }
 
+// ---- the daily sign-up limit (TUN-88) ---------------------------------------------------------------
+// The approved limit (owner, 2026-11-15): 100 new accounts a UTC day. Change it only with the arithmetic in
+// reviews/TUN-88-daily-signup-limit.md redone, and backend/README.md § The daily sign-up limit updated.
+const DAILY_SIGNUP_LIMIT = "100";
+// Everything PreSignUpFn may set: no Role, no Events, no FunctionUrlConfig, no concurrency of its own.
+const PRESIGNUP_PROPS = ["CodeUri", "Environment", "Handler", "Policies"];
+const PRESIGNUP_ENV = { DAILY_SIGNUP_LIMIT, SIGNUP_COUNT_TABLE: ref("SignUpCountTable") };
+const PRESIGNUP_POLICY = [{ Statement: [{ Effect: "Allow", Action: "dynamodb:UpdateItem", Resource: att("SignUpCountTable.Arn") }] }];
+const COUNT_TABLE = {
+  TableName: "music-garden-signup-count", BillingMode: "PAY_PER_REQUEST",
+  AttributeDefinitions: [{ AttributeName: "day", AttributeType: "S" }], KeySchema: [{ AttributeName: "day", KeyType: "HASH" }],
+  TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: "true" },
+};
+function signUpLimitProblems(t) {
+  const problems = [], R = t.Resources || {};
+  const P = (n) => (R[n] || {}).Properties || {};
+  const need = (cond, msg) => { if (!cond) problems.push(msg); };
+  const f = P("PreSignUpFn");
+  need((R.PreSignUpFn || {}).Type === "AWS::Serverless::Function" && f.Handler === "presignup.handler" && f.CodeUri === "src/",
+    "PreSignUpFn is not the sign-up trigger (presignup.handler)");
+  need(same((f.Environment || {}).Variables, PRESIGNUP_ENV),
+    `PreSignUpFn's environment must be exactly DAILY_SIGNUP_LIMIT "${DAILY_SIGNUP_LIMIT}" (the approved limit) and SIGNUP_COUNT_TABLE !Ref SignUpCountTable`);
+  need(same(f.Policies, PRESIGNUP_POLICY), "PreSignUpFn's role must be exactly dynamodb:UpdateItem on SignUpCountTable");
+  const extra = Object.keys(f).filter((k) => !PRESIGNUP_PROPS.includes(k));
+  need(!extra.length, `PreSignUpFn sets ${extra.join(", ")} (only ${PRESIGNUP_PROPS.join(", ")} are checked)`);
+  need((R.SignUpCountTable || {}).Type === "AWS::DynamoDB::Table" && same(P("SignUpCountTable"), COUNT_TABLE),
+    "SignUpCountTable must be exactly the on-demand, day-keyed music-garden-signup-count table with TTL on expiresAt");
+  need(same(P("UserPool").LambdaConfig, { PreSignUp: att("PreSignUpFn.Arn") }), "UserPool's sign-up trigger must be exactly PreSignUpFn");
+  return problems;
+}
+
 // ---- the checks -------------------------------------------------------------------------------------
-const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+const num =(v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
 const fmt = ([r, b]) => `${r}/s burst ${b}`;
 
 export function templateProblems(template, samconfig) {
@@ -284,7 +315,8 @@ export function templateProblems(template, samconfig) {
       : `the ${x.NotificationType} ${x.Threshold} alert has subscribers besides BudgetEmail`);
   }
   problems.push(...switchProblems(t));
-  const pe = (t.Parameters || {}).BudgetEmail;
+  problems.push(...signUpLimitProblems(t));
+  const pe =(t.Parameters || {}).BudgetEmail;
   if (!pe) problems.push("the BudgetEmail parameter is missing");
   else {
     if (pe.NoEcho !== "true") problems.push("BudgetEmail is not NoEcho");
@@ -395,6 +427,17 @@ test("the template check refuses each mistake it guards against, with the right 
     ["a renamed state parameter", TEMPLATE.replace("      Name: /music-garden/cloud-switch/on-at", "      Name: /other"), /CloudSwitchState must be the String parameter/],
     ["a second trigger", TEMPLATE.replace("      Handler: cloud-switch.handler\n", "      Handler: cloud-switch.handler\n      Events:\n        Daily:\n          Type: Schedule\n          Properties:\n            Schedule: rate(1 day)\n"), /CloudSwitchFn has Events/],
     ["no rehearsal output", TEMPLATE.replace(/  CloudSwitchAlarmTopicArn:\n[^\n]*\n[^\n]*\n/, ""), /CloudSwitchAlarmTopicArn output/],
+    // TUN-88: the daily sign-up limit
+    ["a different daily limit", TEMPLATE.replace('DAILY_SIGNUP_LIMIT: "100"', 'DAILY_SIGNUP_LIMIT: "500"'), /PreSignUpFn's environment must be exactly DAILY_SIGNUP_LIMIT "100"/],
+    ["no daily limit", TEMPLATE.replace('          DAILY_SIGNUP_LIMIT: "100"\n', ""), /PreSignUpFn's environment must be exactly/],
+    ["a counter in a players' table", TEMPLATE.replace("          SIGNUP_COUNT_TABLE: !Ref SignUpCountTable\n", "          SIGNUP_COUNT_TABLE: !Ref ProgressTable\n"), /PreSignUpFn's environment must be exactly/],
+    ["the counter able to read", TEMPLATE.replace("              Action: dynamodb:UpdateItem\n", "              Action:\n                - dynamodb:UpdateItem\n                - dynamodb:Scan\n"), /PreSignUpFn's role must be exactly/],
+    ["the counter writing every table", TEMPLATE.replace("              Resource: !GetAtt SignUpCountTable.Arn\n", "              Resource: '*'\n"), /PreSignUpFn's role must be exactly/],
+    ["no counter permission", TEMPLATE.replace(/      Policies:\n        - Statement:\n            - Effect: Allow\n              Action: dynamodb:UpdateItem\n[^\n]*\n/, ""), /PreSignUpFn's role must be exactly/],
+    ["a second trigger on the sign-up function", TEMPLATE.replace("      Handler: presignup.handler\n", "      Handler: presignup.handler\n      Events:\n        Daily:\n          Type: Schedule\n          Properties:\n            Schedule: rate(1 day)\n"), /PreSignUpFn sets Events/],
+    ["no expiry on the count", TEMPLATE.replace("        Enabled: true\n", "        Enabled: false\n"), /SignUpCountTable must be exactly/],
+    ["a provisioned counter table", TEMPLATE.replace("      TableName: music-garden-signup-count\n      BillingMode: PAY_PER_REQUEST\n", "      TableName: music-garden-signup-count\n      BillingMode: PROVISIONED\n"), /SignUpCountTable must be exactly/],
+    ["the trigger pointed elsewhere", TEMPLATE.replace("        PreSignUp: !GetAtt PreSignUpFn.Arn\n", "        PreSignUp: !GetAtt SongsFn.Arn\n"), /UserPool's sign-up trigger must be exactly PreSignUpFn/],
   ];
   for (const [what, mutated, expect] of cases) {
     assert.notEqual(mutated, TEMPLATE, `the "${what}" mutation must change the template`);
