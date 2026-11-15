@@ -166,7 +166,7 @@ New serverless storage alongside the existing progress API (same `music-garden` 
 
 - `GET /songs/{id}` is the one **unauthenticated** route (per-route `Auth: Authorizer: NONE` override on the otherwise-default Cognito authorizer) so a friend can open a link without an account — the same openness as today's `#s=`, but server-stored. Long random ids make enumeration infeasible.
 - **Visibility — P3 ships `unlisted` only** (link-shareable). *Finding during build (2026-06-20):* `private` (owner-only read) can't be served on the public `GET /songs/{id}` route because that route has **no authorizer**, so it has no identity to recognize the owner. Owner-only reads need an identity-aware read route, which is exactly what the gallery (`public`) also needs — so **`private` and `public` both defer to P4**. P3 coerces every create/update to `unlisted`; the `visibility` column stays in the schema for forward-compat.
-- **CORS:** add the `songs` routes to the same allow-list already tightened to `https://tunegarden.game` (+ `www`, + Netlify fallback).
+- **CORS:** add the `songs` routes to the same allow-list already tightened to `https://tunegarden.game` (+ `www`, + Netlify fallback). *The fallback, `music-garden.netlify.app`, was removed by TUN-76 (2026-11-14): it no longer serves the app.*
 
 **Limits / abuse:**
 - Payload cap (e.g. ≤ 100 KB; DynamoDB item limit is 400 KB — stay well under).
