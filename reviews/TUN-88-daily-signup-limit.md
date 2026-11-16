@@ -554,3 +554,57 @@ Syntax and all **30 directly affected tests passed**. No additional production-c
    the plan's sentence above is marked wrong.
 
 **Missing test — added:** the five vendored refusal cases against the shared, populated storage (above).
+
+### Round 3 — head `a23ac09`, the delta since `6483851` (GPT, `ask.sh fresh read-only gpt-6-astra`, 2026-11-15)
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+Approved on a23ac09
+
+Findings:
+
+1. None. Both round-2 findings are addressed. All five vendored refusal cases use shared, populated localStorage, assert storage identity, and verify persisted contents remain unchanged. Deletion guidance and active comments are corrected. No additional actionable defect found in the delta or full PR.
+
+Missing tests:
+
+1. None.
+
+Syntax and all **30 directly affected tests passed**. Independently reproduced all three mutation kills: `storage.clear()`, removing `mg_progress`, and TUN-87’s mapping first.
+
+Full-suite, browser, and live-AWS acceptance were not rerun; documented owner deployment checks remain pending. No files changed.
+
+</details>
+
+**Approved on `a23ac09`.** This record, and the owner's review below, were pushed after the approval at the owner's
+request (2026-11-15): the commit changes only this file, so no further review was run.
+
+## Owner's review — the deploy and the playtest (2026-11-15)
+
+The owner deployed the backend from `a23ac09` and ran the playtest (`backend/README.md` § Future deploys →
+*The first deploy after TUN-88*), with the refusal checked on the branch preview. **Everything went as
+expected:** the pool's tier, the change set, the cost switch `"cloud": "on"` before and after, a sign-up
+counted, a sign-up refused with the "garden is full" message and no user made, the limit put back to 100,
+an existing account signing in on tunegarden.game, and the test account deleted.
+
+**From the function's log** (`aws logs tail`, pasted by the owner; times UTC, 2026-11-16 — 19:24–19:40 in
+Chicago on the 15th):
+
+- 01:24:20 — 30 ms, 74 MB, nothing logged: a sign-up the owner made **before the deploy** (the old code);
+  that user was deleted.
+- 01:37:49 — the step-2 sign-up, **let through and counted**: the conditional write and `PreSignUpFn`'s
+  `UpdateItem` permission work live. 1,006 ms on a cold start (the first DynamoDB connection).
+- 01:40:53 — the step-4 sign-up, **refused through the real condition**, with the limit set to 1:
+  `INFO presignup: 2026-11-16 has had its 1 sign-ups; refusing until the next UTC day`, then
+  `ERROR Invoke Error {"errorType":"Error","errorMessage":"daily-signup-limit","stack":["Error: daily-signup-limit"]}`
+  — the token, one-line stack, no AWS text. 1,084 ms, cold.
+
+**Measured log size — the arithmetic's log line.** A refusal in a warm container that has already seen the
+day full writes four events — `START`, the `ERROR` record, `END`, `REPORT` — about 447 bytes, about
+**551 bytes** billed with CloudWatch's 26 bytes per event. At the flood scenario's 53.6M executions a
+month: logs $14.76 + requests $10.71 + duration ~$0.56 (5 ms) ≈ **$26.03 a month**, before log storage and
+cache misses — between the 500- and 1,000-byte scenarios, and still bounded only by the cost switch's
+delayed shutdown.
+
+**Cold starts** took about 1 s, mostly the first DynamoDB connection: inside the counter's 2.5 s deadline,
+but a slow first connection would show TUN-87's "isn't taking new accounts" for that one attempt; a retry
+finds the function warm.
