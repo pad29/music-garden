@@ -217,19 +217,29 @@ is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-11
    `Machine` needs an administrator PowerShell. Then reopen your terminal apps, as step 4 says.
 2. In the shell you will deploy from, run `aws sts get-caller-identity`. It must show
    `AWSReservedSSO_mg-deploy`, not `:root`.
-3. **A deploy with nothing to change, as `mg-deploy`:** run [Future deploys](#future-deploys)' commands
-   from `backend/`, on an up-to-date `main`. Expect *No changes to deploy*, or only the rows that
-   section calls normal. If it shows those rows, answering `y` deploys them, as usual. This proves the
-   identity can read the stack and make a change set. It does not yet prove it can create or change
-   resources.
+3. **Redeploy `main` as `mg-deploy`** (TUN-88's template, which was deployed with the root key on
+   2026-11-15). Run [Future deploys](#future-deploys)' commands from `backend/` on a freshly pulled
+   `main`. After a pull, `sam build` usually re-zips the code, so the change set shows the rows that
+   section calls normal: the three functions, `UserPool`, `Api` and `PreSignUpPermission`, all
+   `Modify`. Check the `Replacement` column as usual, then answer `y`.
+   - **If it applied those rows, that was the first real deploy as `mg-deploy`.** It proves the
+     identity can upload to SAM's bucket, create and run a change set, update the functions' code and
+     configuration, the user pool, the API and a Lambda permission, and read back the cost switch.
+     It does not prove creating or deleting resources, such as a new role or table, or a rollback.
+     Those come with the first template change that adds a resource, and the root user's console
+     sign-in is the way to repair a refusal ([the policy section](#the-mg-deploy-policy)). Go on to
+     step 4, then step 6.
+   - **If it said *No changes to deploy*,** it proves only that the identity can read the stack and
+     make a change set. Do step 4 now, and step 5 later.
 4. **Deactivate the root key:** as the root user, **Security credentials → Access keys →** the key **→
-   Actions → Deactivate**.
-5. **The first real deploy as `mg-deploy`** is the next one that changes `template.yaml` or `src/`:
-   TUN-88's daily sign-up limit (its new counter table, a role policy and the sign-up function). If it
-   fails with `AccessDenied`, fix the policy as [its section](#the-mg-deploy-policy) says, including a
-   failed rollback. Do not turn the root key back on.
-6. Once that deploy has succeeded, **delete the root key:** **Security credentials → Access keys →** the
-   key **→ Actions → Delete**. It should no longer be listed.
+   Actions → Deactivate**. A deactivated key no longer works.
+5. **Only if step 3 had nothing to deploy:** the first real deploy as `mg-deploy` is the next one that
+   changes `template.yaml` or `src/`. If it fails with `AccessDenied`, fix the policy as
+   [its section](#the-mg-deploy-policy) says, including a failed rollback. Do not turn the root key back
+   on.
+6. Once a real deploy (step 3 or step 5) has succeeded as `mg-deploy`, **delete the root key:**
+   **Security credentials → Access keys →** the key **→ Actions → Delete**. It should no longer be
+   listed.
 7. **Remove every copy from the machine.** Note the deleted key's ID: it starts `AKIA`, and the console
    showed it. Open `~/.aws/credentials` (`notepad $HOME\.aws\credentials`) and remove each profile
    holding that ID, usually `[default]`, keeping any other profile. Check that `~/.aws/config` holds no

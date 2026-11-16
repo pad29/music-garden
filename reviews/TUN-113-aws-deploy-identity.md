@@ -70,6 +70,15 @@ All answered by the owner, relayed by the orchestrator (music-garden-5), 2026-11
 5. *Q4 — when to delete the root key?* A) right after the no-op deploy succeeds as the new identity, as the
    ticket says · B) deactivate it then, delete after the first real deploy succeeds — **B**. TUN-88's
    deploy is that real deploy.
+6. *After review round 3 (Needs Input) — accept, or a fourth GPT review?* **B, a fourth review** of the
+   four round-3 fixes: the owner, relayed by the orchestrator, 2026-11-15.
+7. *TUN-88 was deployed with the root key* (the owner, 2026-11-15, before setting up `mg-deploy`), so
+   the first real deploy as `mg-deploy` is still to come. The README's order is now: set up, then
+   redeploy `main` as `mg-deploy`, deactivate, and delete the root key after a deploy that applied
+   changes. The orchestrator asked which redeploy I recommend. **My recommendation:** redeploy `main`
+   right after a pull. Its usual code-update rows make it a real deploy, proving updates (function code
+   and configuration, user pool, API, a Lambda permission) but not creates, deletes or rollback. If it
+   says *No changes to deploy*, the key stays deactivated until the next backend change.
 
 ## Build (Claude)
 
