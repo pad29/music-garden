@@ -5,7 +5,8 @@ Description: Music Garden backend — Cognito (username+password) auth + per-use
 # Cost and data limits (TUN-82): the route throttles on the HttpApi events, the reserved concurrency in
 # Globals, the MonthlyBudget, and the Retain / deletion-protection / point-in-time-recovery settings on the
 # tables and the user pool. backend/README.md § "Limits and budget" explains them and how to change them;
-# reviews/TUN-82-throttle-budget-data-protection.md has the cost arithmetic.
+# reviews/TUN-82-throttle-budget-data-protection.md has the cost arithmetic. Sign-ups go to Cognito, not the
+# API: DAILY_SIGNUP_LIMIT on PreSignUpFn caps them (TUN-88, reviews/TUN-88-daily-signup-limit.md).
 
 Parameters:
   # Never commit the address (the repository is public): pass it once, on the first deploy after TUN-82, with
@@ -251,12 +252,25 @@ Resources:
         IdToken: hours
         RefreshToken: days
 
-  # Pre-sign-up trigger: auto-confirm the user (and auto-verify email if one was supplied).
+  # Pre-sign-up trigger: auto-confirm the user (and auto-verify email if one was supplied) — at most
+  # DAILY_SIGNUP_LIMIT public sign-ups counted against each UTC day (TUN-88); past it, and whenever the counter cannot be reached,
+  # sign-ups are refused and the game plays on as a guest. backend/README.md § "The daily sign-up limit".
   PreSignUpFn:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
       Handler: presignup.handler
+      Environment:
+        Variables:
+          # The deploy setting. Change it here, in tests/backend-template.test.mjs (the approved value), in
+          # backend/README.md and in the arithmetic of reviews/TUN-88-daily-signup-limit.md; then deploy.
+          DAILY_SIGNUP_LIMIT: "100"
+          SIGNUP_COUNT_TABLE: !Ref SignUpCountTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt SignUpCountTable.Arn
 
   PreSignUpPermission:
     Type: AWS::Lambda::Permission
@@ -285,6 +299,26 @@ Resources:
       KeySchema:
         - AttributeName: userId
           KeyType: HASH
+
+  # --- The daily sign-up count (TUN-88): one row per UTC day (`day` = "2026-11-15"), `signups` added to
+  # atomically by PreSignUpFn, removed by TTL a few days after `expiresAt`. It holds only the day's count — no Retain,
+  # no deletion protection, no backups; it is deleted with the stack. Never delete it by hand: sign-ups fail closed
+  # until it is recreated (backend/README.md § The daily sign-up limit). Its own table, so TTL is never
+  # switched on for a table that holds players' data.
+  SignUpCountTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: music-garden-signup-count
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: day
+          AttributeType: S
+      KeySchema:
+        - AttributeName: day
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
   # --- Songs storage (SAVE-SHARE.md P3): one row per shared creation; GSI byOwner lists a user's songs. ---
   SongsTable:

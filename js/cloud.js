@@ -142,15 +142,20 @@ function showAuthForm(mode){ authbox.innerHTML=""; _authShowsSignedIn=false;
   const actions=document.createElement("div"); actions.className="pkgactions"; actions.append(go,cancel);
   form.append(msg,actions); authbox.appendChild(form); user.focus(); }
 // Cognito could not run the sign-up trigger: the cost switch has stopped it (TUN-87), or it failed. Cognito wraps
-// a trigger's failure in its own words, never fit for a child, and the account was not made. TUN-88's daily cap
-// will give its own refusal a message of its own on this path.
+// a trigger's failure in its own words, never fit for a child, and the account was not made. The trigger's own
+// refusal past the day's limit (TUN-88) carries the token "daily-signup-limit" — Cognito's text is "PreSignUp
+// failed with error daily-signup-limit." — and gets a message of its own; every other one says the garden
+// isn't taking new accounts just now.
 const SIGNUP_TRIGGER_CODES=["UnexpectedLambdaException","UserLambdaValidationException","InvalidLambdaResponseException"];
 const signUpTriggerFailed=e=> !!e && (SIGNUP_TRIGGER_CODES.includes(e.code) || SIGNUP_TRIGGER_CODES.includes(e.name) || /PreSignUp/i.test(String(e.message||"")));
+const signUpFullToday=e=> signUpTriggerFailed(e) && /\bdaily-signup-limit\b/.test(String(e.message||""));
+const SIGNUP_FULL_TODAY="🌱 So many new gardeners joined today that the garden is full! Keep playing as a guest — your garden is saved on this device — and make your account tomorrow.";
 async function submitAuth(mode,username,password,email,msg){
   if(!username||!password){ msg.textContent="Enter a username and password."; return; }
   msg.textContent="Working…";
   try{ if(mode==="up"){ try{ await cogSignUp(username,password,email); }
-      catch(e){ if(signUpTriggerFailed(e)){ msg.textContent=CLOUD_RESTING.signUp; return; } throw e; } }
+      catch(e){ if(signUpFullToday(e)){ msg.textContent=SIGNUP_FULL_TODAY; return; }
+        if(signUpTriggerFailed(e)){ msg.textContent=CLOUD_RESTING.signUp; return; } throw e; } }
     await cogSignIn(username,password); await onSignedIn(mode==="up"); pname.value=progress.name||""; renderPkgs(); }
   catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
 
