@@ -75,10 +75,12 @@ All answered by the owner, relayed by the orchestrator (music-garden-5), 2026-11
 7. *TUN-88 was deployed with the root key* (the owner, 2026-11-15, before setting up `mg-deploy`), so
    the first real deploy as `mg-deploy` is still to come. The README's order is now: set up, then
    redeploy `main` as `mg-deploy`, deactivate, and delete the root key after a deploy that applied
-   changes. The orchestrator asked which redeploy I recommend. **My recommendation:** redeploy `main`
-   right after a pull. Its usual code-update rows make it a real deploy, proving updates (function code
-   and configuration, user pool, API, a Lambda permission) but not creates, deletes or rollback. If it
-   says *No changes to deploy*, the key stays deactivated until the next backend change.
+   changes. The orchestrator asked which redeploy I recommend. My first answer (`c5d1713`): redeploy
+   `main` after a pull, counting on its usual code-update rows. Round 4 showed that wrong (below).
+   **Now:** redeploy `main` with a fresh `--s3-prefix`. Every function's code location changes, so it
+   is a real deploy that proves upload, change-set execution, function code updates and the cost
+   switch's invocation, but not creates, deletes, rollback, or the rows that only follow from the
+   functions.
 
 ## Build (Claude)
 
@@ -251,3 +253,24 @@ and the PR stops at Needs Input.
 
 **894 tests pass** (the policy test: 49). The test also passes against PR #147's template, in a scratch
 copy.
+
+Round 4 (the owner's extra review), on `c5d1713`: the round-3 fixes (`41d14b0..b54cc74`) and the
+root-key order commit — **CHANGES REQUESTED**. *"All four round-3 fixes are accepted."* GPT also
+accepted not adding PowerShell repository tests: *"this change does not warrant introducing a PowerShell
+harness. PowerShell 7 remains unverified."* It checked the policy test against the merged template:
+dropping `UpdateTimeToLive` or `PutRolePolicy`, or renaming the counter table, is reported.
+
+1. **Medium — "A fresh pull does not reliably produce a code deployment."** SAM's upload key is *"a
+   checksum of relative filenames and file contents … File timestamps do not participate."*
+   **Agreed, and confirmed** in the installed SAM CLI: `samcli/lib/utils/hash.py` `dir_checksum` hashes
+   each file's relative path and content checksum, and `samcli/lib/package/utils.py` uses it as the
+   upload key. Step 3 now redeploys with a fresh `--s3-prefix`, which changes every function's code
+   location without touching the template. That is not saved to `samconfig.toml`. The § Future deploys
+   table row that blamed timestamps (it predates this PR) is corrected too.
+2. **Medium — "The listed `Modify` rows do not prove all the claimed update permissions."** Rows that
+   follow from a reference may not call their service. **Agreed.** Step 3 now claims only upload,
+   change-set execution, function code updates and the cost switch's invocation. It says the rows that
+   follow from the functions, creates, deletes and rollback are untested.
+
+Missing tests: none in the repository. The owner-run case GPT asked for (a fresh-prefix redeploy, then
+record what ran) is step 3 and the hand-off checklist.

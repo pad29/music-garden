@@ -217,24 +217,32 @@ is **deleted only after a real deploy has worked as `mg-deploy`** (owner, TUN-11
    `Machine` needs an administrator PowerShell. Then reopen your terminal apps, as step 4 says.
 2. In the shell you will deploy from, run `aws sts get-caller-identity`. It must show
    `AWSReservedSSO_mg-deploy`, not `:root`.
-3. **Redeploy `main` as `mg-deploy`** (TUN-88's template, which was deployed with the root key on
-   2026-11-15). Run [Future deploys](#future-deploys)' commands from `backend/` on a freshly pulled
-   `main`. After a pull, `sam build` usually re-zips the code, so the change set shows the rows that
-   section calls normal: the three functions, `UserPool`, `Api` and `PreSignUpPermission`, all
-   `Modify`. Check the `Replacement` column as usual, then answer `y`.
-   - **If it applied those rows, that was the first real deploy as `mg-deploy`.** It proves the
-     identity can upload to SAM's bucket, create and run a change set, update the functions' code and
-     configuration, the user pool, the API and a Lambda permission, and read back the cost switch.
-     It does not prove creating or deleting resources, such as a new role or table, or a rollback.
-     Those come with the first template change that adds a resource, and the root user's console
-     sign-in is the way to repair a refusal ([the policy section](#the-mg-deploy-policy)). Go on to
-     step 4, then step 6.
-   - **If it said *No changes to deploy*,** it proves only that the identity can read the stack and
-     make a change set. Do step 4 now, and step 5 later.
+3. **A real deploy as `mg-deploy`, with nothing changed.** TUN-88's template was deployed with the root
+   key on 2026-11-15, so `main` as it stands would say *No changes to deploy*, which proves only that
+   the identity can read the stack and make a change set. Instead, upload the same code under a new S3
+   prefix, so every function's code location changes and CloudFormation really updates the functions.
+   From `backend/`, on an up-to-date `main`, run [Future deploys](#future-deploys)' commands with one
+   change, the last `sam deploy`:
+   ```powershell
+   sam build; sam deploy --confirm-changeset --s3-prefix music-garden/mg-deploy-check-1
+   ```
+   Use a prefix never used before. Don't save it in `samconfig.toml`: passing it on the command line
+   doesn't. Expect `Modify` on the four functions, and rows that follow from them (`UserPool`, `Api`,
+   permissions). Check the `Replacement` column as usual, answer `y`, and run the cost switch's status
+   command again afterwards, as that section says.
+   - **What it proves:** `mg-deploy` can upload to SAM's bucket, create and run a change set, update
+     the functions' code, and invoke the cost switch. **What it doesn't:** the rows that only follow
+     from the functions may not call their service at all. Creating or deleting resources, such as a
+     role or a table, and a rollback, are not tested. They show up only when a deploy needs them, and
+     the root user's console sign-in is how to repair a refusal
+     ([the policy section](#the-mg-deploy-policy)).
+   - The next ordinary `sam deploy` goes back to `samconfig.toml`'s prefix, so it shows the functions
+     as `Modify` once more. That is expected.
+   - If the change set shows no function rows, stop: do step 4, and wait for step 5.
 4. **Deactivate the root key:** as the root user, **Security credentials → Access keys →** the key **→
    Actions → Deactivate**. A deactivated key no longer works.
-5. **Only if step 3 had nothing to deploy:** the first real deploy as `mg-deploy` is the next one that
-   changes `template.yaml` or `src/`. If it fails with `AccessDenied`, fix the policy as
+5. **Only if step 3 did not deploy:** the first real deploy as `mg-deploy` is the next one that changes
+   `template.yaml` or `src/`. If it fails with `AccessDenied`, fix the policy as
    [its section](#the-mg-deploy-policy) says, including a failed rollback. Do not turn the root key back
    on.
 6. Once a real deploy (step 3 or step 5) has succeeded as `mg-deploy`, **delete the root key:**
@@ -329,7 +337,7 @@ new one — answer `n` and fix the template instead.
 
 | Resource | Action / Replacement | Why |
 |---|---|---|
-| `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | `sam build` re-zips the code, and after a `git pull` the files' timestamps differ, so the zip gets a new upload key (`Code`, never recreated) |
+| `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | the built code's upload key changed (`Code`, never recreated). SAM names the upload by a checksum of the built files' names and contents, not their timestamps (checked in SAM CLI 1.162, TUN-113), so this row means the built files differed from the last deploy's |
 | `UserPool` | Modify / `False` | its sign-up trigger (`LambdaConfig`) refers to `PreSignUpFn`'s ARN |
 | `PreSignUpPermission` | Modify / `Conditional` | its `SourceArn` refers to `UserPool`'s ARN. It would be recreated only if the pool were replaced, and the pool is not |
 | `Api` | Modify / `False` | its route definitions (`Body`) refer to `SongsFn`'s and `ProgressFn`'s ARNs, so it shows whenever those functions change. Their ARNs stay the same |
