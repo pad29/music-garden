@@ -454,9 +454,11 @@ prerequisites (`analyzer-not-taught` otherwise), and has exactly one `way-` desc
 
 What they hear, in short (the detectors are in `js/detectors.js`; § 5 has more):
 
-- **Contour families** read the tune's shape left to right: `rise` climbs at least three ladder steps
-  overall; `fall` drops at least three; `hover` stays within two steps and ends where it began (four or
-  more notes); `arc` has exactly one hill (four or more notes). A tune can be in more than one family.
+- **Contour families** read the tune's shape left to right, from the **highest note in each column that
+  has one** (in ladder steps). `rise`: at least three such columns, the last at least three steps above
+  the first, and more steps up than down. `fall`: the same, downwards. `hover`: at least four columns,
+  all within two steps of each other, ending within one step of the start. `arc`: at least four columns
+  and exactly one hill. A tune can be in more than one family — check yours with `evidence` (§ 5).
 - **Pulse families** read the drums: `main-beat-kicks` is a kick on every main beat (columns 0, 4, 8, …)
   and no other kick; `even-kick-walk` is a kick on every second column; `hat-shimmer` is a hi-hat on
   every second column. "Every" means all the way across the field.
@@ -628,10 +630,18 @@ the routes are **real alternatives**:
 - every route is **distinguishable** from every other: for each ordered pair A, B, some witness of A
   matches A and not B (`no-distinguishing-witness`).
 
-The easy pattern, used by both shipped quests: **keep one slot the same in every route and vary the
-other.** *The Waking Woods*' compose routes all ask for `phrase.on-every-beat`, and differ in the drums:
-clean main-beat kicks, an even kick walk, or a hi-hat shimmer. Its transform routes keep the tune clause
-and ask either for the same heartbeat as A, or a different one.
+The easy pattern: **keep one slot the same in every route and vary the other.** Both shipped quests'
+compose phases do it — *The Waking Woods*' routes all ask for `phrase.on-every-beat` and differ in the
+drums: clean main-beat kicks, an even kick walk, or a hi-hat shimmer — and so does Woods' transform
+phase, which keeps the tune clause and asks for the same heartbeat as A or a different one. *The Firefly
+Crossing*'s transform phase shows the other way: its three routes vary both slots (new shape, same
+heartbeat; same shape, new heartbeat; both new).
+
+**Which two capabilities pair well, today.** Pair `steady-pulse` with `melodic-contour` or with
+`melody-making`: the pulse analyzers give compose routes three distinct drum ideas with distinct
+wording. `melodic-contour` with `melody-making` cannot give two compose routes distinct wording: the
+only compose contour analyzer, `contour.any-of`, describes itself the same way whatever families it is
+given, and the two phrase analyzers have no declared relation (`relation-unknown`).
 
 ### Witnesses
 
@@ -781,9 +791,12 @@ node --test "tests/*.test.mjs"
 ```
 
 You don't need to write a test for a new quest: the existing ones already run over every quest in the
-catalog. They prove it loads; that every deal its rule can make is legal and completable; that no
-opening in its pool blocks a route; and that every route can be reached by a song that also completes
-the dealt task. To run just the quest tests while you work: `node --test "tests/quest*.test.mjs"`.
+catalog. Loading it proves, for **every** opening in its pool, that no opening makes a drum route
+impossible. Beyond that, the tests **sample**: `tests/questsetup.test.mjs` deals 512 runs per quest and
+checks each is legal and completable, and `tests/quest-fragments.test.mjs` checks, for every opening
+under one representative layout of stones, that each route can be reached by a song that also completes
+the dealt task. Sampled is not exhaustive — so also play several fresh runs (§ 8). To run just the quest
+tests while you work: `node --test "tests/quest*.test.mjs"`.
 
 ## 8. Trying it in a browser
 
@@ -791,18 +804,19 @@ A clean check proves the data is legal, not that the quest is good to play. Play
 
 1. **Serve the game**: `npx http-server -p 8377 -c-1 .` and open `http://localhost:8377/?dev`
    (or open `index.html` directly and add `?dev` to the address).
-2. In the dev bar at the top, press **🗝️ Unlock quests**. It marks every quest's prerequisite packages
+2. On a first visit the landing card and then the friend picker cover the page: press **▶ Start
+   playing** and pick a friend first. Then, in the dev bar at the top, press **🗝️ Unlock quests**. It marks every quest's prerequisite packages
    as completed in this browser's saved progress — an ordinary progress record, as if they had been
    played. **🧹 Clear quest runs** forgets every quest run and completion, so the quests are unplayed
    again; it does not undo the unlock.
-3. Go **Home** (the world map). Below the map is **one** quest card at a time (`QUESTS.md` Q22): a quest
+3. Go **Home**: the ☰ menu, then 🗺️ (the world map). Below the map is **one** quest card at a time (`QUESTS.md` Q22): a quest
    already being played comes first, then a fresh one — the lowest `presentation.priority`, ties broken
    by quest id. Other quests are on the **quest trail** beneath the card. To reach yours first, play it
    from the trail, or give it a lower priority while you test (and put it back).
 4. **Play all three phases.** In phase 1, keep the ringed stones, fill every stretch, carry the drums
    on, and play the song right through; the button then moves on. In phase 2, change something and play
-   it through again. In phase 3, tap each version to hear it, keep one, and offer it. Then find the
-   saved song in your melodies and play it.
+   it through again. In phase 3, tap each version to hear it, keep one, and offer it. Then open the
+   🎵 Jukebox from the ☰ menu: your song is at the bottom, under *My Melodies*. Load it and play it.
 5. **Try leaving.** Go Home mid-phase and reload the page; the card should say Continue and bring you
    back where you were.
 

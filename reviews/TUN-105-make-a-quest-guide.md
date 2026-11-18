@@ -242,3 +242,123 @@ string (finding 6). `js/quest-engine.js` is CRLF in this checkout (finding 2).
 worked as **L** from here (the label and section say M). The design stays as reviewed — the M plan, GPT's
 design review and the owner's answers (`resume.md`: keep the design you have); L adds GPT's separate
 test pass after the build.
+
+## Cold-reader trial (Astra, as a reader with no context)
+
+The ticket's proof by use. GPT (`ask.sh fresh workspace-write`), told to read only `MAKING-QUESTS.md` and the files it
+points to, to log every other file it opened, and to stop before `write`, built a throwaway quest,
+`pebble-postcards` (contour + steady pulse, no drum opening, its own transform routes: keep the shape or
+change it over the same beat). **It passed `check` with no failed check along the way.**
+
+<details><summary>GPT's report, verbatim</summary>
+
+**A. RESULT**
+
+Catalog: [pebble-postcards.json](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/.cold-reader/pebble-postcards.json)  
+Quest id: `pebble-postcards`
+
+```text
+ok — 3 quests: firefly-crossing, waking-woods, pebble-postcards (53110 of 262144 characters)
+```
+
+The child makes a shaped tune around three stones over an even kick walk or hi-hat shimmer.  
+They revise its shape while keeping the steady pulse, compare both versions, and save their choice.
+
+The transform routes differ from both shipped quests. All display text and four witness songs are newly authored. Nothing was installed. Browser playability and the ten-minute estimate remain unverified.
+
+**B. THE RUN LOG**
+
+Full command outputs and investigation notes are preserved in the [report](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/.cold-reader/report.md), [command ledger](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/.cold-reader/commands.json), and [notes](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/.cold-reader/notes.md).
+
+All filenames below are under `tests/.cold-reader/`.
+
+1. **Extract** → succeeded, two quests.
+2. **Copy Woods, change quest id, check** → passed: three quests, 54,557 characters.
+3. Considered contour + melody-making. Abandoned it after reconciling the fixed-descriptor warning and analyzer relations. Chose contour + steady-pulse; wrote the replacement content.
+4. **Evidence: `rise.json`** → rise + even-kick-walk. Used for compose and transform A.
+5. **Evidence: `fall.json`** → fall + hat-shimmer. Used for the other compose route.
+6. **Evidence: `revised.json`** → rise + even-kick-walk. Used for keeping the shape in B.
+7. **Evidence: `changed.json`** → fall + even-kick-walk. Used for changing the shape in B.
+8. **Check finished catalog** → passed with the exact output in A. No repair needed.
+9. **Syntax check** → passed.
+10. **Full test suite** → **935 passed, one failed**. To obey the file boundary, I placed temporary files under `.cold-reader/`. One test then attempted to copy `tests/` into its own subdirectory, producing `ERR_FS_CP_EINVAL`. The [complete output](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/.cold-reader/08-stdout.txt) preserves the exact failure. I changed nothing: relocating temporary files outside the permitted directory would violate the exercise. This is an exercise constraint, not a guide defect. These tests exercised the installed catalog, not my external draft.
+11. **Evidence: `hover-neighbor.json`** → `hover`, despite ending one rung above its start.
+12. **Evidence: `net-rise-with-descents.json`** → `arc`, without `rise`, despite climbing three rungs overall.
+13. **Final catalog check** → passed unchanged; output in A.
+
+**There were no failed catalog checks.** The two additional evidence probes verified documentation findings; they required no catalog changes.
+
+**C. WHERE THE GUIDE FAILED YOU**
+
+1. **High — §7 overstates test coverage.**  
+   “Every deal its rule can make” promises exhaustive coverage. The installed-quest test samples **512 seeds per quest**. The route/opening test uses one `fixture-4` stone layout per opening. These do not prove every route under every possible deal.
+
+   **Replace with:** “After installation, tests sample 512 deals per quest and check every route against every opening using a representative stone layout. These are sampled checks, not exhaustive proof; also play several fresh runs.”
+
+2. **Medium — §4 gives an inaccurate contour recipe.**  
+   Hover need not end exactly where it began. Rise/Fall additionally require a minimum sequence length and more directional moves toward the claimed direction than against it. The two evidence probes demonstrate these discrepancies.
+
+   **Replace with:** “Contour reads the highest note in each occupied column. Rise/Fall require at least three occupied columns, net movement of at least three ladder steps, and more moves in that direction than against it. Hover requires at least four columns, a range of at most two steps, and an ending within one step of the start.”
+
+3. **Medium — §§4–5 hide the practical limits on capability pairings.**  
+   The three-capability menu suggests choosing any two. My first choice required cross-reading analyzer phases, relations, and descriptor limitations before discovering that the guide offered no way to give it two distinctly worded compose routes.
+
+   **Add:** “For a first quest with today’s descriptors, pair steady-pulse with melodic-contour or melody-making. Contour plus melody-making cannot provide two distinctly worded compose routes with this vocabulary: contour parameter changes leave the displayed text unchanged, and the two phrase analyzers have no declared relation.”
+
+4. **Low — §5 misdescribes its shipped example.**  
+   The fixed-slot pattern is not used throughout both shipped quests. Firefly’s transform routes vary both contour and pulse.
+
+   **Replace with:** “The simplest pattern, used by both compose phases and Woods’ transform phase, keeps one slot fixed. Firefly’s transform phase demonstrates varying both slots.”
+
+**Access accounting:** No unreferenced source file was needed to produce the passing catalog. Afterward, I searched and read guide-named `js/detectors.js` and `js/quest-engine.js`, plus tests covered by its `tests/quest*.test.mjs` pointer: `questsetup`, `questsetup-readiness`, and `quest-fragments`; searches also touched `questauthoring*`. Every search and its reason is logged. These were documentation audits, not implementation workarounds. The guide should name the particular tests supporting its coverage claims.
+
+**D. WHAT WORKED**
+
+The extract/copy/check workflow worked without engine knowledge. The field tables, analyzer/descriptor mappings, prerequisite rules, and gate examples were sufficient. The complete witness example and `evidence` command made authoring songs straightforward.
+
+Section 9 helped keep the story calm, task wording literal, and musical alternatives free of judgments or scoring.
+
+**E. CLAIMS FALSE ABOUT THE CODE**
+
+- **Hover “ends where it began”:** `isHovering` in [js/detectors.js:23](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/js/detectors.js:23) allows an endpoint difference of one rung.
+- **The Rise/Fall description omits required conditions:** `isRising`/`isFalling` in [js/detectors.js:21](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/js/detectors.js:21) require length and directional-step conditions. `songEvidence` uses these detectors.
+- **Both shipped quests follow the fixed-slot pattern:** Firefly’s transform definitions in `js/quest-engine.js`’s `BUILTIN_QUEST_CATALOG_JSON`, consumed by `loadQuestCatalog`, contradict this.
+- **Tests prove every possible deal:** the callbacks in [questsetup.test.mjs:132](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/questsetup.test.mjs:132) and [quest-fragments.test.mjs:273](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-fragments.test.mjs:273) perform the bounded checks described above.
+
+</details>
+
+**My answers** — each finding re-checked against the code first.
+
+1. **High — § 7 overstated the tests' coverage.** **Agreed** (`tests/questsetup.test.mjs` samples 512 seeds;
+   `tests/quest-fragments.test.mjs` uses one stone layout per opening; only the catalog load's
+   `fragment-blocks-route` proof is exhaustive). § 7 now says which is which, names the tests, and tells
+   the author to play several fresh runs.
+2. **Medium — § 4's contour recipe was inaccurate.** **Agreed** (`isRising`, `isFalling`, `isHovering`, `isArch`
+   and `contourSeqFromGrid` in `js/detectors.js`: hover may end one step from its start; rise and fall need
+   three columns and more steps in their direction). Rewritten from the detectors, pointing at `evidence`.
+3. **Medium — which capability pairs work was hidden.** **Agreed** (`contour.any-of`'s one descriptor ignores
+   its params; `phrase.minimum-onsets` and `phrase.on-every-beat` have no declared relation). § 5 now says
+   which pairs work today and why.
+4. **Low — "both shipped quests keep one slot fixed" was false for Firefly's transform.** **Agreed.** Corrected.
+- *The one failing test in its run* (`TUN-5 audit: questsetup G faults…`, `ERR_FS_CP_EINVAL`) came from the
+  exercise: it pointed its temp files into `tests/.cold-reader/`, so a test that copies `tests/` copied it
+  into itself. Not a defect; the suite passes here (below).
+
+**What I ran with its quest installed** (`tools/quest-catalog.mjs write`, by me): syntax check, and the
+whole suite — **936/936 pass** with three quests in the catalog. Then the guide's § 8, literally, in AO's
+browser on a fresh profile: 🗝️ Unlock quests ("Completed: Follow the Fireflies, Footsteps, Garden
+Basics" — the union of the three quests' prerequisites); Home showed Firefly's card (priority 10) and
+the trail listed *Pebble Postcards* (✨) and *The Waking Woods*; begun from the trail, all three phases
+played as the guide describes — readiness line, Flutter (cast) on the shape and the garden's own voice
+on the drums, the transform's "kept their Arc shape", both auditions, the offer — and a reload
+mid-phase-3 brought "Continue Pebble Postcards · Phase 3 of 3" ahead of Firefly's invitation, with both
+auditions kept. The saved song loaded from the Jukebox's *My Melodies*. No page errors. The server log
+showed the game asking for `voice/<hash>.mp3` and falling back, as § 10 says.
+
+**Fixed in the guide from my own run:** a first visit's landing card and friend picker cover the dev
+buttons (§ 8 step 2 says so); where the saved song is (🎵 Jukebox → *My Melodies*); how to reach Home
+(☰ → 🗺️). The throwaway quest and GPT's scratch files are deleted; nothing of them is committed.
+
+**Not verified:** the two console tips (`JSON.stringify(currentSong())`, `QUEST_CATALOG_ERRORS`) — AO's
+browser cannot run page code. `currentSong` is a top-level function and `QUEST_CATALOG_ERRORS` a
+top-level `let` of a classic script, so both are reachable from the console by construction.
