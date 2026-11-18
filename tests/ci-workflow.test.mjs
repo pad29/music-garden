@@ -108,12 +108,12 @@ test("mutation: quoted keys, flow mappings and bracket access are reported, neve
   catches(swap("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions: {contents: write}\n"), "cannot read");
   catches(swap("      - name: Syntax check\n", '      - "uses": actions/cache@main\n      - name: Syntax check\n'), "cannot read");
   catches(swap("      - name: Syntax check\n", "      - {uses: actions/cache@main}\n      - name: Syntax check\n"), "cannot read");
-  catches(swap("        run: node tools/check-syntax.mjs\n", "        run: node tools/check-syntax.mjs\n        env:\n          T: ${{ secrets['DEPLOY'] }}\n"), "uses a secret");
+  catches(swap("        run: node tools/check-syntax.mjs\n", "        run: node tools/check-syntax.mjs\n        env:\n          T: ${{ secrets['DEPLOY'] }}\n"), "cannot read");
   // The same, in a second workflow.
   unsafe(swap("  pull_request:\n", '  "pull_request_target":\n', OTHER), "cannot read");
   unsafe(swap("      - run: echo hello\n", '      - "uses": actions/cache@main\n', OTHER), "cannot read");
   unsafe(swap("      - run: echo hello\n", "      - {uses: actions/cache@main}\n", OTHER), "cannot read");
-  unsafe(swap("      - run: echo hello\n", "      - run: echo ${{ secrets['DEPLOY'] }}\n", OTHER), "uses a secret");
+  unsafe(swap("      - run: echo hello\n", "      - run: echo ${{ secrets['DEPLOY'] }}\n", OTHER), "cannot read");
 });
 
 test("mutation: other YAML outside the subset is reported explicitly", () => {
@@ -177,4 +177,72 @@ test("mutation: Node unstated, or below the suite's floor (registerHooks: 22.15 
     catches(swap("          node-version: 24\n", `          node-version: ${v}\n`), "below the suite's floor");
   }
   for (const v of ["22", "22.15", "22.15.0", "23", "23.5.0", "24", "24.0.0", "25"]) assert.ok(nodeMeetsFloor(v), v);
+});
+
+// PR review 2's bypasses: each passed the round-1 checker.
+test("mutation: a `- name: |` or `>` block scalar cannot swallow its step's other fields", () => {
+  for (const style of ["|", ">"]) {
+    const unpinned = `      - name: ${style}\n          Cache\n        uses: actions/cache@main\n`;
+    catches(swap("      - name: Syntax check\n", unpinned + "      - name: Syntax check\n"), "not pinned");
+    unsafe(swap("      - run: echo hello\n", unpinned, OTHER), "not pinned");
+    const leaky = `      - name: ${style}\n          Again\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n`;
+    unsafe(swap("      - run: echo hello\n", leaky, OTHER), "keeps the token");
+  }
+  const { doc } = parseWorkflow(swap("      - run: echo hello\n", "      - name: |\n          Two\n          lines\n        run: echo hi\n", OTHER));
+  const step = doc.jobs.other.steps[1];
+  assert.strictEqual(step.name, "Two\nlines");
+  assert.strictEqual(step.run, "echo hi", "the sibling field stays separate");
+});
+
+test("mutation: backslash escapes in double quotes are reported; plain quoting still reads", () => {
+  catches(swap("        run: node tools/check-syntax.mjs\n", '        run: node tools/check-syntax.mjs\n        env:\n          T: "${{ se\\u0063rets.DEPLOY }}"\n'), "backslash escape");
+  unsafe(swap("      - run: echo hello\n", '      - run: "bad\\q"\n', OTHER), "backslash escape");
+  const { doc, errors } = parseWorkflow(swap("      - run: echo hello\n", "      - run: \"echo a\"\n      - run: 'it''s'\n", OTHER));
+  assert.deepEqual(errors, []);
+  assert.deepEqual(doc.jobs.other.steps.slice(1).map((s) => s.run), ["echo a", "it's"]);
+});
+
+test("mutation: a job named __proto__ is still checked", () => {
+  const proto = "  __proto__:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n    steps:\n      - uses: actions/cache@main\n";
+  unsafe(OTHER + proto, "contents: write");
+  unsafe(OTHER + proto, "not pinned");
+  catches(REAL + proto, "contents: write");
+  assert.ok(Object.hasOwn(parseWorkflow(OTHER + proto).doc.jobs, "__proto__"));
+});
+
+test("mutation: secrets and the token in another case, by index, or through a function", () => {
+  for (const expr of ["SECRETS.DEPLOY", "Secrets.Deploy", "GitHub.Token", "github['token']", "toJSON(secrets)", "toJSON(github)", "github"]) {
+    unsafe(swap("      - run: echo hello\n", `      - run: echo \${{ ${expr} }}\n`, OTHER), expr.includes("[") || expr.includes("(") || expr === "github" ? "cannot read" : "uses");
+  }
+  unsafe(swap("      - run: echo hello\n", "      - run: echo hi\n        if: SECRETS.DEPLOY\n", OTHER), "uses a secret");
+  unsafe(swap("      - run: echo hello\n", "      - run: echo hi\n        env:\n          T: ${{ env.Github_Token }}\n", OTHER), "token");
+  assert.deepEqual(safetyProblems(swap("      - run: echo hello\n", "      - run: echo ${{ github.sha }}\n", OTHER)), [], "a plain context path is fine");
+});
+
+test("mutation: a constant job-level concurrency group, under a safe workflow-level one", () => {
+  catches(swap("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    concurrency:\n      group: constant\n      cancel-in-progress: true\n"), "sets concurrency");
+});
+
+test("mutation: the checkout tests another revision or repository; extra steps or inputs", () => {
+  catches(swap("          persist-credentials: false\n", "          persist-credentials: false\n          ref: main\n"), "other than persist-credentials");
+  catches(swap("          persist-credentials: false\n", "          persist-credentials: false\n          repository: someone/else\n"), "other than persist-credentials");
+  catches(swap("          node-version: 24\n", "          node-version: 24\n          cache: npm\n"), "other than node-version");
+  catches(swap("      - name: Tests\n", "      - run: git checkout main\n      - name: Tests\n"), "runs something other than the two checks");
+  catches(swap("      - name: Tests\n", "      - uses: actions/cache@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - name: Tests\n"), "other than checkout and setup-node");
+  catches(swap("        run: node tools/check-syntax.mjs\n", "        run: node tools/check-syntax.mjs\n        env:\n          NODE_OPTIONS: --require=./x.cjs\n"), "sets env");
+  catches(swap("jobs:\n", "env:\n  NODE_OPTIONS: --require=./x.cjs\njobs:\n"), "the workflow sets env");
+});
+
+test("mutation: another workflow with unrestricted permissions, or on a self-hosted runner", () => {
+  unsafe(swap("permissions:\n  contents: read\n", "", OTHER), "permissions not restricted");
+  assert.deepEqual(safetyProblems(swap("permissions:\n  contents: read\n", "", OTHER).replace("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n")), [],
+    "every job restricting its own is enough");
+  unsafe(swap("    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    \"permissions\": {contents: write}\n", OTHER), "cannot read");
+  unsafe(swap("    runs-on: ubuntu-latest\n", "    runs-on: self-hosted\n", OTHER), "not a GitHub-hosted runner");
+  catches(swap("    runs-on: ubuntu-latest\n", "    runs-on: [self-hosted, linux]\n"), "not a GitHub-hosted runner");
+});
+
+test("a package manager's name in a workflow or step name is not an install", () => {
+  assert.deepEqual(workflowProblems(swap("name: Checks\n", "name: Checks without npm\n")), []);
+  assert.deepEqual(workflowProblems(swap("      - name: Tests\n", "      - name: Tests (no npm, no pip)\n")), []);
 });

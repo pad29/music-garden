@@ -104,3 +104,93 @@ and bracket-access bypass in `checks.yml` and in a second workflow; a commented-
 filters; a constant (and a per-workflow) concurrency group; CRLF accepted and
 `node-version: 24 # npm is not needed` not an install; other unsupported YAML reported explicitly.
 16 tests, up from 12.
+
+### Round 2 — head `3f65d57` — changes requested
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes required**
+
+The original bypasses are now rejected, and the Node floor is corrected. However, the following new mutations return **no problems**.
+
+1. **Medium — [tests/helpers/ci-workflow.mjs:34](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:34): block scalars swallow sibling step fields.** Adding this step passes both validators:
+   ```yaml
+         - name: |
+             Cache
+           uses: actions/cache@main
+   ```
+   The parser stores `uses:` inside `name`, hiding the unpinned action. A pinned checkout without credential protection is hidden identically. Determine scalar boundaries from the mapping/content indentation, including mappings opened after `-`, or explicitly reject these forms.
+
+2. **Medium — [tests/helpers/ci-workflow.mjs:43](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:43): double-quoted escapes are decoded incorrectly.** `T: "${{ se\u0063rets.DEPLOY }}"` passes both validators. YAML decodes this to `${{ secrets.DEPLOY }}`, while the checker produces `seu0063rets`. It also accepts invalid escapes such as `"bad\q"` without errors. Implement the supported [YAML escape semantics](https://yaml.org/spec/1.2.2/#57-escaped-characters), or reject escapes explicitly.
+
+3. **Medium — [tests/helpers/ci-workflow.mjs:69](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:69): a job named `__proto__` disappears from validation.** Appending that job with `contents: write` and `uses: actions/cache@main` passes both validators. Assignment changes the JavaScript object's prototype, and subsequent `Object.entries()` calls omit the job. This is a valid [GitHub job identifier](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_id). Store mappings in null-prototype objects or otherwise preserve every key as an own property.
+
+4. **Medium — [tests/helpers/ci-workflow.mjs:135](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:135): alternate expression spellings bypass secret/token protection.** Both `${{ SECRETS.DEPLOY }}` and `${{ github['token'] }}` pass in either workflow. GitHub's expression parser resolves context names [case-insensitively](https://github.com/actions/runner/blob/main/src/Sdk/DTExpressions2/Expressions2/ExpressionParser.cs), and contexts support [index access](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#about-contexts). Account for these forms or reject unsupported expressions.
+
+5. **Medium — [tests/helpers/ci-workflow.mjs:196](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:196): job-level concurrency bypasses the cancellation guard.** Adding `concurrency:`, `group: constant`, and `cancel-in-progress: true` under `jobs.checks` passes unchanged. Unrelated PR jobs can consequently cancel each other despite the safe workflow-level group. Validate or forbid [job-level concurrency](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idconcurrency).
+
+6. **Medium — [tests/helpers/ci-workflow.mjs:209](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:209): required commands can check the wrong revision.** Adding `ref: main` to checkout's `with:` passes. A failing PR can then receive a green result from testing `main`; checkout explicitly supports this [ref override](https://github.com/actions/checkout/blob/main/action.yml). Require the checkout feeding the checks to use the event's revision and repository, rejecting unrelated overrides.
+
+7. **Medium — [tests/helpers/ci-workflow.mjs:140](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:140): additional workflows need not restrict permissions.** Removing `permissions` from the additional-workflow fixture passes `safetyProblems()`. Such workflows inherit repository/organization defaults, which may grant writes; only `checks.yml` requires an explicit restriction. Validate effective read-only permissions for every workflow/job instead of accepting absence unconditionally. [GitHub permissions documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions).
+
+8. **Low — [tests/helpers/ci-workflow.mjs:216](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:216): descriptive text is mistaken for installation.** Changing only the workflow name to `Checks without npm` fails with `installs something: .name`. Scope installation detection to executable configuration rather than every string and key.
+
+**Missing tests**
+
+- In both workflow fixtures, reject unpinned actions and unprotected checkouts following a `- name: |` or `- name: >`; verify sibling fields remain separate.
+- Reject Unicode-escaped secret expressions and invalid escapes; verify supported escapes decode correctly.
+- Validate an actual `__proto__` job, including its permissions and actions.
+- Reject uppercase/mixed-case secret contexts and bracket-access job tokens.
+- Reject constant job-level concurrency groups, even with valid workflow-level concurrency.
+- Reject checkout overrides that test `main` or an unrelated repository.
+- Reject additional workflows whose effective permissions remain unrestricted.
+- Accept harmless package-manager words in workflow/step names.
+- Add the round-1 quoted job-permissions mutation to the **additional-workflow** fixture; it is caught manually but remains absent from that fixture's tests.
+
+Verification: syntax, all 16 guard tests, and diff whitespace checks passed. Mutations ran in memory; no files changed. Full-suite execution was not repeated. Live CI results could not be independently retrieved because GitHub CLI configuration access was denied.
+
+</details>
+
+**My answers.** I agreed with all eight findings and every missing test. Patching each bypass would only
+invite the next one, so the checker now fails closed:
+
+1. **Medium — a block scalar swallowed its step's sibling fields. Agreed.** The scalar's content is
+   now what is indented past the *key's* column. For `- name: |`, that is the column of `name`, not of
+   the dash.
+2. **Medium — double-quoted escapes were decoded wrongly. Agreed; escapes are rejected, not
+   implemented.** Any backslash in a double-quoted value is reported. The workflow needs none, and
+   implementing YAML's escape table is more surface than it is worth.
+3. **Medium — a `__proto__` job vanished. Agreed.** Mappings are now null-prototype objects.
+4. **Medium — `SECRETS.X` and `github['token']` passed. Agreed, and taken further.** Every `${{ }}`
+   expression, and every `if:`, must be a plain property path. Anything else is reported as unreadable:
+   index access, function calls such as `toJSON(github)` (which would print the token) and operators.
+   `secrets.*` and `github.token` are matched in any letter case, and so is `GITHUB_TOKEN`.
+5. **Medium — job-level concurrency was unchecked. Agreed.** `checks.yml` now uses allowlists. The
+   workflow may set only `name`, `on`, `permissions`, `concurrency` and `jobs`. A job may set only
+   `name`, `runs-on`, `timeout-minutes` and `steps`. The allowlists also catch `env` (for example
+   `NODE_OPTIONS`) at the workflow, job or step level, which I added myself.
+6. **Medium — `ref: main` would test the wrong revision. Agreed.** Exactly one checkout step,
+   whose only input is `persist-credentials`, and exactly one setup-node step, whose only input is
+   `node-version` (so no `cache:`). No other actions, and no `run` steps but the two checks.
+7. **Medium — other workflows did not have to restrict permissions. Agreed.** Every workflow must set
+   top-level `permissions` or set them on every job. I also added a rule that every workflow runs on
+   a GitHub-hosted runner: a self-hosted one would run a fork's code on the owner's machine.
+8. **Low — "Checks without npm" read as an install. Agreed.** Install detection now looks only at
+   `run` commands.
+
+Missing tests: every case listed was added, 24 tests, up from 16:
+- `- name: |` and `>` followed by an unpinned action, and by an unprotected checkout, in both
+  workflows, with sibling fields shown to stay separate;
+- `\u0063` and `\q` rejected, and plain double-quoted and `''`-escaped single-quoted values still read;
+- a real `__proto__` job with a write permission and an unpinned action;
+- mixed-case `secrets` and `GitHub.Token`, `github['token']`, `toJSON(secrets)`, `toJSON(github)`,
+  a bare `github`, `if: SECRETS.X` and `env.Github_Token` rejected, and `github.sha` accepted;
+- a constant job-level concurrency group;
+- `ref: main`, `repository:`, `cache: npm`, an extra `git checkout main` step, an extra action, and
+  `env: NODE_OPTIONS` at step and workflow level;
+- the other workflow without permissions rejected, but accepted when every job restricts its own;
+  its quoted job permissions; a self-hosted runner;
+- package-manager words in workflow and step names accepted.
+
+`secrets['DEPLOY']` (round 1's case) is now reported as an unreadable expression, not as a secret. It
+is still rejected; the test's expected message changed.
