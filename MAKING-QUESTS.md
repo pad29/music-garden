@@ -45,7 +45,7 @@ engine owns (§ 4). It cannot contain code, HTML, links or asset paths. Read `QU
 "quest" means), Q3 (the Guided Commission), Q7 (why quests are data) and Q8 (definition, run and song
 are separate) for the reasoning.
 
-The two quests that ship are *The Firefly Crossing* (`firefly-crossing`) and *The Waking Woods*
+The first two quests to ship were *The Firefly Crossing* (`firefly-crossing`) and *The Waking Woods*
 (`waking-woods`). This guide uses *The Waking Woods* as its example.
 
 ## 2. The workflow
@@ -311,7 +311,7 @@ appear; `setup.` is the `waypoints` rule (§ 6). `[]` means each item of a list.
 | `$.author.id` | slug | required | Both shipped quests say `tune-garden`. Ask in your issue if you want something else. |
 | `$.kind` | "guided-commission" | required | The quest kind. Only kind 1 exists. |
 | `$.title` | text, 1–80 characters | required | The quest's name, on the card and at the top of the quest. |
-| `$.brief` | object | required | The two-line brief shown when the quest opens. |
+| `$.brief` | object | required | A two-line summary of the whole quest. Validated, but **not shown** in the game today — the child sees each phase's own text. Write it anyway; a later screen may use it. |
 | `$.brief.worldText` | text, 1–240 characters | required | The story: who wants what, in the world's words. |
 | `$.brief.intentionText` | text, 1–160 characters | required | The same task in plain musical words. |
 | `$.prerequisites` | object | required | Who may begin it. |
@@ -823,7 +823,8 @@ never re-deals it.
 - With `setup`, the quest may not grant `room` (`setup-forbids-control`) or have a `starterSong`
   (`setup-with-starter-song`).
 - A witness may carry a `setup` instance to be checked against the rule (`witness-setup-invalid` if it
-  breaks it). This checks the instance's geometry only, not that the witness songs keep its stones;
+  breaks it). This checks the instance against the rule — the stones' geometry and, with a pool, that
+  its opening is one of the pool's, hit for hit — but not that the witness songs keep its stones;
   the shipped quests leave it out. The tests check separately that every route can still be reached
   under every opening your pool can deal (§ 7).
 
@@ -955,7 +956,9 @@ Your pull request should contain:
 
 - the one-line change to `js/quest-engine.js` made by `tools/quest-catalog.mjs write` — not
   `my-quest.json`;
-- your quest's name added to `README.md` § Current status, "Quests shipped";
+- the docs that count or name the shipped quests, brought up to date: `README.md` (the status line at
+  the top, the `QUESTS.md` row of the repository map, and § Current status, "Quests shipped") and the
+  status box at the top of `QUESTS.md` — today they all say "two quests";
 - in the description: the issue it answers, what the quest asks for in two lines, the commands you ran
   (`check`, the syntax check, the tests) and what you saw when you played it through (§ 8).
 

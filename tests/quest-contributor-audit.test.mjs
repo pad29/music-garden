@@ -167,3 +167,47 @@ test("an empty Home and trail can mean locked prerequisites with a completely he
   assert.equal(g.questHomeCard(g.QUEST_DEFINITIONS, { packages: {} }, {}, {}), null);
   assert.deepEqual(Array.from(g.questTrailModel(g.QUEST_DEFINITIONS, { packages: {} }, {}, {})), []);
 });
+
+// ---- from GPT's PR review (round 1) ----
+
+// A valid quest whose melody clause counts notes: Woods with `phrase.minimum-onsets`, and witnesses
+// thickened below each column's top note (same contour, same beats) until they have enough.
+const LADDER = [81, 79, 76, 74, 72, 69, 67, 64, 62, 60];
+const thicken = song => { const s = structuredClone(song), notes = s.tracks[0].notes, tops = new Map();
+  for (const n of notes) { const r = LADDER.indexOf(n.p); if (!tops.has(n.c) || r < tops.get(n.c)) tops.set(n.c, r); }
+  for (const [c, r0] of tops) for (let r = r0 + 1; r < LADDER.length; r++)
+    if (!notes.some(n => n.c === c && n.p === LADDER[r])) notes.push({ p: LADDER[r], c, len: 1 });
+  return s; };
+const counter = structuredClone(woods);
+counter.id = "counted-notes-probe";
+for (const p of counter.phases) for (const r of p.challenge?.routes || [])
+  r.observations[0] = { analyzerId: "phrase.minimum-onsets", params: { minimum: 0 }, descriptorId: "way-enough-notes" };
+for (const w of counter.witnesses) for (const v of Object.keys(w.songs)) w.songs[v] = thicken(w.songs[v]);
+// The highest floor every thickened witness clears — well above what a sparse completion reaches.
+const floor = Math.min(...counter.witnesses.flatMap(w => Object.values(w.songs).map(s => s.tracks[0].notes.length)));
+for (const p of counter.phases) for (const r of p.challenge?.routes || []) r.observations[0].params.minimum = floor;
+const countedCat = structuredClone(JSON.parse(readEmbedded(engine))); countedCat.definitions.push(counter);
+const withCounted = { game: [[engine.slice(at.start, at.end), JSON.stringify(canonicalText(countedCat))]], probe: counter.id };
+
+test("the route sweep accepts a valid quest whose melody clause counts notes", () => {
+  // MUTATION: build candidates only from the official quests' predicates (contour and on-beat songs),
+  // so a quest asking `phrase.minimum-onsets` above a sparse completion's count is wrongly refused.
+  assert.ok(floor >= 16, `the floor (${floor}) must exceed a sparse completion's notes`);
+  const out = audit("quest-fragments.test.mjs", routesTest, withCounted);
+  assert.equal(out.status, 0, out.output);
+});
+
+const minimumRow = '`{"minimum": N}`, N 1–64';
+for (const [label, testName, config] of [
+  ["a widened parameter range", "musical analyzers, with the metadata",
+    { guide: [[minimumRow, minimumRow.replace("1–64", "1–640")]] }],
+  ["a challenge field the engine made optional", fieldTest,
+    { game: [["witnessIds:QT.arr(QT.slug(),1,8,true) }),2,4) });", "witnessIds:QT.arr(QT.slug(),1,8,true) }),2,4) }, [\"routes\"]);"]] }],
+  ["a code that appears only after a value, in a line comment", "every error code the guide explains",
+    { guide: [["<!-- /error-codes -->", "| `never-emitted-review-code` | invented | impossible |\n<!-- /error-codes -->"]],
+      source: [["function questSemantics(def, errs){", '0//err("never-emitted-review-code", "$");\nfunction questSemantics(def, errs){']] }],
+]) test(`guide guard catches ${label}`, () => {
+  // MUTATION: substring range checks, hard-coded requiredness, or a comment regex that misses `0//`.
+  const out = audit("quest-guide.test.mjs", testName, config);
+  assert.equal(out.status, 1, out.output); assert.match(out.output, /ERR_ASSERTION/);
+});

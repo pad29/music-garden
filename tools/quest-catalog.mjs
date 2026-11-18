@@ -89,7 +89,15 @@ export function canonicalFromFile(file) {
   return canonicalText(parsed);
 }
 
-const sameFile = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+// The same file by name, or — when both exist — by identity: a symbolic or hard link named catalog.json
+// that points at the engine is the engine (found by GPT's PR review).
+function sameFile(a, b) {
+  if (path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()) return true;
+  let sa, sb;
+  try { sa = fs.statSync(a); sb = fs.statSync(b); } catch { return false; }
+  if (sa.dev === sb.dev && sa.ino === sb.ino && sa.ino !== 0) return true;
+  try { return fs.realpathSync(a).toLowerCase() === fs.realpathSync(b).toLowerCase(); } catch { return false; }
+}
 
 export function extract(file, { root = ROOT } = {}) {
   const engine = path.join(root, ENGINE_REL);
@@ -126,8 +134,8 @@ export function write(file, { root = ROOT } = {}) {
     loadsAs(verdict.ids, scratch, "the new js/quest-engine.js did not load cleanly", "js/quest-engine.js was not changed");
   } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
   const tmp = engine + ".tmp-" + process.pid;
-  fs.writeFileSync(tmp, after);
-  fs.renameSync(tmp, engine);
+  try { fs.writeFileSync(tmp, after); fs.renameSync(tmp, engine); }
+  finally { fs.rmSync(tmp, { force: true }); }          // gone after a rename; removed after a failure
   // …then the game as it now loads from disk; on any failure, thrown or reported, the original goes back.
   try { loadsAs(verdict.ids, root, "the written file did not load cleanly", "js/quest-engine.js restored"); }
   catch (e) { fs.writeFileSync(engine, before); throw e; }

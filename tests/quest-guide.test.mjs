@@ -27,7 +27,28 @@ function section(open, close) {
 // Table rows of a marked section whose first cell is backticked; cells trimmed.
 const rows = text => text.split("\n").filter(l => /^\|\s*`/.test(l))
   .map(l => l.split("|").slice(1, -1).map(c => c.trim()));
-const registry = name => rows(section(`<!-- registry:${name} -->`, "<!-- /registry -->"));
+// JavaScript source without its comments. Strings ('', "", ``) and regex literals are copied whole, so a
+// "//" inside "https://" or /\/\// is not taken for a comment. A "/" starts a regex where an operand is
+// expected — after an operator or bracket, or at the start — and is division after a value.
+function stripComments(src) {
+  let out = "", i = 0, prev = "";
+  const copyQuoted = q => { let j = i + 1; while (j < src.length && src[j] !== q) j += src[j] === "\\" ? 2 : 1; out += src.slice(i, j + 1); i = j + 1; };
+  while (i < src.length) {
+    const c = src[i], d = src[i + 1];
+    if (c === '"' || c === "'" || c === "`") { copyQuoted(c); prev = "a"; continue; }
+    if (c === "/" && d === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+    if (c === "/" && d === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; out += " "; continue; }
+    if (c === "/" && (prev === "" || /[(,=:[!&|?{};+\-*%<>~^]/.test(prev))) {
+      let j = i + 1, cls = false;
+      while (j < src.length && src[j] !== "\n" && (cls || src[j] !== "/")) { if (src[j] === "\\") j++; else if (src[j] === "[") cls = true; else if (src[j] === "]") cls = false; j++; }
+      out += src.slice(i, j + 1); i = j + 1; prev = "a"; continue;
+    }
+    out += c; i++;
+    if (!/\s/.test(c)) prev = /[\w$)\]]/.test(c) ? "a" : c;
+  }
+  return out;
+}
+const registry = name =>rows(section(`<!-- registry:${name} -->`, "<!-- /registry -->"));
 const ids = name => registry(name).map(r => ticks(r[0])[0]);
 const example = name => {
   const body = section(`<!-- example:${name} -->`, "<!-- /example -->");
@@ -84,13 +105,18 @@ test("musical analyzers, with the metadata the validator checks", () => {
     assert.deepEqual(sorted(ticks(taught)), sorted(p.taughtByPackageIds || []), at);
     assert.deepEqual(ticks(desc), [...p.allowedDescriptorIds], at);
     const s = p.parameterSchema;
+    // Every range the cell states, exactly — "1–640" must not pass for 1–64 (GPT's PR review).
+    const ranges = [...params.matchAll(/(\d+)–(\d+)/g)].map(m => `${m[1]}–${m[2]}`);
     if (s.k === "none") assert.deepEqual(ticks(params), ["{}"], at);
     else if (s.k === "snapshot") assert.ok(params.includes('"snapshotVersionId": "A"'), at);
     else if (s.k === "enum-set") {
-      assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
+      assert.ok(params.includes(`"${s.field}"`), at);
+      assert.deepEqual(ranges, [`${s.min}–${s.max}`], at);
       assert.deepEqual(sorted(ticks(params).filter(x => !x.startsWith("{"))), sorted(s.values), at);
-    } else if (s.k === "minimum") assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
-    else assert.fail(`${at}: a parameter schema the guide does not describe: ${s.k}`);
+    } else if (s.k === "minimum") {
+      assert.ok(params.includes(`"${s.field}"`), at);
+      assert.deepEqual(ranges, [`${s.min}–${s.max}`], at);
+    } else assert.fail(`${at}: a parameter schema the guide does not describe: ${s.k}`);
   }
 });
 
@@ -135,13 +161,29 @@ test("the pentatonic ladder the guide quotes is the palette's", () => {
 
 test("every error code the guide explains is one the loader can report", () => {
   // The universe is read from the engine's own sources: every code literal handed to an error path.
-  // Comments removed first: an example in a comment is not a code the loader can report (GPT's tester).
-  const src = joinScripts(gameScripts(ROOT).scripts).replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n").map(l => l.replace(/(^|[\s;{}(),])\/\/.*$/, "$1")).join("\n");
+  // Comments removed first: an example in a comment is not a code the loader can report (GPT's tester
+  // and PR review — a regex missed `0//err(…)`, so this scans, skipping strings and regex literals).
+  const src = stripComments(joinScripts(gameScripts(ROOT).scripts));
   const emitted = new Set([...src.matchAll(/\b(?:err|bad|no|QuestLoadError)\(\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])
     .concat([...src.matchAll(/\bcode:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1]))
     .concat([...src.matchAll(/errs\.push\(\{\s*code:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])));
   const documented = rows(section("<!-- error-codes -->", "<!-- /error-codes -->")).flatMap(r => ticks(r[0]));
   assert.ok(documented.length > 30);
   for (const code of documented) assert.ok(emitted.has(code), code);
+});
+
+test("the comment scanner removes comments and nothing else", () => {
+  // MUTATION: treat "//" inside a string or regex as a comment, or miss a comment right after a value.
+  const cases = [
+    ['a = 1; // err("x")', "a = 1; "],
+    ['0//err("never-emitted")', "0"],
+    ['u = "https://x"; // c', 'u = "https://x"; '],
+    ["t = `a // b`;", "t = `a // b`;"],
+    [String.raw`ok = /\/\//.test(s); // c`, String.raw`ok = /\/\//.test(s); `],
+    ["r = /[/]x/i;", "r = /[/]x/i;"],
+    ["q = a / b / c;", "q = a / b / c;"],
+    ["x = 1 /* err(\"y\") */ + 2;", "x = 1   + 2;"],
+    ['s = "say \\"//\\" ok";', 's = "say \\"//\\" ok";'],
+  ];
+  for (const [input, want] of cases) assert.equal(stripComments(input), want, input);
 });

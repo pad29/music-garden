@@ -300,6 +300,16 @@ test("every shipped route has ready playable songs preserving every opening", ()
     // An independent on-beat candidate, kept AFTER contour deduplication: equal contours need not
     // cover equal beats. The checks below still execute readiness and the complete route conjunction.
     distinct.push(withBeatNotes(g.questSetupCompletion(d,inst)));
+    // Dense twins: every cell below each column's top note filled. The top notes (so the contour), the
+    // beats and the stones are unchanged, so these reach routes that count notes — a valid quest asking
+    // `phrase.minimum-onsets` 24 had no candidate (GPT's PR review). Readiness is still asserted below.
+    for(const m of [...distinct]) {
+      const s=clone(m),notes=s.tracks[0].notes,tops=new Map();
+      for(const n of notes){ const r=ladder.indexOf(n.p); if(!tops.has(n.c)||r<tops.get(n.c))tops.set(n.c,r); }
+      for(const [c,r0] of tops)for(let r=r0+1;r<ladder.length;r++)
+        if(!notes.some(n=>n.c===c&&n.p===ladder[r]))notes.push({p:ladder[r],c,len:1});
+      distinct.push(s);
+    }
     const candidates=distinct.flatMap(m=>g.questFragmentProbes(d,hits||[]).map(dr=>{
       const s=clone(m);s.tracks[1]=clone(dr.tracks[1]);const ev=analyze(s);
       assert.deepEqual(g.QUEST_READINESS.waypoints.missing(d,inst,ev),[]);

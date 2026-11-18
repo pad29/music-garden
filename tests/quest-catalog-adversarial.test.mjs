@@ -165,3 +165,56 @@ test("a thrown reload also leaves the original engine instead of installing the 
   assert.throws(() => write(f.json, f), /reload-probe-exception/);
   assert.ok(fs.readFileSync(f.engine).equals(before), "failed candidate must not remain installed");
 });
+
+// ---- from GPT's PR review (round 1) ----
+
+test("extract refuses a hard link or symbolic link that is the engine under another name", t => {
+  // MUTATION: compare path strings only, so a link named catalog.json overwrites the engine with JSON.
+  const f = fixture(t), before = fs.readFileSync(f.engine);
+  const hard = path.join(f.root, "hard.json");
+  fs.linkSync(f.engine, hard);
+  assert.throws(() => extract(hard, f), /refusing to overwrite/);
+  assert.throws(() => write(hard, f), /quest-engine\.js itself/);
+  const soft = path.join(f.root, "soft.json");
+  try { fs.symlinkSync(f.engine, soft); }
+  catch (e) { if (e.code === "EPERM") { t.diagnostic("symlinks not permitted here; hard link only"); assert.ok(fs.readFileSync(f.engine).equals(before)); return; } throw e; }
+  assert.throws(() => extract(soft, f), /refusing to overwrite/);
+  assert.ok(fs.readFileSync(f.engine).equals(before));
+});
+
+// The tool imports the same `node:fs` object, so a patched method reaches it; always put back.
+function patched(t, name, impl) { const real = fs[name]; fs[name] = impl(real); t.after(() => { fs[name] = real; }); }
+const tmpLeft = f => fs.readdirSync(path.dirname(f.engine)).filter(n => n.includes(".tmp-"));
+
+for (const [label, method] of [["a failing temporary write", "writeFileSync"], ["a failing rename", "renameSync"]])
+  test(`${label} leaves the engine untouched and no temporary file behind`, t => {
+    // MUTATION: write the temporary file outside a cleanup block.
+    const f = fixture(t), before = fs.readFileSync(f.engine);
+    f.catalog.definitions[1].title = "Changed title"; f.save();
+    patched(t, method, real => function (target, ...rest) {
+      if (String(target).includes(".tmp-")) {
+        if (method === "writeFileSync") real.call(fs, target, "partial");   // a write that dies part-way
+        throw Object.assign(new Error("injected " + method), { code: "EIO" });
+      }
+      return real.call(fs, target, ...rest);
+    });
+    assert.throws(() => write(f.json, f), /injected/);
+    assert.ok(fs.readFileSync(f.engine).equals(before));
+    assert.deepEqual(tmpLeft(f), []);
+  });
+
+for (const [label, fault, expect] of [
+  ["reports catalog errors", 'loadQuestCatalog = function(){ QUEST_CATALOG_ERRORS=[{code:"post-install-probe",path:"$"}]; QUEST_DEFINITIONS={}; };', /did not load cleanly.*restored/],
+  ["throws", 'throw new Error("post-install-probe");', /post-install-probe[\s\S]*restored/],
+]) test(`a reload that ${label} only after installing puts the original engine back`, t => {
+  // MUTATION: drop the rollback around the post-install reload (the candidate copy loaded cleanly).
+  const f = fixture(t), before = fs.readFileSync(f.engine);
+  f.catalog.definitions[1].title = "Changed title"; f.save();
+  patched(t, "renameSync", real => function (from, to) {
+    real.call(fs, from, to);
+    if (path.resolve(to) === path.resolve(f.engine)) fs.appendFileSync(to, "\n" + fault + "\n");
+  });
+  assert.throws(() => write(f.json, f), expect);
+  assert.ok(fs.readFileSync(f.engine).equals(before), "the original bytes are back");
+  assert.deepEqual(tmpLeft(f), []);
+});

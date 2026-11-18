@@ -480,3 +480,72 @@ in-memory mutations, name their mutations, and never write the checkout.
 
 **958/958 tests pass, 0 TODO**; syntax check passes. Not verified: rendering beyond the playthrough
 above, `file://`, a phone, sound; the guide's console tips.
+
+## PR review (temporarily GPT through `ask.sh`, design-reviewer brief)
+
+### Round 1 — on `4a548ce`: CHANGES REQUESTED
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. Required changes
+
+1. **High — `extract` can overwrite the engine through a filesystem alias.** [tools/quest-catalog.mjs:92](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tools/quest-catalog.mjs:92) compares normalized path strings only. A symlink or hard link named `catalog.json` pointing to `js/quest-engine.js` bypasses the guard; line 98 follows it and replaces the entire engine with JSON. Check filesystem identity before overwriting an existing destination.
+
+2. **Medium — failed installation leaves temporary files.** [tools/quest-catalog.mjs:128](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tools/quest-catalog.mjs:128) writes the adjacent temporary file and renames it outside any cleanup block. A rename failure leaves `.tmp-<pid>` behind; a partial write failure can do likewise. Put temporary-file creation and replacement under exception-safe cleanup. The scratch-directory cleanup does not cover this file.
+
+3. **Medium — the generalized route test rejects valid contributor quests.** [tests/quest-fragments.test.mjs:299](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-fragments.test.mjs:299) deduplicates candidates by contour and adds only an on-beat candidate. I reproduced rejection of a third Woods-derived quest using `phrase.minimum-onsets`, minimum 24, with valid witnesses. Catalog validation passes, and independently constructed songs satisfy all **30 route/opening combinations**, but this test fails at line 314. Generate candidates covering the registered analyzer parameters while retaining the independent readiness and complete-conjunction assertions.
+
+4. **Medium — the guide drift guard still accepts incorrect documentation.** Three in-memory probes passed:
+   - Changing the documented minimum range from `1–64` to `1–640`: [tests/quest-guide.test.mjs:92](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:92) checks a substring.
+   - Making `challenge.routes` optional while leaving it documented as required: [tests/helpers/quest-guide-fields.mjs:62](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/helpers/quest-guide-fields.mjs:62) hardcodes requiredness.
+   - Documenting an invented error appearing only in `0//err("not-emitted-review-code", "$")`: [tests/quest-guide.test.mjs:139](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:139) fails to strip that valid line comment.
+
+   Compare parameter bounds exactly, derive challenge optionality from its schema, and exclude comments reliably. The recorded comment-scanning fix is incomplete.
+
+5. **Low — correct two factual guide claims.** [MAKING-QUESTS.md:314](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:314) says `brief` is displayed when opening a quest, but the shell displays phase text (`js/quest-shell.js:147`); `brief` is currently validated but unused by the UI. [MAKING-QUESTS.md:826](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:826) says witness setup validation checks geometry only, but `validateInstance` also checks the opening’s index and exact hits. Describe both accurately.
+
+6. **Low — complete the contributor PR documentation checklist.** [MAKING-QUESTS.md:954](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:954) requests only adding the quest’s name to README’s shipped list. Following that leaves “two quests” claims in README, QUESTS, and this guide stale. Require reconciliation of affected counts and descriptions, consistent with `CLAUDE.md` § Docs.
+
+2. Missing tests
+
+- **`tests/quest-catalog-adversarial.test.mjs`:** extract through symlink and hard-link aliases of the engine; assert refusal and byte-identical engine contents. Catches lexical-only collision checks.
+- **`tests/quest-catalog-adversarial.test.mjs`:** inject partial temporary-write and rename failures; assert unchanged engine bytes and no adjacent temporary file. Catches missing cleanup.
+- **`tests/quest-catalog-adversarial.test.mjs`:** fail only the **post-install** reload, separately by returned errors and an exception; assert exact restoration and CLI exit 1. Existing reload tests fail during candidate validation and do not exercise rollback.
+- **`tests/quest-contributor-audit.test.mjs`:** install the valid minimum-24 third quest in memory and require the route sweep to pass. Catches candidate construction limited to the official quests’ predicates.
+- **`tests/quest-contributor-audit.test.mjs`:** add separate mutations for the three drift-guard failures above; require each to fail its intended assertion.
+
+Syntax checks, 121 focused quest tests, and the full **472-mutation audit across 146 green tests** passed. Full-suite verification was blocked by sandbox `EPERM` failures creating temporary directories. No files were changed.
+
+3. Verdict
+
+CHANGES REQUESTED 4a548cee856aa80c13c32ed9daa69f413cdff29a
+
+</details>
+
+All agreed; each re-checked first.
+
+1. **High — `extract` could overwrite the engine through a link.** **Agreed.** `sameFile` now compares
+   identity (device + inode, then real path) when both exist; refuses hard links and symlinks.
+2. **Medium — a failed install could leave `.tmp-<pid>`.** **Agreed.** Write-and-rename sit in a
+   `finally` that removes the temporary file.
+3. **Medium — the route sweep refused a valid note-counting quest.** **Agreed** — the candidates were
+   built from the official quests' ideas. Every candidate now has a dense twin (cells below each
+   column's top note filled: contour, beats and stones unchanged), with readiness and the full route
+   conjunction still asserted on every candidate.
+4. **Medium — three drift-guard gaps.** **Agreed**: ranges compared exactly; `phase.`/`challenge.`
+   requiredness read from the schemas; comments removed by a scanner that skips strings and regex
+   literals (my regex fix in the test pass was incomplete, as GPT said), with its own unit test.
+5. **Low — two false guide claims.** **Agreed** (`brief` appears nowhere outside the catalog;
+   `validateInstance` also checks the opening). Both corrected.
+6. **Low — the contributor's doc checklist.** **Agreed.** § 11 lists every place that counts the shipped
+   quests; § 1 no longer says "two" as a present fact.
+
+**Missing tests — all added:** extract/write through a hard link (and a symlink, skipped where Windows
+refuses one); a failing temporary write and a failing rename (no temp file left, engine untouched); a
+post-install reload that reports errors and one that throws (original bytes back) — by patching the
+`node:fs` object the tool shares, not the CLI, whose exit 1 on refusal other tests cover; a valid
+`phrase.minimum-onsets` third quest passing the route sweep; the three drift-guard mutations. Each was
+seen to fail against its mutation: no identity check (1 failure), no temp cleanup (2), no rollback (2),
+no dense twins (the counted-notes audit fails).
+
+**968/968 pass**; quest mutation audit: 472 caught across 146 green tests.

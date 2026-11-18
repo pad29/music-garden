@@ -54,12 +54,15 @@ export function questFields(g) {
     walk(top.shape[key], "$." + key, out, named, top.optional.includes(key));
   // The witness songs and starter song are v3 songs, opaque to the grammar; the guide names them.
   const common = g.QUEST_PHASE_COMMON;
-  for (const key of Object.keys(common)) walk(common[key], "phase." + key, out, named, false);
+  // A common field is optional only if every phase type says so — read from the shapes, never assumed.
+  const shapes = Object.values(g.QUEST_PHASE_SHAPES);
+  for (const key of Object.keys(common))
+    walk(common[key], "phase." + key, out, named, shapes.every(sh => sh.optional.includes(key)));
   for (const [type, shape] of Object.entries(g.QUEST_PHASE_SHAPES))
     for (const key of Object.keys(shape.shape))
       if (!(key in common)) walk(shape.shape[key], `${type}.${key}`, out, named, shape.optional.includes(key));
   for (const key of Object.keys(g.QUEST_CHALLENGE.shape))
-    walk(g.QUEST_CHALLENGE.shape[key], "challenge." + key, out, named, false);
+    walk(g.QUEST_CHALLENGE.shape[key], "challenge." + key, out, named, g.QUEST_CHALLENGE.optional.includes(key));
   const proc = g.QUEST_PROCEDURE;
   for (const key of Object.keys(proc.shape)) walk(proc.shape[key], "procedure." + key, out, named, proc.optional.includes(key));
   const rule = g.QUEST_SETUP_KINDS.waypoints.parameterSchema;
