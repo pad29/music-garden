@@ -446,18 +446,22 @@ test("two quests share one surface: one card, and the other on the trail", () =>
   const done = ids => ({ packages: Object.fromEntries(ids.map(id => [id, { completed: true }])) });
   const all = done(["intro", "footsteps", "follow-the-fireflies"]);
   const none = Object.create(null);
-  const card = g.questHomeCard(g.QUEST_DEFINITIONS, all, none, none);
+  // The two official quests, as an explicit fixture: a contributor's quest in the shipped catalog must
+  // not change which of THESE two is the invitation.
+  const defs = Object.assign(Object.create(null),
+    { "firefly-crossing": g.QUEST_DEFINITIONS["firefly-crossing"], "waking-woods": g.QUEST_DEFINITIONS["waking-woods"] });
+  const card = g.questHomeCard(defs, all, none, none);
   assert.strictEqual(card.questId, "firefly-crossing", "the lower priority number is the invitation");
   assert.strictEqual(card.icon, "✨", "the theme reaches the card");
 
-  const trail = g.questTrailModel(g.QUEST_DEFINITIONS, all, none, none);
+  const trail = g.questTrailModel(defs, all, none, none);
   assert.deepEqual(trail.map(r => r.questId).sort(), ["firefly-crossing", "waking-woods"]);
   assert.deepEqual(trail.filter(r => !r.surfaced).map(r => r.questId), ["waking-woods"],
     "the card's quest is not repeated below it");
   assert.strictEqual(trail.find(r => r.questId === "waking-woods").icon, "🌲");
 
   // eligibility is still an AND over that quest's OWN prerequisites
-  const woodsOnly = g.questTrailModel(g.QUEST_DEFINITIONS, done(["intro", "footsteps"]), none, none);
+  const woodsOnly = g.questTrailModel(defs, done(["intro", "footsteps"]), none, none);
   assert.deepEqual(woodsOnly.map(r => r.questId), ["waking-woods"],
     "the Firefly needs a package this profile has not finished");
 });

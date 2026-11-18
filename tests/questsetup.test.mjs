@@ -133,14 +133,24 @@ test("shipped deals are repeatable, varied, versioned and valid across 512 seeds
   // MUTATION: ignore the injected RNG, fix the seed, omit generatorVersion, or mutate the rule.
   const g = fresh();
   assert.deepEqual(g.QUEST_CATALOG_ERRORS, []);
-  assert.deepEqual(Object.keys(g.QUEST_DEFINITIONS).sort(), ["firefly-crossing", "waking-woods"]);
-  for (const def of Object.values(g.QUEST_DEFINITIONS)) {
+  // The two official quests' rules, pinned by id: their content, reviewed and playtested.
+  for (const id of ["firefly-crossing", "waking-woods"]) {
+    const def = g.QUEST_DEFINITIONS[id];
+    assert.ok(def, id);
     assert.strictEqual(def.v, 3);
     assert.strictEqual(def.workspace.columns, 16);
     const {fragments, ...geometry}=def.setup;
     assert.deepEqual(geometry, RULE); assert.strictEqual(fragments.length, 6);
+  }
+  // …and the dealer's promises, for EVERY shipped quest that deals a task, each under its own rule —
+  // so a contributor's quest is held to them without anyone editing this test.
+  const dealt = Object.values(g.QUEST_DEFINITIONS).filter(def => def.setup !== undefined);
+  assert.ok(dealt.length >= 2, "the sweep must not run over nothing");
+  for (const def of dealt) {
     const before = clone(def), positions = new Set(), columns = new Set();
-    const k = g.QUEST_SETUP_KINDS.waypoints;
+    const k = g.QUEST_SETUP_KINDS[def.setup.kind];
+    // A legal rule may leave no spare column; it cannot vary what it has no room to move.
+    const roomy = k.bounds(def.setup, def).slack > 0;
     for (let i = 0; i < 512; i++) {
       const seed = "shipped-" + i;
       const a = k.generate(def.setup, def, g.questRng(seed));
@@ -155,8 +165,10 @@ test("shipped deals are repeatable, varied, versioned and valid across 512 seeds
       positions.add(JSON.stringify(a.waypoints));
       columns.add(JSON.stringify(a.waypoints.map(p => p.col)));
     }
-    assert.ok(positions.size > 1, "new seeds must change the deal");
-    assert.ok(columns.size > 1, "changing only rows is not varying landmark columns");
+    if (roomy) {
+      assert.ok(positions.size > 1, "new seeds must change the deal");
+      assert.ok(columns.size > 1, "changing only rows is not varying landmark columns");
+    }
     assert.deepEqual(def, before);
   }
 });

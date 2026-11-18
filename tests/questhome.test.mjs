@@ -14,7 +14,13 @@ import assert from "node:assert";
 import { loadQuestGame as loadGame, completeDealtSong, continueQuest } from "./helpers/quest-fixtures.mjs";
 
 const g = loadGame();
-const DEFS = g.QUEST_DEFINITIONS;
+// The two official quests as an explicit fixture: Home's logic takes the definitions as an argument, so
+// these tests say exactly which quests they reason about — and a contributor's quest in the shipped
+// catalog (MAKING-QUESTS.md) cannot change their answers. Ties and extra quests have their own tests.
+const OFFICIAL = ["firefly-crossing", "waking-woods"];
+const DEFS = Object.freeze(Object.assign(Object.create(null),
+  Object.fromEntries(OFFICIAL.map(id => [id, g.QUEST_DEFINITIONS[id]]))));
+for (const id of OFFICIAL) assert.ok(DEFS[id], id);
 const FIREFLY = DEFS["firefly-crossing"];
 const PREREQS = FIREFLY.prerequisites.earnedByPackageIds;
 
@@ -38,7 +44,7 @@ const run = (over = {}) => ({ runId: "r1", questId: "firefly-crossing", definiti
   setup: JSON.parse(JSON.stringify(DEALT)),
   status: "active", phase: 0, draft: "A", selection: null, versions: {}, updatedAt: 10, ...over });
 const rows = (progress, runs = {}, hist = {}) => g.questEligibility(DEFS, progress, runs, hist);
-const one = (progress, runs = {}, hist = {}) => rows(progress, runs, hist)[0];
+const one = (progress, runs = {}, hist = {}) => rows(progress, runs, hist).find(r => r.questId === "firefly-crossing");
 
 // ============================ eligibility ============================
 
@@ -264,4 +270,40 @@ test("starting a new version writes a new song, never over the old one", t => {
     "the first offering must survive the second");
   const ids = g2.getSaves().map(s => s.meta.localId);
   assert.strictEqual(new Set(ids).size, 2, "two runs, two artifact ids");
+});
+
+// ============================ more than two quests (TUN-105) ============================
+// A contributor can add a quest as data (MAKING-QUESTS.md). What Home does with a third one is decided
+// by `presentation.priority` and, on a tie, the quest id — never by the order definitions were written.
+
+test("a fresh invitation goes to the lowest priority, and a tie to the quest id, in any order", () => {
+  // MUTATION: pick the first eligible quest in insertion order, or break a tie on something else.
+  const twin = (id, priority) => Object.assign(JSON.parse(JSON.stringify(FIREFLY)), { id },
+    { presentation: Object.assign({}, FIREFLY.presentation, { priority }) });
+  const defsOf = list => Object.assign(Object.create(null), Object.fromEntries(list.map(d => [d.id, d])));
+  for (const order of [["b-twin", "a-twin"], ["a-twin", "b-twin"]]) {
+    const tied = defsOf(order.map(id => twin(id, 5)));
+    assert.strictEqual(g.surfaceQuest(tied, ALL_DONE, {}, {}).questId, "a-twin", order.join(","));
+    const ranked = defsOf(order.map(id => twin(id, id === "b-twin" ? 4 : 5)));
+    assert.strictEqual(g.surfaceQuest(ranked, ALL_DONE, {}, {}).questId, "b-twin", order.join(","));
+  }
+});
+
+test("🗝️ Unlock quests completes every shipped quest's prerequisites, an added quest's included", () => {
+  // MUTATION: unlock a fixed list of packages, or only the first quest's prerequisites.
+  const button = { onclick: null };
+  const g2 = loadGame({ setup: w => { w.location.search = "?dev"; }, elements: { devquestunlock: button } });
+  const extra = JSON.parse(JSON.stringify(g2.QUEST_DEFINITIONS["waking-woods"]));
+  extra.id = "a-contributed-quest";
+  extra.prerequisites.earnedByPackageIds = ["intro", "footsteps", "stepping-stones"];
+  const cat = JSON.parse(g2.BUILTIN_QUEST_CATALOG_JSON); cat.definitions.push(extra);
+  g2.loadQuestCatalog(JSON.stringify(cat), "official");
+  assert.deepEqual([...g2.QUEST_CATALOG_ERRORS], []);
+  assert.strictEqual(typeof button.onclick, "function", "?dev must wire the button");
+  assert.notStrictEqual(g2.progress.packages["stepping-stones"]?.completed, true);
+  button.onclick();
+  assert.strictEqual(g2.progress.packages["stepping-stones"].completed, true);
+  const rows2 = g2.questEligibility(g2.QUEST_DEFINITIONS, g2.progress, {}, {});
+  assert.strictEqual(rows2.length, JSON.parse(g2.BUILTIN_QUEST_CATALOG_JSON).definitions.length + 1);
+  for (const row of rows2) assert.strictEqual(row.eligible, true, row.questId);
 });

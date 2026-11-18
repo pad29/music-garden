@@ -7,6 +7,11 @@ import { withBeatNotes } from "./helpers/quest-h-fixtures.mjs";
 
 const fresh = () => loadGame({fresh:true});
 const defOf = g => clone(g.QUEST_DEFINITIONS["firefly-crossing"]);
+// The two official quests: their pools and rules are content, pinned by id. Every other assertion runs
+// over whatever ships, each quest under its own rule, so a contributor's quest is proved without anyone
+// editing this file (TUN-105).
+const OFFICIAL = ["firefly-crossing","waking-woods"];
+const shipsOfficial = g => { for(const id of OFFICIAL) assert.ok(g.QUEST_DEFINITIONS[id],id); };
 const pool = [ [[0,0],[1,2]], [[0,0],[1,3]], [[1,1],[1,2]], [[0,0],[2,1]],
   [[2,0],[2,1],[1,3]], [[0,0],[2,2],[2,3]] ].map(f=>f.map(([lane,c])=>({lane,c})));
 const codes = xs => Array.from(xs,x=>x.code).sort();
@@ -46,7 +51,7 @@ test("every legal short fragment is proved against every shipped drum observatio
   // MUTATIONS: skip later fragments/routes/observations, accept off-grid kicks, or hard-code quest ids.
   // Enumerate all 2/3-hit subsets of the twelve pads, independently of the production probe builder.
   const g=fresh(), pads=Array.from({length:12},(_,i)=>({lane:Math.floor(i/4),c:i%4}));
-  assert.strictEqual(Object.keys(g.QUEST_DEFINITIONS).length,2);
+  shipsOfficial(g);
   const fragments=[];
   for(let a=0;a<12;a++)for(let b=a+1;b<12;b++) {
     fragments.push([pads[a],pads[b]]);
@@ -55,6 +60,8 @@ test("every legal short fragment is proved against every shipped drum observatio
   let checks=0;
   for(const original of Object.values(g.QUEST_DEFINITIONS))for(const width of [16,17,32,64]) {
     const d=clone(original);d.id="renamed-proof";d.workspace.columns=width;
+    // An off-beat kick blocks a clean main beat — so only a quest that asks for one can be blocked by it.
+    const asksMain=d.phases.some(p=>(p.challenge?.routes||[]).some(r=>r.observations.some(o=>o.analyzerId==="pulse.kick-on-main-beats")));
     for(const fragment of fragments.filter(f=>new Set(f.map(h=>h.c)).size>1)) {
       const evs=[[0,4],[0,2],[2,2]].map(([lane,step])=>g.songEvidence(song(g,d,union(fragment,beat(lane,step,width)))));
       const expected=[];
@@ -67,10 +74,11 @@ test("every legal short fragment is proved against every shipped drum observatio
       }
       assert.deepEqual(g.questFragmentBlocks(d,{...d.setup,fragments:[pool[0],fragment]}),expected);
       const mainBlocked=expected.some(x=>x.analyzerId==="pulse.kick-on-main-beats");
-      assert.strictEqual(mainBlocked,fragment.some(h=>h.lane===0 && h.c!==0));
+      assert.strictEqual(mainBlocked,asksMain && fragment.some(h=>h.lane===0 && h.c!==0));
       checks++;
     }
   }
+  assert.ok(checks>0);
   t.diagnostic(`${checks} fragment/quest/width cases, including all ordered snapshot pairs`);
 });
 
@@ -129,9 +137,12 @@ test("fragment proof rejects invalid and unready probes and checks every pool en
 test("fragment draw is last and never moves stones for any pool length", () => {
   // MUTATIONS: consume an early draw, fix the fragment index, alias the pool, or omit the opening.
   const g=fresh(), k=g.QUEST_SETUP_KINDS.waypoints;
-  assert.strictEqual(Object.keys(g.QUEST_DEFINITIONS).length,2);
-  for(const d of Object.values(g.QUEST_DEFINITIONS)) {
-    assert.deepEqual(d.setup.fragments,pool);assert.strictEqual(d.v,3);
+  shipsOfficial(g);
+  for(const id of OFFICIAL){ const d=g.QUEST_DEFINITIONS[id]; assert.deepEqual(d.setup.fragments,pool);assert.strictEqual(d.v,3); }
+  // The draw itself, under every dealing quest's own geometry, with this test's pool of known length.
+  const dealing=Object.values(g.QUEST_DEFINITIONS).filter(d=>d.setup?.kind==="waypoints");
+  assert.ok(dealing.length>=OFFICIAL.length);
+  for(const d of dealing) {
     const plain=clone(d.setup);delete plain.fragments;
     const seen=new Set();
     for(let seed=0;seed<128;seed++)for(const size of [1,2,6,12]) {
@@ -263,10 +274,15 @@ test("every shipped route has ready playable songs preserving every opening", ()
   // MUTATION: canonical probe deletes an opening, misbuilds a pulse, or leaves a route unreachable.
   // Prove the complete conjunction on songs, not each drum observation in isolation.
   const g=fresh(),k=g.QUEST_SETUP_KINDS.waypoints,analyze=g.songEvidence;
-  assert.strictEqual(Object.keys(g.QUEST_DEFINITIONS).length,2);
-  for(const original of Object.values(g.QUEST_DEFINITIONS))for(let index=0;index<6;index++) {
+  shipsOfficial(g);
+  // Each quest's OWN openings — or, for a rule that deals none, no opening at all.
+  const cases=Object.values(g.QUEST_DEFINITIONS).filter(d=>d.setup?.kind==="waypoints")
+    .flatMap(d=>(d.setup.fragments||[null]).map((hits,index)=>({original:d,index,hits})));
+  assert.ok(cases.length>=12);
+  for(const {original,index,hits} of cases) {
     const d=clone(original);d.id="renamed-playable";
-    const inst=k.generate(d.setup,d,g.questRng("fixture-4"));inst.fragment={index,hits:clone(pool[index])};
+    const inst=k.generate(d.setup,d,g.questRng("fixture-4"));
+    if(hits)inst.fragment={index,hits:clone(hits)};else delete inst.fragment;
     const melodies=[];
     g.songEvidence=s=>{melodies.push(clone(s));return analyze(s);};
     g.questSetupReachableFamilies(d,inst);g.songEvidence=analyze;
@@ -284,7 +300,7 @@ test("every shipped route has ready playable songs preserving every opening", ()
     // An independent on-beat candidate, kept AFTER contour deduplication: equal contours need not
     // cover equal beats. The checks below still execute readiness and the complete route conjunction.
     distinct.push(withBeatNotes(g.questSetupCompletion(d,inst)));
-    const candidates=distinct.flatMap(m=>g.questFragmentProbes(d,pool[index]).map(dr=>{
+    const candidates=distinct.flatMap(m=>g.questFragmentProbes(d,hits||[]).map(dr=>{
       const s=clone(m);s.tracks[1]=clone(dr.tracks[1]);const ev=analyze(s);
       assert.deepEqual(g.QUEST_READINESS.waypoints.missing(d,inst,ev),[]);
       assert.strictEqual(g.questWorkspaceMismatch(s,d),null);
@@ -297,7 +313,7 @@ test("every shipped route has ready playable songs preserving every opening", ()
       }
       assert.ok(witness,`${original.id}/${index}/${route.id}`);
       const {a,b}=witness;
-      const r=g.newQuestRun({runId:"route",questId:d.id,definitionVersion:d.v,setup:inst,song:a.s,span:{start:0,end:16},at:0});
+      const r=g.newQuestRun({runId:"route",questId:d.id,definitionVersion:d.v,setup:inst,song:a.s,span:{start:0,end:d.workspace.columns},at:0});
       r.phase=phase;r.draft=phase?"B":"A";r.versions.B={...clone(r.versions.A),song:b.s};
       const ev=g.evaluateQuest(d,{versions:{A:a.ev,B:b.ev}},r);
       assert.strictEqual(ev.ok,true);assert.strictEqual(ev.readiness.ok,true);
