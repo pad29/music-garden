@@ -187,6 +187,7 @@ test("mutation: a `- name: |` or `>` block scalar cannot swallow its step's othe
     unsafe(swap("      - run: echo hello\n", unpinned, OTHER), "not pinned");
     const leaky = `      - name: ${style}\n          Again\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n`;
     unsafe(swap("      - run: echo hello\n", leaky, OTHER), "keeps the token");
+    catches(swap("      - name: Syntax check\n", leaky + "      - name: Syntax check\n"), "keeps the token");
   }
   const { doc } = parseWorkflow(swap("      - run: echo hello\n", "      - name: |\n          Two\n          lines\n        run: echo hi\n", OTHER));
   const step = doc.jobs.other.steps[1];
@@ -245,4 +246,12 @@ test("mutation: another workflow with unrestricted permissions, or on a self-hos
 test("a package manager's name in a workflow or step name is not an install", () => {
   assert.deepEqual(workflowProblems(swap("name: Checks\n", "name: Checks without npm\n")), []);
   assert.deepEqual(workflowProblems(swap("      - name: Tests\n", "      - name: Tests (no npm, no pip)\n")), []);
+});
+
+test("mutation: a checkout spelled in another case is still a checkout", () => {
+  // PR review 3, finding 1: GitHub reads `Actions/Checkout` as actions/checkout, which keeps the token.
+  const mixed = "Actions/Checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+  unsafe(swap("          persist-credentials: false\n", "          fetch-depth: 1\n", OTHER).replace("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", mixed), "keeps the token");
+  unsafe(swap("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          persist-credentials: false\n", mixed + "\n", OTHER), "keeps the token");
+  catches(swap("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", mixed).replace("          persist-credentials: false\n", "          fetch-depth: 1\n"), "keeps the token");
 });

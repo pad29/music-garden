@@ -196,7 +196,7 @@ export function safetyProblems(text) {
       else if (!u.startsWith("./") && !SHA_PIN.test(u)) out.push(`action not pinned to a commit: ${u}`);
     }
     for (const s of steps) {
-      if (isMap(s) && typeof s.uses === "string" && /^actions\/checkout@/.test(s.uses)
+      if (isMap(s) && typeof s.uses === "string" && /^actions\/checkout@/i.test(s.uses)
         && !(isMap(s.with) && s.with["persist-credentials"] === "false")) {
         out.push(`job ${id}: a checkout keeps the token in .git/config (no persist-credentials: false)`);
       }
@@ -222,7 +222,8 @@ export function nodeMeetsFloor(v) {
 }
 
 export const COMMANDS = ["node tools/check-syntax.mjs", 'node --test "tests/*.test.mjs"'];
-const CHECKOUT = /^actions\/checkout@/, SETUP_NODE = /^actions\/setup-node@/;
+// Case-insensitive, as GitHub reads owner and repository names (PR review 3, finding 1).
+const CHECKOUT = /^actions\/checkout@/i, SETUP_NODE = /^actions\/setup-node@/i;
 
 /** Everything wrong with checks.yml: the safety rules, plus what it must run, when, and how. */
 export function workflowProblems(text) {

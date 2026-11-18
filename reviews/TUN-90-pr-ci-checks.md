@@ -194,3 +194,40 @@ Missing tests: every case listed was added, 24 tests, up from 16:
 
 `secrets['DEPLOY']` (round 1's case) is now reported as an unreadable expression, not as a secret. It
 is still rejected; the test's expected message changed.
+
+### Round 3 — head `e46fe8d` — changes requested (two Low)
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes required**
+
+The eight round-2 bypasses are rejected, and the real `checks.yml` passes. Two low-severity issues remain.
+
+1. **Low — [tests/helpers/ci-workflow.mjs:199](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/helpers/ci-workflow.mjs:199): checkout recognition is case-sensitive.** In `OTHER`, change `actions/checkout@…` to `Actions/Checkout@…` and remove its `with:` block: `safetyProblems()` returns `[]`. GitHub repository names are [case-insensitive](https://docs.github.com/en/rest/repos/repos#get-a-repository), and this checkout defaults to [persisting credentials](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/action.yml). Match the checkout repository case-insensitively or explicitly reject alternate casing. This affects additional workflows; `checks.yml`’s action allowlist rejects it.
+
+2. **Low — [tests/ci-workflow.test.mjs:188](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/tests/ci-workflow.test.mjs:188): one explicitly requested regression case remains missing.** The unprotected checkout following `- name: |` or `>` is tested only against `OTHER`. Add both variants against `REAL`, asserting the credential-protection diagnostic. They are rejected manually, but the [review record’s claim that both fixtures cover them](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-37/reviews/TUN-90-pr-ci-checks.md:181) is currently false.
+
+**Missing tests**
+
+- Additional workflow: pinned `Actions/Checkout` without `persist-credentials: false` must be rejected.
+- Real workflow: unprotected pinned checkout following each of `- name: |` and `- name: >` must report missing credential protection.
+
+Verification: syntax, all 24 guard tests, and diff whitespace checks passed. Mutations ran in memory; no files changed. Full suite not repeated. Live CI results remain unverified: GitHub CLI configuration access was denied, and web retrieval failed.
+
+</details>
+
+**My answers** — I agreed with both:
+
+1. **Low — checkout recognized case-sensitively. Agreed.** `actions/checkout` and `actions/setup-node`
+   are now matched case-insensitively, as GitHub resolves owner and repository names. Without the `/i`
+   flag, the new test fails.
+2. **Low — the `- name: |` / `>` unprotected-checkout case was missing against the real workflow.
+   Agreed:** my round-2 note above claimed both fixtures were covered, and that was false. It is now
+   tested against `checks.yml` for both styles, so the claim holds.
+
+Missing tests: both added — a pinned `Actions/Checkout` without `persist-credentials: false`, in the
+other workflow (with and without a `with:` block) and in `checks.yml`; and the unprotected checkout
+after `- name: |` and `- name: >` in `checks.yml`. 25 tests, up from 24.
+
+**The review loop stops here** (`work-ticket` § 8: three rounds). These fixes have not been reviewed; the
+decision is the owner's.
