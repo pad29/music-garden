@@ -224,16 +224,21 @@ string (finding 6). `js/quest-engine.js` is CRLF in this checkout (finding 2).
 
 ## Owner's decisions
 
-1. **open** — *A valid third quest makes 10 existing tests fail (verified). Decouple them in this ticket,
+1. **A — decouple the tests in this ticket**: the owner, in the AO session, 2026-11-17. — *A valid third quest makes 10 existing tests fail (verified). Decouple them in this ticket,
    or document them?* **A)** Decouple here: content pins select the two shipped quests by id, generic
    loops use each quest's own pool and routes, Home tests select rows by id; re-run the fragment and setup
    mutation audits. Grows the ticket toward L. **B)** Leave the tests; the guide lists which tests a new
    quest must update and how; a Backlog ticket for the decoupling. — **Claude: A**, because B has a
    contributor hand-editing mutation-audited Home and fragment tests to add *data*, and the guide's
    "working pull request" is only honest with A.
-2. **open** — *The ticket says quest lines need the owner's narration clips; no quest line has or can get
+2. **A — the guide says how quest text is really spoken; a Backlog ticket to bake quest narration**: the owner, in the AO session, 2026-11-17. — *The ticket says quest lines need the owner's narration clips; no quest line has or can get
    one today* (`gen-voice.mjs` bakes only `intro:`/`credit:` and prunes any other clip; quest text is
    always read in the browser's voice). **A)** The guide says so as it is, and that the owner approves how
    quest text sounds; a Backlog ticket "bake narration for quest text". **B)** The same guide, no ticket.
    **C)** Extend `gen-voice.mjs` in this ticket to bake quest text (the owner then runs a paid Polly
    generation). — **Claude: A**: the guide must be true, and baking is a separate, paid, owner-run change.
+
+**Size after the answers.** With 1A the work is more than one session and adds a shared tool, so it is
+worked as **L** from here (the label and section say M). The design stays as reviewed — the M plan, GPT's
+design review and the owner's answers (`resume.md`: keep the design you have); L adds GPT's separate
+test pass after the build.
