@@ -135,7 +135,9 @@ None in the textual delta. The account parenthetical and both audit additions re
 
 ## Owner's decisions
 
-1. **open** — *GPT's outstanding check: the real github.com rendering of the opening.* On github.com the
+1. **A — good enough as it is**: the owner, in the AO session, 2026-11-18 ("1A"). This settles GPT's
+   round-2 request for the real github.com check: the owner judges the opening as it renders. The
+   question, as asked: *GPT's outstanding check: the real github.com rendering of the opening.* On github.com the
    README sits below the file list on the repository's home page, so no arrangement fits a literal first
    browser screen there; on the file's own page (PR #151 → Files → `README.md` → rich view, or the
    branch's `README.md`), measured in a GitHub-like column at 1280×720 CSS px, *Licence* starts at the
