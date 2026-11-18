@@ -36,7 +36,7 @@ checklist.
   `clean: <url> (game scripts: 29, injected lines: 0)`).
 - The same grep on two sample lines — RUM's beacon tag and Rocket Loader's `/cdn-cgi/` script — counts 2,
   so the check does catch an injection.
-- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests) (`node --test "tests/*.test.mjs"`).
+- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests); 918/918 after round 2 (`node --test "tests/*.test.mjs"`).
 - **Unverified:** the dashboard locations themselves. Only the RUM path comes from the owner's own finding
   (on the ticket); the others are where Cloudflare documented them, and Auto Minify may be gone from the
   dashboard (Cloudflare announced its retirement in 2024). The owner confirms the names in the playtest.
@@ -93,3 +93,44 @@ cut before `</body>`, exit 22 and exit 6 read `FAILED`; an error page and an emp
 `Sec-Fetch-Mode: navigate` and a browser User-Agent. The owner's dashboard confirmation stays in the
 playtest checklist. **Mutation audits** (each on a temporary README, restored): dropping `-f`, ignoring
 the fetch failure, or dropping `cdn-cgi` from the grep each fail one of the four tests.
+
+## PR review — round 2 (Astra, through `ask.sh`, on `e349794`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Medium — Remove the claim that the terminal check proves the settings are off.** [README.md:242](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/README.md:242) says “the check below does,” but line 246 correctly acknowledges that minification leaves no detectable marker. Also, Pages Web Analytics can be enabled before its next deployment adds the beacon. A `clean` result establishes only that those markers were absent from the fetched response. Require dashboard/settings verification separately. [Cloudflare’s Pages documentation](https://developers.cloudflare.com/pages/how-to/web-analytics/) confirms the deployment delay.
+
+2. **Low — Validate curl arguments per invocation, including header flags and destination.** [tests/workflow-scripts.test.mjs:730](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/tests/workflow-scripts.test.mjs:730) checks only whether header strings occur somewhere in the combined argument log. I reproduced that removing **every `-H`**, or removing **`"$u"` from curl**, still satisfies these assertions and produces fixture-based `clean` results. Check each call’s URL and actual `-H`/value pairs; the fake currently returns the page regardless of malformed arguments.
+
+Missing tests to add:
+
+- Remove an individual `-H` while retaining its header string: argument validation must fail.
+- Omit the URL, or fetch the apex URL during both iterations: validation must fail.
+- Return different fixtures for the two requested domains—clean for one, injected or failed for the other—and assert the corresponding verdicts.
+
+The four original findings are addressed in the delta; the remaining documentation overclaim is newly introduced. Owner dashboard confirmation remains explicitly pending.
+
+The extracted block passed clean, injected, single-line, partial-transfer, HTTP-error, DNS-error, and invalid-page cases under Git’s Bash and `sh`. `if ! page=$(…)`, numeric comparisons, and the literal-newline `printf` formats are valid POSIX syntax. Native macOS/BSD execution was unavailable. The committed tests could not run because temporary-directory creation hit sandbox `EPERM`; syntax checking passed. No files changed.
+
+**Changes requested** on `e349794fcefd454f60c34a4a729e85ebc9cb4ed0`.
+
+</details>
+
+**My answers:**
+
+1. **Medium — "the check below does" prove the switches are off. Agreed:** I had overclaimed, in the
+   same paragraph that says minifying leaves no marker. README now says neither the console nor the
+   check proves a switch is off — the check finds only the markers in the page served now; minifying
+   leaves none and Pages Web Analytics shows only from the next deploy — so **look at each switch
+   itself**. `clean` is defined as "none of those markers is in the page that domain serves now".
+2. **Low — the test pooled every call's arguments. Agreed.** The fake `curl` logs each call
+   separately and serves a fixture and exit code per host. The test now requires exactly two calls,
+   each fetching its own domain and nothing else, with `-fsS` and each header as the value of its own
+   `-H`.
+
+**Missing tests — all added:** a dropped `-H` that keeps its string, a dropped URL, and the apex
+fetched twice are all caught by the per-call test. A new test gives the two domains different fixtures:
+apex clean and `www` injected reads `clean`, `INJECTED`; apex cut off (exit 18) and `www` clean reads
+`FAILED`, `clean`. **Mutation audits** (temporary README, restored): no `-f`; failure ignored; no
+`cdn-cgi`; one `-H` dropped with its string kept; `"$u"` dropped; apex twice. Each fails at least one
+of the five tests.

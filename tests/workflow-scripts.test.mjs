@@ -683,8 +683,9 @@ test("preview: of several comments, the head's music-garden comment wins, wherev
 });
 
 // --- README § Deployment's check for scripts Cloudflare injects into the page (TUN-114) ---
-// The block is run as README prints it, with `curl` replaced by a shell function that logs its
-// arguments, prints a fixture page and exits with a chosen code.
+// The block is run as README prints it, with `curl` replaced by a shell function that logs each
+// call's arguments, prints the fixture page for the host it was asked for (page.<host>, else page) and
+// exits with that host's chosen code (exit.<host>, else $FAKE_CURL_EXIT).
 
 const injectionCheck = (() => {
   const doc = readFileSync(join(root, "README.md"), "utf8").replace(/\r\n/g, "\n");
@@ -695,8 +696,10 @@ const injectionCheck = (() => {
 })();
 
 const FAKE_CURL = `curl() {
-  printf '%s\n' "$@" >> "$FAKE_STATE/curl-args"
-  cat "$FAKE_STATE/page"
+  printf '%s\n' "$@" "--end-of-call--" >> "$FAKE_STATE/curl-args"
+  _fh=""; for _fa in "$@"; do case "$_fa" in https://*) _fh=\${_fa#https://}; _fh=\${_fh%%/*} ;; esac; done
+  if [ -e "$FAKE_STATE/page.$_fh" ]; then cat "$FAKE_STATE/page.$_fh"; else cat "$FAKE_STATE/page"; fi
+  if [ -e "$FAKE_STATE/exit.$_fh" ]; then return "$(cat "$FAKE_STATE/exit.$_fh")"; fi
   return "\${FAKE_CURL_EXIT:-0}"
 }
 `;
@@ -706,13 +709,21 @@ const beacon = `<script defer src="https://static.cloudflareinsights.com/beacon.
 const rocket = `<script src="/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js" defer></script>`;
 const withBeforeBody = (page, tag) => page.replace("</body>", tag + "</body>");
 
-function runCheck(sb, page, curlExit = 0) {
+// perHost: { "<host>": { page, exit } } overrides the shared page and exit code for that host.
+function runCheck(sb, page, curlExit = 0, perHost = {}) {
   writeFileSync(join(sb.state, "page"), page);
-  rmSync(join(sb.state, "curl-args"), { force: true });
+  for (const f of ["curl-args", ...["tunegarden.game", "www.tunegarden.game"].flatMap(h => ["page." + h, "exit." + h])])
+    rmSync(join(sb.state, f), { force: true });
+  for (const [host, o] of Object.entries(perHost)) {
+    if (o.page !== undefined) writeFileSync(join(sb.state, "page." + host), o.page);
+    if (o.exit !== undefined) writeFileSync(join(sb.state, "exit." + host), String(o.exit));
+  }
   const r = spawnSync(bash, ["-c", PRELUDE + FAKE_CURL + injectionCheck],
     { env: { ...sb.env, FAKE_CURL_EXIT: String(curlExit) }, encoding: "utf8" });
-  const args = existsSync(join(sb.state, "curl-args")) ? readFileSync(join(sb.state, "curl-args"), "utf8") : "";
-  return { code: r.status, lines: r.stdout.trim().split("\n"), err: r.stderr, args };
+  const log = existsSync(join(sb.state, "curl-args")) ? readFileSync(join(sb.state, "curl-args"), "utf8") : "";
+  // one array of arguments per curl call
+  const calls = log.split("--end-of-call--\n").filter(Boolean).map(c => c.replace(/\n$/, "").split("\n"));
+  return { code: r.status, lines: r.stdout.trim().split("\n"), err: r.stderr, calls };
 }
 
 const verdicts = res => res.lines.map(l => l.split(":")[0]);
@@ -727,13 +738,33 @@ test("injection check: the game page as deployed reads clean on both custom doma
   } finally { sb.cleanup(); }
 });
 
-test("injection check: fetches as a browser does, and fails on HTTP errors", { skip }, () => {
+test("injection check: each domain is fetched once, as a browser does, failing on HTTP errors", { skip }, () => {
   const sb = sandbox();
   try {
-    const { args } = runCheck(sb, gamePage);
-    for (const want of ["-fsS", "Accept: text/html", "Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate"])
-      assert.ok(args.split("\n").includes(want), `curl gets ${want}: ${args}`);
-    assert.match(args, /\nUser-Agent: Mozilla\/5\.0 .*Chrome\//, "a normal browser User-Agent");
+    const { calls } = runCheck(sb, gamePage);
+    assert.strictEqual(calls.length, 2, JSON.stringify(calls));
+    ["https://tunegarden.game/", "https://www.tunegarden.game/"].forEach((url, i) => {
+      const args = calls[i];
+      assert.deepStrictEqual(args.filter(a => /^https?:/.test(a)), [url], `call ${i + 1} fetches ${url} only`);
+      assert.ok(args.includes("-fsS"), `call ${i + 1}: -fsS`);
+      // each header must be the value of its own -H, not just appear somewhere in the arguments
+      const headers = args.flatMap((a, j) => a === "-H" ? [args[j + 1]] : []);
+      for (const want of ["Accept: text/html", "Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate"])
+        assert.ok(headers.includes(want), `call ${i + 1} sends -H '${want}': ${JSON.stringify(args)}`);
+      assert.ok(headers.some(h => /^User-Agent: Mozilla\/5\.0 .*Chrome\//.test(h)), `call ${i + 1}: a browser User-Agent`);
+    });
+  } finally { sb.cleanup(); }
+});
+
+test("injection check: each domain gets its own verdict", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const injected = runCheck(sb, gamePage, 0, { "www.tunegarden.game": { page: withBeforeBody(gamePage, beacon) } });
+    assert.deepStrictEqual(verdicts(injected), ["clean", "INJECTED"], injected.lines.join("\n"));
+    assert.match(injected.lines[1], /^INJECTED: https:\/\/www\.tunegarden\.game\//);
+    const failed = runCheck(sb, gamePage, 0, { "tunegarden.game": { exit: 18 } });
+    assert.deepStrictEqual(verdicts(failed), ["FAILED", "clean"], failed.lines.join("\n"));
+    assert.match(failed.lines[0], /^FAILED: https:\/\/tunegarden\.game\//);
   } finally { sb.cleanup(); }
 });
 
