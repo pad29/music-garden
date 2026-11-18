@@ -681,3 +681,87 @@ test("preview: of several comments, the head's music-garden comment wins, wherev
       order.length + " comments");
   assert.strictEqual(findPreview({ comments: [other] }).code, 1, "another project's comment alone is no preview");
 });
+
+// --- README § Deployment's check for scripts Cloudflare injects into the page (TUN-114) ---
+// The block is run as README prints it, with `curl` replaced by a shell function that logs its
+// arguments, prints a fixture page and exits with a chosen code.
+
+const injectionCheck = (() => {
+  const doc = readFileSync(join(root, "README.md"), "utf8").replace(/\r\n/g, "\n");
+  const m = doc.match(/\*\*To check from a terminal\*\*[^\n]*\n\n```sh\n([\s\S]*?)```/);
+  assert.ok(m, "README § Deployment holds the injection check");
+  assert.match(m[1], /curl /, "the check fetches with curl");
+  return m[1];
+})();
+
+const FAKE_CURL = `curl() {
+  printf '%s\n' "$@" >> "$FAKE_STATE/curl-args"
+  cat "$FAKE_STATE/page"
+  return "\${FAKE_CURL_EXIT:-0}"
+}
+`;
+
+const gamePage = readFileSync(join(root, "index.html"), "utf8");
+const beacon = `<script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe" data-cf-beacon='{"token":"x"}'></script>`;
+const rocket = `<script src="/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js" defer></script>`;
+const withBeforeBody = (page, tag) => page.replace("</body>", tag + "</body>");
+
+function runCheck(sb, page, curlExit = 0) {
+  writeFileSync(join(sb.state, "page"), page);
+  rmSync(join(sb.state, "curl-args"), { force: true });
+  const r = spawnSync(bash, ["-c", PRELUDE + FAKE_CURL + injectionCheck],
+    { env: { ...sb.env, FAKE_CURL_EXIT: String(curlExit) }, encoding: "utf8" });
+  const args = existsSync(join(sb.state, "curl-args")) ? readFileSync(join(sb.state, "curl-args"), "utf8") : "";
+  return { code: r.status, lines: r.stdout.trim().split("\n"), err: r.stderr, args };
+}
+
+const verdicts = res => res.lines.map(l => l.split(":")[0]);
+
+test("injection check: the game page as deployed reads clean on both custom domains", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const res = runCheck(sb, gamePage);
+    assert.deepStrictEqual(verdicts(res), ["clean", "clean"], res.lines.join("\n") + res.err);
+    assert.match(res.lines[0], /^clean: https:\/\/tunegarden\.game\/ \(game scripts: [1-9]\d*, injected lines: 0\)$/);
+    assert.match(res.lines[1], /^clean: https:\/\/www\.tunegarden\.game\//);
+  } finally { sb.cleanup(); }
+});
+
+test("injection check: fetches as a browser does, and fails on HTTP errors", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const { args } = runCheck(sb, gamePage);
+    for (const want of ["-fsS", "Accept: text/html", "Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate"])
+      assert.ok(args.split("\n").includes(want), `curl gets ${want}: ${args}`);
+    assert.match(args, /\nUser-Agent: Mozilla\/5\.0 .*Chrome\//, "a normal browser User-Agent");
+  } finally { sb.cleanup(); }
+});
+
+test("injection check: RUM's beacon or a same-origin /cdn-cgi/ script reads INJECTED, single-line HTML too", { skip }, () => {
+  const sb = sandbox();
+  try {
+    for (const [name, page] of [
+      ["beacon", withBeforeBody(gamePage, beacon)],
+      ["rocket loader", withBeforeBody(gamePage, rocket)],
+      ["one-line page with beacon", withBeforeBody(gamePage, beacon).replace(/\r?\n/g, " ")],
+    ]) {
+      const res = runCheck(sb, page);
+      assert.deepStrictEqual(verdicts(res), ["INJECTED", "INJECTED"], name + ": " + res.lines.join("\n"));
+    }
+  } finally { sb.cleanup(); }
+});
+
+test("injection check: a failed or partial fetch, or a page that is not the game, never reads clean", { skip }, () => {
+  const sb = sandbox();
+  try {
+    // a transfer cut off after the game's scripts but before an injected footer (curl exit 18)
+    const partial = runCheck(sb, gamePage.slice(0, gamePage.indexOf("</body>")), 18);
+    assert.deepStrictEqual(verdicts(partial), ["FAILED", "FAILED"], partial.lines.join("\n"));
+    // an HTTP error with -f: no body, exit 22; and a connection failure: exit 6
+    for (const code of [22, 6])
+      assert.deepStrictEqual(verdicts(runCheck(sb, "", code)), ["FAILED", "FAILED"], "curl exit " + code);
+    // a 200 that is not the game: an error page, or nothing at all
+    for (const page of ["<html><body>Error 1016</body></html>", ""])
+      assert.deepStrictEqual(verdicts(runCheck(sb, page)), ["NOT THE GAME PAGE", "NOT THE GAME PAGE"], JSON.stringify(page));
+  } finally { sb.cleanup(); }
+});

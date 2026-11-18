@@ -77,7 +77,9 @@ there and the console will say so. That is a preview-only effect, not a producti
 switch, any Cloudflare zone feature that injects a script (Web Analytics' automatic beacon, Rocket
 Loader, Email Address Obfuscation) would be blocked or need the policy changed — none is on today.
 *Later (TUN-114, 2026-11-17):* Real User Monitoring was in fact on and injected the beacon until
-2026-11-15; README § Deployment, *Cloudflare settings that must stay off*, is now the full, current list.
+2026-11-15. And "blocked" holds only for scripts from another host: the policy allows Cloudflare's
+same-origin `/cdn-cgi/` scripts (Rocket Loader, Email Address Obfuscation), which run silently.
+README § Deployment, *Cloudflare settings that must stay off*, is now the full, current list.
 
 **Checkpoint (§ 5):** no `needs-owner` label; no musical or player-facing question; no fork the ticket's
 readings split on. Build.

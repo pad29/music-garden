@@ -32,10 +32,64 @@ checklist.
 ## Verification (Claude, 2026-11-17)
 
 - README's check block, extracted from the file and run as written: `tunegarden.game` and
-  `www.tunegarden.game` each print `game scripts: 29 injected: 0`.
+  `www.tunegarden.game` each print `game scripts: 29 injected: 0` (on `47788ff`; after round 1's fixes,
+  `clean: <url> (game scripts: 29, injected lines: 0)`).
 - The same grep on two sample lines — RUM's beacon tag and Rocket Loader's `/cdn-cgi/` script — counts 2,
   so the check does catch an injection.
-- The suite: 913 tests, 913 pass (`node --test "tests/*.test.mjs"`).
+- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests) (`node --test "tests/*.test.mjs"`).
 - **Unverified:** the dashboard locations themselves. Only the RUM path comes from the owner's own finding
   (on the ticket); the others are where Cloudflare documented them, and Auto Minify may be gone from the
   dashboard (Cloudflare announced its retirement in 2024). The owner confirms the names in the playtest.
+
+## PR review — round 1 (Astra, through `ask.sh`, on `47788ff`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Medium — Reject failed downloads before reporting counts.** [README.md:253](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/README.md:253) discards `curl`’s exit status. I ran the extracted block with a stub returning the page’s 29 game-script tags followed by exit **18** (partial transfer): it printed `game scripts: 29 injected: 0` and exited **0**. A transfer truncated before the injected footer therefore satisfies the documented clean result. Handle transfer failures explicitly and reject HTTP errors before inspecting the body; `--fail` alone does not preserve the ignored exit status. [curl documents these failure codes](https://curl.se/docs/manpage.html).
+
+2. **Medium — Distinguish blocked beacons from allowed same-origin injections.** [README.md:242](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/README.md:242) says an injected script is blocked because scripts must come from the site itself. That conclusion does not hold for scripts served from the site’s `/cdn-cgi/` paths: `_headers` permits same-origin external scripts. Scope “game still works, console logs a violation” to the observed cross-origin RUM beacon. At line 259, also explain that a quiet console does **not** establish that injection or rewriting is disabled. Append the same qualification to TUN-86’s historical blanket claim. Cloudflare documents its [same-origin endpoints](https://developers.cloudflare.com/fundamentals/reference/cdn-cgi-endpoint/) and [injected email decoder](https://developers.cloudflare.com/waf/tools/scrape-shield/email-address-obfuscation/).
+
+3. **Medium — Correct the switch guidance and its claimed verification date.** [README.md:242](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/README.md:242) presents every location as observed on November 15, while the new review record says only RUM was owner-verified. Cloudflare currently documents Rocket Loader under **Speed → Settings → Content Optimization**, rather than **Speed → Optimization**. Update the path and distinguish documented locations from owner observations. Also clarify that an absent Auto Minify toggle does not establish that legacy minification is disabled: Cloudflare retains instructions for disabling legacy settings through its API. Linking that guidance requires no API automation in this PR. [Rocket Loader instructions](https://developers.cloudflare.com/speed/optimization/content/rocket-loader/enable/), [legacy Auto Minify guidance](https://developers.cloudflare.com/speed/optimization/content/troubleshooting/disable-auto-minify/).
+
+4. **Low — Scope the request/domain claims to the observed incident.** [README.md:249](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/README.md:249) makes “plain curl gets no injection” and “only … custom domains” sound universal. Pages-project Web Analytics separately adds its snippet to the Pages site on deployment. State that the **November 15 zone-level RUM incident** was absent from plain-curl responses and the Pages hostname; do not imply Pages hostnames cannot contain analytics. [Cloudflare Pages documentation](https://developers.cloudflare.com/pages/how-to/web-analytics/).
+
+Missing verification cases to add:
+
+- Run the documented block against a partial body containing all game-script tags with curl exit 18; require an explicit failed/inconclusive result.
+- Check empty transport failure and HTTP-error responses; neither should produce an accepted clean result.
+- Retain clean and injected fixtures, including single-line HTML. `grep -c` counts matching **lines**, but that is sufficient for the documented zero/nonzero thresholds.
+- Record the owner’s dashboard confirmation, including absent/retired settings. It remains outstanding.
+
+No gameplay tests are needed for this documentation-only change. I reproduced the shell cases in Git’s `sh`; macOS was not available. Live fetches and GitHub PR access were blocked here, so I could not independently confirm those checks. No files changed.
+
+**Changes requested** on `47788ff1c4b048d60f5158d809f5b8677c4b9749`.
+
+</details>
+
+**My answers** — checked against Cloudflare's docs (Rocket Loader, Auto Minify, Email Address
+Obfuscation and Pages Web Analytics pages) before agreeing:
+
+1. **Medium — curl's exit status discarded. Agreed.** The block now runs `curl -fsS` inside
+   `if ! page=$(…)`, so an HTTP error, a lost connection or a cut-off transfer prints `FAILED` and no
+   counts. Each line leads with a verdict: `clean`, `INJECTED`, `NOT THE GAME PAGE` or `FAILED`.
+2. **Medium — same-origin `/cdn-cgi/` scripts are allowed, not blocked. Agreed** (I had suspected
+   this while writing and still wrote "blocked" for all of them). README now splits the two kinds: the
+   cross-origin beacon is blocked and logs a violation; same-origin scripts run silently, so a quiet
+   console proves nothing. TUN-86's dated note says the same.
+3. **Medium — Rocket Loader's path, "observed" date, Auto Minify. Agreed.** Rocket Loader → Speed →
+   Settings → Content Optimization; Email Address Obfuscation → Security → Settings (Cloudflare's page
+   says so too). The lead-in now says RUM's location is the owner's 2026-11-15 finding and the rest are
+   Cloudflare's docs in November 2026. Auto Minify: the dashboard may not show it, a zone can still
+   minify, so check `settings/minify` through the API (linked to Cloudflare's guide; no automation).
+4. **Low — plain-curl and Pages-hostname claims too broad. Agreed.** Both are now stated as what was
+   seen on 2026-11-15; the Web Analytics bullet says the Pages-project switch adds the beacon to every
+   deploy, `*.music-garden.pages.dev` included.
+
+**Missing tests — all added**, in `tests/workflow-scripts.test.mjs` (the README block run as printed,
+`curl` replaced by a fixture function): the real `index.html` reads `clean`; the beacon, Rocket
+Loader's `/cdn-cgi/` script and a one-line page with the beacon read `INJECTED`; curl exit 18 on a page
+cut before `</body>`, exit 22 and exit 6 read `FAILED`; an error page and an empty 200 read
+`NOT THE GAME PAGE`; curl gets `-fsS`, `Accept: text/html`, `Sec-Fetch-Dest: document`,
+`Sec-Fetch-Mode: navigate` and a browser User-Agent. The owner's dashboard confirmation stays in the
+playtest checklist. **Mutation audits** (each on a temporary README, restored): dropping `-f`, ignoring
+the fetch failure, or dropping `cdn-cgi` from the grep each fail one of the four tests.

@@ -239,24 +239,29 @@ See `backend/README.md` for first-time setup. The API is throttled to a nominal 
 
 **To change them**, edit `_headers`. Each header must come from **one** rule per path: Cloudflare joins a header two matching rules both set with a comma. `tests/site-headers.test.mjs` works out the headers for every published file and fails on a duplicate, a missing cache rule, a policy that allows another host, or a `connect-src` that no longer matches `js/cloud.js`. A new runtime folder needs a cache rule there too. A policy mistake only shows on a real host, so check a preview with the console open: the policy blocks anything it doesn't allow and logs a "violates the following Content Security Policy directive" error.
 
-**Cloudflare settings that must stay off** (TUN-114). Cloudflare can add its own script to every page, or rewrite the page, on the custom domains it proxies. The policy allows scripts only from the site itself, so an injected script is blocked: the game still works, but the console logs a `script-src 'self'` violation. A rewrite can do worse: change the page so it no longer matches the policy, or change the order the `js/` files run in, which `js/load-gate.js` depends on. Real User Monitoring was on for both custom domains until the owner turned it off on 2026-11-15, and it was hard to find. Where each switch was on 2026-11-15 — Cloudflare moves and renames these, so the labels may differ:
+**Cloudflare settings that must stay off** (TUN-114). On the domains it proxies, Cloudflare can add its own script to the page, or rewrite the page. A script from another host is blocked by the policy: the game still works, but the console logs a `script-src 'self'` violation. That is what Real User Monitoring did on both custom domains until the owner turned it off on 2026-11-15, and its switch was hard to find. A script Cloudflare serves from the site's own `/cdn-cgi/` path is *allowed* by the policy, so it runs and logs nothing — and a rewrite can change the page so it no longer matches the policy, or change the order the `js/` files run in, which `js/load-gate.js` depends on. So a quiet console does not prove these are off; the check below does. Where the switches are — RUM's where the owner found it on 2026-11-15, the others where Cloudflare's docs put them in November 2026. Cloudflare moves and renames them, so the labels may differ:
 - **Real User Monitoring** (RUM) — the domain `tunegarden.game` → **Speed** settings. *Not* under the Pages project's Metrics, and *not* on the account's Web Analytics list (which was empty). It injects `static.cloudflareinsights.com/beacon.min.js`.
-- **Web Analytics** — the Pages project `music-garden` → **Metrics**, and the account-level **Web Analytics** page. Its automatic setup injects the same beacon. Keep both off, and no site for `tunegarden.game` on the account list.
-- **Rocket Loader** — the domain → **Speed** → **Optimization**. It rewrites the page's `<script>` tags and runs them its own way.
-- **Auto Minify** — the domain → **Speed** → **Optimization**, if your dashboard still shows it. It rewrites the HTML, CSS and JavaScript it serves.
-- **Email Address Obfuscation** — the domain → **Scrape Shield** (or **Security** settings). It rewrites any email address in the page and adds a decoding script.
+- **Web Analytics** — the Pages project `music-garden` → **Metrics**, and the account-level **Web Analytics** page. Turned on in the Pages project, it adds the same beacon to every deploy, `*.music-garden.pages.dev` included. Keep both off, and no site for `tunegarden.game` on the account list.
+- **Rocket Loader** — the domain → **Speed** → **Settings** → **Content Optimization**. It rewrites the page's `<script>` tags and runs them through its own `/cdn-cgi/` script.
+- **Auto Minify** — retired by Cloudflare in 2024, so the dashboard may no longer show it, yet a zone that had it on can still minify. Check through the API instead: the zone's `settings/minify` must read `off` for `css`, `html` and `js` ([Cloudflare's guide](https://developers.cloudflare.com/speed/optimization/content/troubleshooting/disable-auto-minify/)). Minifying leaves no marker the check below can find.
+- **Email Address Obfuscation** — the domain → **Security** → **Settings** (once under Scrape Shield). It rewrites email addresses in the page and adds its own `/cdn-cgi/` decoding script.
 
-**To check from a terminal**, fetch the page the way a browser does. A plain `curl` gets no injection, so it says "clean" even when a browser would get the beacon; the injection also only shows on the custom domains, not on `*.music-garden.pages.dev`. Expect `game scripts:` above 0 (the real page arrived) and `injected: 0`:
+**To check from a terminal**, fetch each page the way a browser does. On 2026-11-15 the RUM beacon was missing from a plain `curl`'s copy and from `music-garden.pages.dev`, so a plain `curl`, or the Pages hostname, can read clean while browsers on the custom domains get the beacon. Each line should start `clean`; `FAILED` or `NOT THE GAME PAGE` means the check proved nothing:
 
 ```sh
 for u in https://tunegarden.game/ https://www.tunegarden.game/; do
-  page=$(curl -sS --compressed "$u" -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' \
-    -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36')
-  echo "$u game scripts: $(printf %s "$page" | grep -c 'src="js/') injected: $(printf %s "$page" | grep -cE 'cloudflareinsights|cdn-cgi')"
+  if ! page=$(curl -fsS --compressed "$u" -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate'     -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'); then
+    echo "FAILED: $u (the fetch did not complete)"; continue
+  fi
+  s=$(printf '%s
+' "$page" | grep -c 'src="js/'); i=$(printf '%s
+' "$page" | grep -cE 'cloudflareinsights|cdn-cgi')
+  if [ "$s" -eq 0 ]; then r="NOT THE GAME PAGE"; elif [ "$i" -gt 0 ]; then r="INJECTED"; else r="clean"; fi
+  echo "$r: $u (game scripts: $s, injected lines: $i)"
 done
 ```
 
-The console of the live site, with the page freshly loaded, is the other check: no "violates the following Content Security Policy directive" line. The policy stays as strict as it is — no `static.cloudflareinsights.com`, no third-party analytics (owner, 2026-11-15) — so the fix for an injected script is always the dashboard switch, never `_headers`.
+The console of the live site, with the page freshly loaded, shows only the cross-origin kind: a "violates the following Content Security Policy directive" line there means a switch is on. `tests/workflow-scripts.test.mjs` runs this block against fake pages. The policy stays as strict as it is — no `static.cloudflareinsights.com`, no third-party analytics (owner, 2026-11-15) — so the fix for an injected script is always the dashboard switch, never `_headers`.
 
 ⚠️ If you add a runtime asset folder, **add it to `cloudflare-build.sh`** (and to the test's list), or it silently won't exist in production (the game's fallbacks can mask this — e.g. missing samples just means the synth voice plays). `tests/cloudflare-publish.test.mjs` fails when the script publishes something outside its list, or leaves out something on it. Code is not silent: `index.html` is served in place of a missing `js/` file, the browser cannot parse it, and the game never starts. The game also expects to live at the site root — at a nested path like `/a/` its relative `js/` URLs miss in the same way.
 
