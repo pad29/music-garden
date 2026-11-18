@@ -697,11 +697,19 @@ const injectionCheck = (() => {
 
 const FAKE_CURL = `curl() {
   printf '%s\n' "$@" "--end-of-call--" >> "$FAKE_STATE/curl-args"
-  # the host of the destination: as curl does, -H takes the next argument as its value
+  # only the arguments README uses: -fsS, --compressed, -H <value>, one https:// URL; anything else
+  # (another option, a -H with no value, a second URL) is refused as real curl would, with exit 2
   _fh=""; _fv=""; for _fa in "$@"; do
     if [ -n "$_fv" ]; then _fv=""; continue; fi
-    case "$_fa" in -H) _fv=1 ;; -*) ;; https://*) _fh=\${_fa#https://}; _fh=\${_fh%%/*} ;; esac
+    case "$_fa" in
+      -H) _fv=1 ;;
+      -fsS|--compressed) ;;
+      https://*) [ -z "$_fh" ] || { echo "fake curl: two URLs" >&2; return 2; }; _fh=\${_fa#https://}; _fh=\${_fh%%/*} ;;
+      *) echo "fake curl: unsupported argument $_fa" >&2; return 2 ;;
+    esac
   done
+  [ -z "$_fv" ] || { echo "fake curl: -H without a value" >&2; return 2; }
+  [ -n "$_fh" ] || { echo "fake curl: no URL specified" >&2; return 2; }
   if [ -e "$FAKE_STATE/page.$_fh" ]; then cat "$FAKE_STATE/page.$_fh"; else cat "$FAKE_STATE/page"; fi
   if [ -e "$FAKE_STATE/exit.$_fh" ]; then return "$(cat "$FAKE_STATE/exit.$_fh")"; fi
   return "\${FAKE_CURL_EXIT:-0}"
@@ -749,12 +757,16 @@ test("injection check: each domain is fetched once, as a browser does, failing o
     assert.strictEqual(calls.length, 2, JSON.stringify(calls));
     ["https://tunegarden.game/", "https://www.tunegarden.game/"].forEach((url, i) => {
       const args = calls[i];
-      // read the arguments as curl does: -H takes the next one as its value, other -x are flags, and
-      // what is left is the destination — so a stray -H that swallows the URL leaves no destination
+      // only the arguments README uses, read as curl reads them: -H takes the next one as its value;
+      // -fsS and --compressed are flags; anything else that starts with - (another option, which may
+      // swallow the URL) or a -H with nothing after it fails; what is left is the destination
       const headers = [], flags = [], destinations = [];
       for (let j = 0; j < args.length; j++) {
-        if (args[j] === "-H") headers.push(args[++j]);
-        else if (args[j].startsWith("-")) flags.push(args[j]);
+        if (args[j] === "-H") {
+          assert.ok(j + 1 < args.length, `call ${i + 1}: -H without a value: ${JSON.stringify(args)}`);
+          headers.push(args[++j]);
+        } else if (args[j] === "-fsS" || args[j] === "--compressed") flags.push(args[j]);
+        else if (args[j].startsWith("-")) assert.fail(`call ${i + 1}: unsupported option ${args[j]}: ${JSON.stringify(args)}`);
         else destinations.push(args[j]);
       }
       assert.deepStrictEqual(destinations, [url], `call ${i + 1} fetches ${url} only: ${JSON.stringify(args)}`);

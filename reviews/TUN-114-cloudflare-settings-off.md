@@ -36,7 +36,7 @@ checklist.
   `clean: <url> (game scripts: 29, injected lines: 0)`).
 - The same grep on two sample lines — RUM's beacon tag and Rocket Loader's `/cdn-cgi/` script — counts 2,
   so the check does catch an injection.
-- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests); 918/918 after rounds 2 and 3 (`node --test "tests/*.test.mjs"`).
+- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests); 918/918 after rounds 2, 3 and 4 (`node --test "tests/*.test.mjs"`).
 - **Unverified:** the dashboard locations themselves. Only the RUM path comes from the owner's own finding
   (on the ticket); the others are where Cloudflare documented them, and Auto Minify may be gone from the
   dashboard (Cloudflare announced its retirement in 2024). The owner confirms the names in the playtest.
@@ -156,7 +156,8 @@ Syntax checking passed. The five committed injection tests could not execute bec
 **My answer:**
 
 1. **Low — an `-H` inserted before `"$u"` swallows the URL, yet the test passed. Agreed.** The test
-   now reads each call's arguments as curl does: `-H` takes the next argument as its value, other `-…`
+   now reads each call's arguments with `-H` taking the next one as curl does (not wholly as curl does —
+   round 4 found other options still slipped through): `-H` takes the next argument as its value, other `-…`
    are flags, and what is left is the destination, which must be exactly that call's domain. The fake's
    host lookup skips `-H` values the same way.
 
@@ -167,6 +168,40 @@ audits** (temporary README, restored), all seven caught: no `-f`; failure ignore
 **Third round** (`work-ticket` § 8): this fix is pushed **without a fourth review**, and the ticket
 stops at Needs Input for the owner to decide whether it gets one.
 
+## PR review — round 4 (Astra, through `ask.sh`, on `50e2a21`; the owner asked for it)
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Low — Reject unsupported options and missing option values.** In [tests/workflow-scripts.test.mjs:756](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/tests/workflow-scripts.test.mjs:756), every option except `-H` is treated as a standalone flag. Inserting `--header` or `-o` before `"$u"` passes the extracted committed assertions, and the fake still selects that host; real curl exits **2**, “no URL specified.” Appending a dangling `-H` also passes, while curl rejects its missing parameter. Validate a restricted supported argument structure, rejecting unknown options and missing values; the fake should reject these malformed calls too. A full curl parser is unnecessary. Update the review record’s “as curl does” claim accordingly. [curl’s option documentation](https://curl.se/docs/manpage.html#-H).
+
+Missing tests:
+
+- Insert `--header` immediately before `"$u"`, retaining existing headers; require argument validation to fail. Repeat with `-o`.
+- Append `-H` without a value; require validation to fail.
+
+The exact round-3 `-H "$u"` reproduction **is resolved**. The owner-decision record matches your instructions, and dashboard confirmation remains explicitly pending.
+
+Syntax checking passed. The five committed tests were blocked by sandbox `EPERM` during temporary-directory creation; the reproductions above ran in memory against the extracted assertions and actual curl. No files changed.
+
+**Changes requested** on **50e2a21d43f33fe390e473d1afd5ca152d937149**.
+
+</details>
+
+**My answer:**
+
+1. **Low — options other than `-H`, and a dangling `-H`, still passed. Agreed.** The test and the
+   fake `curl` now accept only what README uses — `-fsS`, `--compressed`, `-H <value>` and one
+   `https://` URL — and refuse anything else: another option, a `-H` with no value, a second URL or
+   none (the fake exits 2, as curl does). My round-3 answer's "as curl does" is corrected above.
+
+**Missing tests — added** as mutations the tests now catch. **Mutation audits** (temporary README,
+restored), all ten caught: no `-f`; failure ignored; no `cdn-cgi`; one `-H` dropped with its string
+kept; `"$u"` dropped; apex twice; `-H` before `"$u"`; `--header` before `"$u"`; `-o` before `"$u"`;
+a dangling `-H`.
+
+**After round 4:** this fix is pushed unreviewed, and the ticket stops at Needs Input again — round 5,
+or take it as it stands.
+
 ## Owner's decisions
 
 1. *After three review rounds, the round-3 fix (a Low, test-only change) is pushed without a review:
@@ -174,3 +209,5 @@ stops at Needs Input for the owner to decide whether it gets one.
    owner, relayed by the orchestrator to this session, 2026-11-18.
 2. *Do the dashboard locations in README § Deployment match what Cloudflare shows today?* — **open**
    (the ticket's last *Done* item; in the playtest checklist).
+3. *After round 4, its fix (Low, test-only) is pushed unreviewed: run round 5, or take the PR as it
+   stands?* — **open** (Needs Input, 2026-11-18).
