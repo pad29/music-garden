@@ -50,10 +50,12 @@ Branch `ao/pr-ci-checks/root` · PR #150
 ## Owner's decisions
 
 1. *Round 3's two Low fixes (`30f8e96`) are unreviewed, and the review loop has used its three rounds.
-   Accept them as they are, or run a fourth GPT review?* — **open**. Claude would accept them: both
+   Accept them as they are, or run a fourth GPT review?* — **B**. Claude would accept them: both
    findings were Low, I agreed with both, the fixes are one regex flag and four test cases, and a
    mutation shows the new test catches the bug. A fourth round costs about 550k tokens of the ChatGPT
    limit.
+
+   **Answered B — run a fourth GPT review**: the owner, through the orchestrator (music-garden-5), 2026-11-18. Claude had recommended A.
 
 ## PR review (Astra, via ask.sh)
 
