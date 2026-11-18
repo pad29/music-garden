@@ -36,7 +36,7 @@ checklist.
   `clean: <url> (game scripts: 29, injected lines: 0)`).
 - The same grep on two sample lines — RUM's beacon tag and Rocket Loader's `/cdn-cgi/` script — counts 2,
   so the check does catch an injection.
-- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests); 918/918 after round 2 (`node --test "tests/*.test.mjs"`).
+- The suite: 913/913 on `47788ff`; 917/917 after round 1 (four new tests); 918/918 after rounds 2 and 3 (`node --test "tests/*.test.mjs"`).
 - **Unverified:** the dashboard locations themselves. Only the RUM path comes from the owner's own finding
   (on the ticket); the others are where Cloudflare documented them, and Auto Minify may be gone from the
   dashboard (Cloudflare announced its retirement in 2024). The owner confirms the names in the playtest.
@@ -134,3 +134,43 @@ apex clean and `www` injected reads `clean`, `INJECTED`; apex cut off (exit 18) 
 `FAILED`, `clean`. **Mutation audits** (temporary README, restored): no `-f`; failure ignored; no
 `cdn-cgi`; one `-H` dropped with its string kept; `"$u"` dropped; apex twice. Each fails at least one
 of the five tests.
+
+## PR review — round 3 (Astra, through `ask.sh`, on `4c68119`)
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Low — Validate the URL as a destination, not merely a matching argument.** In [tests/workflow-scripts.test.mjs:748](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-39/tests/workflow-scripts.test.mjs:748), inserting `-H` before `"$u"` still passes the exact committed argument assertions. The fake also treats that header value as the requested host. Real curl rejects those same arguments with exit **2**, “no URL specified.” Consume option values before identifying destinations, or validate the complete supported argument structure. [`-H` consumes its following argument](https://curl.se/docs/manpage.html#-H).
+
+Round-2 finding **1 is resolved**: README explicitly requires separate settings verification. Finding **2 is partially resolved**: dropped headers, omitted URLs and fetching apex twice are now rejected, but the destination-validation hole above remains. The mixed-domain fixtures cover the requested verdict separation. I found no additional disagreement between README, the TUN-86 correction and the review record.
+
+Missing tests:
+
+- Insert `-H` immediately before `"$u"` while retaining all existing headers; require argument validation to fail.
+
+Syntax checking passed. The five committed injection tests could not execute because temporary-directory creation hit sandbox `EPERM`; the argument reproductions above ran in memory. Dashboard confirmation remains pending. No files changed.
+
+**Changes requested** on **4c6811926862b5f79cd469a6aeb38bcf0d55469d**.
+
+</details>
+
+**My answer:**
+
+1. **Low — an `-H` inserted before `"$u"` swallows the URL, yet the test passed. Agreed.** The test
+   now reads each call's arguments as curl does: `-H` takes the next argument as its value, other `-…`
+   are flags, and what is left is the destination, which must be exactly that call's domain. The fake's
+   host lookup skips `-H` values the same way.
+
+**Missing test — added** as a mutation, not a new test: the per-call test fails on it. **Mutation
+audits** (temporary README, restored), all seven caught: no `-f`; failure ignored; no `cdn-cgi`; one
+`-H` dropped with its string kept; `"$u"` dropped; apex twice; `-H` inserted before `"$u"`.
+
+**Third round** (`work-ticket` § 8): this fix is pushed **without a fourth review**, and the ticket
+stops at Needs Input for the owner to decide whether it gets one.
+
+## Owner's decisions
+
+1. *After three review rounds, the round-3 fix (a Low, test-only change) is pushed without a review:
+   run a fourth GPT round on it, or take the PR to playtest as it stands?* — **open** (Needs Input,
+   2026-11-18).
+2. *Do the dashboard locations in README § Deployment match what Cloudflare shows today?* — **open**
+   (the ticket's last *Done* item; in the playtest checklist).

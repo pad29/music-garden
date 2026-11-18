@@ -697,7 +697,11 @@ const injectionCheck = (() => {
 
 const FAKE_CURL = `curl() {
   printf '%s\n' "$@" "--end-of-call--" >> "$FAKE_STATE/curl-args"
-  _fh=""; for _fa in "$@"; do case "$_fa" in https://*) _fh=\${_fa#https://}; _fh=\${_fh%%/*} ;; esac; done
+  # the host of the destination: as curl does, -H takes the next argument as its value
+  _fh=""; _fv=""; for _fa in "$@"; do
+    if [ -n "$_fv" ]; then _fv=""; continue; fi
+    case "$_fa" in -H) _fv=1 ;; -*) ;; https://*) _fh=\${_fa#https://}; _fh=\${_fh%%/*} ;; esac
+  done
   if [ -e "$FAKE_STATE/page.$_fh" ]; then cat "$FAKE_STATE/page.$_fh"; else cat "$FAKE_STATE/page"; fi
   if [ -e "$FAKE_STATE/exit.$_fh" ]; then return "$(cat "$FAKE_STATE/exit.$_fh")"; fi
   return "\${FAKE_CURL_EXIT:-0}"
@@ -745,10 +749,16 @@ test("injection check: each domain is fetched once, as a browser does, failing o
     assert.strictEqual(calls.length, 2, JSON.stringify(calls));
     ["https://tunegarden.game/", "https://www.tunegarden.game/"].forEach((url, i) => {
       const args = calls[i];
-      assert.deepStrictEqual(args.filter(a => /^https?:/.test(a)), [url], `call ${i + 1} fetches ${url} only`);
-      assert.ok(args.includes("-fsS"), `call ${i + 1}: -fsS`);
-      // each header must be the value of its own -H, not just appear somewhere in the arguments
-      const headers = args.flatMap((a, j) => a === "-H" ? [args[j + 1]] : []);
+      // read the arguments as curl does: -H takes the next one as its value, other -x are flags, and
+      // what is left is the destination — so a stray -H that swallows the URL leaves no destination
+      const headers = [], flags = [], destinations = [];
+      for (let j = 0; j < args.length; j++) {
+        if (args[j] === "-H") headers.push(args[++j]);
+        else if (args[j].startsWith("-")) flags.push(args[j]);
+        else destinations.push(args[j]);
+      }
+      assert.deepStrictEqual(destinations, [url], `call ${i + 1} fetches ${url} only: ${JSON.stringify(args)}`);
+      assert.ok(flags.includes("-fsS"), `call ${i + 1}: -fsS`);
       for (const want of ["Accept: text/html", "Sec-Fetch-Dest: document", "Sec-Fetch-Mode: navigate"])
         assert.ok(headers.includes(want), `call ${i + 1} sends -H '${want}': ${JSON.stringify(args)}`);
       assert.ok(headers.some(h => /^User-Agent: Mozilla\/5\.0 .*Chrome\//.test(h)), `call ${i + 1}: a browser User-Agent`);
