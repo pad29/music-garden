@@ -1,6 +1,6 @@
 # TUN-90 — Run the syntax check and the tests on every pull request
 
-Branch `ao/pr-ci-checks/root` · PR (pending)
+Branch `ao/pr-ci-checks/root` · PR #150
 
 ## Plan (Claude)
 
@@ -25,3 +25,24 @@ Branch `ao/pr-ci-checks/root` · PR (pending)
   Commands — one line saying CI runs both commands. Minimal, localized edits: parallel workers touch
   both files.
 - **Tests**: the workflow itself is the test — its runs on this PR, green and deliberately red.
+
+## Build
+
+- **Added a guard, `tests/ci-workflow.test.mjs`** (not in the plan): the workflow only runs on GitHub,
+  and a loosened one still goes green, so a text checker pins the safety rules — no
+  `pull_request_target` / `workflow_run`, exactly `contents: read`, no job-level override, no secrets or
+  job token, `persist-credentials: false`, every action at a 40-hex commit, both commands run, nothing
+  installed, Node stated and ≥ 21. The trigger and pinning rules hold for every file in
+  `.github/workflows/`. Each rule has a mutation it must catch; writing them caught two bugs in the
+  checker itself (`^\s+` spanning a newline read the top-level `permissions:` as a job override; a
+  `- run:` step was invisible).
+- **First Linux run** — [run 44245608942](https://github.com/pad29/music-garden/actions/runs/44245608942),
+  Ubuntu, Node 24.22.2: syntax OK; 925 tests, 924 pass, 0 fail, **1 skipped, with its reason printed**:
+  *gpt-lock: a release that cannot remove the lock exits 1…* — `# a busy directory blocks removal only
+  on Windows`. Nothing needed fixing for Linux: `workflow-scripts.test.mjs` found the runner's `bash`,
+  and its fake `ao`, `gh`, `sleep` and `codex` stood in for the real tools; `ask.sh`'s only other
+  dependency is `node`, `gpt-lock.sh`'s `cygpath` is behind a Windows check. ~1m50s for the job.
+- **The red check** — commit `f21d6c0` added `tests/ci-deliberate-failure.test.mjs`
+  (`assert.strictEqual(1, 2)`); [run 44245882827](https://github.com/pad29/music-garden/actions/runs/44245882827)
+  failed (926 tests, 1 fail, exit code 1) and PR #150 showed *Syntax check and tests — fail*. Commit
+  `6674ab6` removed it.

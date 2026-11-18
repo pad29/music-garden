@@ -29,7 +29,8 @@ Tests — zero dependencies, Node's built-in runner, nothing to install:
 node --test "tests/*.test.mjs"          # one file: node --test tests/detectors.test.mjs
 ```
 
-They load the game into a stubbed-DOM vm context. **Read `tests/README.md` before writing a test**: the
+CI (`.github/workflows/checks.yml`) runs both on every PR and every push to `main`, on Linux — so a test may
+not assume Windows or Git Bash. They load the game into a stubbed-DOM vm context. **Read `tests/README.md` before writing a test**: the
 harness, what it can't reach (rendering and audio), and the realm gotcha that makes `deepStrictEqual`
 fail on structurally identical arrays.
 
