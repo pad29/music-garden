@@ -332,6 +332,13 @@ the real `?dev` 🗝️ Unlock quests handler with an added quest.
 sections against the engine: the field tables (walked from the `QT` specs by
 `helpers/quest-guide-fields.mjs`), the closed lists, the worked examples and the error codes.
 
+GPT's test pass added `quest-catalog-adversarial.test.mjs` (the tool's edge cases and CLI exit codes,
+and that a candidate engine file that fails to load — reported or thrown — never replaces the real one)
+and `quest-contributor-audit.test.mjs`, which re-runs the guide guard and the decoupled quest tests in a
+child process with in-memory mutations: a guide field at the wrong root, a duplicate or out-of-section
+row, an invented parameter value or comment-only error code; a fault confined to a third quest's deal,
+pool or opening; a third quest sorting first.
+
 ## Quest setup and playtest mutation audit
 
 ```bash

@@ -39,6 +39,9 @@ const example = name => {
 test("the field tables name every field of the newest schema, with its type and whether it is required", () => {
   // MUTATIONS: a field added to or removed from QT, a bound changed, optional made required.
   const want = questFields(g);
+  const documented = rows(section("<!-- fields -->", "<!-- /fields -->")).map(r => ticks(r[0])[0]);
+  // A second row for a path could hide a wrong first one; each field is documented once (GPT's tester).
+  assert.deepEqual(documented.filter((p, i) => documented.indexOf(p) !== i), [], "duplicate field rows");
   const got = new Map(rows(section("<!-- fields -->", "<!-- /fields -->")).map(r => [ticks(r[0])[0], { type: r[1], required: r[2] === "required" }]));
   for (const r of rows(section("<!-- fields -->", "<!-- /fields -->")))
     assert.ok(r[2] === "required" || r[2] === "optional", `${r[0]}: "${r[2]}"`);
@@ -53,10 +56,14 @@ test("the worked example is The Waking Woods as it ships, with only the witness 
   assert.deepEqual(example("waking-woods"), woods);
 });
 
-test("the full witness example is a shipped witness, verbatim", () => {
-  const shown = example("witness");
-  const shipped = plain(g.QUEST_DEFINITIONS["waking-woods"].witnesses.find(w => w.id === shown.id));
-  assert.deepEqual(shown, shipped);
+test("the full witness examples are shipped witnesses, verbatim — one compose, one transform", () => {
+  const woods = g.QUEST_DEFINITIONS["waking-woods"];
+  const phaseType = id => woods.phases.find(p => p.id === id).type;
+  for (const [name, type] of [["witness", "compose"], ["witness-transform", "transform"]]) {
+    const shown = example(name);
+    assert.deepEqual(shown, plain(woods.witnesses.find(w => w.id === shown.id)), name);
+    assert.equal(phaseType(shown.phaseId), type, name);
+  }
 });
 
 test("capabilities, and the package that earns each", () => {
@@ -81,7 +88,7 @@ test("musical analyzers, with the metadata the validator checks", () => {
     else if (s.k === "snapshot") assert.ok(params.includes('"snapshotVersionId": "A"'), at);
     else if (s.k === "enum-set") {
       assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
-      for (const v of s.values) assert.ok(ticks(params).includes(v), `${at} ${v}`);
+      assert.deepEqual(sorted(ticks(params).filter(x => !x.startsWith("{"))), sorted(s.values), at);
     } else if (s.k === "minimum") assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
     else assert.fail(`${at}: a parameter schema the guide does not describe: ${s.k}`);
   }
@@ -128,7 +135,9 @@ test("the pentatonic ladder the guide quotes is the palette's", () => {
 
 test("every error code the guide explains is one the loader can report", () => {
   // The universe is read from the engine's own sources: every code literal handed to an error path.
-  const src = joinScripts(gameScripts(ROOT).scripts);
+  // Comments removed first: an example in a comment is not a code the loader can report (GPT's tester).
+  const src = joinScripts(gameScripts(ROOT).scripts).replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n").map(l => l.replace(/(^|[\s;{}(),])\/\/.*$/, "$1")).join("\n");
   const emitted = new Set([...src.matchAll(/\b(?:err|bad|no|QuestLoadError)\(\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])
     .concat([...src.matchAll(/\bcode:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1]))
     .concat([...src.matchAll(/errs\.push\(\{\s*code:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])));

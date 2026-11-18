@@ -362,3 +362,121 @@ buttons (§ 8 step 2 says so); where the saved song is (🎵 Jukebox → *My Mel
 **Not verified:** the two console tips (`JSON.stringify(currentSong())`, `QUEST_CATALOG_ERRORS`) — AO's
 browser cannot run page code. `currentSong` is a top-level function and `QUEST_CATALOG_ERRORS` a
 top-level `let` of a classic script, so both are reachable from the console by construction.
+
+## Test pass (Astra)
+
+Worked as L after the owner's answer 1A, so GPT ran a separate test pass (`ask.sh fresh workspace-write`).
+It added two files, 22 tests, four of them executable TODOs for its findings.
+
+<details><summary>GPT's test-pass report, verbatim</summary>
+
+Found **one High issue**: a thrown reload leaves the writer’s candidate installed. Added **22 tests: 18 pass; four executable TODO regressions fail as expected**.
+
+Full suite: **958 total, 954 passed, four TODOs, zero unexpected failures**. Syntax check passed. Only two new test files were added.
+
+**A. Tests added**
+
+In [quest-catalog-adversarial.test.mjs](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-catalog-adversarial.test.mjs):
+
+| Test name | Mutation targeted | Result |
+|---|---|---|
+| BOM input is accepted by check, write and evidence instead of being rejected as JSON | Missing BOM removal | Pass |
+| comments and trailing commas are refused without installing partial input | Accepting non-JSON or writing before parsing | Pass |
+| invalid envelopes and a thirty-third definition are refused before any write | Bypassing catalog envelope/count validation | Pass |
+| case and relative aliases cannot bypass the engine filename guard | Comparing unresolved or case-sensitive paths | Pass |
+| extract replaces an existing destination with complete JSON and leaves the engine alone | Appending or retaining stale bytes | Pass |
+| CLI extract, check and write honor relative paths with spaces and report no-op installs | Wrong path resolution, dispatch, or installation | Pass |
+| CLI usage exits 2 and rejected JSON or catalogs exit 1 without changing the engine | Successful exit on refusal or rejected writes | Pass |
+| CLI evidence distinguishes a valid witness, invalid song and malformed JSON by exit status | Wrong evidence dispatch/status | Pass |
+| a reload returning catalog errors restores the complete original engine bytes | Removing the existing rollback branch | Pass |
+| a thrown reload also restores the original engine instead of leaving the broken candidate installed | Missing exception-safe rollback | **Fails; TODO** |
+
+In [quest-contributor-audit.test.mjs](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-contributor-audit.test.mjs):
+
+| Test name | Mutation targeted | Result |
+|---|---|---|
+| guide guard catches a field moved to the wrong root | Matching unqualified field names | Pass |
+| guide guard catches a changed numeric bound | Ignoring bounds | Pass |
+| guide guard catches a field moved outside the checked markers | Searching beyond the marked section | Pass |
+| guide guard accepts the same field rows in a different order | Accidentally pinning table order | Pass |
+| guide guard rejects a contradictory duplicate field instead of silently keeping the last row | Silently collapsing duplicate paths | **Fails; TODO** |
+| guide guard rejects an extra unregistered analyzer parameter value | Checking membership incompletely | **Fails; TODO** |
+| guide error guard rejects a code that occurs only in a source comment | Treating comments as emitted errors | **Fails; TODO** |
+| the existing dealer sweep detects a fault confined to a third quest's generated geometry | Skipping non-official definitions | Pass |
+| the existing dealer sweep detects reusing the official fragment pool only for a third quest | Reusing an official pool | Pass |
+| the existing route sweep detects a probe that drops the third quest's own opening | Testing the wrong openings | Pass |
+| Home and authoring fixtures stay green with a new first catalog entry and a higher priority | Depending on catalog order or the shipped winner | Pass |
+| an empty Home and trail can mean locked prerequisites with a completely healthy catalog | Conflating visibility with catalog validity | Pass |
+
+The mutation audits execute the existing tests against in-memory mutations. Installation tests use disposable copies. All 22 tests were run.
+
+**B. Findings**
+
+1. **High — thrown reloads bypass rollback.**  
+   [tools/quest-catalog.mjs:119](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tools/quest-catalog.mjs:119) replaces the engine before calling `loadGame()`. Restoration at line 125 handles returned errors, but an exception at line 121 escapes it.
+
+   **Reproduction:** in a temporary engine, inject a load-time exception conditional on the incoming catalog’s title. `check` succeeds; `write` throws; the engine bytes remain changed. This uses the real harness unchanged. The equivalent returned-error case restores correctly.
+
+   **Change:** verify the candidate before replacement, as the reviewed contract states, and provide exception-safe rollback around post-write verification.
+
+2. **Medium — the drift guard accepts contradictory fields and invalid parameter values.**  
+   [quest-guide.test.mjs:42](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:42) builds a `Map`, silently discarding earlier duplicate paths. A false `$.workspace.columns` row saying `1–999`, followed by the correct row, passes.
+
+   [Line 84](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:84) checks that expected enum values occur, but allows extras. Adding `spiral` to the documented contour families passes.
+
+   **Change:** reject duplicate paths before constructing the map; compare parameter value sets exactly.
+
+3. **Low — comments can manufacture “emitted” error codes.**  
+   [quest-guide.test.mjs:132](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:132) scans raw source. Adding a comment containing `err("never-emitted-review-code", …)` makes a corresponding invented guide row pass.
+
+   **Change:** exclude comments and distinguish loader errors from unrelated error-shaped literals, or verify documented codes through explicit loader cases.
+
+4. **Low — browser troubleshooting still gives a false diagnosis and an incomplete command.**  
+   [MAKING-QUESTS.md:824](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:824) says no visible quest means the installed catalog failed. The new test demonstrates an error-free, populated catalog with both Home and trail empty because prerequisites are locked.
+
+   The printed `node tools/quest-catalog.mjs check` command also lacks its required filename; it exits **2**, not `ok`.
+
+   **Change:** print `check my-quest.json`; inspect catalog errors before diagnosing failure, then check unlock/progress and trail state.
+
+5. **Medium — the promised complete transform witness is missing.**  
+   [The accepted answer at review line 197](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/reviews/TUN-105-make-a-quest-guide.md:197) promises a complete compose witness **and** transform A/B pair. The guide’s [only full witness example](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:655) is compose; transform songs remain elided.
+
+   **Change:** include one complete transform witness with both songs and check it against the shipped witness.
+
+**C. Guide claims contradicted**
+
+- “No quest at all” does **not** establish catalog failure.
+- The bare `check` command cannot produce the promised success result.
+- The opening assurance that marked tables are current whenever tests pass is stronger than the guard supports: conflicting fields and invented enum values can pass.
+
+The missing transform example is an acceptance gap rather than a false statement about runtime behavior.
+
+**D. Not tested**
+
+- Rendering, audible narration/playback, `file://`, phones, or the two browser-console tips.
+- The standalone full 472-mutation audit; I ran focused third-quest mutation audits and the full ordinary suite.
+- Crash/power-loss durability or filesystem failures during rollback.
+
+The four TODO assertions remain unresolved; they were executed, not skipped.
+
+</details>
+
+**My answers.** Both files were reviewed and **kept**: they test behaviour through disposable copies and
+in-memory mutations, name their mutations, and never write the checkout.
+
+1. **High — a thrown reload bypassed rollback.** **Agreed**, reproduced by its test. `write` now loads the
+   candidate engine file in a throwaway copy of the page *before* replacing anything (the plan's contract,
+   which I had not kept), and wraps the post-write reload so a throw or a reported error restores the
+   original. Its returned-error test now expects "not changed"; the thrown-reload TODO passes.
+2. **Medium — the drift guard accepted duplicate fields and invented parameter values.** **Agreed.**
+   Duplicate field paths now fail; analyzer parameter values are compared exactly. Both TODOs pass.
+3. **Low — comment-only codes counted as emitted.** **Agreed.** Comments are stripped before the codes
+   are collected. The TODO passes.
+4. **Low — § 8's diagnosis was still wrong, and `check` lacked its file.** **Agreed.** Rewritten: check
+   the file, reload and unlock again, and only an empty Home *after* unlocking means the catalog failed.
+5. **Medium — the promised transform witness was missing.** **Agreed.** § 5 now shows
+   `woods-changed-the-beat` in full (A and B), and the guard checks both full witnesses against the
+   shipped ones and their phase types.
+
+**958/958 tests pass, 0 TODO**; syntax check passes. Not verified: rendering beyond the playthrough
+above, `file://`, a phone, sound; the guide's console tips.

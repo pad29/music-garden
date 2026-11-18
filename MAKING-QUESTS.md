@@ -688,6 +688,78 @@ Here is one in full — the witness for *The Waking Woods*' first route:
 ```
 <!-- /example -->
 
+And a transform witness — the one for *The Waking Woods*' `changed-the-beat` route. `A` is the
+snapshot (main-beat kicks), `B` the transformed song (an even kick walk); the routes compare B with A:
+
+<!-- example:witness-transform -->
+```json
+{
+  "id": "woods-changed-the-beat",
+  "phaseId": "walk-it-again",
+  "currentVersionId": "B",
+  "songs": {
+    "A": {
+      "v": 3,
+      "meta": {"title": null, "created": 0, "updated": 0, "author": null},
+      "palette": "pentatonic",
+      "time": {"cols": 16, "tempo": 108, "groove": 0},
+      "tracks": [
+        {
+          "kind": "melody",
+          "voice": "musicbox",
+          "notes": [
+            {"p": 60, "c": 0, "len": 1},
+            {"p": 64, "c": 2, "len": 1},
+            {"p": 67, "c": 4, "len": 1},
+            {"p": 72, "c": 6, "len": 1},
+            {"p": 72, "c": 8, "len": 1},
+            {"p": 72, "c": 12, "len": 1}
+          ]
+        },
+        {
+          "kind": "drums",
+          "hits": [{"lane": 0, "c": 0}, {"lane": 0, "c": 4}, {"lane": 0, "c": 8}, {"lane": 0, "c": 12}]
+        }
+      ]
+    },
+    "B": {
+      "v": 3,
+      "meta": {"title": null, "created": 0, "updated": 0, "author": null},
+      "palette": "pentatonic",
+      "time": {"cols": 16, "tempo": 108, "groove": 0},
+      "tracks": [
+        {
+          "kind": "melody",
+          "voice": "musicbox",
+          "notes": [
+            {"p": 60, "c": 0, "len": 1},
+            {"p": 64, "c": 2, "len": 1},
+            {"p": 67, "c": 4, "len": 1},
+            {"p": 72, "c": 6, "len": 1},
+            {"p": 72, "c": 8, "len": 1},
+            {"p": 72, "c": 12, "len": 1}
+          ]
+        },
+        {
+          "kind": "drums",
+          "hits": [
+            {"lane": 0, "c": 0},
+            {"lane": 0, "c": 2},
+            {"lane": 0, "c": 4},
+            {"lane": 0, "c": 6},
+            {"lane": 0, "c": 8},
+            {"lane": 0, "c": 10},
+            {"lane": 0, "c": 12},
+            {"lane": 0, "c": 14}
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+<!-- /example -->
+
 A song is the game's ordinary **v3 song** (`SAVE-SHARE.md`): `notes` are `{p, c, len}` — MIDI pitch,
 column, length in columns; `hits` are `{lane, c}` — lane 0 kick, 1 snare, 2 hi-hat. `meta` can be all
 nulls and zeros, `voice` any instrument (`musicbox` is fine), `tempo` anything sensible. A witness must
@@ -820,11 +892,13 @@ A clean check proves the data is legal, not that the quest is good to play. Play
 5. **Try leaving.** Go Home mid-phase and reload the page; the card should say Continue and bring you
    back where you were.
 
-**If your quest is not there:** the dev bar's unlock writes progress, so first check your catalog —
-`node tools/quest-catalog.mjs check` must say `ok`, and if the game shows **no** quest at all, the
-installed catalog failed to load (in the developer console, `QUEST_CATALOG_ERRORS` lists why). Then
-check prerequisites (press Unlock again after installing a quest with new ones), then whether a saved
-run of another quest is being shown first (Clear quest runs), then the trail.
+**If your quest is not there:** first, `node tools/quest-catalog.mjs check my-quest.json` must say `ok`, and
+the installed file must be the one you checked (run `write` again if unsure). Then reload the page
+and press **🗝️ Unlock quests** again — it unlocks only the quests the page loaded. If, after that, Home shows
+**no** quest card and **no** trail at all, the game could not load the catalog: in the browser's
+developer console, `QUEST_CATALOG_ERRORS` lists why. (Before unlocking, an empty Home is normal: locked
+quests are not shown.) If other quests show and yours does not, look on the trail — the card shows a
+quest already being played first — and use 🧹 Clear quest runs to start over.
 
 ## 9. What makes a good quest
 

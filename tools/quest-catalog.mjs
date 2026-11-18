@@ -26,6 +26,7 @@
 //
 // Zero dependencies. It loads the game through tests/harness.mjs, as the tests do.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadGame } from "../tests/harness.mjs";
@@ -114,18 +115,33 @@ export function write(file, { root = ROOT } = {}) {
   const after = spliceCatalog(before, text);
   if (readEmbedded(after) !== text) throw new Error("internal: the spliced literal does not decode to the checked text");
   if (after === before) return { ...verdict, written: false, unchanged: true, bytes: text.length };
+  // First the candidate FILE, loaded as the game would load it, in a throwaway copy of the page — so a
+  // file that does not boot never replaces the real one (found by GPT's tester: a reload that threw
+  // after the rename left the broken candidate installed).
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "quest-catalog-"));
+  try {
+    fs.copyFileSync(path.join(root, "index.html"), path.join(scratch, "index.html"));
+    fs.cpSync(path.join(root, "js"), path.join(scratch, "js"), { recursive: true });
+    fs.writeFileSync(path.join(scratch, ENGINE_REL), after);
+    loadsAs(verdict.ids, scratch, "the new js/quest-engine.js did not load cleanly", "js/quest-engine.js was not changed");
+  } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
   const tmp = engine + ".tmp-" + process.pid;
   fs.writeFileSync(tmp, after);
   fs.renameSync(tmp, engine);
-  // The game as it now loads from disk: the same catalog, with no errors, or the original goes back.
-  const g = loadGame({ fresh: true, root });
-  const reloaded = [...g.QUEST_CATALOG_ERRORS];
-  const want = verdict.ids.join(","), got = Object.keys(g.QUEST_DEFINITIONS).join(",");
-  if (reloaded.length || want !== got) {
-    fs.writeFileSync(engine, before);
-    throw new Error("the written file did not load cleanly (" + JSON.stringify(reloaded) + "); js/quest-engine.js restored");
-  }
+  // …then the game as it now loads from disk; on any failure, thrown or reported, the original goes back.
+  try { loadsAs(verdict.ids, root, "the written file did not load cleanly", "js/quest-engine.js restored"); }
+  catch (e) { fs.writeFileSync(engine, before); throw e; }
   return { ...verdict, written: true, bytes: text.length };
+}
+
+// Load the game from `root`; throw unless it publishes exactly `ids` with no catalog error. A load that
+// throws is reported the same way, with what it threw.
+function loadsAs(ids, root, what, after) {
+  let errors, got;
+  try { const g = loadGame({ fresh: true, root }); errors = [...g.QUEST_CATALOG_ERRORS]; got = Object.keys(g.QUEST_DEFINITIONS); }
+  catch (e) { throw new Error(`${what} (it threw: ${e && e.message}); ${after}`); }
+  if (errors.length || got.join(",") !== ids.join(","))
+    throw new Error(`${what} (${JSON.stringify(errors)}); ${after}`);
 }
 
 // What the quest analyzers read off one song — the same songEvidence() the validator runs on a witness.
