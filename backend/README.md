@@ -40,7 +40,11 @@ Sign in as the root user → the account menu (top right) → **Security credent
 **Multi-factor authentication (MFA)** → **Assign MFA device** (an authenticator app or a security key).
 
 ### 2. Create the deploy identity (IAM Identity Center)
-In the AWS Console, with the region set to **us-east-1** (N. Virginia):
+In the AWS Console, with the region set to **us-east-1** (N. Virginia). IAM Identity Center is its own
+service, not IAM: find it with the console's top search bar, or open
+https://us-east-1.console.aws.amazon.com/singlesignon/home?region=us-east-1. On IAM's pages, and on the
+root user's Security credentials, the region menu says **Global** and locks every region. Those services
+have no region, so that is expected.
 1. **IAM Identity Center → Enable.** It offers to enable AWS Organizations: accept. This account becomes
    the organization's management account. Organizations itself costs nothing, and nothing changes for
    the stack. One catch, from AWS: an account still on AWS's *free plan* moves to the paid plan when it
