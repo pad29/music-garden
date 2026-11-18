@@ -60,7 +60,7 @@ Then `ao report --checkpoint --note "Claimed <ID> <title>"`, and, if you chose t
 
 - You are in it: check `git status` and `git branch --show-current`. Never `EnterWorktree`, never make
   another worktree, never rename the branch, and never edit AO's project checkout
-  (`C:\Users\pavel\ao\projects\music-garden`), which stays on `main`.
+  (the clone every worktree is made from, first in `git worktree list`), which stays on `main`.
 - The branch is `claude/<id>-<slug>` when the orchestrator knew the ticket at spawn, otherwise AO's
   default, `ao/<session-id>/root`. Either is fine: Linear
   links the PR through the ticket ID in its title and the `Closes <ID>` line in its body. AO's branch
