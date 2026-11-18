@@ -2,20 +2,18 @@
 
 A browser game that teaches music theory through play — **"Minecraft for music."** Players compose real-sounding music by placing simple visual elements and *feel* musical concepts (tension, resolution, harmony, contour, pulse) long before they meet the names. Audience skews to children 8+, but is meant to appeal broadly.
 
-**Play it at [tunegarden.game](https://tunegarden.game/)** — in the browser, with nothing to install and no account needed (an account only saves your progress across devices).
+**Play it at [tunegarden.game](https://tunegarden.game/)** — in the browser, with nothing to install and no account needed (an optional account syncs your progress across devices and shares songs too big for a link).
 
-<img src=".github/screenshot.png" width="640" alt="Tune Garden: the first level's story on the left, a short tune planted as glowing seeds on the grid, and the companion and the blooming garden on the right">
+<img src=".github/screenshot.png" width="480" alt="Tune Garden: the first level's story on the left, a short tune planted as glowing seeds on the grid, and the companion and the blooming garden on the right">
 
-**Run it yourself** — there is no build step and no dependency; you need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/):
+**Run it yourself** — no build step, no dependency; with [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/), run these and open http://localhost:8377 (or skip the server and open `music-garden/index.html`):
 
 ```bash
 git clone https://github.com/pad29/music-garden.git
 npx http-server music-garden -p 8377 -c-1
 ```
 
-Then open http://localhost:8377 — or skip the server and open `music-garden/index.html` in your browser.
-
-**Licence:** the code is under the [GNU AGPL-3.0](LICENSE); the narration audio and the docs are under Creative Commons BY-SA 4.0; the name "Tune Garden" and its logo are not licensed. The instrument samples, fonts and famous melodies keep their own terms, listed in [CREDITS.md](CREDITS.md).
+**Licence:** code under the [GNU AGPL-3.0](LICENSE); narration audio and docs under Creative Commons BY-SA 4.0; the name "Tune Garden" and its logo not licensed. Samples, fonts and famous melodies keep their own terms: [CREDITS.md](CREDITS.md).
 
 **Contribute:** [CONTRIBUTING.md](CONTRIBUTING.md) says how to report a bug, propose a change and open a pull request.
 

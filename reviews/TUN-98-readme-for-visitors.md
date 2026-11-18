@@ -47,8 +47,8 @@ Searched for machine paths (`C:\Users`, `C:/Users`, `/Users/…`, `/home/…`, `
 | `C:\Users\pavel\AppData\Roaming\GitHub CLI\config.yml` | `.claude/skills/work-ticket/pr-review.md:10`, the diagnosis of AO's reviewer | **Changed** to `%APPDATA%\GitHub CLI\config.yml` — the same file on any Windows machine; the file is live procedure, not history. |
 | `/home/` | `EDITOR-DESIGN.md:181` | **Left** — a false match ("lit/unlit/home/velocity"). |
 | "Pavel" (the owner's first name) | `DESIGN.md` (2 lines), `PACKAGES.md` (3), `PACKAGES-DETAILED.md` (4), `js/famous.js` (11 comments) | **Left** — all but one credit the owner's score checks of the famous melodies ("Pavel's save-link version"), which is what makes them trustworthy; `DESIGN.md:384` uses the name as an example ("this sounds like Pavel's style"). The owner published the repository as it is (2026-11-13), and `js/famous.js` sits beside the `FAMOUS` data no ticket edits. |
-| Email addresses | none personal: `you@`/`new@`/`parent@`/`x@example.com` placeholders in `backend/`, `tests/`; `@aws.com` names AWS's sender | **Left** — placeholders, which `tests/backend-template.test.mjs` requires. |
-| `dmitriev`, `pad29` | nowhere outside history | — |
+| Email addresses | none personal: `you@`/`new@`/`parent@`/`x@example.com` placeholders in `backend/`, `tests/`; `owner@example.org` in `tests/backend-template.test.mjs:467–469`, the mutation cases proving the template refuses a real-looking address; `@aws.com` names AWS's sender | **Left** — placeholders, which `tests/backend-template.test.mjs` requires, and its own test inputs. |
+| `dmitriev`, `pad29` | nowhere outside history on `main`; **this PR adds** `pad29` in `README.md`'s clone URL | **Kept** — it is the repository's own address, which a visitor needs. |
 | History | machine paths in 12 `reviews/` files; "pavel" on 113 lines of `reviews/` and `REVIEW-LOG.md`; `example.org`/`example.com` in `reviews/TUN-82…` | **Left as written** (ticket; `CLAUDE.md`). The commit history's email address: the owner accepted it (2026-11-13). |
 
 ## Build
@@ -56,7 +56,7 @@ Searched for machine paths (`C:\Users`, `C:/Users`, `/Users/…`, `/home/…`, `
 - **Screenshot** — this worktree's own server (`ao preview start`, its `README.md` byte-compared with the
   file): Start playing → Sprout → 💡 Hint on *Wake the Seeds*, 1600×900 cropped to 1600×760, lossless
   (327 KB; a 256-colour palette was a sixth of that but flattened the garden panel's gradient). Shown at
-  640 px wide so the opening fits one screen.
+  480 px wide (640 at first; round 1 below) so the opening fits one screen.
 - **The two commands** — `npx http-server <folder> -p … -c-1`, run from another directory, served the
   folder: `/` answered 200 and `index.html` byte-matched. The clone URL is this repository's; it works
   for strangers once TUN-103 makes it public.
@@ -64,5 +64,47 @@ Searched for machine paths (`C:\Users`, `C:/Users`, `/Users/…`, `/home/…`, `
 - **No repository-map row for `.github/`** — TUN-92's issue and pull request templates make it a folder
   worth a row, and two parallel rows at the map's end would collide; that ticket adds it.
 
-**913 tests pass**; syntax check clean. Not verified: the README as GitHub renders it (checked on the
-PR's branch view once pushed).
+## PR review — round 1 (Astra, `ask.sh`, on 10fb07b)
+
+<details><summary>GPT's review, verbatim</summary>
+
+## 1. **Changes required**
+
+1. **Should-fix — `README.md:5`: Account functionality is understated.** “An account only saves your progress across devices” is false: `js/save-share.js:163–169` requires sign-in to share songs exceeding the inline-link limit, and accounts provide cloud-song listing and deletion. Replace the parenthetical with “an optional account enables progress sync and cloud song sharing,” or remove it.
+
+2. **Nit — `reviews/TUN-98-readme-for-visitors.md:50–51`: Complete the audit with the final branch’s results.** The explicitly dated baseline correctly has no `pad29` outside history, but this PR introduces it in `README.md:12`. Add a post-change note retaining it as the repository’s clone URL. The email inventory also omits `owner@example.org` in `tests/backend-template.test.mjs:467–469`; record those as intentional test placeholders. I found no unreported personal email address.
+
+The remaining source checks hold: developer sections and anchors are preserved; package status agrees with `PACKAGES.md`; the AO wording identifies the same first-listed checkout and retains the prohibition; the screenshot matches its description and is excluded from deployment. No runtime invariant was changed.
+
+## 2. **Missing tests**
+
+- **Manual GitHub rendering check:** Open this head’s rendered README, verify the screenshot loads, and check the “first screen” requirement at a recorded desktop viewport—including the run commands, licence and contribution link. The record explicitly leaves this unverified; my browser attempt was blocked by an unavailable browser host.
+- **No new automated tests needed:** the changes are prose and a repository screenshot. Syntax checking passed. My full-suite run encountered `EPERM` creating temporary directories in this read-only environment, so I could not independently reproduce the reported 913/913 pass.
+
+## 3. **Verdict**
+
+**CHANGES REQUESTED** for head `10fb07bf9ce11d36b95f6c72cea600b2c5e22418`.
+
+The pending `LICENSE`, `CREDITS.md` and `CONTRIBUTING.md` links are acknowledged cross-ticket dependencies, not additional defects here. TUN-89/TUN-92 still require a merged README check: preserve this opening, reconcile the licence summary with the final licence choice, and retain their contributor/template links. A clean textual merge alone would not establish that integration is correct.
+
+</details>
+
+1. **Should-fix — the account parenthetical.** **Agreed** — `shareSong` asks a signed-out player to sign
+   in for a song too big for a `#s=` link. Now: "an optional account syncs your progress across devices
+   and shares songs too big for a link".
+2. **Nit — the audit's final state.** **Agreed** — the table now records `pad29` in the clone URL (kept)
+   and `owner@example.org` in `tests/backend-template.test.mjs` (test inputs, left).
+3. **Missing test — GitHub rendering at a recorded viewport.** **Added, as far as it can be reached
+   here:** GitHub's own renderer (`POST /markdown`, `gfm`, this repository as context) keeps
+   `<img … width>` (adding `max-width: 100%`) and the three relative links. That HTML, in an 830 px
+   GitHub-style column with the real screenshot, at AO's panel — 1280×720 CSS pixels (1600×900 at
+   125%) — first showed the screenshot at 640 px pushing *Licence* and *Contribute* below the fold. So:
+   the screenshot is now 480 px wide, the Licence line shorter, and "then open…" folded into the run
+   line. At that viewport the title, pitch, *Play it*, screenshot, *Run it yourself* and both commands
+   are on screen, *Licence* starts at the bottom edge, and *Contribute* is one line below it; a
+   1920×1080 window at 100% shows all of it. The page GitHub itself serves (private repository, AO's
+   browser not signed in) stays on the owner's playtest list.
+4. GPT's note that TUN-89 and TUN-92 must check the merged README, not just merge cleanly — recorded in
+   the pointer left on TUN-92, and in the hand-off for TUN-89.
+
+**913 tests pass** after the fixes; syntax check clean. Not verified: the README as github.com serves it.
