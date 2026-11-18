@@ -8,7 +8,8 @@ Zero dependencies — Node's built-in test runner, matching the game's own no-de
 Nothing to install.
 
 GitHub Actions runs it, with the syntax check, on every pull request and every push to `main`, on Ubuntu
-with Node 24 (`.github/workflows/checks.yml`, TUN-90; `ci-workflow.test.mjs` pins the workflow's rules). So a
+with Node 24 (`.github/workflows/checks.yml`, TUN-90; `ci-workflow.test.mjs` pins the workflow's rules). The
+suite needs Node 22.15+ or 23.5+, for `node:module`'s `registerHooks`. So a
 test must pass on Linux as well as on the owner's Windows machine: no Windows paths or CRLF assumptions,
 and a test that only means something on one OS says so in its `skip` reason, which the run prints — today
 `workflow-scripts.test.mjs`'s busy-directory test, Windows-only. That file runs the workflow scripts under

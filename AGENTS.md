@@ -23,7 +23,7 @@ already-initialized bindings and functions declared in the current or an earlier
 calls may use later scripts once loaded. `js/load-gate.js` stays the first game script and
 `js/boot.js` the last (`README.md` § How the game's code is organized says why).
 
-Tests — zero dependencies, Node's built-in runner, nothing to install:
+Tests — zero dependencies, Node's built-in runner, nothing to install; Node 22.15+ or 23.5+ (`registerHooks`):
 
 ```bash
 node --test "tests/*.test.mjs"          # one file: node --test tests/detectors.test.mjs
