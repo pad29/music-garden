@@ -45,7 +45,9 @@ service, not IAM: find it with the console's top search bar, or open
 https://us-east-1.console.aws.amazon.com/singlesignon/home?region=us-east-1. On IAM's pages, and on the
 root user's Security credentials, the region menu says **Global** and locks every region. Those services
 have no region, so that is expected.
-1. **IAM Identity Center → Enable.** It offers to enable AWS Organizations: accept. This account becomes
+1. **IAM Identity Center → Enable.** Choose a **single-region instance** (us-east-1). Multi-region only
+   copies sign-in to a second region, for when us-east-1 is down, and the stack lives in us-east-1
+   anyway. It offers to enable AWS Organizations: accept. This account becomes
    the organization's management account. Organizations itself costs nothing, and nothing changes for
    the stack. One catch, from AWS: an account still on AWS's *free plan* moves to the paid plan when it
    creates an organization, which ends its free-plan credits.
