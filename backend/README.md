@@ -346,6 +346,9 @@ new one — answer `n` and fix the template instead.
 | `PreSignUpFn`, `ProgressFn`, `SongsFn` | Modify / `False` | the built code's upload key changed (`Code`, never recreated). SAM names the upload by a checksum of the built files' names and contents, not their timestamps (checked in SAM CLI 1.162, TUN-113), so this row means the built files differed from the last deploy's |
 | `UserPool` | Modify / `False` | its sign-up trigger (`LambdaConfig`) refers to `PreSignUpFn`'s ARN |
 | `PreSignUpPermission` | Modify / `Conditional` | its `SourceArn` refers to `UserPool`'s ARN. It would be recreated only if the pool were replaced, and the pool is not |
+| `CloudSwitchFn` | Modify / `False` | like the other functions, its code's upload key changed (seen with `CloudSwitchFn` added, TUN-113, 2026-11-17) |
+| `CloudSwitchFnRole` | Modify / `False` | its policy names `ProgressFn`'s, `SongsFn`'s and `PreSignUpFn`'s ARNs, which stay the same |
+| `CloudSwitchAlarmSubscription` | Modify / `Conditional` | its `Endpoint` is `CloudSwitchFn`'s ARN, which keeps its fixed name, so it is not recreated |
 | `Api` | Modify / `False` | its route definitions (`Body`) refer to `SongsFn`'s and `ProgressFn`'s ARNs, so it shows whenever those functions change. Their ARNs stay the same |
 
 To see why any row is there, read the pending change set before answering:

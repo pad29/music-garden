@@ -81,6 +81,14 @@ All answered by the owner, relayed by the orchestrator (music-garden-5), 2026-11
    is a real deploy that proves upload, change-set execution, function code updates and the cost
    switch's invocation, but not creates, deletes, rollback, or the rows that only follow from the
    functions.
+8. *After review round 4 (Needs Input): accept `89a0e07`, or a fifth review?* The owner did not
+   answer A or B. They carried out every step on the README as it stood (`85ee54c`) and reported
+   "everything was as expected" (in the AO session, 2026-11-17). I took that as **A, accept**, and
+   said so in the session and the hand-off. Round 4's two fixes, and the two clarifications below, have
+   no GPT review.
+9. *Single- or multi-region Identity Center instance?* **Single-region (us-east-1)**: my
+   recommendation, which the owner followed. *May the Identity Center user share the root user's email?*
+   **Yes**: they are separate sign-ins. The README was left unchanged on that point.
 
 ## Build (Claude)
 
@@ -274,3 +282,31 @@ dropping `UpdateTimeToLive` or `PutRolePolicy`, or renaming the counter table, i
 
 Missing tests: none in the repository. The owner-run case GPT asked for (a fresh-prefix redeploy, then
 record what ran) is step 3 and the hand-off checklist.
+
+## Owner's review — the move off the root key (2026-11-15 to 2026-11-17)
+
+The owner followed `backend/README.md` § One-time setup and § Moving off a root access key, from the
+PR branch, and deployed from the project checkout on `main` (with TUN-88).
+
+- **Root MFA** was already on. **Identity Center:** enabled as a single-region instance in us-east-1,
+  with Organizations, the MFA defaults, a user, the `mg-deploy` permission set with the README's policy,
+  and the assignment. `aws configure sso`, `AWS_PROFILE` and `aws sts get-caller-identity` all
+  worked as written.
+- **Two README fixes came from the walk-through:**
+  - `c1ab9bc`: on IAM's pages the region menu says *Global* and locks every region, because IAM is a
+    global service. Identity Center is its own service, and step 2 now says how to open it in us-east-1.
+  - `85ee54c`: step 2.1 now says to pick a single-region instance.
+- **Cost switch status as `mg-deploy`:** `"cloud": "on"`, no `FunctionError`.
+- **The first real deploy as `mg-deploy`** (step 3): `Modify` on `Api`, `CloudSwitchAlarmSubscription`
+  (`Conditional`), `CloudSwitchFnRole`, the four functions, `PreSignUpPermission` (`Conditional`) and
+  `UserPool`. No `Replacement: True`, and no table rows. It succeeded.
+  - `CloudSwitchFnRole` and `CloudSwitchAlarmSubscription` were not in § Future deploys' table of
+    normal rows. Both follow from function ARNs: the role's policy names the three functions, and the
+    subscription's endpoint names the switch. Neither was recreated.
+- **Root key:** deactivated, then deleted. The machine was cleaned per step 7. `aws sts
+  get-caller-identity` shows `mg-deploy`, and after `aws sso logout` it fails rather than falling back to
+  a key. The owner's words: "everything was as expected."
+
+**What this proves and what it doesn't:** see Round 4. Creates, deletes and rollback under `mg-deploy`
+have not happened yet. The first template change that adds a resource will be the first test, and the
+README's `AccessDenied` / `UPDATE_ROLLBACK_FAILED` steps cover a refusal.
