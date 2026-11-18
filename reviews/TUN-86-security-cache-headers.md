@@ -76,6 +76,8 @@ origins); opening the sign-in form can, and a `connect-src` violation shows befo
 there and the console will say so. That is a preview-only effect, not a production one. After the DNS
 switch, any Cloudflare zone feature that injects a script (Web Analytics' automatic beacon, Rocket
 Loader, Email Address Obfuscation) would be blocked or need the policy changed — none is on today.
+*Later (TUN-114, 2026-11-17):* Real User Monitoring was in fact on and injected the beacon until
+2026-11-15; README § Deployment, *Cloudflare settings that must stay off*, is now the full, current list.
 
 **Checkpoint (§ 5):** no `needs-owner` label; no musical or player-facing question; no fork the ticket's
 readings split on. Build.
