@@ -89,6 +89,7 @@ Backend (rarely touched): `backend/README.md` § Future deploys — the owner's,
 - Song save/share format (pitch-based v3) and the Studio → `SAVE-SHARE.md`
 - Where the editor is headed (notes-as-objects, lenses, chromatic lattice) → `EDITOR-DESIGN.md`
 - How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
+- Adding a quest as data: every field, the closed lists, witnesses, `tools/quest-catalog.mjs` → `MAKING-QUESTS.md`
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - The vendored fonts and sign-in library: versions, sources, licences, hashes, how to update →
   `vendor/README.md`
@@ -129,7 +130,7 @@ fire, at which step). Re-capture per `tools/goldens/README.md` before and after 
 
 Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior verified in a real browser (and
 on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text changed → the design docs
-(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`) updated to record what landed, and
+(`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`, `MAKING-QUESTS.md`) updated to record what landed, and
 `vendor/README.md` with `SHA256SUMS` if a vendored file changed → reported to
 the owner. A required check you could not run (`file://`, the phone, sound by ear) is reported as
 pending, and stays the owner's to verify before merge. Merging to `main` happens only on the owner's

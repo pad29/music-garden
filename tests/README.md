@@ -316,6 +316,22 @@ question with yes, so its `?reset` loads still catch a boot that wrongly runs by
 for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
 worst at finding.
 
+## Quests a contributor adds (TUN-105)
+
+The quest tests hold **every** quest in the built-in catalog, not just the two official ones, so a quest
+added as data (`MAKING-QUESTS.md`) is proved without editing a test: it loads, its dealer's deals are
+legal and completable (`questsetup`), no opening in its pool blocks a route, and every route is reachable
+by a song that completes its task (`quest-fragments`). What is *content* — the official quests' ids,
+pools, geometry, which one Home offers — is pinned **by id**, and the Home and trail tests pass the two
+official quests as an explicit fixture. A test that asserts the catalog's size, or picks "the first
+quest", breaks the moment someone adds one. `questhome` also covers fresh-invitation priority ties and
+the real `?dev` 🗝️ Unlock quests handler with an added quest.
+
+`quest-catalog-tool.test.mjs` runs `tools/quest-catalog.mjs` against a temporary copy of `index.html` +
+`js/`, never the checkout's engine file. `quest-guide.test.mjs` checks `MAKING-QUESTS.md`'s marked
+sections against the engine: the field tables (walked from the `QT` specs by
+`helpers/quest-guide-fields.mjs`), the closed lists, the worked examples and the error codes.
+
 ## Quest setup and playtest mutation audit
 
 ```bash

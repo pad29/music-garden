@@ -9,6 +9,7 @@
 //   node tools/quest-catalog.mjs extract <file.json>   # write the catalog, pretty-printed, to a file
 //   node tools/quest-catalog.mjs check   <file.json>   # validate that file exactly as the game would
 //   node tools/quest-catalog.mjs write   <file.json>   # check it, then install it in js/quest-engine.js
+//   node tools/quest-catalog.mjs evidence <song.json>  # what the analyzers hear in one v3 song (a witness)
 //
 // Rules it keeps:
 // - What is checked is what is installed. `check` and `write` validate the CANONICAL text (the file
@@ -127,6 +128,18 @@ export function write(file, { root = ROOT } = {}) {
   return { ...verdict, written: true, bytes: text.length };
 }
 
+// What the quest analyzers read off one song — the same songEvidence() the validator runs on a witness.
+export function evidence(file, { root = ROOT } = {}) {
+  let song;
+  try { song = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, "")); }
+  catch (e) { throw new Error(file + " is not valid JSON: " + e.message); }
+  const e = loadGame({ fresh: true, root }).songEvidence(song);
+  if (!e.valid) return { valid: false, code: e.code };
+  return { valid: true, palette: e.paletteId, paletteFallback: e.paletteFallback, columns: e.columns,
+    contourFamilies: [...e.contourFamilies], pulseFamilies: [...e.steadyPulseFamilies],
+    beatsHit: e.melodyBeatsHit, beats: e.beatCount, notes: e.melodyOnsetCount, drumHits: e.drumOnsetCount };
+}
+
 // ---- the command line ----
 const report = r => {
   if (r.ok) {
@@ -141,12 +154,21 @@ const report = r => {
 const isMain = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 if (isMain) {
   const [cmd, file] = process.argv.slice(2);
-  const usage = () => { console.error("usage: node tools/quest-catalog.mjs extract|check|write <file.json>"); process.exit(2); };
-  if (!file || !["extract", "check", "write"].includes(cmd)) usage();
+  const usage = () => { console.error("usage: node tools/quest-catalog.mjs extract|check|write <file.json>  |  evidence <song.json>"); process.exit(2); };
+  if (!file || !["extract", "check", "write", "evidence"].includes(cmd)) usage();
   try {
     if (cmd === "extract") {
       const r = extract(file);
       console.log(`wrote ${file} — ${r.count} quests. Edit it, then: node tools/quest-catalog.mjs check ${file}`);
+    } else if (cmd === "evidence") {
+      const e = evidence(file);
+      if (!e.valid) { console.log(`not a song the game can read: ${e.code}`); process.exit(1); }
+      const list = xs => xs.length ? xs.join(", ") : "none";
+      console.log(`palette ${e.palette}${e.paletteFallback ? " (unknown or missing — the game falls back to it; a witness may not)" : ""}, ${e.columns} columns`);
+      console.log(`contour families: ${list(e.contourFamilies)}`);
+      console.log(`pulse families:   ${list(e.pulseFamilies)}`);
+      console.log(`tune on the beat: ${e.beatsHit} of ${e.beats} main beats`);
+      console.log(`notes: ${e.notes}, drum hits: ${e.drumHits}`);
     } else if (cmd === "check") {
       const r = check(file); report(r); process.exit(r.ok ? 0 : 1);
     } else {

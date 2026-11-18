@@ -1,0 +1,138 @@
+// MAKING-QUESTS.md against the engine. The guide's field tables, closed lists and worked examples are
+// facts about the code; these tests fail when the code moves and the guide does not. They check the
+// marked sections only — <!-- fields -->, <!-- registry:NAME -->, <!-- example:NAME -->,
+// <!-- error-codes --> — never prose, order of sections or wording. Clarity is the owner's to judge.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { loadGame } from "./harness.mjs";
+import { gameScripts, joinScripts } from "./helpers/game-scripts.mjs";
+import { questFields } from "./helpers/quest-guide-fields.mjs";
+
+const ROOT = path.join(import.meta.dirname, "..");
+const GUIDE = fs.readFileSync(path.join(ROOT, "MAKING-QUESTS.md"), "utf8").replace(/\r\n/g, "\n");
+const g = loadGame();
+const plain = x => JSON.parse(JSON.stringify(x));          // out of the game's realm, for deepEqual
+const ticks = cell => [...cell.matchAll(/`([^`]+)`/g)].map(m => m[1]);
+const sorted = xs => [...xs].sort();
+
+function section(open, close) {
+  const parts = GUIDE.split(open);
+  assert.equal(parts.length, 2, `exactly one ${open} in MAKING-QUESTS.md`);
+  const end = parts[1].indexOf(close);
+  assert.ok(end >= 0, `${open} is closed by ${close}`);
+  return parts[1].slice(0, end);
+}
+// Table rows of a marked section whose first cell is backticked; cells trimmed.
+const rows = text => text.split("\n").filter(l => /^\|\s*`/.test(l))
+  .map(l => l.split("|").slice(1, -1).map(c => c.trim()));
+const registry = name => rows(section(`<!-- registry:${name} -->`, "<!-- /registry -->"));
+const ids = name => registry(name).map(r => ticks(r[0])[0]);
+const example = name => {
+  const body = section(`<!-- example:${name} -->`, "<!-- /example -->");
+  const m = body.match(/^\n```json\n([\s\S]*)\n```\n$/);
+  assert.ok(m, `example:${name} is exactly one json block`);
+  return JSON.parse(m[1]);
+};
+
+test("the field tables name every field of the newest schema, with its type and whether it is required", () => {
+  // MUTATIONS: a field added to or removed from QT, a bound changed, optional made required.
+  const want = questFields(g);
+  const got = new Map(rows(section("<!-- fields -->", "<!-- /fields -->")).map(r => [ticks(r[0])[0], { type: r[1], required: r[2] === "required" }]));
+  for (const r of rows(section("<!-- fields -->", "<!-- /fields -->")))
+    assert.ok(r[2] === "required" || r[2] === "optional", `${r[0]}: "${r[2]}"`);
+  assert.deepEqual(sorted(got.keys()), sorted(want.keys()), "the same paths");
+  for (const [p, spec] of want) assert.deepEqual(got.get(p), spec, p);
+  assert.ok(want.size > 80, "the walk must reach the nested blocks");
+});
+
+test("the worked example is The Waking Woods as it ships, with only the witness songs left out", () => {
+  const woods = plain(g.QUEST_DEFINITIONS["waking-woods"]);
+  for (const w of woods.witnesses) w.songs = "…";
+  assert.deepEqual(example("waking-woods"), woods);
+});
+
+test("the full witness example is a shipped witness, verbatim", () => {
+  const shown = example("witness");
+  const shipped = plain(g.QUEST_DEFINITIONS["waking-woods"].witnesses.find(w => w.id === shown.id));
+  assert.deepEqual(shown, shipped);
+});
+
+test("capabilities, and the package that earns each", () => {
+  assert.deepEqual(sorted(ids("capabilities")), sorted(Object.keys(g.QUEST_CAPABILITIES)));
+  for (const r of registry("capabilities"))
+    assert.deepEqual(sorted(ticks(r[1])), sorted(g.QUEST_CAPABILITIES[ticks(r[0])[0]].earnedByPackageIds), r[0]);
+});
+
+test("musical analyzers, with the metadata the validator checks", () => {
+  // MUTATIONS: an analyzer added, a phase type, control, teaching package or descriptor changed.
+  const musical = Object.keys(g.QUEST_PRIMITIVES).filter(id => g.QUEST_PRIMITIVES[id].kind === "musical");
+  assert.deepEqual(sorted(ids("analyzers")), sorted(musical));
+  for (const [idCell, cap, phases, needs, taught, desc, params] of registry("analyzers")) {
+    const p = g.QUEST_PRIMITIVES[ticks(idCell)[0]], at = idCell;
+    assert.deepEqual(ticks(cap), [p.capabilityId], at);
+    assert.deepEqual(sorted(ticks(phases)), sorted(p.allowedPhaseTypes), at);
+    assert.deepEqual(sorted(ticks(needs)), sorted(p.requiredControlIds || []), at);
+    assert.deepEqual(sorted(ticks(taught)), sorted(p.taughtByPackageIds || []), at);
+    assert.deepEqual(ticks(desc), [...p.allowedDescriptorIds], at);
+    const s = p.parameterSchema;
+    if (s.k === "none") assert.deepEqual(ticks(params), ["{}"], at);
+    else if (s.k === "snapshot") assert.ok(params.includes('"snapshotVersionId": "A"'), at);
+    else if (s.k === "enum-set") {
+      assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
+      for (const v of s.values) assert.ok(ticks(params).includes(v), `${at} ${v}`);
+    } else if (s.k === "minimum") assert.ok(params.includes(`"${s.field}"`) && params.includes(`${s.min}–${s.max}`), at);
+    else assert.fail(`${at}: a parameter schema the guide does not describe: ${s.k}`);
+  }
+});
+
+test("analyzer relations: every declared pair, and nothing else", () => {
+  const got = registry("relations").map(r => [ticks(r[0]).join("|"), r[1]]);
+  const want = Object.keys(g.QUEST_CROSS_RELATIONS).map(k => [k, g.QUEST_CROSS_RELATIONS[k]]);
+  assert.deepEqual(sorted(got.map(x => x.join(" "))), sorted(want.map(x => x.join(" "))));
+});
+
+test("procedural gates, way descriptors and their words", () => {
+  const procedural = Object.keys(g.QUEST_PRIMITIVES).filter(id => g.QUEST_PRIMITIVES[id].kind === "procedural");
+  assert.deepEqual(sorted(ids("gates")), sorted(procedural));
+  const ways = Object.keys(g.QUEST_DESCRIPTORS).filter(id => g.QUEST_DESCRIPTORS[id].kind === "way");
+  assert.deepEqual(sorted(ids("descriptors")), sorted(ways));
+  for (const r of registry("descriptors")) assert.equal(r[1], g.QUEST_DESCRIPTORS[ticks(r[0])[0]].text, r[0]);
+});
+
+test("controls, tools, transitions, completion actions, payoffs, grooves, setup kinds and themes", () => {
+  for (const [name, reg] of [["controls", g.QUEST_CONTROLS], ["tools", g.QUEST_TOOLS],
+    ["transitions", g.QUEST_TRANSITIONS], ["completion-actions", g.QUEST_COMPLETION_ACTIONS],
+    ["payoffs", g.QUEST_PAYOFFS], ["grooves", g.QUEST_GROOVES], ["setup-kinds", g.QUEST_SETUP_KINDS],
+    ["themes", g.QUEST_THEMES]])
+    assert.deepEqual(sorted(ids(name)), sorted(Object.keys(reg)), name);
+  for (const r of registry("transitions")) assert.equal(ticks(r[1])[0], g.QUEST_TRANSITIONS[ticks(r[0])[0]].phaseType, r[0]);
+  for (const r of registry("completion-actions")) assert.equal(ticks(r[1])[0], g.QUEST_COMPLETION_ACTIONS[ticks(r[0])[0]].transitionId, r[0]);
+  for (const r of registry("themes")) assert.equal(r[1], g.QUEST_THEMES[ticks(r[0])[0]].icon, r[0]);
+});
+
+test("lands, and which have a friend who can be cast", () => {
+  assert.deepEqual(ids("map-regions"), plain(g.REGION_MAP.map(r => r.id)));
+  for (const r of registry("map-regions")) {
+    const reg = g.REGIONS[ticks(r[0])[0]];
+    assert.equal(r[1], reg && reg.friend ? reg.friend.name : "—", r[0]);
+  }
+});
+
+test("the pentatonic ladder the guide quotes is the palette's", () => {
+  const m = GUIDE.match(/`pentatonic` is `(\[[\d, ]+\])`/);
+  assert.ok(m, "the guide quotes the pentatonic ladder");
+  assert.deepEqual(JSON.parse(m[1]), plain(g.PALETTES.pentatonic.MIDI));
+});
+
+test("every error code the guide explains is one the loader can report", () => {
+  // The universe is read from the engine's own sources: every code literal handed to an error path.
+  const src = joinScripts(gameScripts(ROOT).scripts);
+  const emitted = new Set([...src.matchAll(/\b(?:err|bad|no|QuestLoadError)\(\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])
+    .concat([...src.matchAll(/\bcode:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1]))
+    .concat([...src.matchAll(/errs\.push\(\{\s*code:\s*"([a-z][a-z0-9-]*)"/g)].map(m => m[1])));
+  const documented = rows(section("<!-- error-codes -->", "<!-- /error-codes -->")).flatMap(r => ticks(r[0]));
+  assert.ok(documented.length > 30);
+  for (const code of documented) assert.ok(emitted.has(code), code);
+});

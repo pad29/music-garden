@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ROOT, ENGINE_REL, ANCHOR, extract, check, write, findLiteral, spliceCatalog, readEmbedded,
+import { ROOT, ENGINE_REL, ANCHOR, extract, check, write, evidence, findLiteral, spliceCatalog, readEmbedded,
   canonicalText } from "../tools/quest-catalog.mjs";
 
 function tempRoot(t, { lf = false } = {}) {
@@ -25,7 +25,10 @@ const outsideLiteral = text => { const at = findLiteral(text); return text.slice
 
 test("extract then write leaves the engine file byte-identical", t => {
   const r = tempRoot(t), before = fs.readFileSync(r.engine);
-  assert.equal(extract(r.json, { root: r.dir }).count, 2);
+  const shipped = JSON.parse(readEmbedded(fs.readFileSync(r.engine, "utf8"))).definitions.length;
+  assert.ok(shipped >= 2);
+  assert.equal(extract(r.json, { root: r.dir }).count, shipped);
+  assert.equal(readCat(r.json).definitions.length, shipped);
   const out = write(r.json, { root: r.dir });
   assert.equal(out.ok, true); assert.equal(out.written, false); assert.equal(out.unchanged, true);
   assert.deepEqual(fs.readFileSync(r.engine), before);
@@ -112,4 +115,18 @@ test("the declaration must be found exactly once, as one closed double-quoted li
   // An escaped quote inside the literal is not its end.
   const tricky = ANCHOR + JSON.stringify("{\"a\":\"say \\\"hi\\\"\"}") + ";\nafter();\n";
   assert.equal(spliceCatalog(tricky, "{}"), ANCHOR + JSON.stringify("{}") + ";\nafter();\n");
+});
+
+test("evidence reports what the analyzers hear in a witness song, and refuses what the game cannot read", t => {
+  const r = tempRoot(t), woods = JSON.parse(readEmbedded(fs.readFileSync(r.engine, "utf8"))).definitions
+    .find(d => d.id === "waking-woods");
+  const songFile = path.join(r.dir, "song.json");
+  fs.writeFileSync(songFile, JSON.stringify(woods.witnesses.find(w => w.id === "woods-main-beats").songs.A));
+  const e = evidence(songFile, { root: r.dir });
+  assert.deepEqual(e, { valid: true, palette: "pentatonic", paletteFallback: false, columns: 16,
+    contourFamilies: ["rise"], pulseFamilies: ["main-beat-kicks"], beatsHit: 4, beats: 4, notes: 6, drumHits: 4 });
+  fs.writeFileSync(songFile, JSON.stringify(woods.witnesses.find(w => w.id === "woods-shimmer").songs.A));
+  assert.deepEqual(evidence(songFile, { root: r.dir }).pulseFamilies, ["hat-shimmer"]);
+  fs.writeFileSync(songFile, JSON.stringify({ v: 2, tracks: [] }));
+  assert.deepEqual(evidence(songFile, { root: r.dir }), { valid: false, code: "not-v3" });
 });
