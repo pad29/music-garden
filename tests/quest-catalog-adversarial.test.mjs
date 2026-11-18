@@ -218,3 +218,29 @@ for (const [label, fault, expect] of [
   assert.ok(fs.readFileSync(f.engine).equals(before), "the original bytes are back");
   assert.deepEqual(tmpLeft(f), []);
 });
+
+// ---- from GPT's PR review (round 2): the same post-install failures, through the command line ----
+for (const [label, fault] of [
+  ["reports catalog errors", 'loadQuestCatalog = function(){ QUEST_CATALOG_ERRORS=[{code:"post-install-probe",path:"$"}]; QUEST_DEFINITIONS={}; };'],
+  ["throws", 'throw new Error("post-install-probe");'],
+]) test(`CLI write exits 1 and restores the engine when the reload after installing ${label}`, t => {
+  // MUTATION: drop the rollback, or let the CLI exit 0 after a failed install.
+  const f = fixture(t, true), before = fs.readFileSync(f.engine);
+  f.catalog.definitions[1].title = "Changed title"; f.save();
+  // A preload in the child: the real rename, then the fault — the candidate copy loaded cleanly first.
+  const preload = path.join(f.root, "post-install-fault.mjs");
+  fs.writeFileSync(preload, [
+    'import fs from "node:fs"; import path from "node:path";',
+    'const real = fs.renameSync, engine = path.resolve("js/quest-engine.js");',
+    'fs.renameSync = function (from, to) { real.call(fs, from, to);',
+    '  if (path.resolve(to) === engine) fs.appendFileSync(to, String.fromCharCode(10) + process.env.QC_FAULT + String.fromCharCode(10)); };',
+  ].join("\n"));
+  const r = spawnSync(process.execPath, ["--import", "./post-install-fault.mjs", "tools/quest-catalog.mjs", "write", path.basename(f.json)],
+    { cwd: f.root, encoding: "utf8", timeout: 30000, env: { ...process.env, QC_FAULT: fault } });
+  assert.ifError(r.error);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /post-install-probe|did not load cleanly/);
+  assert.match(r.stdout + r.stderr, /restored/);
+  assert.ok(fs.readFileSync(f.engine).equals(before), "the original bytes are back");
+  assert.deepEqual(tmpLeft(f), []);
+});

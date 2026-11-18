@@ -310,6 +310,13 @@ test("every shipped route has ready playable songs preserving every opening", ()
         if(!notes.some(n=>n.c===c&&n.p===ladder[r]))notes.push({p:ladder[r],c,len:1});
       distinct.push(s);
     }
+    // …and the whole field lit: every row of every column. More notes than any `phrase.minimum-onsets`
+    // the registry allows (64), on every beat, every stone kept (round 2 of the PR review).
+    { const s=k.startingSong(d,inst);
+      s.tracks[0].notes=[];
+      for(let c=0;c<d.workspace.columns;c++)for(const p of ladder)s.tracks[0].notes.push({p,c,len:1});
+      assert.ok(s.tracks[0].notes.length>=g.QUEST_PRIMITIVES["phrase.minimum-onsets"].parameterSchema.max);
+      distinct.push(s); }
     const candidates=distinct.flatMap(m=>g.questFragmentProbes(d,hits||[]).map(dr=>{
       const s=clone(m);s.tracks[1]=clone(dr.tracks[1]);const ev=analyze(s);
       assert.deepEqual(g.QUEST_READINESS.waypoints.missing(d,inst,ev),[]);

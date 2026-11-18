@@ -308,7 +308,7 @@ appear; `setup.` is the `waypoints` rule (§ 6). `[]` means each item of a list.
 | `$.id` | slug | required | The quest's permanent id. Saved runs refer to it: never change it once shipped. |
 | `$.author` | object | required | Who wrote it. |
 | `$.author.kind` | "official" or "player" | required | Must be `"official"`: the built-in catalog is loaded as official, and a definition that says otherwise is refused (`author-kind-mismatch`). |
-| `$.author.id` | slug | required | Both shipped quests say `tune-garden`. Ask in your issue if you want something else. |
+| `$.author.id` | slug | required | The first two quests say `tune-garden`. Ask in your issue if you want something else. |
 | `$.kind` | "guided-commission" | required | The quest kind. Only kind 1 exists. |
 | `$.title` | text, 1–80 characters | required | The quest's name, on the card and at the top of the quest. |
 | `$.brief` | object | required | A two-line summary of the whole quest. Validated, but **not shown** in the game today — the child sees each phase's own text. Write it anyway; a later screen may use it. |
@@ -344,7 +344,7 @@ appear; `setup.` is the `waypoints` rule (§ 6). `[]` means each item of a list.
 | `$.witnesses[].id` | slug | required | Named by `challenge.routes[].witnessIds`. |
 | `$.witnesses[].phaseId` | slug | required | The phase it belongs to (`compose` or `transform`). |
 | `$.witnesses[].currentVersionId` | "A" or "B" | required | Which song is "now": `A` in a compose phase, `B` in a transform phase. |
-| `$.witnesses[].setup` | any JSON (see the section) | optional | A dealt task to check it against. § 6; the shipped quests leave it out. |
+| `$.witnesses[].setup` | any JSON (see the section) | optional | A dealt task to check it against. § 6; the first two quests leave it out. |
 | `$.witnesses[].songs` | object | required | The songs, by version. |
 | `$.witnesses[].songs.A` | any JSON (see the section) | required | A v3 song (§ 5). |
 | `$.witnesses[].songs.B` | any JSON (see the section) | optional | The transformed song — needed for a transform phase witness. |
@@ -497,7 +497,7 @@ about the music. Used only in `procedure.gateIds`.
 | `comparison.chosen` | the child is holding one of the two versions |
 <!-- /registry -->
 
-Use them as the shipped quests do: compose `["playback.complete-since-last-edit"]`; transform
+Use them as the first two quests do: compose `["playback.complete-since-last-edit"]`; transform
 `["edit.after-fork", "playback.complete-since-last-edit"]`; compare-offer
 `["comparison.auditioned-both", "comparison.chosen", "playback.complete-since-last-edit"]`.
 
@@ -630,7 +630,7 @@ the routes are **real alternatives**:
 - every route is **distinguishable** from every other: for each ordered pair A, B, some witness of A
   matches A and not B (`no-distinguishing-witness`).
 
-The easy pattern: **keep one slot the same in every route and vary the other.** Both shipped quests'
+The easy pattern: **keep one slot the same in every route and vary the other.** Both of the first two quests'
 compose phases do it — *The Waking Woods*' routes all ask for `phrase.on-every-beat` and differ in the
 drums: clean main-beat kicks, an even kick walk, or a hi-hat shimmer — and so does Woods' transform
 phase, which keeps the tune clause and asks for the same heartbeat as A or a different one. *The Firefly
@@ -803,7 +803,7 @@ the other; `witness-unreachable` — the song breaks the workspace, and the code
 
 ## 6. The dealt task: `setup`
 
-Both shipped quests deal each run a small task, so no two children start from the same field: a few
+The first two quests both deal each run a small task, so no two children start from the same field: a few
 **ringed stones** (melody notes the child must keep) and, optionally, a short **drum opening** to carry
 on. The rule is `$.setup`, kind `waypoints`; the game deals a fresh instance from it for each run and
 never re-deals it.
@@ -825,7 +825,7 @@ never re-deals it.
 - A witness may carry a `setup` instance to be checked against the rule (`witness-setup-invalid` if it
   breaks it). This checks the instance against the rule — the stones' geometry and, with a pool, that
   its opening is one of the pool's, hit for hit — but not that the witness songs keep its stones;
-  the shipped quests leave it out. The tests check separately that every route can still be reached
+  the first two quests leave it out. The tests check separately that every route can still be reached
   under every opening your pool can deal (§ 7).
 
 ## 7. Checking it
@@ -943,7 +943,7 @@ refer to; changing them strands children mid-quest. Choose them carefully.
 - **Narration.** With read-aloud on, each phase's `worldText` and `intentionText` are read out. Package
   stories are read by a recorded narrator, from clips made with `tools/gen-voice.mjs`, which needs the
   owner's AWS account. **Quest text has no recorded clips today**: the generator does not read the quest
-  catalog, so every quest — the shipped two included — is read aloud in the browser's own voice.
+  catalog, so every quest — the first two included — is read aloud in the browser's own voice.
   Don't add clips under `voice/` yourself; the generator deletes clips it did not make. Recording quest
   text is TUN-116; the owner decides how it sounds.
 - **New vocabulary.** A new analyzer, descriptor, control, theme, payoff or setup kind is engine work
@@ -959,6 +959,8 @@ Your pull request should contain:
 - the docs that count or name the shipped quests, brought up to date: `README.md` (the status line at
   the top, the `QUESTS.md` row of the repository map, and § Current status, "Quests shipped") and the
   status box at the top of `QUESTS.md` — today they all say "two quests";
+  (this guide's "the first two quests" — *The Firefly Crossing* and *The Waking Woods*, its examples —
+  stays true, and needs no change);
 - in the description: the issue it answers, what the quest asks for in two lines, the commands you ran
   (`check`, the syntax check, the tests) and what you saw when you played it through (§ 8).
 

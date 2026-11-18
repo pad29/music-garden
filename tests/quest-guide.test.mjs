@@ -36,6 +36,8 @@ function stripComments(src) {
   while (i < src.length) {
     const c = src[i], d = src[i + 1];
     if (c === '"' || c === "'" || c === "`") { copyQuoted(c); prev = "a"; continue; }
+    // A postfix ++ or -- leaves a value behind: "x++ / 2" is division (round 2 of the PR review).
+    if ((c === "+" || c === "-") && d === c && prev === "a") { out += c + d; i += 2; continue; }
     if (c === "/" && d === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
     if (c === "/" && d === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; out += " "; continue; }
     if (c === "/" && (prev === "" || /[(,=:[!&|?{};+\-*%<>~^]/.test(prev))) {
@@ -186,4 +188,11 @@ test("the comment scanner removes comments and nothing else", () => {
     ['s = "say \\"//\\" ok";', 's = "say \\"//\\" ok";'],
   ];
   for (const [input, want] of cases) assert.equal(stripComments(input), want, input);
+});
+
+test("the comment scanner treats a slash after a postfix increment as division", () => {
+  // MUTATION: take "x++ /" for the start of a regex, so a comment after it survives.
+  assert.equal(stripComments('let x=1; x++ / 2; //err("not-emitted")'), "let x=1; x++ / 2; ");
+  assert.equal(stripComments("y-- / 3; // c"), "y-- / 3; ");
+  assert.equal(stripComments("z = a + /re/.source; // c"), "z = a + /re/.source; ");
 });

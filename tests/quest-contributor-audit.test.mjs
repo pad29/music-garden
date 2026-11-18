@@ -170,30 +170,27 @@ test("an empty Home and trail can mean locked prerequisites with a completely he
 
 // ---- from GPT's PR review (round 1) ----
 
-// A valid quest whose melody clause counts notes: Woods with `phrase.minimum-onsets`, and witnesses
-// thickened below each column's top note (same contour, same beats) until they have enough.
+// Valid quests whose melody clause counts notes: Woods with `phrase.minimum-onsets` at 24 and at the
+// registry's ceiling, 64. Each witness keeps its own drums (which divide the routes) under a melody that
+// lights the whole field — 160 notes, on every beat.
 const LADDER = [81, 79, 76, 74, 72, 69, 67, 64, 62, 60];
-const thicken = song => { const s = structuredClone(song), notes = s.tracks[0].notes, tops = new Map();
-  for (const n of notes) { const r = LADDER.indexOf(n.p); if (!tops.has(n.c) || r < tops.get(n.c)) tops.set(n.c, r); }
-  for (const [c, r0] of tops) for (let r = r0 + 1; r < LADDER.length; r++)
-    if (!notes.some(n => n.c === c && n.p === LADDER[r])) notes.push({ p: LADDER[r], c, len: 1 });
+const fullField = song => { const s = structuredClone(song);
+  s.tracks[0].notes = []; for (let c = 0; c < 16; c++) for (const p of LADDER) s.tracks[0].notes.push({ p, c, len: 1 });
   return s; };
-const counter = structuredClone(woods);
-counter.id = "counted-notes-probe";
-for (const p of counter.phases) for (const r of p.challenge?.routes || [])
-  r.observations[0] = { analyzerId: "phrase.minimum-onsets", params: { minimum: 0 }, descriptorId: "way-enough-notes" };
-for (const w of counter.witnesses) for (const v of Object.keys(w.songs)) w.songs[v] = thicken(w.songs[v]);
-// The highest floor every thickened witness clears — well above what a sparse completion reaches.
-const floor = Math.min(...counter.witnesses.flatMap(w => Object.values(w.songs).map(s => s.tracks[0].notes.length)));
-for (const p of counter.phases) for (const r of p.challenge?.routes || []) r.observations[0].params.minimum = floor;
-const countedCat = structuredClone(JSON.parse(readEmbedded(engine))); countedCat.definitions.push(counter);
-const withCounted = { game: [[engine.slice(at.start, at.end), JSON.stringify(canonicalText(countedCat))]], probe: counter.id };
+const counting = minimum => {
+  const q = structuredClone(woods); q.id = "counted-notes-" + minimum;
+  for (const p of q.phases) for (const r of p.challenge?.routes || [])
+    r.observations[0] = { analyzerId: "phrase.minimum-onsets", params: { minimum }, descriptorId: "way-enough-notes" };
+  for (const w of q.witnesses) for (const v of Object.keys(w.songs)) w.songs[v] = fullField(w.songs[v]);
+  const c = structuredClone(JSON.parse(readEmbedded(engine))); c.definitions.push(q);
+  return { game: [[engine.slice(at.start, at.end), JSON.stringify(canonicalText(c))]], probe: q.id };
+};
 
-test("the route sweep accepts a valid quest whose melody clause counts notes", () => {
-  // MUTATION: build candidates only from the official quests' predicates (contour and on-beat songs),
-  // so a quest asking `phrase.minimum-onsets` above a sparse completion's count is wrongly refused.
-  assert.ok(floor >= 16, `the floor (${floor}) must exceed a sparse completion's notes`);
-  const out = audit("quest-fragments.test.mjs", routesTest, withCounted);
+for (const minimum of [24, 64]) test(`the route sweep accepts a valid quest asking for ${minimum} notes`, () => {
+  // MUTATION: build candidates only from the official quests' ideas (contour, on-beat), or only thicken
+  // them, so a quest asking more notes than a sparse — or a thickened — completion holds is refused.
+  // (The child process refuses to run at all if the catalog rejects the quest: "mutant catalog rejected".)
+  const out = audit("quest-fragments.test.mjs", routesTest, counting(minimum));
   assert.equal(out.status, 0, out.output);
 });
 
@@ -203,6 +200,9 @@ for (const [label, testName, config] of [
     { guide: [[minimumRow, minimumRow.replace("1–64", "1–640")]] }],
   ["a challenge field the engine made optional", fieldTest,
     { game: [["witnessIds:QT.arr(QT.slug(),1,8,true) }),2,4) });", "witnessIds:QT.arr(QT.slug(),1,8,true) }),2,4) }, [\"routes\"]);"]] }],
+  ["a code in a comment after a postfix increment", "every error code the guide explains",
+    { guide: [["<!-- /error-codes -->", "| `not-emitted-review-code` | invented | impossible |\n<!-- /error-codes -->"]],
+      source: [["function questSemantics(def, errs){", 'let x=1; x++ / 2; //err("not-emitted-review-code", "$")\nfunction questSemantics(def, errs){']] }],
   ["a code that appears only after a value, in a line comment", "every error code the guide explains",
     { guide: [["<!-- /error-codes -->", "| `never-emitted-review-code` | invented | impossible |\n<!-- /error-codes -->"]],
       source: [["function questSemantics(def, errs){", '0//err("never-emitted-review-code", "$");\nfunction questSemantics(def, errs){']] }],

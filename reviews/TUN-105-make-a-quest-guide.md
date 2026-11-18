@@ -549,3 +549,56 @@ seen to fail against its mutation: no identity check (1 failure), no temp cleanu
 no dense twins (the counted-notes audit fails).
 
 **968/968 pass**; quest mutation audit: 472 caught across 146 green tests.
+
+### Round 2 — on `3c0ffdb`: CHANGES REQUESTED
+
+<details><summary>GPT's review, verbatim</summary>
+
+## 1. Required changes
+
+1. **High — Round 1 item 1 resolved.** [tools/quest-catalog.mjs:94](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tools/quest-catalog.mjs:94) checks filesystem identity and real paths. Hard-link and symlink regression tests were added.
+
+2. **Medium — Round 1 item 2 resolved.** [tools/quest-catalog.mjs:137](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tools/quest-catalog.mjs:137) places temporary writing and renaming under cleanup. Tests inject partial-write and rename failures.
+
+3. **Medium — Round 1 item 3 partially resolved.** Minimum 24 now passes, but the dense candidates at [tests/quest-fragments.test.mjs:306](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-fragments.test.mjs:306) still reject valid supported parameters. A Woods-derived quest with `phrase.minimum-onsets: 64` passes catalog validation but fails the sweep at line 324 (`counted-notes-probe/0/walk-on-main-beats`). Independently constructed songs satisfy readiness, workspace constraints, and all **30 route/opening combinations**. Generate candidates covering the declared thresholds, including 64, while preserving the complete-conjunction checks.
+
+4. **Medium — Round 1 item 4 partially resolved.** Exact bounds, challenge optionality, and the original `0//` probe are fixed. However, [tests/quest-guide.test.mjs:41](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/tests/quest-guide.test.mjs:41) mistakes division after postfix increment for a regex. This valid JavaScript survives comment stripping unchanged:
+   ```js
+   let x=1; x++ / 2; //err("not-emitted-review-code", "$")
+   ```
+   Adding that comment-only code to the documentation still passes the error-code guard. Correct the token handling so this comment cannot supply an emitted code.
+
+5. **Low — Round 1 item 5 resolved.** [MAKING-QUESTS.md:314](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:314) accurately describes unused `brief`; line 826 now includes opening validation.
+
+6. **Low — Round 1 item 6 partially resolved.** [MAKING-QUESTS.md:959](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-40/MAKING-QUESTS.md:959) enumerates README and QUESTS updates but still omits this guide. Present-tense claims remain at lines 311, 633, 806 and 946 (“Both shipped quests”, “the shipped two”). Include the guide in the reconciliation checklist or make those references explicitly historical.
+
+## 2. Missing tests
+
+- **`tests/quest-contributor-audit.test.mjs`:** explicitly cover valid minimum-24 and minimum-64 third quests. Require catalog acceptance and successful route sweeps. The added witness-derived threshold does not cover the supported upper bound.
+- **`tests/quest-contributor-audit.test.mjs`:** document an invented error appearing only after postfix-increment division, as above; require the error-code assertion to reject it. The three original drift mutations are present and pass.
+- **`tests/quest-catalog-adversarial.test.mjs:209`:** post-install returned-error and exception tests now exercise rollback, but call `write()` directly. The requested **CLI exit-1 assertions** remain absent; exercise both failures through the CLI and assert exact restoration.
+
+Verification: syntax and 41 focused tests passed; **71 fragment mutations caught across 13 green tests**. All 15 filesystem adversarial tests were blocked by sandbox `EPERM` during fixture creation. No files changed.
+
+## 3. Verdict
+
+CHANGES REQUESTED 3c0ffdb1c707329703dea27d932e818507a4276c
+
+</details>
+
+Round-1 items 1, 2 and 5 confirmed resolved; 3, 4 and 6 partly. All remainders agreed, re-checked first.
+
+3. **Medium — a 64-note quest still failed the sweep.** **Agreed.** The sweep adds one more candidate:
+   the whole field lit (every row of every column — at least the registry's 64), with the stones and
+   opening kept; readiness and the full route conjunction are still asserted on it.
+4. **Medium — `x++ / 2` read as a regex.** **Agreed.** A postfix `++`/`--` after a value now leaves a
+   value; scanner unit test extended.
+6. **Low — present-tense "shipped quests" in the guide.** **Agreed.** The guide now says "the first two
+   quests", which stays true; § 11's checklist says so.
+
+**Missing tests — all added:** explicit `phrase.minimum-onsets` 24 and 64 quests through the route sweep
+(64 fails without the full-field candidate; 24 passes on dense twins alone); the postfix-division
+mutation (fails without the fix); both post-install failures through the CLI, by preloading an `fs`
+patch with `--import` (exit 1, original bytes, no temp file; both fail without the rollback).
+
+**973/973 pass**; quest mutation audit: 472 caught across 146 green tests.
