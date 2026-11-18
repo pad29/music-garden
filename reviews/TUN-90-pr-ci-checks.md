@@ -47,6 +47,14 @@ Branch `ao/pr-ci-checks/root` · PR #150
   failed (926 tests, 1 fail, exit code 1) and PR #150 showed *Syntax check and tests — fail*. Commit
   `6674ab6` removed it.
 
+## Owner's decisions
+
+1. *Round 3's two Low fixes (`30f8e96`) are unreviewed, and the review loop has used its three rounds.
+   Accept them as they are, or run a fourth GPT review?* — **open**. Claude would accept them: both
+   findings were Low, I agreed with both, the fixes are one regex flag and four test cases, and a
+   mutation shows the new test catches the bug. A fourth round costs about 550k tokens of the ChatGPT
+   limit.
+
 ## PR review (Astra, via ask.sh)
 
 ### Round 1 — head `7c5e987` — changes requested
