@@ -170,7 +170,7 @@ stops at Needs Input for the owner to decide whether it gets one.
 ## Owner's decisions
 
 1. *After three review rounds, the round-3 fix (a Low, test-only change) is pushed without a review:
-   run a fourth GPT round on it, or take the PR to playtest as it stands?* — **open** (Needs Input,
-   2026-11-18).
+   run a fourth GPT round on it, or take the PR to playtest as it stands?* — **a fourth round**: the
+   owner, relayed by the orchestrator to this session, 2026-11-18.
 2. *Do the dashboard locations in README § Deployment match what Cloudflare shows today?* — **open**
    (the ticket's last *Done* item; in the playtest checklist).
