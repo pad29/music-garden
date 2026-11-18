@@ -101,10 +101,46 @@ The pending `LICENSE`, `CREDITS.md` and `CONTRIBUTING.md` links are acknowledged
    125%) — first showed the screenshot at 640 px pushing *Licence* and *Contribute* below the fold. So:
    the screenshot is now 480 px wide, the Licence line shorter, and "then open…" folded into the run
    line. At that viewport the title, pitch, *Play it*, screenshot, *Run it yourself* and both commands
-   are on screen, *Licence* starts at the bottom edge, and *Contribute* is one line below it; a
-   1920×1080 window at 100% shows all of it. The page GitHub itself serves (private repository, AO's
+   are on screen, *Licence* starts at the bottom edge, and *Contribute* is one line below it. (Round 1's
+   answer added "a 1920×1080 window at 100% shows all of it": that was inferred, not measured — AO's
+   panel cannot change its size or zoom.) The page GitHub itself serves (private repository, AO's
    browser not signed in) stays on the owner's playtest list.
 4. GPT's note that TUN-89 and TUN-92 must check the merged README, not just merge cleanly — recorded in
    the pointer left on TUN-92, and in the hand-off for TUN-89.
+
+## PR review — round 2 (Astra, `ask.sh`, on 61aa0cf)
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Changes required**
+
+None in the textual delta. The account parenthetical and both audit additions resolve the round-1 findings. The shortened licence wording preserves its meaning, and the merged run sentence preserves both launch options.
+
+2. **Missing tests**
+
+- **Actual GitHub rendering remains unverified** (`reviews/TUN-98-readme-for-visitors.md:97–110`). Open this head’s README on authenticated github.com, record the viewport and zoom, and verify the screenshot loads and the complete opening—including commands, licence and contribution link—fits the first screen. GitHub’s Markdown API plus a simulated column establishes only partial evidence: the recorded 1280×720 check still clips the opening, while the 1920×1080 pass excludes GitHub’s surrounding page layout. Adjust the opening if the actual check fails, and record the result.
+- No new automated tests are needed for this prose-only delta.
+
+3. **Verdict**
+
+**CHANGES REQUESTED** for head `61aa0cf28436f8ceb4766eb424f50cd6f9cb6c6d`. The textual findings are resolved; the round-1 rendering check remains outstanding.
+
+</details>
+
+1. **Missing test — the real github.com rendering.** **Agreed that it is unverified; it cannot be done
+   here**: the repository is private, AO's browser is not signed in to GitHub, and `browser.md` forbids
+   pointing the game's checks at the owner's own Chrome. GPT is right that the 1920×1080 line was not
+   evidence — corrected above. Whether the opening must also clear the fold on a small laptop is a
+   judgment of the page as the owner sees it → *Owner's decisions*, question 1.
+
+## Owner's decisions
+
+1. **open** — *GPT's outstanding check: the real github.com rendering of the opening.* On github.com the
+   README sits below the file list on the repository's home page, so no arrangement fits a literal first
+   browser screen there; on the file's own page (PR #151 → Files → `README.md` → rich view, or the
+   branch's `README.md`), measured in a GitHub-like column at 1280×720 CSS px, *Licence* starts at the
+   fold and *Contribute* is one line below. **A)** good enough as it is · **B)** move *Licence* and
+   *Contribute* above the screenshot, so the text clears the fold and the picture follows · **C)**
+   something else (smaller screenshot, a different picture). Claude's pick: **A**.
 
 **913 tests pass** after the fixes; syntax check clean. Not verified: the README as github.com serves it.
