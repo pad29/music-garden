@@ -11,7 +11,7 @@ issue.
 
 | What | Licence | Full text |
 |---|---|---|
-| **The code**: `index.html`, `js/` (the level, quest and famous-tune data included), `tools/`, `tests/`, `backend/`, `spike/`, the scripts in `.claude/`, `.github/workflows/`, `cloudflare-build.sh`, `_headers` — every file not named in another row | GNU Affero General Public License, version 3 or (at your option) any later version — **AGPL-3.0-or-later** | [`LICENSE`](LICENSE) |
+| **The code**: `index.html`, `js/` (the level, quest and famous-tune data included — but see below for the tunes themselves), `tools/`, `tests/`, `backend/`, `spike/`, the scripts in `.claude/`, `.github/workflows/`, `cloudflare-build.sh`, `_headers` — every file not named in another row | GNU Affero General Public License, version 3 or (at your option) any later version — **AGPL-3.0-or-later** | [`LICENSE`](LICENSE) |
 | **The narration clips**: `voice/*.mp3` | Creative Commons Attribution-ShareAlike 4.0 — **CC BY-SA 4.0** | [`LICENSE-CC-BY-SA.md`](LICENSE-CC-BY-SA.md) |
 | **The docs**: every Markdown (`*.md`) file at any depth, this one included, and `.github/screenshot.png` | **CC BY-SA 4.0** | [`LICENSE-CC-BY-SA.md`](LICENSE-CC-BY-SA.md) |
 | **The instrument samples**: `samples/<instr>/*.mp3`, and the packs `samples/<instr>.js` built from them | each pack's own licence | [Instrument samples](#instrument-samples) |
@@ -26,7 +26,15 @@ The code's notice, as the AGPL asks:
 > be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
 > A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
-Quotations inside the docs — AWS's terms, licence excerpts, other projects' words — stay their owners'.
+**Both licences cover only the project's own work.** They license nothing the project does not own:
+
+- **The melodies** behind the famous-tune and level data are not the project's: each is public domain, or
+  has the status [Famous melodies](#famous-melodies) gives it — the flagged rows included. The licences
+  cover the project's own transcription, voicing and code, not the compositions.
+- **The licence texts** are their authors': `LICENSE` is the Free Software Foundation's, copied verbatim as
+  it permits, and the licence and notice files in `vendor/` belong to the projects they came from.
+- **Quotations inside the docs** — AWS's terms, licence excerpts, other projects' words — stay their owners'.
+
 `vendor/README.md` and `vendor/SHA256SUMS` are the project's own; the files they describe are not.
 
 ## The name and logo
@@ -82,15 +90,15 @@ in `js/famous.js`.
 | Key | Work | Composer or source | Year | Status | Source |
 |---|---|---|---|---|---|
 | `fourchord` | The I–V–vi–IV chord progression, with a tune of our own on top | none — a common progression | — | A chord progression is not protected; the tune on top is the project's own | [I–V–vi–IV](https://en.wikipedia.org/wiki/I%E2%80%93V%E2%80%93vi%E2%80%93IV_progression) |
-| `mary` | Mary Had a Little Lamb | tune attributed to Lowell Mason (d. 1872) | 1830s | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb) |
-| `taps` | Taps | Daniel Butterfield (d. 1901) | 1862 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Taps) |
+| `mary` | Mary Had a Little Lamb | traditional American; the familiar tune's composer is unknown (Lowell Mason's 1831 setting is a different, forgotten tune) | words 1830; tune 19th century | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb) |
+| `taps` | Taps | Daniel Butterfield (d. 1901) | 1862 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Taps_(bugle_call)) |
 | `joy` | Joy to the World (the tune *Antioch*) | arranged by Lowell Mason (d. 1872), after phrases traced to Handel (d. 1759) | 1839 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Joy_to_the_World) |
 | `odetojoy` | Ode to Joy, from Symphony No. 9 | Ludwig van Beethoven (d. 1827) | 1824 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Ode_to_Joy) |
 | `shave` | Shave and a Haircut | from Charles Hale's *At a Darktown Cakewalk* | 1899 | US: public domain. Elsewhere: not checked (the composer's dates are not known). **Flagged:** the Jukebox version follows a modern piano-method arrangement (Faber), to be replaced (ticket TUN-117) | [Wikipedia](https://en.wikipedia.org/wiki/Shave_and_a_Haircut) |
 | `moldau` | The Moldau (*Vltava*), from *Má vlast* | Bedřich Smetana (d. 1884) | 1874 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Vltava_(Smetana)) |
 | `bigben` | The Westminster Quarters | attributed to William Crotch (d. 1847) | 1793 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Westminster_Quarters) |
-| `pachelbel` | Canon in D | Johann Pachelbel (d. 1706) | 1680–1706 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Pachelbel%27s_Canon) |
-| `amazinggrace` | Amazing Grace (the tune *New Britain*) | traditional American | 1829 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Amazing_Grace) |
+| `pachelbel` | Canon in D | Johann Pachelbel (d. 1706) | composed 1680–1706; first published 1919 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Pachelbel%27s_Canon) |
+| `amazinggrace` | Amazing Grace (the tune *New Britain*) | traditional American; William Walker first joined the tune to John Newton's words | tune printed from 1829; *New Britain* with the words, 1835 | Public domain | [Library of Congress, *Amazing Grace* timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline/) |
 | `blooms` | Three intervals: a 2nd, a 3rd and a 5th | none — not a work | — | Intervals are not protected; the credit names *When the Saints Go Marching In* (traditional) as an example | [Interval](https://en.wikipedia.org/wiki/Interval_(music)) |
 | `bodiddley` | The Bo Diddley beat | Bo Diddley; a form of the 3-2 clave heard in records from 1944 on | 1955 | **Flagged:** a rhythm alone, no melody. US copyright is generally read not to protect a rhythm alone; no court ruling found. Kept by the owner | [Wikipedia](https://en.wikipedia.org/wiki/Bo_Diddley_beat) |
 | `goinhome` | Largo, from Symphony No. 9 "From the New World" | Antonín Dvořák (d. 1904) | 1893 | Public domain. William Arms Fisher's song *Goin' Home* (1922) added only words, which the game does not use | [Wikipedia](https://en.wikipedia.org/wiki/Symphony_No._9_(Dvo%C5%99%C3%A1k)) |
@@ -100,8 +108,9 @@ in `js/famous.js`.
 | `chopsticks` | The Celebrated Chop Waltz | Euphemia Allen (d. 1949) | 1877 | US: public domain. Life + 70 countries: since 2020 | [Wikipedia](https://en.wikipedia.org/wiki/Chopsticks_(music)) |
 | `swinglow` | Swing Low, Sweet Chariot | African-American spiritual, attributed to Wallace Willis | 19th century | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Swing_Low,_Sweet_Chariot) |
 
-"Public domain", alone, means the work was published before 1900 and its composer died more than 100 years
-ago, or is unknown (a traditional tune), so no term anywhere still runs.
+"Public domain", alone, means two things, and no more: the work was published before 1931, so it is free in
+the US; and its composer died before 1926, or is unknown (a traditional tune), so life + 100 — the longest
+general copyright term we know of — has ended too. Other countries' special rules were not checked.
 
 ### Traditional tunes in the levels
 

@@ -17,7 +17,8 @@ the licence itself: <https://creativecommons.org/licenses/by-sa/4.0/legalcode>.
 ## What it does not cover
 
 - **The code** — everything else the project wrote, the level, quest and tune data in `js/` included — is
-  under the GNU AGPL-3.0-or-later: [`LICENSE`](LICENSE).
+  under the GNU AGPL-3.0-or-later: [`LICENSE`](LICENSE). Neither licence covers the melodies themselves:
+  [`CREDITS.md`](CREDITS.md#famous-melodies) gives each one's status.
 - **Other people's words quoted in the docs** — AWS's terms, licence excerpts, other projects' text — stay
   their owners'.
 - **The samples, fonts and sign-in library**, which keep their own licences, and **the name "Tune Garden"

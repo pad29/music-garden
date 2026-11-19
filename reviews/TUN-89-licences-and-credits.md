@@ -377,8 +377,10 @@ one complete row per `FAMOUS` key and per `SAMPLED` voice; relative links resolv
 linking both licence files; the footer's two CC BY credits with versions, and its link. Mutation audit,
 10/10 caught: a copyright header on `LICENSE`; a dropped AGPL section; a tune row removed; a year emptied;
 a voice row removed; a licence version dropped; a broken relative link; a second Licence line; the
-footer's piano credit and its link each removed. Publish and headers tests updated for `CREDITS.md`.
-Whole suite 1009/1009, syntax check OK.
+footer's piano credit and its link each removed. The publish test's allowed list updated for
+`CREDITS.md`; the headers test needed no change, as it already works out the headers of every published
+file. Whole suite 1009/1009, syntax check OK. *(Corrected in round 1: this line first said the headers test
+was updated — PR review finding 5.)*
 
 Browser (`ao preview`, this worktree, files byte-compared): the world map's footer shows both credits
 with versions and the link; the link opens `CREDITS.md` as text in a new tab; no console errors.
@@ -386,3 +388,112 @@ The README Licence line's text is 5 characters shorter than TUN-98's, so it cann
 
 **Not verified:** the link over `file://` (AO's browser refuses it); that Cloudflare honours the
 `text/plain` Content-Type (check on the PR preview); the README as GitHub renders it.
+
+## PR review — round 1 (Astra, `ask.sh`, on 4a54e72)
+
+Local file links shortened to their path; otherwise verbatim. GPT's own suite run hit `EPERM` on temporary
+directories in its sandbox (112 failures, all that error) — its environment, not this change: the suite
+passes here.
+
+<details><summary>GPT's PR review, verbatim — verdict: Changes requested</summary>
+
+1. **High — The licence map grants more than the owner can license.** CREDITS.md:14 explicitly includes famous-tune data under AGPL, without an exception for underlying compositions or arrangements. This conflicts with the Faber and Gershwin qualifications later in the document. LICENSE-CC-BY-SA.md:19 repeats that scope.  
+   **Fix:** limit the grant to the project’s own licensable contributions and expressly preserve underlying musical rights. Also exclude upstream licence documents from the catch-all grant: `LICENSE` itself permits verbatim copying under the FSF’s notice. This requires no change to the owner’s decisions about keeping or replacing tunes.
+
+2. **Medium — The deployed credits point to unpublished licence files.** cloudflare-build.sh:21 publishes `CREDITS.md`, but neither `LICENSE` nor `LICENSE-CC-BY-SA.md`. Both are relative destinations in its “Full text” column. The publication-tree helper confirms both are absent; on Pages, those paths receive the game’s SPA fallback. The repository-only link test misses this.  
+   **Fix:** publish the linked licence files with appropriate headers and publication checks, or make the deployed credits self-contained with reachable licence URLs and the necessary project notices.
+
+3. **Medium — The worldwide public-domain assurance exceeds the evidence and contradicts one row’s source.** CREDITS.md:103 defines unqualified “Public domain” using publication before 1900, then concludes that no term runs anywhere. Yet `pachelbel` receives that label although its cited source dates first publication to **1919**. Composition dates are not publication dates. The research also does not establish worldwide clearance for every unqualified row. [Pachelbel source](https://en.wikipedia.org/wiki/Pachelbel%27s_Canon)  
+   **Fix:** replace the universal assurance with jurisdiction-specific, supported statements; distinguish composition and publication dates; identify unchecked territories. Preserve the owner-approved treatment of the flagged tunes.
+
+4. **Low — Several tune credits need their historical claims reconciled with their sources.** CREDITS.md:85 attributes the familiar `mary` melody to Mason, while its cited page distinguishes Mason’s setting from the commonly sung tune that the game uses. At line 93, “New Britain — 1829” conflates antecedent melodies with Walker’s later named arrangement: the Library of Congress distinguishes the 1829 antecedent from **1835 New Britain**. The `taps` link currently reaches a disambiguation page. [Mary source](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb), [Library of Congress timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline/)  
+   **Fix:** qualify the disputed Mary attribution, distinguish the Amazing Grace dates and arrangement credit, and link directly to a substantive Taps source. These are credits corrections, not requests to alter notes.
+
+5. **Low — Documentation integration is incomplete.** tests/README.md:39 still says the build publishes an exact list excluding `CREDITS.md`; DESIGN.md:171 also retains the old publication inventory. The review record:380 says headers tests were updated, but that file is unchanged—the existing tests automatically include the new published path.  
+   **Fix:** reconcile those descriptions and accurately distinguish existing coverage from newly added checks.
+
+**Missing tests**
+
+- **Published destinations and MIME:** check relative file destinations against `publishedTree`, not just the checkout. Assert `/CREDITS.md` receives exactly one `Content-Type: text/plain; charset=utf-8`; removing that header currently escapes the headers tests. Exercise missing `CREDITS.md` in the build’s missing-source cases.
+- **Rendered footer:** execute `renderPkgs` with recording DOM elements and assert the attached anchor’s destination, text, `_blank`, and `noopener`, plus both credited authors. In-memory removal of `cred.appendChild(credLink)` or the target/rel assignments leaves all six licence tests passing.
+- **Credit-table regressions:** require sample-source URLs and preserve the distinct `shave` Jukebox provenance while that arrangement ships. Replacing the harp source with plain text or deleting the Faber warning leaves all six tests passing.
+- **Manual integration:** verify the pinned-head Cloudflare preview’s actual headers and credits navigation, the relative footer link under `file://`, and the amended README in the previously accepted rendering layout. Five fewer characters does not prove equal wrapping in a proportional font; this check should preserve, not reopen, TUN-98’s accepted layout.
+
+**Verification**
+
+The nine earlier design findings stand as follows:
+
+| Earlier finding | Result |
+|---|---|
+| 1. Faber arrangement | Disclosure and owner-approved deferral implemented; licence-map conflict remains above. |
+| 2. Polly analysis | Checkpoint uncertainty recorded and owner decision followed. |
+| 3. Deployed attribution | Sample attribution now accompanies deployment; linked project licences are missing. |
+| 4. International terms | Gershwin qualification improved; blanket worldwide assurance remains unsupported. |
+| 5. Documentation scope | Recursive Markdown coverage and quotation exclusions implemented; catch-all scope still needs clarification. |
+| 6. Screenshot and brand | Owner-approved screenshot grant and brand wording implemented. |
+| 7. Sources and modifications | Sample audit substantially resolved; tune-history corrections remain. |
+| 8. Tests | Full-text digest and structured rows implemented; regression gaps listed above remain. |
+| 9. Integration and rendering | README/AGENTS pointers added; documentation drift and rendering checks remain. |
+
+- Confirmed the checkout is exactly `4a54e729c1aa0b1738ad6264a506f266eb0b724c`, with no working-tree changes. Reviewed the requested diff and repository context. The existing single README Licence summary was extended; `CONTRIBUTING.md` and the two-URL vendor guard are untouched.
+- Upstream sources confirm Alexander Holm/Salamander **CC BY 3.0**, Jordi Francis and Versilian/Etherealwinds CE **CC BY 4.0**, VCSL **CC0**, and both FreePats packs’ **CC0** declarations and named contributors. [Salamander](https://github.com/sfzinstruments/SalamanderGrandPiano), [Etherealwinds](https://versilian-studios.com/etherealwinds-harp/), [VCSL](https://github.com/sgossner/VCSL), [kalimba](https://freepats.zenvoid.org/Ethnic/kalimba.html), [guitar](https://freepats.zenvoid.org/Guitar/acoustic-guitar.html)
+- Sample counts, layers, trimming, conversions and tuning descriptions agree with the generator and audio comments. Local OFL files and Cognito’s licence/NOTICE support their credits. No shipped file lacks a default licence-map classification; the problem is overbroad classification.
+- Confirmed Polly’s output-ownership statement and the recorded End User responsibility provisions. Linking CC BY-SA’s legal code is supported by its URI provision. These checks do not reopen the owner’s narration decision. [AWS terms](https://aws.amazon.com/service-terms/), [AWS agreement](https://aws.amazon.com/agreement/), [CC BY-SA legal code](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
+- Confirmed the US public-domain dates for *I Got Rhythm* and *The Charleston*. Checked the other tune references against their stated work histories; the exceptions above prevent treating the table as fully verified worldwide clearance. [Duke](https://cspd.law.duke.edu/publicdomainday/2026), [Copyright Office](https://www.copyright.gov/history/lore/pdfs/201901%20CLore_January2019.pdf)
+- The build retains its required single-chain copy form. Cache rules do not overlap. The footer introduces no fetch, inline handler or CSP violation. Cloudflare explicitly permits overriding default static-response headers through `_headers`, so the `Content-Type` override is valid configuration. [Cloudflare documentation](https://developers.cloudflare.com/pages/configuration/headers/)
+- Syntax checking passed. All **17 licence/header tests passed**. The full suite produced **897 passes and 112 failures**, all reporting denied temporary-directory creation (`EPERM`), so I could not independently reproduce the worker’s 1009/1009 result.
+- The six licence tests establish digest equality, row presence/uniqueness and nonempty fields, checkout-path existence, README wording, and source-text footer patterns. They do not establish deployed link resolution, fragment validity, factual correctness, or an attached working footer link.
+
+I could not verify actual browser behavior, the pinned preview, GitHub rendering, upstream sample-byte identity, every score edition, or worldwide musical rights. AO was unavailable and GitHub CLI configuration access was denied. GNU’s canonical download timed out, so I verified the licence against the recorded digest, not an independently downloaded canonical copy. No files were edited.
+
+**Changes requested**
+
+</details>
+
+### My answers (Claude)
+
+1. **High, the grant is too broad — agree.** `CREDITS.md` now says, under the licence map, that both
+   licences cover only the project's own work: not the melodies behind the tune data (their status is
+   *Famous melodies*'), not the licence texts (`LICENSE` is the FSF's, copied as it permits; `vendor/`'s
+   licence and notice files are their projects'), not quotations. The code row points to it;
+   `LICENSE-CC-BY-SA.md` says the same. No owner decision changes.
+2. **Medium, the deployed credits link unpublished files — agree.** The build now publishes `LICENSE` and
+   `LICENSE-CC-BY-SA.md` too, each with a re-check cache rule and `Content-Type: text/plain` (a file with no
+   extension would otherwise download). Every relative link in the published files now lands on a
+   published file — a new test checks it against the build's own tree.
+3. **Medium, the worldwide assurance — agree.** Pachelbel's Canon was first published in 1919: the footnote
+   was wrong for a row it labelled. "Public domain", alone, now means two checked things — published before
+   1931 (free in the US), and a composer dead before 1926 or unknown (so life + 100, the longest general
+   term, has ended) — with other countries' special rules named as not checked. Every plain row was
+   re-checked against it; Pachelbel's year now reads "composed 1680–1706; first published 1919".
+4. **Low, tune history — agree.** Mary: the familiar tune is traditional, of unknown origin; Wikipedia says
+   Mason's 1831 setting "has since fallen out of use". Amazing Grace: the tune printed from 1829, joined to
+   Newton's words as *New Britain* by William Walker in 1835, sourced to the Library of Congress timeline.
+   Taps now links `Taps_(bugle_call)` (the old link was a disambiguation page — checked through Wikipedia's
+   API).
+5. **Low, docs — agree.** `tests/README.md` and `DESIGN.md` now list what the build publishes; the review
+   record's headers-test line is corrected above; `tests/README.md` gains a paragraph on
+   `licences.test.mjs`.
+
+**Missing tests — all added** to `tests/licences.test.mjs` (now 10 tests):
+- *Published destinations and MIME:* every relative link in `CREDITS.md` and `LICENSE-CC-BY-SA.md`, and the
+  footer's `href`, must be in the build's published tree; `/CREDITS.md`, `/LICENSE` and
+  `/LICENSE-CC-BY-SA.md` each get exactly one `Content-Type: text/plain; charset=utf-8`. A build without
+  `CREDITS.md` now fails here (the footer's destination is unpublished), as well as the publish test's exact list.
+- *Rendered footer:* `renderPkgs` runs for real, with recording elements for the DOM (no `try`: it runs to
+  the end); the test reads the attached footer — both authors with versions, and the link's `href`, text,
+  `_blank`, `noopener`, and published destination.
+- *Credit-table regressions:* every sample source must be a link; the `shave` row must keep its Faber flag
+  while `js/famous.js` still names the arrangement.
+- *Manual:* the Cloudflare preview on 4a54e72 served `CREDITS.md` as `text/plain; charset=utf-8`, with
+  the re-check cache rule and the full security headers, byte-identical to the branch. The README Licence
+  line, rendered by GitHub's own renderer (`POST /markdown`, `gfm`, this repository as context) and laid out
+  in an 830 px GitHub-style column as TUN-98 measured it, wraps to **two lines, as TUN-98's did**: the
+  accepted layout holds. `file://` stays on the owner's playtest list.
+
+Mutation audit of the new tests, 9/9 caught: the link built but never attached; its `target` removed; its
+`rel` removed; the harp's source made plain text; the Faber flag deleted; `CREDITS.md`'s Content-Type
+removed; `LICENSE` and, separately, `CREDITS.md` dropped from the build; `LICENSE-CC-BY-SA.md` linking an
+unpublished file.
+
+Whole suite 1013/1013 after the fixes; syntax check OK.

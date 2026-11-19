@@ -1,6 +1,6 @@
 // cloudflare-build.sh (Cloudflare Pages' build, TUN-80) must publish exactly what the game loads —
 // index.html, js/, voice/, samples/, vendor/, and the hosts' headers file _headers (TUN-86) — at the paths
-// the page uses, plus CREDITS.md, which the map footer links (TUN-89). Cloudflare Pages is the one host (Netlify was retired by TUN-85), so this is the one guard.
+// the page uses, plus CREDITS.md, which the map footer links, and the two licence files it links (TUN-89). Cloudflare Pages is the one host (Netlify was retired by TUN-85), so this is the one guard.
 //
 // Why a test: Pages' build command and output folder live in its dashboard (`sh cloudflare-build.sh`,
 // output `site`), so this script is the only part of the Cloudflare config the repository holds. A js/
@@ -24,7 +24,8 @@ const REAL_SH = readFileSync(join(ROOT, "cloudflare-build.sh"), "utf8").replace(
 
 // The contract, independent of the script: what the game loads, and nothing else. A new runtime
 // folder is added here on purpose, together with the script.
-const ALLOWED = ["cp index.html site/index.html", "cp _headers site/_headers", "cp CREDITS.md site/CREDITS.md", "cp -r js site/js", "cp -r voice site/voice", "cp -r samples site/samples",
+const ALLOWED = ["cp index.html site/index.html", "cp _headers site/_headers", "cp CREDITS.md site/CREDITS.md", "cp LICENSE site/LICENSE",
+  "cp LICENSE-CC-BY-SA.md site/LICENSE-CC-BY-SA.md", "cp -r js site/js", "cp -r voice site/voice", "cp -r samples site/samples",
   "cp -r vendor site/vendor"];
 // What the page itself names: its game scripts, and every vendored file (TUN-81: the fonts and the sign-in library).
 const pageFiles = () => [...gameScripts().scripts, ...vendorFiles()];
@@ -42,7 +43,7 @@ const includesAll = (got, want) => {
   for (const w of want) assert.ok(got.includes(w), `expected problem:\n  ${w}\ngot:\n  ${got.join("\n  ")}`);
 };
 
-test("cloudflare-build.sh publishes exactly index.html, _headers, CREDITS.md, js/, voice/, samples/ and vendor/", () => {
+test("cloudflare-build.sh publishes exactly index.html, _headers, CREDITS.md, the two licence files, js/, voice/, samples/ and vendor/", () => {
   assert.deepEqual(problems(), []);
 });
 
@@ -53,7 +54,7 @@ test("what the real config publishes: the page's scripts at their paths, only th
   assert.ok(external.length > 0, "the page loads local scripts");
   for (const path of ["index.html", ...external.map((s) => s.name)]) assert.ok(tree.has(path), "published: " + path);
   const tops = new Set([...tree.keys()].map((p) => p.split("/")[0]));
-  assert.deepEqual([...tops].sort(), ["CREDITS.md", "_headers", "index.html", "js", "samples", "vendor", "voice"]);
+  assert.deepEqual([...tops].sort(), ["CREDITS.md", "LICENSE", "LICENSE-CC-BY-SA.md", "_headers", "index.html", "js", "samples", "vendor", "voice"]);
   assert.deepEqual(custom404s(tree), []);
 });
 
@@ -85,7 +86,7 @@ test("anything that is not a plain copy is refused, never skipped", () => {
     [sh(last, `${last} &&`), "(an empty step)"],
     [sh("rm -rf site && ", "exit 0 && rm -rf site && "), "exit 0 && rm -rf site"],
     [sh("rm -rf site && mkdir site", "mkdir -p site"), "mkdir -p site && cp index.html site/index.html"],
-    [sh("set -eu\n", ""), "rm -rf site && mkdir site && cp index.html site/index.html && cp _headers site/_headers && cp CREDITS.md site/CREDITS.md && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples && cp -r vendor site/vendor"],
+    [sh("set -eu\n", ""), "rm -rf site && mkdir site && cp index.html site/index.html && cp _headers site/_headers && cp CREDITS.md site/CREDITS.md && cp LICENSE site/LICENSE && cp LICENSE-CC-BY-SA.md site/LICENSE-CC-BY-SA.md && cp -r js site/js && cp -r voice site/voice && cp -r samples site/samples && cp -r vendor site/vendor"],
     [sh(" && cp -r voice site/voice", " # && cp -r voice site/voice"), "cp -r js site/js #"],
   ]) assert.deepEqual(problems({ script: mutant }), [`cloudflare-build.sh: refused "${refused}"`]);
   // A whole line commented out is no command: here, the only chain line.
@@ -142,7 +143,7 @@ function scratch() {
     "js/boot.js": "boot();", "js/nested/deep.js": "deep();",
     "voice/abc.mp3": "\u0000mp3\u00ff", "samples/piano.js": "pack()", "samples/piano/C4.mp3": "\u0001rec",
     "spike/probe.html": "spike", "backend/template.yaml": "aws", "tests/t.test.mjs": "test", "tools/x.mjs": "tool",
-    "reviews/r.md": "review", ".claude/gpt/ask.sh": "gpt", "README.md": "readme", "CREDITS.md": "credits", "404.html": "an unpublished root 404",
+    "reviews/r.md": "review", ".claude/gpt/ask.sh": "gpt", "README.md": "readme", "CREDITS.md": "credits", "LICENSE": "agpl", "LICENSE-CC-BY-SA.md": "cc", "404.html": "an unpublished root 404",
     "vendor/SHA256SUMS": "sums", "vendor/cognito/lib.min.js": "lib()", "vendor/fonts/fonts.css": "@font-face{}",
     "vendor/fonts/nunito/latin.woff2": "wOF2\u0000\u00ff\r\n", "vendor/fonts/nunito/OFL.txt": "licence\r\n",
   };
