@@ -64,10 +64,11 @@ The whole game is **`index.html`** — the page's markup and styles — and the 
 | **`EDITOR-DESIGN.md`** | The **long-term editor design**: notes-as-objects + lens architecture, the chromatic lattice with lighting-as-tonality (draggable HOME + mode switch), duration/dynamics/multi-voice/sections plans, and the build phases that unblock the remaining package waves. |
 | **`SAVE-SHARE.md`** | The save/share system spec (pitch-based v3 song format, Studio, cloud songs) — **implemented** (P1–P3). |
 | **`QUESTS.md`** | The **quest play mode**: vocabulary, the declarative quest schema, the ordered quest kinds, and the decision record. **Kind 1 ships**, in two quests (*The Firefly Crossing*, *The Waking Woods*) — reachable from the world map. Kinds 2–9 are still intent. |
+| **`MAKING-QUESTS.md`** | How a contributor **adds a quest** as data: the definition field by field (*The Waking Woods* annotated), the closed lists it draws on, witnesses, checking it with `tools/quest-catalog.mjs`, trying it with `?dev`, and what makes a good quest. Its tables are held to the engine by `tests/quest-guide.test.mjs` (TUN-105). |
 | **`voice/`** | Pre-baked narration mp3s (Amazon Polly), one per spoken line, keyed by text hash. Regenerate with `tools/gen-voice.mjs` after changing any `intro:`/`credit:` text. |
 | **`samples/`** | Sampled-instrument packs. `samples/<instr>/*.mp3` are the source recordings; `samples/<instr>.js` is the base64 pack the game actually loads (script-tag, file://-safe). Rebuild with `tools/build-samples.mjs`. |
 | **`vendor/`** | Third-party files the game serves from its own site, because the page makes no third-party requests (TUN-81): the Cognito sign-in library (`amazon-cognito-identity-js` 6.3.22) and the Fredoka and Nunito fonts (`woff2`, with Google's `@font-face` rules in `fonts/fonts.css`), copied as released, with their licences. `SHA256SUMS` pins every file. Versions, sources and how to update: `vendor/README.md`. |
-| **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS), `check-syntax.mjs` (syntax-checks every script the game loads). |
+| **`tools/`** | Node build scripts: `gen-voice.mjs` (Polly narration clips — needs AWS creds), `build-samples.mjs` (packs sample mp3s into loadable JS), `check-syntax.mjs` (syntax-checks every script the game loads), `quest-catalog.mjs` (extract, check and install the built-in quest catalog — `MAKING-QUESTS.md`). |
 | **`backend/`** | AWS SAM backend (Cognito auth + per-user progress API + cloud songs API on DynamoDB). `template.yaml`, `src/*.mjs`, `README.md` (deploy guide), `samconfig.toml`. |
 | **`cloudflare-build.sh`** | The deploy build — Cloudflare Pages' dashboard runs `sh cloudflare-build.sh`, output `site`: copies `index.html` + `_headers` + `js/` + `voice/` + `samples/` + `vendor/` into a fresh `site/`. **Add any new runtime asset folder here** — a missing `js/` file is served as `index.html` and stops the game from starting. Kept to a strict copy-only form; `tests/cloudflare-publish.test.mjs` pins it and runs it. See [Deployment](#deployment). |
 | **`_headers`** | The response headers the site sends (TUN-86): the content security policy, no framing, `nosniff`, the referrer policy, and the cache rules. The build copies it into `site/`, where Cloudflare Pages reads it. `tests/site-headers.test.mjs` pins it. See [Deployment](#deployment). |
@@ -204,6 +205,7 @@ JSON with no executable callbacks anywhere, and **every id it writes resolves ag
 registry**, so an author cannot name a control, tool, transition, payoff or theme the engine does not
 have. The Waking Woods was added as data alone, with no engine branch: that is `QUESTS.md` Q9's
 authorability acceptance test, and passing it is what keeps a player-facing Questmaker reachable.
+To add a quest: `MAKING-QUESTS.md`.
 
 Each run is **dealt its own task**: three landmark stones, spaced apart and away from the edges, planted
 on the field before you start, and a short **opening drum fragment** — two or three hits in the first two

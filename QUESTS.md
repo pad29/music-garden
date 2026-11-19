@@ -8,6 +8,7 @@
 > and the Home card all exist in the game's `js/` files (`js/completion.js` and `js/quest-*.js`; the
 > map is `README.md` § How the game's code is organized). Everything below about the later kinds states intent,
 > the way `EDITOR-DESIGN.md` does; `README.md` § Current status remains the record of what ships.
+> **To add a quest** through the same data path (Q7), field by field: `MAKING-QUESTS.md` (TUN-105).
 >
 > The engine was built in six steps (D1–D6) against this document, each one design-reviewed,
 > mutation-tested and browser-verified — `REVIEW-LOG.md` records what each round found, including

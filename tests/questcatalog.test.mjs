@@ -25,7 +25,12 @@ const codes = game => game.QUEST_CATALOG_ERRORS.map(e => e.code);
 test("the shipped catalog validates, loads and is deep-frozen", () => {
   // MUTATION: corrupt any Firefly route id, witness reference or analyzer id.
   const g2 = loadGame({ fresh: true });
-  assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), ["firefly-crossing", "waking-woods"]);
+  // Every definition the built-in JSON carries is installed, in order — a contributor's quest
+  // (MAKING-QUESTS.md) included — and the two official quests are among them. Not a pinned list:
+  // adding a quest must not break a test about loading.
+  const shipped = JSON.parse(g2.BUILTIN_QUEST_CATALOG_JSON).definitions.map(d => d.id);
+  assert.deepEqual(Object.keys(g2.QUEST_DEFINITIONS), shipped);
+  for (const id of ["firefly-crossing", "waking-woods"]) assert.ok(shipped.includes(id), id);
   assert.deepEqual([...g2.QUEST_CATALOG_ERRORS], []);
 
   const fc = g2.QUEST_DEFINITIONS["firefly-crossing"];

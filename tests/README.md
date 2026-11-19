@@ -324,6 +324,29 @@ question with yes, so its `?reset` loads still catch a boot that wrongly runs by
 for playing the game — it catches silent logic regressions, which are the ones runtime inspection is
 worst at finding.
 
+## Quests a contributor adds (TUN-105)
+
+The quest tests hold **every** quest in the built-in catalog, not just the two official ones, so a quest
+added as data (`MAKING-QUESTS.md`) is proved without editing a test: it loads, its dealer's deals are
+legal and completable (`questsetup`), no opening in its pool blocks a route, and every route is reachable
+by a song that completes its task (`quest-fragments`). What is *content* — the official quests' ids,
+pools, geometry, which one Home offers — is pinned **by id**, and the Home and trail tests pass the two
+official quests as an explicit fixture. A test that asserts the catalog's size, or picks "the first
+quest", breaks the moment someone adds one. `questhome` also covers fresh-invitation priority ties and
+the real `?dev` 🗝️ Unlock quests handler with an added quest.
+
+`quest-catalog-tool.test.mjs` runs `tools/quest-catalog.mjs` against a temporary copy of `index.html` +
+`js/`, never the checkout's engine file. `quest-guide.test.mjs` checks `MAKING-QUESTS.md`'s marked
+sections against the engine: the field tables (walked from the `QT` specs by
+`helpers/quest-guide-fields.mjs`), the closed lists, the worked examples and the error codes.
+
+GPT's test pass added `quest-catalog-adversarial.test.mjs` (the tool's edge cases and CLI exit codes,
+and that a candidate engine file that fails to load — reported or thrown — never replaces the real one)
+and `quest-contributor-audit.test.mjs`, which re-runs the guide guard and the decoupled quest tests in a
+child process with in-memory mutations: a guide field at the wrong root, a duplicate or out-of-section
+row, an invented parameter value or comment-only error code; a fault confined to a third quest's deal,
+pool or opening; a third quest sorting first.
+
 ## Quest setup and playtest mutation audit
 
 ```bash
