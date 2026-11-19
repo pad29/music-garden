@@ -250,12 +250,12 @@ See `backend/README.md` for first-time setup. The API is throttled to a nominal 
 
 ```sh
 for u in https://tunegarden.game/ https://www.tunegarden.game/; do
-  if ! page=$(curl -fsS --compressed "$u" -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate'     -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'); then
+  if ! page=$(curl -fsS --compressed "$u" -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' \
+    -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'); then
     echo "FAILED: $u (the fetch did not complete)"; continue
   fi
-  s=$(printf '%s
-' "$page" | grep -c 'src="js/'); i=$(printf '%s
-' "$page" | grep -cE 'cloudflareinsights|cdn-cgi')
+  s=$(printf '%s\n' "$page" | grep -c 'src="js/')
+  i=$(printf '%s\n' "$page" | grep -cE 'cloudflareinsights|cdn-cgi')
   if [ "$s" -eq 0 ]; then r="NOT THE GAME PAGE"; elif [ "$i" -gt 0 ]; then r="INJECTED"; else r="clean"; fi
   echo "$r: $u (game scripts: $s, injected lines: $i)"
 done

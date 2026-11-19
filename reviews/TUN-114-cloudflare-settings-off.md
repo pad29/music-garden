@@ -207,7 +207,19 @@ or take it as it stands.
 1. *After three review rounds, the round-3 fix (a Low, test-only change) is pushed without a review:
    run a fourth GPT round on it, or take the PR to playtest as it stands?* — **a fourth round**: the
    owner, relayed by the orchestrator to this session, 2026-11-18.
-2. *Do the dashboard locations in README § Deployment match what Cloudflare shows today?* — **open**
-   (the ticket's last *Done* item; in the playtest checklist).
+2. *Do the dashboard locations in README § Deployment match what Cloudflare shows today?* —
+   **they match**: the owner checked all four dashboard items, in the AO session, 2026-11-19.
 3. *After round 4, its fix (Low, test-only) is pushed unreviewed: run round 5, or take the PR as it
-   stands?* — **open** (Needs Input, 2026-11-18).
+   stands?* — **take it as it stands** (1B): the owner, in the AO session, 2026-11-19.
+
+## Owner's review
+
+- **Playtest, 2026-11-19:** all four dashboard checks match the README. The terminal check printed the
+  two `clean` lines exactly. The owner ran it in Windows PowerShell through `curl.exe`, because Smart
+  App Control blocked Git Bash. The PowerShell form is not in the README (a possible follow-up).
+- **After the owner's 1B, without review:** the README's check block had two lines mangled by my own
+  scripted edit (round 1): the `\` continuing the curl line was lost, and `printf '%s\n'` held a real
+  line break instead of `\n`. Both forms ran the same, which is why the tests, the live runs and GPT's
+  round 2 ("the literal-newline `printf` formats are valid POSIX syntax") all passed them. Restored to
+  the intended text; the five injection tests pass, and the no-`cdn-cgi` and dangling-`-H` mutations
+  still fail them. Both shells print `clean` on both domains.
