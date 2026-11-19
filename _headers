@@ -28,6 +28,12 @@
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
 
+# CREDITS.md (TUN-89), linked from the map footer, is Markdown: sent as plain text, so a browser shows it
+# rather than downloading it.
+/CREDITS.md
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: text/plain; charset=utf-8
+
 /js/*
   Cache-Control: public, max-age=0, must-revalidate
 

@@ -242,7 +242,11 @@ function renderPkgs(){ pkglist.innerHTML="";
   wrap.appendChild(svg); pkglist.appendChild(wrap);
   requestAnimationFrame(()=>fitLabels(svg));              // measure once the overlay is actually visible
   const cred=document.createElement("div"); cred.className="mapcred";
-  cred.textContent="🎹 Piano: Salamander Grand Piano by Alexander Holm (CC-BY) · 🪄 Harp: Etherealwinds Harp II CE by Jordi Francis & Versilian Studios (CC-BY)";
+  cred.textContent="🎹 Piano: Salamander Grand Piano by Alexander Holm (CC BY 3.0) · 🪄 Harp: Etherealwinds Harp II CE by Jordi Francis & Versilian Studios (CC BY 4.0) · ";
+  // CC BY asks for the licence and what was changed beside the credit: CREDITS.md holds both, and the build
+  // publishes it (TUN-89). Relative, so it works on file:// too; a new tab, so the game is not navigated away.
+  const credLink=document.createElement("a"); credLink.href="CREDITS.md"; credLink.target="_blank"; credLink.rel="noopener";
+  credLink.textContent="Credits & licences"; cred.appendChild(credLink);
   pkglist.appendChild(cred);
   // the territory box: click a land to read about it and Continue / Restart
   const mapbox=document.createElement("div"); mapbox.className="mapbox"; wrap.appendChild(mapbox);

@@ -324,4 +324,65 @@ game shows forks where theirs goes — a Backlog ticket.
 
 ## Owner's decisions
 
-*open* — design checkpoint (`needs-owner`), questions 1–8 above.
+*Design checkpoint (`needs-owner`)* — the owner, relayed by the orchestrator (session `music-garden-5`)
+to this session, 2026-11-19:
+
+1. **A** — `Copyright (C) 2026 Pavel Dmitriev`.
+2. **A** — AGPL-3.0-or-later.
+3. **A** — `voice/` under CC BY-SA 4.0, accepting the Customer Agreement's End User responsibility.
+4. **A** — publish `CREDITS.md` with the site; the footer adds the licence labels and a relative
+   *Credits* link.
+5. (a) **Replace later** — the *Shave and a Haircut* Jukebox (Faber arrangement): a Backlog ticket, for the
+   bare jingle or the owner's own accompaniment. (b) **Keep for now** — *I Got Rhythm*, credited with the
+   evidence, plus a Backlog ticket to revisit it before any EU/UK-facing launch. (c) **Keep** — *The
+   Charleston*, *The Bo Diddley beat*.
+6. **No other arranged editions**, as far as the owner knows; he confirmed the scores against score images
+   found online. Credit that honestly, and claim no specific edition.
+7. **Yes and OK** — the screenshot under CC BY-SA; the brand wording as proposed.
+8. **A** — "Tune Garden by Pavel Dmitriev, https://github.com/pad29/music-garden".
+
+**Follow-up tickets** (Backlog, `file-ticket`): TUN-117 — the *Shave and a Haircut* Jukebox accompaniment
+(5a); TUN-118 — *I Got Rhythm* before an EU/UK-facing launch (5b). The AGPL § 13 Source link was asked
+for as a ticket too, but TUN-104 (the "for grown-ups" page) already requires "links to the source, the
+licence and the credits", so it got a comment with the § 13 reasoning instead of a duplicate.
+
+## Build
+
+As planned, amended by *My answers* and the owner's decisions:
+
+- `LICENSE` — <https://www.gnu.org/licenses/agpl-3.0.txt> fetched 2026-11-19, unchanged (34,523 bytes,
+  SHA-256 `0d96a4ff…abcb0`).
+- `LICENSE-CC-BY-SA.md` — scope (finding 5), exclusions, the attribution line (8A), the synthetic-speech
+  note. The legal code is linked, not copied (CC BY-SA 4.0 § 3(a)(1)(C)).
+- `CREDITS.md` — the licence map with the copyright line and the AGPL "or later" notice (1A, 2A); the
+  brand note (7b); per-instrument changes; jurisdiction labels; a source link for every tune; the
+  edition statement (6); TUN-117 and TUN-118 named in their rows.
+- `README.md` — the one Licence line extended ("AGPL-3.0-or-later", "CC BY-SA 4.0" linking
+  `LICENSE-CC-BY-SA.md`); a repository-map row; the build, caching and Deployment lines; the
+  *Famous melodies* and *New sampled instrument* conventions now send new work to `CREDITS.md`.
+- `AGENTS.md` — the pointer, and `CREDITS.md` in § What "done" means (finding 9).
+- 4A — `cloudflare-build.sh` publishes `CREDITS.md`; `_headers` gives it a re-check cache rule and
+  `Content-Type: text/plain`; `tests/cloudflare-publish.test.mjs` allows it. The map footer (`js/home.js`)
+  now reads "(CC BY 3.0)" / "(CC BY 4.0)" and ends with a **Credits & licences** link to `CREDITS.md`.
+
+**Choices I made that you might overrule:** the link opens in a new tab, so the game is never navigated
+away; its words are "Credits & licences"; `CREDITS.md` is served as plain text rather than as a rendered
+page; `spike/` counts as code (its one `.md` is a doc); ticket IDs, not Linear links, in `CREDITS.md`,
+because Linear is private.
+
+## Tests
+
+`tests/licences.test.mjs`, 6 tests: `LICENSE` against the recorded SHA-256 with line endings normalised;
+one complete row per `FAMOUS` key and per `SAMPLED` voice; relative links resolve; one Licence line,
+linking both licence files; the footer's two CC BY credits with versions, and its link. Mutation audit,
+10/10 caught: a copyright header on `LICENSE`; a dropped AGPL section; a tune row removed; a year emptied;
+a voice row removed; a licence version dropped; a broken relative link; a second Licence line; the
+footer's piano credit and its link each removed. Publish and headers tests updated for `CREDITS.md`.
+Whole suite 1009/1009, syntax check OK.
+
+Browser (`ao preview`, this worktree, files byte-compared): the world map's footer shows both credits
+with versions and the link; the link opens `CREDITS.md` as text in a new tab; no console errors.
+The README Licence line's text is 5 characters shorter than TUN-98's, so it cannot wrap onto more lines.
+
+**Not verified:** the link over `file://` (AO's browser refuses it); that Cloudflare honours the
+`text/plain` Content-Type (check on the PR preview); the README as GitHub renders it.
