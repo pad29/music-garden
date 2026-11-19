@@ -98,8 +98,8 @@ for, how to report back. Where their invocation disagrees with this section, thi
 ## AO, tickets and branches
 
 **Every session runs in its own AO worktree**, which AO creates with its branch at spawn: never
-`EnterWorktree`, never another worktree, never rename the branch. The project checkout
-(`C:\Users\pavel\ao\projects\music-garden`) stays on `main` and is never edited.
+`EnterWorktree`, never another worktree, never rename the branch. AO's project checkout — the clone every
+worktree is made from, first in `git worktree list` — stays on `main` and is never edited.
 
 **Model settings** (AO project config, 2026-11-10): workers `claude-opus-5-5`, orchestrator
 `claude-sonnet-5-5`, reviewer `codex` on `gpt-6-astra` — all at effort high.
