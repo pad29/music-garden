@@ -7,7 +7,7 @@ reviewer is back in service.
 
 AO's reviewer reviews but cannot submit here: its runs end with *"reviewer Chat turn ended without
 submitting a result"* while a one-word `codex exec` answers. AO runs it in Codex's sandbox, where `gh`
-cannot read its configuration (`C:\Users\pavel\AppData\Roaming\GitHub CLI\config.yml`: *Access is
+cannot read its configuration (`%APPDATA%\GitHub CLI\config.yml`: *Access is
 denied*) and `ao` is not on PATH; `ao doctor` also warns `codex-launch-flags` — codex-cli 0.155.1 rejects
 AO's launch flags. Each such run spends the ChatGPT limit on a verdict that never arrives. So until the
 conditions below are met, **don't request one**: `work-ticket` § 8, steps 4–5, run the review through

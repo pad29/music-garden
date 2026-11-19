@@ -2,7 +2,24 @@
 
 A browser game that teaches music theory through play — **"Minecraft for music."** Players compose real-sounding music by placing simple visual elements and *feel* musical concepts (tension, resolution, harmony, contour, pulse) long before they meet the names. Audience skews to children 8+, but is meant to appeal broadly.
 
-**Live:** https://tunegarden.game/ (Cloudflare Pages, auto-deploys from this repo on every push to `main` — see [Deployment](#deployment))
+**Play it at [tunegarden.game](https://tunegarden.game/)** — in the browser, with nothing to install and no account needed (an optional account syncs your progress across devices and shares songs too big for a link).
+
+<img src=".github/screenshot.png" width="480" alt="Tune Garden: the first level's story on the left, a short tune planted as glowing seeds on the grid, and the companion and the blooming garden on the right">
+
+**Run it yourself** — no build step, no dependency; with [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/), run these and open http://localhost:8377 (or skip the server and open `music-garden/index.html`):
+
+```bash
+git clone https://github.com/pad29/music-garden.git
+npx http-server music-garden -p 8377 -c-1
+```
+
+**Licence:** code under the [GNU AGPL-3.0](LICENSE); narration audio and docs under Creative Commons BY-SA 4.0; the name "Tune Garden" and its logo not licensed. Samples, fonts and famous melodies keep their own terms: [CREDITS.md](CREDITS.md).
+
+**Contribute:** [CONTRIBUTING.md](CONTRIBUTING.md) says how to report a bug, propose a change and open a pull request.
+
+---
+
+**For developers**, the rest of this README is the working map: how to run the checks, where everything lives, the conventions, and what is built. The live site deploys from `main` on every push ([Deployment](#deployment)).
 
 > Status: working browser game (no dependencies, no build step), in active development. **20 packages built** across 7 regions (the 13-level intro + 19 expansion packages, including the full Weather of Wanting harmony arc), the first two **quests** (*The Firefly Crossing*, *The Waking Woods*), Studio + cloud song sharing, spoken narration, a famous-melody Jukebox, an interactive world map, and seven sampled instrument voices. Backend deployed. See **[Current status](#current-status--whats-next)**.
 
@@ -244,6 +261,8 @@ See `backend/README.md` for first-time setup. The API is throttled to a nominal 
 ---
 
 ## Dev workflow we use
+
+**Tune Garden is built with AI agents.** Claude and GPT do most of the designing, coding, testing and reviewing, one ticket at a time; the owner decides what is worked on, playtests it and merges. `CLAUDE.md`, `AGENTS.md` and `.claude/` are the agents' instructions, and `reviews/` is their record. **A human contributor needs none of that machinery:** change the code, run the checks below, and open a pull request — [CONTRIBUTING.md](CONTRIBUTING.md) says how.
 
 Work runs through **Agent Orchestrator (AO)**, one Linear ticket at a time, and how much GPT does depends on the ticket's size: GPT designs a large ticket and Claude critiques it, while Claude plans a small or medium one and GPT reviews the plan (medium) → Claude implements and tests → GPT adds tests against its design (large only) → Claude opens a PR, which GPT reviews, listing any missing tests → the owner playtests and merges. Planning — filing the tickets — runs in its own planning session. `CLAUDE.md` holds the loop; the `work-ticket` skill holds the steps. Every change passes the same checks:
 
