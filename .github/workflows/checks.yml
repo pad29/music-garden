@@ -1,0 +1,39 @@
+# The syntax check and the test suite on every pull request and every push to main (TUN-90): main deploys
+# to production on every push, so a pull request shows whether it passes before the owner merges it.
+#
+# Safe for pull requests from forks: `pull_request` (never `pull_request_target`) runs the fork's code with
+# a read-only token and no secrets; this workflow asks for nothing more, and installs nothing — the suite
+# is Node's built-in runner with no dependencies. Third-party actions are pinned to a commit, their tag in
+# a comment. tests/ci-workflow.test.mjs guards all of this.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request or branch cancels the run it supersedes.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Syntax check and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Node 24, as on the owner's machine. The suite needs 22.15+ or 23.5+: node:module's registerHooks.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Syntax check
+        run: node tools/check-syntax.mjs
+      - name: Tests
+        run: node --test "tests/*.test.mjs"
