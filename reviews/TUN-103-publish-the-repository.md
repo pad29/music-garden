@@ -99,7 +99,7 @@ root — GPT's round 1 finding 2.)
 (`AKIA` followed by `IOSFODNN7EXAMPLE`; split here so this record does not match its own scan), an `OPENSSH PRIVATE KEY` header, a `ghp_` token and a `password = "…"` line
 reported all four.
 
-**Result: nothing.** No strict hit; no risky file name. The loose patterns' 5 hits are one test fixture
+**Result: no unexplained match.** No strict hit; no risky file name. The loose patterns' 5 hits are one test fixture
 in five versions of `tests/backend-handlers.test.mjs` and `tests/backend-presignup.test.mjs` —
 `SECRET = "arn:aws:dynamodb:us-east-1:123456789012:table/SECRET-internal"`, a fake ARN in AWS's
 documentation account. The only AWS account IDs anywhere in history are AWS's documentation examples
@@ -418,7 +418,67 @@ Run over three snapshots of everything GitHub exposes:
 
 The issues and pull requests again (116 issues, 46 PRs, 570 texts), with the expanded patterns: the same
 34 Netlify QR-code JWTs and nothing else. No risky file name in any snapshot. The commit that answers this
-round adds one more version of this record and of three docs; it is scanned before it is pushed (*Tests*).
+round, `581e930`, changes this record and two other docs (`CLAUDE.md`, `README.md`); it was scanned with
+these patterns before it was pushed: 5 strict and 1 loose occurrence, all in its new version of this
+record, all this record quoting itself. (Round 2 widened the patterns again — *PR review — round 2*.)
+
+## PR review — round 2 (`gpt-6.2-astra`, `ask.sh fresh read-only`, on the delta `835cf28..581e930`)
+
+Verdict: **CHANGES REQUESTED** — one medium, two low, one nit, and two missing controls. GPT accepted
+the round 1 disagreement ("I accept the commit-message disagreement"), reproduced the three snapshot rows,
+and found findings 3, 5, 6 and 8 answered.
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Medium — `reviews/TUN-103-publish-the-repository.md:409`.** The refresh-token assignment rule still requires a quoted value. I reproduced zero matches for a dummy opaque value in `grant_type=refresh_token&refresh_token=…`, the form Cognito documents. The quoted JWE control misses this case because it satisfies two detectors. The strict JWE rule at line 407 also requires a nonempty second segment, which direct-encryption JWE leaves empty. Cover both cases and rerun the expanded scan. [Cognito refresh request](https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html) · [RFC 7516 §5.1](https://www.rfc-editor.org/rfc/rfc7516.html#section-5.1)
+
+2. **Low — `reviews/TUN-103-publish-the-repository.md:461`.** “Before each push, the expanded scan ran” backdates the expanded rules to pushes made before round 1. Record the original pre-push scans, the retrospective rescans, and the pre-push scan of `581e930` separately. Correct line 421 alongside it. `581e930` changed the record and **two** other docs. I reproduced five strict occurrences and one loose occurrence in its new record blob, all explained. Line 102 should likewise say “no unexplained matches” in place of “nothing.”
+
+3. **Low — `reviews/TUN-103-publish-the-repository.md:449`.** Round 1 explicitly called out this sentence, and it still says a push requires “a merged PR.” A qualifying **open** PR can be merged locally and the result pushed. Use the ordinary-direct-push wording already corrected in `CLAUDE.md`, `README.md` and line 313. [GitHub’s required-check behavior](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+
+4. **Nit — `README.md:198`.** Change “every branch” to “every non-production branch.” The Deployment section at line 252 correctly identifies `main` as production and every other repository branch as a preview branch.
+
+The three snapshot rows reproduce, including **five** pre-click strict occurrences across **three** blobs. The Markdown table escapes render as regex alternation. I accept the commit-message disagreement. The corrected headings state the scope, and the commit-message-only control exercises it. The alert result distinguishes zero alerts from unknown backfill completion. Findings 3, 5, 6 and 8 are answered, as is the licence part of finding 7. [GitHub Flavored Markdown table escaping](https://github.github.com/gfm/#example-200)
+
+**Missing tests**
+
+- Put an unquoted `refresh_token=` form field with a dummy opaque, non-JWE value in a text blob. Require an assignment match at that location.
+- Put a standalone dummy direct-encryption JWE with an empty second segment in a commit message. Require a strict match at that location. Both controls should redact the value. A throwaway-repository run is sufficient for this one-off scanner. No game test is missing.
+
+**CHANGES REQUESTED**
+
+</details>
+
+### My answers
+
+1. **Medium — unquoted token assignments and direct-encryption JWE.** **Agreed, and fixed.** The JWE
+   rule's second segment may now be empty, and a new loose rule catches an unquoted assignment:
+
+   | Kind | Name | Regex |
+   |---|---|---|
+   | strict | JWE (replaces round 1's) | `(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}` |
+   | loose | Token assignment, unquoted | `\b(?:refresh\|id\|access\|session\|auth)[_-]?token\b["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{20,}` (case-insensitive) |
+
+   Re-run over four snapshots — the three of round 1 and the PR head `581e930` (test merge `aa691b1`;
+   94 refs, 362 commits, 1,939 blobs, 604 file paths). **No unexplained match in any.** The only new
+   matches are 25 in `vendor/cognito/amazon-cognito-identity.min.js` (one version in all of history),
+   each read by hand: property names set from calls — `AccessToken:this.signInUserSession.getAccessToken`
+   (×20, and two more of that shape), `AccessToken:`, `IdToken:` and `RefreshToken:this.storage.getItem` —
+   library code, no value. Issues and pull requests again: the same 34 Netlify JWTs, nothing else.
+2. **Low — the scans backdated, line 421's count, line 102's wording.** **Agreed:** *Tests* now separates
+   each pre-push scan, with the patterns of its time, from the retrospective re-scans — and admits that
+   `f69301d` was pushed unscanned (covered by the re-scan before the click). Round 1's closing paragraph
+   names `581e930`'s files (the record and two docs) and its own pre-push result (5 strict, 1 loose, all
+   self-quotes); line 102 says "no unexplained match".
+3. **Low — "a merged PR" in *Choices* 1.** **Agreed:** it now uses the ordinary-direct-push wording.
+4. **Nit — "every non-production branch".** **Agreed**, in README § Current status.
+
+**Missing controls — added, as a throwaway-repository run**, as GPT allows: `grant_type=refresh_token&
+client_id=abc&refresh_token=<48 random characters>` in a text blob, and a standalone direct-encryption
+JWE (`eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..<iv>.<ciphertext>.<tag>`, random parts) **only** in a commit
+message. Round 2's patterns found both at their locations — `token-assignment-unquoted` in `form.txt`,
+`jwe-eg-cognito-refresh-token` in the commit message — printed as six characters and a length; round 1's
+patterns, on the same repository, found **neither**, which confirms the finding.
 
 ## Owner's decisions
 
@@ -446,8 +506,9 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
 
 1. **Do not allow bypassing** (C1). Every session pushes as `pad29`, your admin account. Without this
    box, protection does not apply to admins, so a session's stray `git push origin main` would still
-   go through and deploy. With it, nobody — you included — pushes to `main` except by a merged PR whose
-   check passed. In an emergency you can untick it for a minute.
+   go through and deploy. With it, the rule binds every account, yours included: an ordinary direct push
+   to `main` is refused, and a change reaches it through a pull request whose check passed. In an
+   emergency you can untick it for a minute.
 2. **Branches need not be up to date before merging** (C1). Ticked, every merge would force every open
    PR to merge `main` again — a new head, and a new GPT review under `CLAUDE.md` § Cost. Sessions
    already merge a fresh `origin/main` before opening a PR.
@@ -457,7 +518,15 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
 ## Tests
 
 No code changed. **1030/1030 tests and the syntax check pass** locally on `835cf28` (after merging
-`origin/main` at `a56e55d`, which had not moved), and again on the commit answering round 1; *Checks*
-runs on each pushed head. Before each push, the expanded scan ran over the new commit and found only this
-record quoting itself. *After publishing* items 1–3 and 5 are verified above. **Still unverified:** a
+`origin/main` at `a56e55d`, which had not moved), and again on the commits answering rounds 1 and 2; *Checks*
+runs on each pushed head. **Which scan ran when:**
+- **Before its push, with the patterns of its time:** `05fdd5d`/`12fa98b` and `835cf28` with the first
+  patterns; `581e930` with round 1's (*The expanded scan*); the commit answering round 2 with round 2's
+  (*PR review — round 2*). Each found only this record quoting itself. **Not** `f69301d` (the owner's
+  answers): it was pushed unscanned while the repository was still private, and the re-scan before the
+  click covered it.
+- **Retrospectively:** round 1's patterns over the first, pre-click and post-publishing snapshots; round
+  2's over all four snapshots, `581e930` included. No unexplained match in any.
+
+*After publishing* items 1–3 and 5 are verified above. **Still unverified:** a
 session opening a new PR under the protection, and the owner's merge under it (item 4).
