@@ -171,3 +171,68 @@ restored: 3 fail; the error event taking any code: 2; either missing-clip branch
 current-clip guard dropped: 1. Syntax OK; suite 1048/1048. Edge probe on the new code: guest-then-sign-in
 and landing sign-in one `play()` each, no browser voice; off-while-loading silent; a missing clip read
 once by the browser voice.
+
+## PR review — round 3 (gpt-6.2-astra, through `ask.sh`), on 15d1a7e
+
+<details><summary>GPT's review, verbatim</summary>
+
+**CHANGES REQUESTED** on `15d1a7e110ca546be6807151108c9e64f3572315`.
+
+### Round-2 findings
+
+1. **Mid-play restart — resolved.** After `play()` succeeds, a network or decode error (code 2 or 3) leaves the browser voice silent. A still-current `AbortError` also stays silent. The delta adds all three cases and retains the once-only fallback for unbaked quest text. [Narration tests](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/tests/narration.test.mjs:73)
+
+2. **Narration under the buddy picker — medium, still required.** I accept the same-task argument for direct landing sign-in and withdraw the test requiring `hideLanding()` to precede `play()`. The picker can stay visible indefinitely. A fresh visitor can open a shared song directly in Studio, open the World map, and create an account before choosing a buddy. Sign-up uploads that device’s progress, with `current:"intro"` and no companion. On a later landing sign-in, Back → Start playing during the pull leaves the picker open. When the pull completes, `renderStage()` requests the cloud story, `syncCompanion()` leaves the picker up, and choosing a buddy requests the story again. This reaches both ticket conditions on a save the current game can write. Defer the successful pull’s narration until buddy selection when the picker remains visible. TUN-106’s failed-load handling can stay as it is. [Shared-song boot](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/boot.js:43) · [World map](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/home.js:13) · [Cloud load and upload](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/cloud.js:111) · [Companion selection](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/level-engine.js:282)
+
+### New required change
+
+**Medium — A shipped clip that fails before playback still selects the browser voice.** The Edge offline measurement supplies the counterexample. On a cold cache, the shipped opening story, `voice/b547890d.mp3`, can be unreachable and produce exactly the two signals that call `missing()`. Code 4 describes an unusable source. Neither signal establishes that the build lacks the clip. Gate fallback on whether the spoken-text hash has a baked asset, for example with a generated set of shipped hashes. Keep the current-clip check and the unbaked quest fallback. [Opening story clip](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/voice/b547890d.mp3) · [Fallback handlers](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/play-scope.js:145) · [HTML Standard, media errors](https://html.spec.whatwg.org/multipage/media.html#error-codes)
+
+### Missing tests
+
+- Narrate the actual opening level’s `intro`. Deliver code 4 alone, then in a separate case reject `play()` with `NotSupportedError` alone. Assert zero browser utterances in each. Keep the corresponding unbaked-text tests expecting one utterance. The existing mid-play fixture uses the shortened `"The garden is asleep."`, whose hash has no shipped clip.
+- Drive `doLandingSignIn()` with the cloud pull held pending. Choose Back → Start playing, then resolve the pull with First Garden progress containing no companion. Assert zero clips and zero utterances while the picker is visible. Choose a buddy and assert exactly one request for the cloud level’s story.
+
+This was a read-only source review. The suite and Edge results in the review record are the author’s runs.
+
+</details>
+
+**My answers**
+
+1. **Round 2 — GPT: the mid-play restart resolved; the same-task argument for the direct landing path
+   accepted.**
+2. **Medium — narration under the buddy picker. Agreed; my round-2 reasoning was wrong.** GPT showed a
+   save the current game can write with no buddy: a fresh visitor opens a shared song (straight into the
+   Studio), opens the World map and signs up before ever picking one. Now a successful cloud load leaves
+   `narrateReady` false while the picker is up, so nothing is read under it, and picking a buddy
+   (`enterPlay`) reads the loaded story once. Test added (the picker up, a held pull, a buddy-less cloud
+   save: no clip until the pick, then one clip of the cloud level's story); it drives `onSignedIn` and
+   `pickCompanion` rather than `doLandingSignIn`'s form, which the harness does not model — the two
+   paths meet at `onSignedIn` with the picker up.
+3. **Medium — an unreachable shipped clip still gets the browser voice. Disagreed for this PR.** It is
+   true, and measured: Edge reports a 404 and an offline fetch identically. But it is not the two-voices
+   bug (one voice, the robotic one, when the network fails), today's `main` behaves the same, and the fix
+   GPT proposes — a generated list of shipped clip hashes kept in step with `tools/gen-voice.mjs` — is a
+   new mechanism. Whether an offline player should hear the robotic voice or silence is a player-facing
+   choice with two defensible answers: the owner's. Filed as **TUN-124** (`needs-owner`), carrying GPT's
+   missing test for the real opening story.
+
+**Missing tests:** the buddy-picker case — **added** (as above). The real opening story with each
+missing-clip signal → moved to TUN-124 with its finding.
+
+**CI:** head 15d1a7e's first run failed only `gpt-lock: of many sessions acquiring at the same instant,
+exactly one gets the lock` — a race in `.claude/gpt/gpt-lock.sh` (a loser's `rm -rf` removes the
+winner's lock), which this PR does not touch; the re-run passed. Evidence added to **TUN-123**, which
+already tracks that race.
+
+**Tests after the round:** `tests/narration.test.mjs` 19 cases; dropping the picker check fails 1.
+Syntax OK; suite 1049/1049. Edge probe: guest-then-sign-in and landing sign-in one `play()` each, no
+browser voice.
+
+**Review rounds used: 3 of 3.** Round 3's fix is unreviewed: Needs Input, below.
+
+## Owner's decisions
+
+1. *GPT's round-3 finding on unreachable shipped clips (TUN-124): ship this PR without it?* — **open**.
+2. *Round 3's fix (the buddy-picker condition and its test) has had no GPT review: one more round, or
+   hand off as it is?* — **open**.

@@ -139,10 +139,10 @@ const CLOUD = { v: 1, name: "Cloud Ann", current: "intro", updatedAt: 2, compani
   packages: { intro: { level: 3, maxLevel: 3, completed: false } }, settings: {} };
 
 /** A game whose cloud pull waits for `pull.resolve(progress)`. `timers` holds the instrument card's 1400 ms callbacks. */
-function signInGame({ narrateReady, cloud = CLOUD }) {
+function signInGame({ narrateReady, cloud = CLOUD, pickerUp = false }) {
   const timers = [];
-  const instroverlay = { style: { display: "none" } };
-  const g = loadGame({ fresh: true, elements: { instroverlay }, setup: w => {
+  const instroverlay = { style: { display: "none" } }, compoverlay = { style: { display: pickerUp ? "flex" : "none" } };
+  const g = loadGame({ fresh: true, elements: { instroverlay, compoverlay }, setup: w => {
     const real = w.setTimeout;
     w.setTimeout = (fn, ms, ...a) => ms === 1400 ? (timers.push(fn), 0) : real(fn, ms, ...a);
   } });
@@ -152,7 +152,7 @@ function signInGame({ narrateReady, cloud = CLOUD }) {
   g.renderAuth = () => {};
   g.speakOn = true; g.narrateReady = narrateReady;
   const signIn = async () => { const done = g.onSignedIn(false); await tick(); pull.resolve(cloud); await done; await tick(); };
-  return { g, log, timers, instroverlay, signIn, pull };
+  return { g, log, timers, instroverlay, compoverlay, signIn, pull };
 }
 const cloudStory = g => { assert.equal(g.levelIdx, 3, "the cloud progress loaded"); return clipOf(g, g.curStage().intro); };
 
@@ -205,6 +205,22 @@ test("a card closed just before the cloud load: its delayed story does not resta
   timers.forEach(fn => fn());
   assert.equal(log.clips.at(-1), story, "no second request for the story");
   assert.equal(g.curClip, story);
+});
+
+test("a cloud save with no buddy yet, loaded while the buddy picker is up: silent until a buddy is picked, then the story once", async () => {
+  // e.g. an account made from a shared song's Studio before any buddy was picked; on a later visit the player signs
+  // in from the landing screen, goes Back → Start playing while the pull is out, and the picker is up when it lands.
+  const noBuddy = clone(CLOUD); delete noBuddy.companion;
+  const { g, log, compoverlay, signIn } = signInGame({ narrateReady: false, cloud: noBuddy, pickerUp: true });
+  await signIn();
+  assert.equal(g.cloudSync, "ready");
+  assert.equal(compoverlay.style.display, "flex", "the picker is still up");
+  assert.deepEqual(log.clips, [], "no story under the picker");
+  assert.deepEqual(log.spoken, []);
+  g.pickCompanion("sprout");
+  assert.equal(compoverlay.style.display, "none");
+  assert.deepEqual(log.clips.map(c => c.src), [cloudStory(g)], "the loaded story, once, after the pick");
+  assert.deepEqual(log.spoken, []);
 });
 
 test("a signed-in reload: silent until the cloud answers, then the cloud level's story, once", async () => {
