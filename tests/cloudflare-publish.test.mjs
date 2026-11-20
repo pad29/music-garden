@@ -217,8 +217,8 @@ test("run for real, twice over a stale site/: exactly the allowed trees, byte fo
 
 // A missing source fails the build instead of publishing a partial site — wherever it sits in the
 // chain, not only last (GPT's PR review, finding 3: a failure mid-chain must still fail the script).
-test("run for real: a missing index.html, _headers, js/, voice/, samples/ or vendor/ fails the build", { skip: bash ? false : "no bash found" }, () => {
-  for (const missing of ["index.html", "_headers", "js", "voice", "samples", "vendor"]) {
+test("run for real: a missing index.html, _headers, CREDITS.md, licence file, js/, voice/, samples/ or vendor/ fails the build", { skip: bash ? false : "no bash found" }, () => {
+  for (const missing of ["index.html", "_headers", "CREDITS.md", "LICENSE", "LICENSE-CC-BY-SA.md", "js", "voice", "samples", "vendor"]) {
     const dir = scratch();
     try {
       rmSync(join(dir, missing), { recursive: true });

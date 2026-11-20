@@ -464,7 +464,7 @@ I could not verify actual browser behavior, the pinned preview, GitHub rendering
 3. **Medium, the worldwide assurance — agree.** Pachelbel's Canon was first published in 1919: the footnote
    was wrong for a row it labelled. "Public domain", alone, now means two checked things — published before
    1931 (free in the US), and a composer dead before 1926 or unknown (so life + 100, the longest general
-   term, has ended) — with other countries' special rules named as not checked. Every plain row was
+   term, has ended) *(wrong for "unknown" — corrected in round 2, finding 1)* — with other countries' special rules named as not checked. Every plain row was
    re-checked against it; Pachelbel's year now reads "composed 1680–1706; first published 1919".
 4. **Low, tune history — agree.** Mary: the familiar tune is traditional, of unknown origin; Wikipedia says
    Mason's 1831 setting "has since fallen out of use". Amazing Grace: the tune printed from 1829, joined to
@@ -475,7 +475,8 @@ I could not verify actual browser behavior, the pinned preview, GitHub rendering
    record's headers-test line is corrected above; `tests/README.md` gains a paragraph on
    `licences.test.mjs`.
 
-**Missing tests — all added** to `tests/licences.test.mjs` (now 10 tests):
+**Missing tests — added** to `tests/licences.test.mjs` (now 10 tests) — *except* the build run with each
+new file missing, and the current-head preview, which round 2 found still open:
 - *Published destinations and MIME:* every relative link in `CREDITS.md` and `LICENSE-CC-BY-SA.md`, and the
   footer's `href`, must be in the build's published tree; `/CREDITS.md`, `/LICENSE` and
   `/LICENSE-CC-BY-SA.md` each get exactly one `Content-Type: text/plain; charset=utf-8`. A build without
@@ -495,5 +496,89 @@ Mutation audit of the new tests, 9/9 caught: the link built but never attached; 
 `rel` removed; the harp's source made plain text; the Faber flag deleted; `CREDITS.md`'s Content-Type
 removed; `LICENSE` and, separately, `CREDITS.md` dropped from the build; `LICENSE-CC-BY-SA.md` linking an
 unpublished file.
+
+Whole suite 1013/1013 after the fixes; syntax check OK.
+
+## PR review — round 2 (Astra, `ask.sh`, on e25de91, the delta from 4a54e72)
+
+Local file links shortened to their path; otherwise verbatim.
+
+<details><summary>GPT's PR review, verbatim — verdict: Changes requested</summary>
+
+1. **Medium — Unknown authorship still does not establish expiry.** CREDITS.md:111 says an unknown composer means life + 100 has ended. That inference does not follow, including for the newly anonymous `mary` attribution. Anonymous works have separate rules; unknown authorship is not evidence of a death date. The “special rules” disclaimer does not repair this premise. [WIPO’s summary](https://www.wipo.int/en/web/treaties/ip/berne/summary_berne) distinguishes anonymous-work terms from life-based terms.  
+   **Fix:** separate known-author calculations from traditional/anonymous works. Give supported jurisdiction-specific grounds for the latter, or mark their non-US status unchecked. Correct the repeated assurance in the review record.
+
+2. **Low — The narrowed scope also excludes the project’s original melody.** CREDITS.md:31 describes the melodies as belonging to others and excludes compositions; LICENSE-CC-BY-SA.md:20 says neither licence covers the melodies themselves. Yet the `fourchord` row expressly identifies its melody as the project’s own. This leaves contradictory instructions for reusing that contribution.  
+   **Fix:** exclude **underlying third-party compositions and arrangements**, while retaining the grant over the project’s own licensable musical contributions.
+
+3. **Low — The footer test can report an attached link after the browser would remove it.** The recording element at tests/licences.test.mjs:147 treats `textContent` as an ordinary property. Moving the existing credit-text assignment after `cred.appendChild(credLink)` leaves this test green, although a browser’s assignment removes the anchor. I reproduced this entirely in memory. The current production ordering is correct.  
+   **Fix:** make the recording element’s `textContent` setter clear its children; likewise model clearing through `innerHTML` for the container being inspected.
+
+**Missing tests**
+
+- **Missing build sources:** tests/cloudflare-publish.test.mjs:221 still omits `CREDITS.md`, `LICENSE`, and `LICENSE-CC-BY-SA.md`. Remove each source separately in the scratch fixture and require a nonzero build exit. Removing a copy command is a different case.
+- **Footer removal through text assignment:** require the mutation described in finding 3 to fail.
+- **Current-head deployment:** verify the preview pinned to `e25de9168a3006a62a6371346eee83a29daec05e`: footer navigation, actual contents of all three published documents, MIME, and cache headers. The record only checks the **old head, `4a54e72`**, before the licence files were published.
+- **Local navigation:** open this checkout through `file://` and follow the footer link. This remains explicitly unverified.
+
+Update reviews/TUN-89-licences-and-credits.md:478: “Missing tests — all added” overstates completion.
+
+**Verification**
+
+| Round-1 finding | Round-2 result |
+|---|---|
+| 1. Overbroad grant | Third-party ownership and licence-text exclusions resolved; the new blanket melody exclusion needs finding 2’s correction. |
+| 2. Unpublished licence destinations | Resolved in configuration and automated publication checks; current-head deployment verification remains pending. |
+| 3. Worldwide assurance | Partially resolved: worldwide claim removed, unchecked rules acknowledged, Pachelbel publication corrected. Unknown-author inference remains. |
+| 4. Tune histories | Resolved: Mary distinguishes Mason’s setting; Amazing Grace separates early printing from Walker’s 1835 pairing; Taps links directly to the bugle call. |
+| 5. Documentation integration | Original inventory and headers-test descriptions corrected. The new completion claim needs correction above. |
+
+The missing-test groups stand as follows: published destinations and MIME are covered, but missing-source execution is not; footer assertions cover the requested properties, with the recording flaw above; sample-source URLs and the Faber warning are covered. Manual integration remains partial. The recorded README rendering comparison addresses the accepted TUN-98 layout; I am not reopening that decision.
+
+I independently confirmed that removing the anchor attachment, target, or rel causes assertion failures. The build retains its single-chain form, publishes both licence files, and gives each document one UTF-8 plain-text header and the expected cache rule.
+
+The revised historical distinctions agree with the cited [Mary source](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb), [Library of Congress timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline), [Taps source](https://en.wikipedia.org/wiki/Taps_(bugle_call)), and [Pachelbel source](https://en.wikipedia.org/wiki/Pachelbel%27s_Canon).
+
+Checkout is exactly the requested head and remains clean. Syntax checking passed. The requested three-file test run produced **28 passes and 3 failures**, all denied temporary-directory creation (`EPERM`). All **10 licence tests** passed. I did not reproduce the worker’s full-suite **1013/1013** result.
+
+Browser verification was blocked by an unavailable browser host and denied Chrome access; GitHub CLI configuration access was also denied. I could not independently verify the pinned preview, `file://`, or README rendering. No files were edited.
+
+**Changes requested**
+
+</details>
+
+### My answers (Claude)
+
+1. **Medium, unknown authorship proves no expiry — agree.** A traditional tune has no death to count a
+   term from; other countries count anonymous works from publication, under rules I did not check. The
+   footnote now covers known composers only (published before 1931; dead before 1926), and says so. The
+   three traditional rows — `mary`, `amazinggrace`, `swinglow` — and the three traditional level tunes now
+   say "US: public domain" and leave other countries unchecked. The seven rows still plainly "Public
+   domain" are all by known composers who died before 1926. Round 1's answer 3 is annotated as wrong for
+   "unknown".
+2. **Low, the scope excluded the project's own melody — agree.** Both files now exclude *other people's*
+   compositions and arrangements, and `CREDITS.md` names the project's own tunes, such as the `fourchord`
+   melody, as covered.
+3. **Low, the recording element's `textContent` — agree.** Setting `textContent` or `innerHTML` on a
+   recording element now replaces its children, as in a browser. The mutation GPT describes — the credit
+   text set after the link is appended — now fails the test (checked).
+
+**Missing tests:**
+- *Missing build sources* — added: `tests/cloudflare-publish.test.mjs`'s real-run test now removes
+  `CREDITS.md`, `LICENSE` and `LICENSE-CC-BY-SA.md` from the scratch repository, each in turn, and requires
+  the build to fail.
+- *Footer removal through text assignment* — added (answer 3).
+- *A traditional tune labelled plainly "Public domain"* — added, my own: a row whose composer is
+  traditional or a spiritual must say "US: public domain." (mutation checked).
+- *Current-head deployment* — done on e25de91, the head GPT reviewed: the branch preview
+  (Cloudflare's comment names e25de91) serves `CREDITS.md`, `LICENSE` and `LICENSE-CC-BY-SA.md`
+  byte-identical to e25de91, each `Content-Type: text/plain; charset=utf-8` and `Cache-Control: public,
+  max-age=0, must-revalidate`, with the CSP and `nosniff`; `js/home.js` matches too. In AO's browser on
+  that preview, the world map's footer shows both credits with versions, and *Credits & licences* opens
+  `CREDITS.md` in a new tab; no errors. The fixes below change only `CREDITS.md`, `LICENSE-CC-BY-SA.md`
+  and tests, not the build or `_headers`; the final head's preview is checked again in the hand-off.
+- *`file://`* — not reachable from AO's browser: on the owner's playtest list.
+
+Round-2 overstatement corrected above: round 1's "all added" now names what it left open.
 
 Whole suite 1013/1013 after the fixes; syntax check OK.

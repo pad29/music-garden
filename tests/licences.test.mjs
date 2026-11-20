@@ -58,6 +58,8 @@ test("every FAMOUS tune has one row in CREDITS.md, with work, composer, year, st
     assert.strictEqual(row.length, header.length, key + ": every column");
     row.forEach((cell, i) => assert.ok(cell.length > 0, `${key}: ${header[i]} is filled in`));
     assert.match(row[5], /\]\(https?:\/\//, key + ": the source is a link");
+    // A traditional tune has no death to count a term from, so it is never plainly "Public domain".
+    if (/traditional|spiritual/i.test(row[2])) assert.match(row[4], /^US: public domain\./, key + ": a traditional tune's status names its country");
   }
   for (const key of byKey.keys()) assert.ok(keys.includes(key), "no row for a tune the game does not ship: " + key);
 });
@@ -148,7 +150,11 @@ test("the rendered map footer credits both CC BY packs and links CREDITS.md in a
       appendChild(c) { this.children.push(c); return c; }, append(...cs) { this.children.push(...cs); },
       setAttribute(k, v) { this[k] = v; }, addEventListener() {}, querySelector: () => null, querySelectorAll: () => [],
       getBoundingClientRect: () => ({ top: 0, left: 0, width: 0, height: 0 }),
-      get firstElementChild() { return this._first || (this._first = el("svg")); } };   // the map's <svg>, set by innerHTML
+      get firstElementChild() { return this._first || (this._first = el("svg")); },   // the map's <svg>, set by innerHTML
+      // As in a browser, setting textContent or innerHTML replaces the children: a link appended before
+      // the text is set would be gone, and must fail here.
+      get textContent() { return this._text || ""; }, set textContent(v) { this._text = String(v); this.children.length = 0; },
+      get innerHTML() { return this._html || ""; }, set innerHTML(v) { this._html = String(v); this.children.length = 0; this._first = null; } };
     made.push(node);
     return node;
   };

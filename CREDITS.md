@@ -28,9 +28,10 @@ The code's notice, as the AGPL asks:
 
 **Both licences cover only the project's own work.** They license nothing the project does not own:
 
-- **The melodies** behind the famous-tune and level data are not the project's: each is public domain, or
-  has the status [Famous melodies](#famous-melodies) gives it — the flagged rows included. The licences
-  cover the project's own transcription, voicing and code, not the compositions.
+- **Other people's music** — the compositions and arrangements behind the famous-tune and level data — is
+  not the project's: each has the status [Famous melodies](#famous-melodies) gives it, the flagged rows
+  included. The licences cover the project's own contributions: its transcriptions, voicings,
+  accompaniments and code, and its own tunes, such as the melody of `fourchord`.
 - **The licence texts** are their authors': `LICENSE` is the Free Software Foundation's, copied verbatim as
   it permits, and the licence and notice files in `vendor/` belong to the projects they came from.
 - **Quotations inside the docs** — AWS's terms, licence excerpts, other projects' words — stay their owners'.
@@ -90,7 +91,7 @@ in `js/famous.js`.
 | Key | Work | Composer or source | Year | Status | Source |
 |---|---|---|---|---|---|
 | `fourchord` | The I–V–vi–IV chord progression, with a tune of our own on top | none — a common progression | — | A chord progression is not protected; the tune on top is the project's own | [I–V–vi–IV](https://en.wikipedia.org/wiki/I%E2%80%93V%E2%80%93vi%E2%80%93IV_progression) |
-| `mary` | Mary Had a Little Lamb | traditional American; the familiar tune's composer is unknown (Lowell Mason's 1831 setting is a different, forgotten tune) | words 1830; tune 19th century | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb) |
+| `mary` | Mary Had a Little Lamb | traditional American; the familiar tune's composer is unknown (Lowell Mason's 1831 setting is a different, forgotten tune) | words 1830; tune 19th century | US: public domain. Elsewhere: not checked (a traditional tune) | [Wikipedia](https://en.wikipedia.org/wiki/Mary_Had_a_Little_Lamb) |
 | `taps` | Taps | Daniel Butterfield (d. 1901) | 1862 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Taps_(bugle_call)) |
 | `joy` | Joy to the World (the tune *Antioch*) | arranged by Lowell Mason (d. 1872), after phrases traced to Handel (d. 1759) | 1839 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Joy_to_the_World) |
 | `odetojoy` | Ode to Joy, from Symphony No. 9 | Ludwig van Beethoven (d. 1827) | 1824 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Ode_to_Joy) |
@@ -98,7 +99,7 @@ in `js/famous.js`.
 | `moldau` | The Moldau (*Vltava*), from *Má vlast* | Bedřich Smetana (d. 1884) | 1874 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Vltava_(Smetana)) |
 | `bigben` | The Westminster Quarters | attributed to William Crotch (d. 1847) | 1793 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Westminster_Quarters) |
 | `pachelbel` | Canon in D | Johann Pachelbel (d. 1706) | composed 1680–1706; first published 1919 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Pachelbel%27s_Canon) |
-| `amazinggrace` | Amazing Grace (the tune *New Britain*) | traditional American; William Walker first joined the tune to John Newton's words | tune printed from 1829; *New Britain* with the words, 1835 | Public domain | [Library of Congress, *Amazing Grace* timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline/) |
+| `amazinggrace` | Amazing Grace (the tune *New Britain*) | traditional American; William Walker first joined the tune to John Newton's words | tune printed from 1829; *New Britain* with the words, 1835 | US: public domain. Elsewhere: not checked (a traditional tune) | [Library of Congress, *Amazing Grace* timeline](https://www.loc.gov/collections/amazing-grace/articles-and-essays/timeline/) |
 | `blooms` | Three intervals: a 2nd, a 3rd and a 5th | none — not a work | — | Intervals are not protected; the credit names *When the Saints Go Marching In* (traditional) as an example | [Interval](https://en.wikipedia.org/wiki/Interval_(music)) |
 | `bodiddley` | The Bo Diddley beat | Bo Diddley; a form of the 3-2 clave heard in records from 1944 on | 1955 | **Flagged:** a rhythm alone, no melody. US copyright is generally read not to protect a rhythm alone; no court ruling found. Kept by the owner | [Wikipedia](https://en.wikipedia.org/wiki/Bo_Diddley_beat) |
 | `goinhome` | Largo, from Symphony No. 9 "From the New World" | Antonín Dvořák (d. 1904) | 1893 | Public domain. William Arms Fisher's song *Goin' Home* (1922) added only words, which the game does not use | [Wikipedia](https://en.wikipedia.org/wiki/Symphony_No._9_(Dvo%C5%99%C3%A1k)) |
@@ -106,14 +107,17 @@ in `js/famous.js`.
 | `igotrhythm` | I Got Rhythm (the melody alone) | George Gershwin (d. 1937); words by Ira Gershwin (d. 1983), not used | 1930 | **Flagged.** US: public domain since 2026-01-01. EU and UK: most likely protected to the end of 2053, because a song written with words is counted from the death of the last of its composer and lyricist (Directive 2011/77/EU). Kept for now; to be settled before any launch aimed at the EU or UK (ticket TUN-118) | [Duke, Public Domain Day 2026](https://cspd.law.duke.edu/publicdomainday/2026) (US law only) |
 | `bachprelude` | Prelude in C major, BWV 846 | Johann Sebastian Bach (d. 1750) | 1722 | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Prelude_and_Fugue_in_C_major,_BWV_846) |
 | `chopsticks` | The Celebrated Chop Waltz | Euphemia Allen (d. 1949) | 1877 | US: public domain. Life + 70 countries: since 2020 | [Wikipedia](https://en.wikipedia.org/wiki/Chopsticks_(music)) |
-| `swinglow` | Swing Low, Sweet Chariot | African-American spiritual, attributed to Wallace Willis | 19th century | Public domain | [Wikipedia](https://en.wikipedia.org/wiki/Swing_Low,_Sweet_Chariot) |
+| `swinglow` | Swing Low, Sweet Chariot | African-American spiritual, attributed to Wallace Willis | 19th century | US: public domain. Elsewhere: not checked (a traditional tune) | [Wikipedia](https://en.wikipedia.org/wiki/Swing_Low,_Sweet_Chariot) |
 
 "Public domain", alone, means two things, and no more: the work was published before 1931, so it is free in
-the US; and its composer died before 1926, or is unknown (a traditional tune), so life + 100 — the longest
-general copyright term we know of — has ended too. Other countries' special rules were not checked.
+the US; and its composer died before 1926, so life + 100 — the longest general copyright term we know of —
+has ended too. Other countries' special rules were not checked. A traditional tune has no known composer,
+so no death to count from — other countries count such a work from its publication instead, under rules
+not checked here — and its row says "US: public domain" only.
 
 ### Traditional tunes in the levels
 
 Three early levels (`js/packages.js`, the first package) ask the player to finish well-known tunes:
 *Mary Had a Little Lamb* (above), *Hot Cross Buns* (an English street cry, 18th century) and *Au clair
-de la lune* (a French song, 18th century). All are public domain.
+de la lune* (a French song, 18th century). All are traditional, and public domain in the US; other
+countries were not checked.
