@@ -67,7 +67,7 @@ The repository holds a lot of documentation. You need only the part for your cha
 | You want to… | Read |
 |---|---|
 | Find the code for any part of the game | README § [How the game's code is organized](README.md#how-the-games-code-is-organized) — which `js/` file holds what |
-| Fix or change a level | The levels' code is `js/packages.js`. Their specs are in [`PACKAGES-DETAILED.md`](PACKAGES-DETAILED.md) (most packages, and the difficulty ramp they all follow) or [`PACKAGES.md`](PACKAGES.md) § 6 (the intro and a few others): search both for the package's ID |
+| Fix or change a level | The levels' code is `js/packages.js`, and that is what the game runs. Their specs: [`PACKAGES-DETAILED.md`](PACKAGES-DETAILED.md) for most packages (and the difficulty ramp they all follow), [`PACKAGES.md`](PACKAGES.md) § 6 for a few others — search both for the package's ID — and, for the intro's 13 levels, the *Guided campaign* entry in [`DESIGN.md`](DESIGN.md) § 10, which records how they were designed (the code may have moved on since) |
 | Add a level or a package | [`PACKAGES.md`](PACKAGES.md) (the map of packages and its spec template), then `PACKAGES-DETAILED.md` |
 | Add a quest | [`MAKING-QUESTS.md`](MAKING-QUESTS.md) — a quest is data, and this guide walks you through one |
 | Understand what the game is for | [`REQUIREMENTS.md`](REQUIREMENTS.md), then [`DESIGN.md`](DESIGN.md) |
@@ -187,8 +187,8 @@ it? `git commit --amend -s` fixes the last commit, and `git rebase --signoff HEA
 your count). Either rewrites those commits, so if you had already pushed them, push your branch again
 with `git push --force-with-lease`.
 
-Your contribution is licensed like the files it changes — code under the AGPL, docs and narration under
-CC BY-SA. [`CREDITS.md` § Licences at a glance](CREDITS.md#licences-at-a-glance) says which is which.
+Your contribution is licensed like the files it changes:
+[`CREDITS.md` § Licences at a glance](CREDITS.md#licences-at-a-glance) says which licence covers which.
 
 ## 8. What happens to your pull request
 

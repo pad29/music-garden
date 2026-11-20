@@ -37,28 +37,50 @@ const DOCS = ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md", ".github/p
 const slug = h => h.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/ /g, "-");
 const anchors = text => new Set([...text.matchAll(/^#{1,6} (.+)$/gm)].map(m => slug(m[1])));
 
-// Inline links' targets, and `<REPO_URL>/blob/main/<path>` links as repository paths.
+// The targets of inline links, reference definitions (`[name]: target`) and YAML `url:` lines; a
+// `<REPO_URL>/blob/main/<path>` link counts as a repository path, any other URL is left to a person.
 function links(text) {
   const out = [];
-  for (const m of text.matchAll(/\]\(([^)\s]+)\)|\burl: (\S+)/g)) {
-    const t = m[1] ?? m[2];
+  for (const m of text.matchAll(/\]\(([^)\s]+)\)|^ {0,3}\[[^\]]+\]:\s*(\S+)|\burl: (\S+)/gm)) {
+    const t = m[1] ?? m[2] ?? m[3];
     if (t.startsWith(`${REPO_URL}/blob/main/`)) out.push({ path: t.slice(`${REPO_URL}/blob/main/`.length), repo: true });
     else if (!/^[a-z]+:/i.test(t)) out.push({ path: t });
   }
   return out;
 }
 
-test("every relative link in the contributor docs and templates lands on a file, and every anchor on a heading", () => {
+// Each link in `text` (the contents of `doc`) that lands on no file, or on a file without its anchor.
+function brokenLinks(doc, text) {
   const broken = [];
-  for (const doc of [...DOCS, ".github/ISSUE_TEMPLATE/config.yml"]) {
-    for (const { path, repo } of links(read(doc))) {
-      const [file, anchor] = path.split("#");
-      const target = file === "" ? doc : repo ? file : posix.join(dirname(doc), file);
-      if (!existsSync(join(root, target))) { broken.push(`${doc} → ${path} (no ${target})`); continue; }
-      if (anchor !== undefined && !anchors(read(target)).has(anchor)) broken.push(`${doc} → ${path} (no heading)`);
-    }
+  for (const { path, repo } of links(text)) {
+    const [file, anchor] = path.split("#");
+    const target = file === "" ? doc : repo ? file : posix.join(dirname(doc), file);
+    if (!existsSync(join(root, target))) { broken.push(`${doc} → ${path} (no ${target})`); continue; }
+    const headings = file === "" ? anchors(text) : anchors(read(target));
+    if (anchor !== undefined && !headings.has(anchor)) broken.push(`${doc} → ${path} (no heading)`);
   }
+  return broken;
+}
+
+test("every relative link in the contributor docs and templates lands on a file, and every anchor on a heading", () => {
+  const broken = [...DOCS, ".github/ISSUE_TEMPLATE/config.yml"].flatMap(doc => brokenLinks(doc, read(doc)));
   assert.deepStrictEqual(broken, []);
+});
+
+test("mutation: a broken inline link, reference link, anchor or repository URL is caught", () => {
+  const cases = {
+    "[guide](missing-contribution-guide.md)": "no missing-contribution-guide.md",
+    "[guide][missing]\n\n[missing]: missing-contribution-guide.md": "no missing-contribution-guide.md",
+    "[readme][r]\n\n[r]: README.md#no-such-heading": "(no heading)",
+    "[readme](README.md#no-such-heading)": "(no heading)",
+    "[here](#no-such-section)": "(no heading)",
+    [`url: ${REPO_URL}/blob/main/NO-SUCH-FILE.md`]: "no NO-SUCH-FILE.md",
+  };
+  for (const [text, says] of Object.entries(cases)) {
+    const broken = brokenLinks("CONTRIBUTING.md", `# Contributing\n\n${text}\n`);
+    assert.ok(broken.length === 1 && broken[0].includes(says), `${JSON.stringify(text)} → ${broken}`);
+  }
+  assert.deepStrictEqual(brokenLinks("CONTRIBUTING.md", "[ok][r]\n\n[r]: README.md#quick-start\n"), []);
 });
 
 test("the GitHub advisory form is linked by its full URL, never as a relative path into the file tree", () => {
@@ -205,18 +227,44 @@ test("the pull request template asks for the sign-off, both checks from AGENTS.m
   for (const need of ["Narration clips", "backend deploy", "famous melody"]) assert.ok(t.includes(need), need);
 });
 
+// Each issue template: its front matter, and the prompts its body must keep — a bug report needs the steps
+// to reproduce it, an idea what the player would experience and whether its author will build it.
+const TEMPLATES = {
+  "bug.md": { name: "Bug", prompts: ["**What happened**", "**How to make it happen again**", "**Where**",
+    "**Browser and device**", "git rev-parse --short HEAD", "SECURITY.md"] },
+  "idea.md": { name: "Idea", prompts: ["**What kind**", "- [ ] A quest", "- [ ] A level in an existing package",
+    "- [ ] A new package", "**What the player would experience**", "**Will you build it?**", "owner's yes"] },
+};
+
+function templateProblems(file, text) {
+  const { name, prompts } = TEMPLATES[file];
+  const front = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!front) return [`${file}: no front matter`];
+  const problems = [];
+  if (!new RegExp(`^name: ${name}$`, "m").test(front[1])) problems.push(`${file}: name is not ${name}`);
+  if (!/^about: \S.*$/m.test(front[1])) problems.push(`${file}: no about`);
+  for (const p of prompts) if (!front[2].includes(p)) problems.push(`${file}: body lacks ${p}`);
+  return problems;
+}
+
 test("the issue chooser offers Bug and Idea, with blank issues off and the security and guide links", () => {
   const dir = ".github/ISSUE_TEMPLATE";
   assert.deepStrictEqual(readdirSync(join(root, dir)).sort(), ["bug.md", "config.yml", "idea.md"]);
-  for (const [file, name] of [["bug.md", "Bug"], ["idea.md", "Idea"]]) {
-    const front = read(`${dir}/${file}`).match(/^---\n([\s\S]*?)\n---\n/);
-    assert.ok(front, `${file} opens with front matter`);
-    assert.match(front[1], new RegExp(`^name: ${name}$`, "m"));
-    assert.match(front[1], /^about: \S.*$/m);
-  }
+  for (const file of Object.keys(TEMPLATES)) assert.deepStrictEqual(templateProblems(file, read(`${dir}/${file}`)), []);
   const config = read(`${dir}/config.yml`);
   assert.match(config, /^blank_issues_enabled: false$/m);
   assert.ok(config.includes(`url: ${ADVISORY_URL}`) && config.includes(`url: ${REPO_URL}/blob/main/CONTRIBUTING.md`));
+});
+
+test("mutation: an issue template with its body emptied, or one prompt dropped, fails", () => {
+  for (const [file, { prompts }] of Object.entries(TEMPLATES)) {
+    const text = read(`.github/ISSUE_TEMPLATE/${file}`);
+    const emptied = text.replace(/(\n---\n)[\s\S]*$/, "$1");
+    assert.strictEqual(templateProblems(file, emptied).length, prompts.length, `${file} emptied`);
+    for (const p of prompts) {
+      assert.deepStrictEqual(templateProblems(file, text.replace(p, "")), [`${file}: body lacks ${p}`], `${file} without ${p}`);
+    }
+  }
 });
 
 // ---- the pointers ----

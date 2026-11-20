@@ -445,3 +445,38 @@ No fixes, commits or pushes were made. The checkout is clean.
 Git Bash, Node v24.15.0; `npx --yes http-server -p 8377 -c-1 .` served the page (HTTP 200, the game's
 title); `node tools/check-syntax.mjs` → `syntax OK (29 scripts …)`; `node --test "tests/*.test.mjs"` →
 1024/1024, 0 skipped; the clone left clean. No browser was opened in either run.
+
+## PR review (AO: Codex, Astra — temporarily GPT through `ask.sh`)
+
+Round 1, on `776f5e2` — **Changes requested**:
+
+<details><summary>GPT's round-1 PR review, verbatim</summary>
+
+**Required changes**
+
+1. **Medium — [CONTRIBUTING.md:70](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42/CONTRIBUTING.md:70): the intro’s reading path is still incorrect.** `PACKAGES.md` §6 has no intro specification; it starts with the expansion packages. The cold-reader correction therefore sends newcomers to another nonexistent destination. Point introductory-level work to `DESIGN.md` §10’s “Guided campaign” entry and `js/packages.js`, distinguishing the historical design description from the current implementation.
+
+2. **Low — [CONTRIBUTING.md:190](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42/CONTRIBUTING.md:190): the licence summary violates the explicit instruction to link TUN-89 rather than restate it.** It also drops the exceptions documented in `CREDITS.md`, including this PR’s Covenant exception. Keep “Your contribution is licensed like the files it changes” and the `CREDITS.md` link; remove the duplicated licence classification.
+
+**Missing tests**
+
+- **[tests/contributing.test.mjs:43](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42/tests/contributing.test.mjs:43): reference-style relative links.** Add a used reference such as `[guide][missing]` with `[missing]: missing-contribution-guide.md`; assert that validation rejects it. Also cover a reference targeting an existing file with a nonexistent anchor. The scanner only recognizes inline links and YAML URLs. Adding the broken reference in memory left all 11 tests passing, contradicting the “every relative link” guarantee.
+
+- **[tests/contributing.test.mjs:212](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42/tests/contributing.test.mjs:212): empty issue-template bodies.** Retain each template’s valid front matter but remove its body; assert failure. Check that Bug retains reproduction prompts and Idea retains proposal prompts. Removing both bodies in memory left all 11 tests passing, although the design’s test contract explicitly includes template bodies.
+
+**Changes requested**
+
+</details>
+
+1. **Medium — the intro's reading path is still wrong.** **Agreed**: `PACKAGES.md` § 6 opens with the
+   expansion packages; the intro's 13 levels are described in `DESIGN.md` § 10's *Guided campaign* entry.
+   The route now names it, as the design record it is, with `js/packages.js` as what the game runs.
+2. **Low — the licence summary restates TUN-89.** **Agreed**: the line now says only that a contribution
+   is licensed like the files it changes, and links `CREDITS.md` § Licences at a glance.
+- *Missing test — reference-style links.* **Added**: the scanner reads reference definitions too, and a
+  mutation test feeds it a broken inline link, a broken reference link, a missing anchor through each,
+  a missing same-file anchor and a missing repository URL, and requires each to be caught.
+- *Missing test — emptied issue templates.* **Added**: each template's body must keep its prompts (Bug:
+  what happened, steps, where, browser, the commit, the security pointer; Idea: the four kinds, the
+  player's experience, will you build it, the owner's yes); a mutation test empties each body and drops
+  each prompt in turn.

@@ -92,9 +92,11 @@ it: every command in § Commands appears verbatim in one of the guide's code blo
 CI's version match, and each hard invariant — by its bold opening — maps to the phrases the guide's § 3
 must carry, so a new or reworded invariant fails until a person maps it and the guide says it (a mutation
 case drops each phrase and adds a fake invariant). It also pins `CODE_OF_CONDUCT.md` to the Contributor
-Covenant 2.1 by SHA-256 with only the contact filled in, checks every relative link and anchor in the
-docs and templates, allows no published address but the conduct alias, and checks the issue chooser, the
-pull request template and the pointers from README, `AGENTS.md` and `MAKING-QUESTS.md`.
+Covenant 2.1 by SHA-256 with only the contact filled in, checks every relative link and anchor — inline,
+reference-style, and repository URLs, with mutation cases — in the docs and templates, allows no
+published address but the conduct alias, and checks the issue chooser (each template's prompts, emptied
+or dropped in a mutation case), the pull request template and the pointers from README, `AGENTS.md` and
+`MAKING-QUESTS.md`.
 
 **Cloud progress sync (TUN-106).** `cloud-sync.test.mjs` signs a stub Cognito user in (a protocol stub,
 not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load that returns progress, `null`,
