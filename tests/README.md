@@ -226,7 +226,10 @@ ticket's size from its `Size` label and its `## Size` section — either alone i
 when they disagree, said in the hand-off — that `file-ticket`'s template keeps its `## Size` block, and
 that a ticket with neither gets no default: the worker proposes a size and stops at Needs Input for the
 owner to confirm it, on every path, with the old M default gone from every workflow doc (TUN-74,
-`reviews/TUN-74-size-label.md`).
+`reviews/TUN-74-size-label.md`). It also holds the rule for outside pull requests to the owner's flat
+never: `CLAUDE.md` § Outside contributions says no agent runs outside code even after the owner approves
+the diff, and work-ticket § Never, the design-reviewer brief and `AGENTS.md` point at it without
+softening it to "until the owner says so" (TUN-91, `reviews/TUN-91-outside-pull-requests.md`).
 
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
