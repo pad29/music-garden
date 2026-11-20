@@ -101,8 +101,10 @@ for, how to report back. Where their invocation disagrees with this section, thi
 `EnterWorktree`, never another worktree, never rename the branch. AO's project checkout — the clone every
 worktree is made from, first in `git worktree list` — stays on `main` and is never edited.
 
-**Model settings** (AO project config, 2026-11-10): workers `claude-opus-5-5`, orchestrator
-`claude-sonnet-5-5`, reviewer `codex` on `gpt-6.2-astra` — all at effort high.
+**Model settings** (AO project config, 2026-11-10; the reviewer's model, 2026-11-20): workers
+`claude-opus-5-5`, orchestrator `claude-sonnet-5-5`, reviewer `codex` on `gpt-6.2-astra` — all at effort
+high. The reviewer is untested on 6.2: AO's own Codex is 0.167.0, and 6.2 is proven only on the global
+CLI (0.171.0).
 
 **Linear** (team *Tune Garden*): **Backlog → Todo → In Progress → Needs Input / In Review → Done.** AO has
 no Linear support: every Linear read and state change is the agents' own, through Linear's MCP server.

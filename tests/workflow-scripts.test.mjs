@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -444,6 +444,22 @@ test("ask.sh: another codex failure exits 1 with codex's exit status and its err
   assert.doesNotMatch(r.err, /usage limit/);
 });
 
+test("ask.sh: a model refusal exits 1 with codex's error, after one call on the model it was given", { skip }, () => {
+  // The refusal codex printed on 2026-11-19 for gpt-6.2-astra on CLI 0.155.1 (TUN-120): ask.sh must not
+  // retry it or fall back to another model.
+  const msg = JSON.stringify({ type: "error", status: 400, error: { type: "invalid_request_error",
+    message: "The 'gpt-6.2-astra' model is not supported when using Codex with a ChatGPT account.", code: "model_not_found" } });
+  const r = ask({ fresh: { exit: 1, events: events(started, { type: "error", message: msg },
+    { type: "turn.failed", error: { message: msg } }) } });
+  assert.strictEqual(r.code, 1, r.err);
+  assert.strictEqual(r.out, "");
+  assert.match(r.err, /codex failed \(exit 1\)/);
+  assert.ok(r.err.includes("model_not_found") && r.err.includes("is not supported"), r.err);
+  assert.doesNotMatch(r.err, /usage limit/);
+  assert.strictEqual(r.calls.length, 1, "no retry: " + r.calls.join(" | "));
+  assert.deepStrictEqual([...r.calls[0].matchAll(/(?:^| )(?:-m|--model) (\S+)/g)].map(m => m[1]), ["gpt-6.2-astra"]);
+});
+
 test("ask.sh: a codex failure with no error event exits 1 and prints the last events", { skip }, () => {
   const r = ask({ fresh: { exit: 3, events: events(started, { type: "turn.started" }) } });
   assert.strictEqual(r.code, 1, r.err);
@@ -817,4 +833,24 @@ test("injection check: a failed or partial fetch, or a page that is not the game
     for (const page of ["<html><body>Error 1016</body></html>", ""])
       assert.deepStrictEqual(verdicts(runCheck(sb, page)), ["NOT THE GAME PAGE", "NOT THE GAME PAGE"], JSON.stringify(page));
   } finally { sb.cleanup(); }
+});
+
+// --- the GPT model: one id, named in CLAUDE.md § Calling GPT, and every command in the docs uses it ---
+
+test("every GPT command and setting in the docs names the model CLAUDE.md § Calling GPT names", () => {
+  const model = readFileSync(join(root, "CLAUDE.md"), "utf8").match(/^Both routes run \*\*[^*\n]*\(`([^`]+)`\)\*\*/m)?.[1];
+  assert.ok(model, "CLAUDE.md § Calling GPT names the model as **… (`<id>`)**");
+  const files = ["CLAUDE.md", "AGENTS.md", ...readdirSync(join(root, ".claude"), { recursive: true })
+    .filter(f => f.endsWith(".md")).map(f => join(".claude", f))];
+  const uses = [];
+  for (const f of files) readFileSync(join(root, f), "utf8").split("\n").forEach((line, i) => {
+    const at = m => uses.push({ where: `${f}:${i + 1}`, id: m[1] });
+    for (const m of line.matchAll(/ask\.sh +(?:fresh|thread) +(?:read-only|workspace-write) +([^\s`]+) +\S*prompt/g)) at(m);
+    for (const m of line.matchAll(/\bcodex exec\b.*?(?:-m|--model) +([^\s`"]+)/g)) at(m);
+    for (const m of line.matchAll(/reviewer `codex` on `([^`]+)`/g)) at(m);
+  });
+  // CLAUDE.md's two commands and the reviewer setting, the three briefs, gpt-design, work-ticket § 8 and
+  // pr-review.md's limit probe: a pattern that stopped matching would otherwise pass with nothing checked.
+  assert.ok(uses.length >= 9, "found only: " + uses.map(u => u.where).join(", "));
+  assert.deepStrictEqual(uses.filter(u => u.id !== model).map(u => `${u.where} names ${u.id}`), []);
 });

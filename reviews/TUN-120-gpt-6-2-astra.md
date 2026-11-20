@@ -67,14 +67,63 @@ high (owner, 2026-11-20)"*, and the design-reviewer brief *"Every role runs on G
 2026-09; 6.2 since 2026-11-20; …)"*. `git grep -n "gpt-6-astra"` outside `reviews/` and `REVIEW-LOG.md`
 now finds nothing.
 
-**Outside the repo:** AO's project config still runs the native reviewer on `gpt-6-astra`
-(`ao project get music-garden`: reviewer `codex`, model `gpt-6-astra`, effort high). `CLAUDE.md` § AO's
-*Model settings* line now names `gpt-6.2-astra`; changing the config is the orchestrator's (`CLAUDE.md`
-§ Calling GPT), so I asked it to. Until it does, that line is ahead of the config. The reviewer is out
-of service either way (`pr-review.md`).
+**Outside the repo:** AO's project config ran the native reviewer on `gpt-6-astra`. That setting
+belongs to the orchestrator (`CLAUDE.md` § Calling GPT), so I asked it to change it. It asked the owner
+(decision 2), then changed it. I checked it with `ao project get music-garden`: reviewer `codex`, model
+`gpt-6.2-astra`, effort high. **Caveat:** AO runs its own copy of Codex, 0.167.0. 6.2 is proven only on
+the global CLI, 0.171.0, so the native reviewer is untested on the new model. If it refuses the model,
+the orchestrator reverts the setting and tells the owner. `CLAUDE.md`'s *Model settings* line says so.
+The reviewer is out of service either way (`pr-review.md`).
+
+## PR review — round 1 (GPT 6.2 Astra, `ask.sh`) — head `63fd024`
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested** on `63fd024acbc3da592044ef4fb598e4260eadad22`.
+
+- **Medium** — `CLAUDE.md:69,104–105` says both routes run 6.2 and attributes that setting to November 10. The owner chose 6.2 on November 20, and AO still has the prior reviewer setting. Asking the orchestrator to change it was correct. Describe 6.2 as the target for the disabled AO reviewer until the orchestrator confirms the change.
+- **Medium** — `.claude/skills/work-ticket/pr-review.md:93` still tells a worker to call `codex exec` directly. Route this diagnostic through `ask.sh fresh read-only gpt-6.2-astra` and document its exit 69 for a usage limit.
+- **Low** — `.claude/skills/work-ticket/handoff.md:80` and `reviews/README.md:30–31,43,60,63` still label model-specific work simply “Astra.” Update these templates so future records identify the version that actually ran. Existing review records can stay as written.
+
+**Missing tests** — Add a static case that checks the model argument in every active role command and diagnostic example. At `tests/workflow-scripts.test.mjs:407`, use the stub’s recorded arguments to assert that a model refusal produces exactly one call with `-m gpt-6.2-astra`, surfaces the error, and exits nonzero.
+
+The exact old ID has no matches outside `reviews/`. The recorded real probe identifies `gpt-6.2-astra` in the Codex session log. The worker’s test log reports 1,028 passed and zero skipped. I did not rerun the suite during this read-only review.
+
+</details>
+
+**My answers**
+
+1. **Medium, `CLAUDE.md` date and AO setting.** *Agreed on the date; the rest is overtaken.* Since the
+   review ran, the orchestrator has changed and confirmed the config (above), so the line names the real
+   setting. It now carries the date, *"(AO project config, 2026-11-10; the reviewer's model,
+   2026-11-20)"*, and the caveat that the reviewer is untested on 6.2. Line 69 already says
+   *"(owner, 2026-11-20)"*.
+2. **Medium, `pr-review.md`'s probe.** *Agreed:* the ticket's decision says every role runs through
+   `ask.sh`, and `ask.sh` already names the limit with exit 69. The probe is now a one-word
+   `prompt.txt` sent through `ask.sh fresh read-only gpt-6.2-astra`, and the text says it exits 69 when
+   the limit is spent.
+3. **Low, an unversioned "Astra" in `handoff.md` and `reviews/README.md`.** *Disagreed.* In those
+   templates, "Astra" names the GPT family doing the job, and that stays true across model changes. A
+   version there would be one more hand-written place to update at every change, which is the problem
+   this ticket's *Why* names. The version that ran is recorded where it is a fact: `CLAUDE.md` § Calling
+   GPT is dated, and each reviews file is dated. Nothing changed.
+4. **Missing tests, both added** to `tests/workflow-scripts.test.mjs`:
+   - *"ask.sh: a model refusal exits 1 with codex's error, after one call on the model it was given"* uses
+     the stub, with the real `model_not_found` message from probe 1. It checks: exit 1, the error on
+     stderr, no usage-limit verdict, exactly one codex call, and that call's only `-m` is
+     `gpt-6.2-astra`.
+   - *"every GPT command and setting in the docs names the model CLAUDE.md § Calling GPT names"* reads the
+     id from `CLAUDE.md` § Calling GPT instead of hard-coding it. It then checks every `ask.sh` command,
+     every `codex exec … -m`, and the reviewer setting in `CLAUDE.md`, `AGENTS.md` and `.claude/**/*.md`.
+     There are at least nine, so a pattern that stopped matching anything can't pass.
+   - Mutations, each run and then reverted: with `gpt-6-astra` back in `tester.md`, the static test fails
+     and names `tester.md:42`. With `ask.sh` sending `-m gpt-6-astra` instead of `$MODEL`, the refusal test
+     fails.
 
 ## Owner's decisions
 
 1. *`gpt-6.2-astra` is refused for this ChatGPT account through the Codex CLI (0.155.1). What next?* —
    **A: update the CLI and probe again**: the owner, through the orchestrator, 2026-11-19. The owner
    updated it to 0.171.0 (npm global).
+2. *Switch AO's native reviewer to `gpt-6.2-astra` too?* — **yes**: the owner, through the orchestrator,
+   2026-11-19. The orchestrator changed the config.
