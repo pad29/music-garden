@@ -111,8 +111,9 @@ paths (`C:/Users/pavel/.ao/…`) in 13 PR comments and 2 issue bodies, and AO's 
 issue #119 and a PR #151 comment — the same kind `reviews/` keeps.
 
 **The scan, again — this PR's head.** Before its first push, the same script ran over all 91 remote
-refs plus this branch's commit (the one that adds this record): nothing new — the same five fixture
-hits, no strict hit. Its PR head is therefore covered too; any later head is re-scanned under step A1.
+refs plus this branch's commits: nothing new. Besides the same five fixture hits, it matched only this
+record quoting itself — `PuTTY-User-Key-File` in the pattern table, and the fixture's `SECRET = "arn:…"`
+line quoted above. Its PR head is therefore covered too; any later head is re-scanned under step A1.
 
 ### 3. Machine paths and personal email in tracked files, against TUN-98's record
 
