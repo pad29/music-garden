@@ -57,3 +57,57 @@ voice. Read aloud off while the clip loads: on the old code the browser voice re
 
 **Unverified:** the real sign-in and cloud load on production — the owner's playtest; real speakers
 (the probe records `speechSynthesis.speak` instead of speaking).
+
+## PR review — round 1 (gpt-6.2-astra, through `ask.sh`), on 252cbaf
+
+<details><summary>GPT's review, verbatim</summary>
+
+**CHANGES REQUESTED** on `252cbaf160e552b0ca01a97f66cbab3a09cae833`.
+
+The clip identity check fixes the measured race. A late rejection or `error` from a replaced clip can no longer start the browser voice. Three narration paths still need changes.
+
+| Severity | Required change |
+|---|---|
+| **High** | **Keep autoplay refusal from selecting the browser voice.** `narrate()` still sends every rejection from the *current* clip to `speakStory()`. The new test at `tests/narration.test.mjs:75` explicitly requires that behavior for `NotAllowedError`. On a signed-in reload, playback can be denied before a user gesture even when the Polly file exists. Preserve the current-clip check, distinguish playback denial from a missing source, and retain the missing-clip fallback for quests. [js/play-scope.js:140](./js/play-scope.js#L140) |
+| **Medium** | **Give the instrument card and the loaded story one turn each.** If a cloud pull finishes while a discovery card is visible, `renderStage()` respects the card, but `enterPlay()` immediately cuts off its introduction and starts the loaded story. Closing the card stops that story and requests it again 1,400 ms later. Closing the card *just before* the pull finishes also leaves a timer that restarts the newly loaded story. Use one narration point for a successful load. Setting `narrateReady=true` before `applyProgress()` and letting `renderStage()` handle the story would reuse its card check. Also invalidate a pending card-close callback when a newer level takes over, and silence the card if the loaded preference is Read aloud off. [js/cloud.js:111](./js/cloud.js#L111) · [js/level-engine.js:78](./js/level-engine.js#L78) · [js/playback.js:81](./js/playback.js#L81) |
+| **Medium** | **Honor Read aloud off for a queued famous-tune credit.** `revealFamous()` checks `speakOn` when scheduling the credit. Turning narration off before the callback fires still lets it start a fresh clip. Turning it off and back on lets that callback interrupt the current story. Invalidate the pending spoken credit on mute while preserving the tune’s visual timers. The cloud-load render already clears famous timers, so this finding concerns the toggle path. [js/famous.js:305](./js/famous.js#L305) · [js/play-scope.js:150](./js/play-scope.js#L150) |
+
+**Missing cases in `tests/narration.test.mjs`**
+
+1. Replace the `NotAllowedError` expectation with zero browser utterances for a denied baked clip. Keep the existing missing-source case that expects exactly one utterance.
+2. Finish a deferred cloud pull with a discovery card open. With Read aloud on, assert that the card keeps its voice and the loaded story starts exactly once after dismissal. With cloud `settings.speak=false`, assert that the card stops and dismissal stays silent.
+3. Close the card, finish the cloud pull, then fire the captured 1,400 ms callback. Assert that the loaded story’s clip was requested once and remains current.
+4. Schedule a famous credit, toggle Read aloud off, and fire the callback. Assert silence. Repeat with off then on and assert that the current story remains the sole new clip.
+5. Exercise the actual signed-in boot gate with voice recording installed **before** boot and the cloud response held pending. Use different local and cloud levels. Assert zero requests before the pull resolves, then exactly `voice/<hash of the cloud story>.mp3` afterward. The current sign-in tests install recording after boot, set `narrateReady` directly, and count clips without checking which story was requested. [tests/narration.test.mjs:86](./tests/narration.test.mjs#L86) · [js/boot.js:127](./js/boot.js#L127)
+
+I found no change to sign-up, explicit-null, failed-load, or stale-run behavior. This was a read-only review of the full diff. The reported Edge and suite results are the PR author’s verification.
+
+</details>
+
+**My answers**
+
+1. **High — a refused clip (`NotAllowedError`) fell back to the browser voice. Agreed.** The ticket's
+   *Decisions already made* says the browser voice is used only when the clip doesn't exist; my first
+   round's test pinned the opposite. Now only a missing clip (its `error` event, or `play()` rejecting
+   with anything but `NotAllowedError`) falls back, and only while current. The test now expects silence.
+2. **Medium — the instrument card and the loaded story. Agreed, and GPT's form taken over mine.** The
+   cloud load now sets `narrateReady=true` and lets `applyProgress()`'s `renderStage` read the story —
+   one narration point, which already waits for an open card — instead of `narrateReady=false` plus
+   `enterPlay()`, which read the story over the card. `closeInstrCard`'s 1,400 ms story skips itself if
+   anything has narrated since (`narrateSeq`), so a cloud load just after closing a card is not
+   restarted. `renderStage` now stops speech when Read aloud is off even with a card up, so a cloud load
+   whose saved setting is off silences the card.
+3. **Medium — a queued famous-tune credit ignores Read aloud off. Disagreed on scope, not on the bug.**
+   It is a toggle bug in `revealFamous`, not sign-in, and not two voices at once (off → on gives one
+   voice, switching). Filed as **TUN-121** (Backlog), with GPT's missing test 4 as its test.
+
+**Missing tests:** 1 (refused clip → silence), 2 (cloud load with a card up, Read aloud on and off),
+3 (card closed just before the load, timer fired after) and 5 (the real signed-in boot gate, voices
+recorded from before boot, cloud answer held, local and cloud on different levels, the clip's source
+checked) — **added**. 4 (famous credit) — moved to TUN-121 with the bug.
+
+**Tests after the round:** `tests/narration.test.mjs` 13 cases; mutation audit — each change undone on
+its own fails tests (current-clip guard: 6, `NotAllowedError` check: 1, single narration on cloud load:
+2, `renderStage` stop when off: 1, card timer `narrateSeq`: 1). Syntax OK; suite 1043/1043. Edge probe
+re-run on the new code: guest-then-sign-in and landing sign-in one `play()` each, no browser voice;
+off-while-loading silent.

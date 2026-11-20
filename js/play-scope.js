@@ -132,14 +132,17 @@ function speakStory(text){ if(!("speechSynthesis" in window)) return;
 // browser voice if the clip isn't baked yet. voiceHash MUST stay in sync with tools/gen-voice.mjs so keys line up.
 const voiceHash = s => { let h=5381; for(let i=0;i<s.length;i++) h=((h*33)^s.charCodeAt(i))>>>0; return h.toString(16); };
 let curClip=null, narrateReady=false;   // narrateReady: stay silent until the player actually enters a level (no narration on the landing / companion-picker screen)
-// Only the CURRENT clip may fall back: one that stopSpeech or a newer narrate replaced stays silent, whatever its
-// error says — pausing a clip whose play() is still pending rejects it with AbortError, and reading that as "no clip"
-// put the browser voice over the next clip (TUN-112: two voices, half a second apart, on a cold cache).
-function narrate(text){ const t=toSpeech(text); stopSpeech(); if(!t) return;
+let narrateSeq=0;   // counts narrate calls: a delayed narration (the instrument card's) skips itself if anything spoke since
+// The browser voice stands in only for a MISSING clip (its error event, or play() rejecting for no usable source), and
+// only while that clip is still the current one (TUN-112). A clip that stopSpeech or a newer narrate replaced stays
+// silent, whatever its error says — pausing a clip whose play() is still pending rejects it with AbortError, and
+// reading that as "no clip" put the browser voice over the next clip: two voices, half a second apart, on a cold
+// cache. A clip the browser refuses to play (NotAllowedError: no gesture yet) exists, so it gets no stand-in either.
+function narrate(text){ narrateSeq++; const t=toSpeech(text); stopSpeech(); if(!t) return;
   const a=new Audio("voice/"+voiceHash(t)+".mp3"); curClip=a; let fb=false;
   const fallback=()=>{ if(fb || curClip!==a) return; fb=true; curClip=null; speakStory(text); };
   a.addEventListener("error",fallback);
-  const p=a.play(); if(p&&p.catch) p.catch(fallback); }
+  const p=a.play(); if(p&&p.catch) p.catch(e=>{ if(!(e && e.name==="NotAllowedError")) fallback(); }); }
 function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(curClip){ try{ curClip.pause(); }catch(e){} curClip=null; } }
 // The player has reached a level (picked a buddy / signed in / opened a package) — let narration begin and speak the current story.

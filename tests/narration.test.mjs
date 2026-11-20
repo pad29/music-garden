@@ -1,18 +1,20 @@
-// TUN-112: the level story is read once, in one voice. narrate() plays the baked clip and falls back to the
-// browser voice only when that clip is missing — never because a newer narrate() or stopSpeech() silenced it.
-// The game runs in the harness with a fake Audio that behaves as Edge did when measured (2026-11-20): pausing a
-// clip whose play() is still pending rejects that promise with AbortError. speechSynthesis records what it is
-// asked to say instead of saying it.
+// TUN-112: the level story is read once, in one voice. narrate() plays the baked clip and uses the browser voice only
+// when that clip is missing — never because a newer narrate() or stopSpeech() silenced it, and never because the
+// browser refused to play it. The game runs in the harness with a fake Audio that behaves as Edge did when measured
+// (2026-11-20): pausing a clip whose play() is still pending rejects that promise with AbortError. speechSynthesis
+// records what it is asked to say instead of saying it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadGame } from "./harness.mjs";
 
 const tick = () => new Promise(r => setImmediate(r));
 const named = (name, msg = name) => Object.assign(new Error(msg), { name });
+const clone = x => JSON.parse(JSON.stringify(x));
+const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 
-/** Swap in the fake voices. Returns the log: every clip made, and every line the browser voice spoke. */
-function voices(g) {
-  const w = g.__window, log = { clips: [], spoken: [] };
+/** Install the fake voices on a game window (before or after load). Returns the log: every clip made, every line spoken. */
+function voices(w) {
+  const log = { clips: [], spoken: [] };
   class FakeAudio {
     constructor(src) { this.src = src; this.paused = true; this.ls = {}; log.clips.push(this); }
     addEventListener(type, fn) { (this.ls[type] ||= []).push(fn); }
@@ -28,10 +30,12 @@ function voices(g) {
   w.speechSynthesis = { getVoices: () => [], cancel() {}, speak(u) { log.spoken.push(u.text); } };
   return log;
 }
+const game = (opts = {}) => { const g = loadGame({ fresh: true, ...opts }); return { g, log: voices(g.__window) }; };
 const sounding = log => log.clips.filter(c => !c.paused);
+const clipOf = (g, text) => "voice/" + g.voiceHash(g.toSpeech(text)) + ".mp3";
 
 test("two narrate calls in a row: the second clip plays, and the first does not turn into the browser voice", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+  const { g, log } = game();
   g.narrate("The garden is asleep."); g.narrate("The garden is asleep.");
   await tick();
   log.clips[1].start(); await tick();
@@ -41,7 +45,7 @@ test("two narrate calls in a row: the second clip plays, and the first does not 
 });
 
 test("a different story replacing a loading one: only the new clip, no browser voice for the old text", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+  const { g, log } = game();
   g.narrate("A new instrument!"); g.narrate("The level story.");
   await tick();
   assert.deepEqual(log.spoken, []);
@@ -49,7 +53,7 @@ test("a different story replacing a loading one: only the new clip, no browser v
 });
 
 test("Read aloud turned off while the clip is still loading: silence, not the browser voice", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+  const { g, log } = game();
   g.narrate("The garden is asleep."); g.stopSpeech();
   await tick();
   assert.deepEqual(sounding(log), []);
@@ -57,7 +61,7 @@ test("Read aloud turned off while the clip is still loading: silence, not the br
 });
 
 test("a replaced clip whose file turns out missing stays silent", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+  const { g, log } = game();
   g.narrate("Old text."); g.narrate("New text.");
   log.clips[0].emit("error"); await tick();   // the old request's 404 lands after the new narrate
   assert.deepEqual(log.spoken, []);
@@ -65,51 +69,23 @@ test("a replaced clip whose file turns out missing stays silent", async () => {
 });
 
 test("a missing clip still falls back to the browser voice, once (quest text has no baked clip)", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+  const { g, log } = game();
   g.narrate("Quest text with no clip.");
   log.clips[0].missing(); await tick();
   assert.deepEqual(log.spoken, ["Quest text with no clip."]);
   assert.equal(g.curClip, null);
 });
 
-test("a clip the browser refuses to play while it is current still falls back", async () => {
-  const g = loadGame({ fresh: true }), log = voices(g);
+test("a clip the browser refuses to play (no gesture yet) exists: no browser voice stands in for it", async () => {
+  const { g, log } = game();
   g.narrate("Story.");
   log.clips[0].settle(named("NotAllowedError")); await tick();
-  assert.deepEqual(log.spoken, ["Story."]);
+  assert.deepEqual(log.spoken, []);
 });
-
-// The sign-in: a cloud load that succeeds runs applyProgress() (whose renderStage narrates when narrateReady is set)
-// and then enterPlay(). Stub only the network side of onSignedIn.
-const CLOUD = { v: 1, name: "Cloud Ann", current: "intro", updatedAt: 2,
-  packages: { intro: { level: 0, maxLevel: 0, completed: false } }, settings: {} };
-function signInGame({ narrateReady }) {
-  const g = loadGame({ fresh: true }), log = voices(g);
-  g.freshToken = async () => "token-ann";
-  g.cloudPull = async () => ({ ok: true, progress: JSON.parse(JSON.stringify(CLOUD)) });
-  g.renderAuth = () => {};
-  g.speakOn = true; g.narrateReady = narrateReady;
-  return { g, log };
-}
-
-for (const [how, narrateReady] of [["after picking a buddy as a guest", true], ["straight from the landing screen", false]]) {
-  test(`signing in ${how}: the loaded level's story is read once, in one voice`, async () => {
-    const { g, log } = signInGame({ narrateReady });
-    await g.onSignedIn(false); await tick();
-    assert.equal(g.cloudSync, "ready", "the cloud progress loaded");
-    const story = g.curStage().intro;
-    assert.ok(story, "the loaded level has a story to read");
-    assert.equal(log.clips.length, 1, "one narrate for the loaded level");
-    log.clips[0].start(); await tick();
-    assert.deepEqual(sounding(log), [log.clips[0]]);
-    assert.deepEqual(log.spoken, []);
-    assert.equal(g.narrateReady, true, "narration is on for the rest of play");
-  });
-}
 
 test("Read aloud off then on, while the story is still loading, reads the current story once", async () => {
   const speak = { onclick: null, textContent: "", title: "", classList: { toggle() {} } };   // the 🔊 button
-  const g = loadGame({ fresh: true, elements: { speak } }), log = voices(g);
+  const { g, log } = game({ elements: { speak } });
   g.speakOn = true; g.enterPlay();
   speak.onclick(); assert.equal(g.speakOn, false);   // off, before the first clip has started…
   speak.onclick(); assert.equal(g.speakOn, true);    // …and on again
@@ -117,6 +93,105 @@ test("Read aloud off then on, while the story is still loading, reads the curren
   assert.equal(log.clips.length, 2);
   log.clips[1].start(); await tick();
   assert.deepEqual(sounding(log), [log.clips[1]]);
-  assert.match(log.clips[1].src, /^voice\/[0-9a-f]+\.mp3$/);
+  assert.equal(log.clips[1].src, clipOf(g, g.curStage().intro));
+  assert.deepEqual(log.spoken, []);
+});
+
+// ---- Signing in. A cloud load that succeeds runs applyProgress(), whose renderStage reads the loaded level's story.
+// LOCAL and CLOUD sit on different levels of the intro, so the story asked for says which progress it came from.
+const LOCAL = { v: 1, name: "Ann", current: "intro", updatedAt: 1, companion: { type: "sprout" },
+  packages: { intro: { level: 0, maxLevel: 0, completed: false } }, settings: {} };
+const CLOUD = { v: 1, name: "Cloud Ann", current: "intro", updatedAt: 2, companion: { type: "sprout" },
+  packages: { intro: { level: 3, maxLevel: 3, completed: false } }, settings: {} };
+
+/** A game whose cloud pull waits for `pull.resolve(progress)`. `timers` holds the instrument card's 1400 ms callbacks. */
+function signInGame({ narrateReady, cloud = CLOUD }) {
+  const timers = [];
+  const instroverlay = { style: { display: "none" } };
+  const g = loadGame({ fresh: true, elements: { instroverlay }, setup: w => {
+    const real = w.setTimeout;
+    w.setTimeout = (fn, ms, ...a) => ms === 1400 ? (timers.push(fn), 0) : real(fn, ms, ...a);
+  } });
+  const log = voices(g.__window), pull = deferred();
+  g.freshToken = async () => "token-ann";
+  g.cloudPull = async () => ({ ok: true, progress: clone(await pull.promise) });
+  g.renderAuth = () => {};
+  g.speakOn = true; g.narrateReady = narrateReady;
+  const signIn = async () => { const done = g.onSignedIn(false); await tick(); pull.resolve(cloud); await done; await tick(); };
+  return { g, log, timers, instroverlay, signIn, pull };
+}
+const cloudStory = g => { assert.equal(g.levelIdx, 3, "the cloud progress loaded"); return clipOf(g, g.curStage().intro); };
+
+for (const [how, narrateReady] of [["after picking a buddy as a guest", true], ["straight from the landing screen", false]]) {
+  test(`signing in ${how}: the loaded level's story is read once, in one voice`, async () => {
+    const { g, log, signIn } = signInGame({ narrateReady });
+    await signIn();
+    assert.equal(g.cloudSync, "ready");
+    assert.deepEqual(log.clips.map(c => c.src), [cloudStory(g)], "one narrate, of the loaded level's story");
+    log.clips[0].start(); await tick();
+    assert.deepEqual(sounding(log), [log.clips[0]]);
+    assert.deepEqual(log.spoken, []);
+    assert.equal(g.narrateReady, true, "narration is on for the rest of play");
+  });
+}
+
+test("a cloud load while an instrument card is up: the card keeps its voice, and the story comes once after it", async () => {
+  const { g, log, timers, instroverlay, signIn } = signInGame({ narrateReady: true });
+  g.showInstrCard("kalimba"); assert.equal(instroverlay.style.display, "flex");
+  const card = log.clips[0];
+  await signIn();
+  assert.deepEqual(log.clips, [card], "no story over the card");
+  assert.equal(card.paused, false, "the card is still speaking");
+  g.closeInstrCard();
+  assert.equal(card.paused, true);
+  assert.equal(timers.length, 1);
+  timers[0]();
+  assert.deepEqual(log.clips.slice(1).map(c => c.src), [cloudStory(g)], "the loaded story, once");
+  assert.deepEqual(log.spoken, []);
+});
+
+test("a cloud load that turns Read aloud off while an instrument card speaks: the card stops, and closing it is silent", async () => {
+  const { g, log, timers, signIn } = signInGame({ narrateReady: true, cloud: { ...CLOUD, settings: { speak: false } } });
+  g.showInstrCard("kalimba");
+  const card = log.clips[0];
+  await signIn();
+  assert.equal(g.speakOn, false);
+  assert.equal(card.paused, true, "the card's voice stopped with Read aloud");
+  g.closeInstrCard(); timers.forEach(fn => fn());
+  assert.deepEqual(log.clips, [card], "nothing more was read");
+  assert.deepEqual(log.spoken, []);
+});
+
+test("a card closed just before the cloud load: its delayed story does not restart the loaded one", async () => {
+  const { g, log, timers, signIn } = signInGame({ narrateReady: true });
+  g.showInstrCard("kalimba"); g.closeInstrCard();   // the 1400 ms story is now waiting
+  await signIn();
+  const story = log.clips.at(-1);
+  assert.equal(story.src, cloudStory(g));
+  timers.forEach(fn => fn());
+  assert.equal(log.clips.at(-1), story, "no second request for the story");
+  assert.equal(g.curClip, story);
+});
+
+test("a signed-in reload: silent until the cloud answers, then the cloud level's story, once", async () => {
+  // The real boot gate: a stored session at load, so boot.js calls onSignedIn(false) itself. Voices are recorded
+  // from before boot; the cloud's answer is held until the test releases it.
+  const answer = deferred(); let log;
+  const user = { getUsername: () => "ann", signOut() {},
+    getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "token-ann" }) }) };
+  const g = loadGame({ fresh: true, setup: w => {
+    log = voices(w);
+    w.localStorage.setItem("mg_progress", JSON.stringify(LOCAL));
+    w.localStorage.setItem("mg_settings", JSON.stringify({ speak: true }));
+    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return user; } } };
+    w.fetch = async () => answer.promise;
+  } });
+  await tick();
+  assert.equal(g.cloudSync, "loading");
+  assert.deepEqual(log.clips, [], "no story before the cloud answers");
+  answer.resolve({ ok: true, status: 200, json: async () => clone(CLOUD) });
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(g.cloudSync, "ready");
+  assert.deepEqual(log.clips.map(c => c.src), [cloudStory(g)]);
   assert.deepEqual(log.spoken, []);
 });
