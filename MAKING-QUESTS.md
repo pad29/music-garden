@@ -12,8 +12,11 @@ rather than repeating it. Tables marked as generated from the engine are checked
 **Before you start, open an issue.** A new quest is new content for children, and only the owner
 decides what ships. Describe the idea in a few lines — which two powers it combines, which land it
 belongs to, what the child makes — and wait for a yes before you spend an evening on witnesses.
+`CONTRIBUTING.md` says how to propose a change, how to run and test the game, and what happens to your
+pull request.
 
-You need Node.js (any current version) and a browser. There is nothing to install and no build step.
+You need Node.js (Node 24, or at least 22.15 or 23.5 — `CONTRIBUTING.md` § 1) and a browser. There is
+nothing to install and no build step.
 
 ## Contents
 
@@ -964,4 +967,6 @@ Your pull request should contain:
 - in the description: the issue it answers, what the quest asks for in two lines, the commands you ran
   (`check`, the syntax check, the tests) and what you saw when you played it through (§ 8).
 
-Only the owner merges, and merging deploys the game. See `AGENTS.md` for the project's rules.
+Every commit carries a `Signed-off-by` line (`git commit -s`). Only the owner merges, and merging deploys
+the game. `CONTRIBUTING.md` has the sign-off, the project's rules in plain words, and what happens to
+your pull request.

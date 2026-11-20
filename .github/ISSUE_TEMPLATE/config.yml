@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/pad29/music-garden/security/advisories/new
+    about: Report it privately, never in a public issue. SECURITY.md says how.
+  - name: How to contribute
+    url: https://github.com/pad29/music-garden/blob/main/CONTRIBUTING.md
+    about: What to read, the rules the code keeps, and what happens to a pull request.

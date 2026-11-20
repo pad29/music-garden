@@ -91,6 +91,8 @@ Backend (rarely touched): `backend/README.md` § Future deploys — the owner's,
 - Where the editor is headed (notes-as-objects, lenses, chromatic lattice) → `EDITOR-DESIGN.md`
 - How quests work, the ordered quest kinds, and the declarative quest schema → `QUESTS.md`
 - Adding a quest as data: every field, the closed lists, witnesses, `tools/quest-catalog.mjs` → `MAKING-QUESTS.md`
+- How a person contributes, the code of conduct, security reports → `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
+  `SECURITY.md` (`CONTRIBUTING.md` restates § Commands and § Hard invariants: change it with them)
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - The vendored fonts and sign-in library: versions, sources, licences, hashes, how to update →
   `vendor/README.md`
