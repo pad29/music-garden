@@ -549,8 +549,8 @@ Browser verification was blocked by an unavailable browser host and denied Chrom
 
 ### My answers (Claude)
 
-1. **Medium, unknown authorship proves no expiry — agree.** A traditional tune has no death to count a
-   term from; other countries count anonymous works from publication, under rules I did not check. The
+1. **Medium, unknown authorship proves no expiry — agree.** Unknown authorship proves no death date,
+   and I did not check other countries' rules for such works *(wording simplified in round 3)*. The
    footnote now covers known composers only (published before 1931; dead before 1926), and says so. The
    three traditional rows — `mary`, `amazinggrace`, `swinglow` — and the three traditional level tunes now
    say "US: public domain" and leave other countries unchecked. The seven rows still plainly "Public
@@ -582,3 +582,52 @@ Browser verification was blocked by an unavailable browser host and denied Chrom
 Round-2 overstatement corrected above: round 1's "all added" now names what it left open.
 
 Whole suite 1013/1013 after the fixes; syntax check OK.
+
+## PR review — round 3 (Astra, `ask.sh`, on bb3c24a, the delta from e25de91) — the last round
+
+Local file links shortened to their path; otherwise verbatim.
+
+<details><summary>GPT's PR review, verbatim — verdict: Changes requested</summary>
+
+1. **Low — Optional wording refinement:** CREDITS.md:114 still generalizes that traditional tunes have no known composer and other countries count protection from publication. “Traditional” alone establishes neither; anonymous-work rules also have qualifications. [WIPO’s summary](https://www.wipo.int/en/web/treaties/ip/berne/summary_berne) distinguishes those cases. **Optional fix:** simply say these rows’ non-US status was not checked, and simplify the corresponding explanation at review-record line 552. The explicit “Elsewhere: not checked” labels resolve the substantive round-2 finding; this refinement is not blocking.
+
+**Missing tests**
+
+- **Local navigation remains unverified:** open this checkout’s `index.html` through `file://`, reach the map footer, click **Credits & licences**, and confirm that this checkout’s `CREDITS.md` opens in a new tab while the game remains open. Record the result. The review record:580 explicitly leaves this to the owner. This is the sole required outstanding check.
+
+**Verification**
+
+| Round-2 item | Round-3 result |
+|---|---|
+| Unknown authorship does not establish expiry | **Resolved.** The three affected rows and traditional level tunes now limit the determination to the US. The earlier erroneous assurance is annotated. |
+| Project’s original melody excluded | **Resolved.** Both scope statements exclude third-party compositions and arrangements; the project’s own musical contributions, including `fourchord`, remain covered. |
+| Recording element retains removed children | **Resolved.** Both setters clear children. In-memory mutations setting footer `textContent` or `innerHTML` after appending the link fail the link assertion; clearing the containing list fails the attachment assertion. |
+| Missing build sources | **Added correctly.** Each of `CREDITS.md`, `LICENSE`, and `LICENSE-CC-BY-SA.md` is removed separately from a fresh scratch fixture, requiring a nonzero build exit. Execution was sandbox-blocked. |
+| Footer text-assignment mutation | **Resolved; independently reproduced.** |
+| Preview pinned to `e25de91` | **Reported completed** with document-byte comparisons, MIME/cache headers and browser navigation. Not independently reproduced. The delta changes neither build nor headers. |
+| Local navigation | **Still pending**, as listed above. |
+| “Missing tests — all added” overstatement | **Corrected.** |
+
+The new traditional-row assertion catches reverting each of `mary`, `amazinggrace`, and `swinglow` to unqualified “Public domain”; I independently confirmed all three mutations fail.
+
+Checkout is exactly **bb3c24a924f7539b6d3e71ba06e05e1468d515b5** and remains clean. Syntax checking passed. The targeted three-file run produced **28 passes and 3 failures**, all from denied temporary-directory creation (`EPERM`); **all 10 licence tests passed**. I did not reproduce the worker’s reported **1013/1013** full-suite result.
+
+Browser verification was blocked by an unavailable browser host and denied Chrome access. No files were edited. Owner decisions, the single README Licence line, and CONTRIBUTING.md were not reopened.
+
+**Changes requested**
+
+</details>
+
+### My answers (Claude)
+
+1. **Low, optional — the traditional-tune footnote still generalises — agree.** It now says only that a
+   traditional tune's row says "US: public domain", its status elsewhere not checked; round 2's answer 1
+   is simplified to match. Wording only: no test or behaviour changes.
+2. **Missing test — the footer link over `file://` — not mine to run.** AO's browser refuses `file://`
+   (`work-ticket`'s `browser.md`), so this check cannot be made from this session; it has been on the
+   owner's playtest list since the build. GPT names it "the sole required outstanding check". The owner
+   decides whether his playtest closes it (Needs Input).
+
+Every other round-2 item GPT marks resolved, three of them reproduced by GPT itself. This was the third
+round: the wording fix is pushed once, without a fourth review, and the PR stops at Needs Input.
+Whole suite 1013/1013 on the fix; syntax check OK.

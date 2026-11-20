@@ -111,9 +111,8 @@ in `js/famous.js`.
 
 "Public domain", alone, means two things, and no more: the work was published before 1931, so it is free in
 the US; and its composer died before 1926, so life + 100 — the longest general copyright term we know of —
-has ended too. Other countries' special rules were not checked. A traditional tune has no known composer,
-so no death to count from — other countries count such a work from its publication instead, under rules
-not checked here — and its row says "US: public domain" only.
+has ended too. Other countries' special rules were not checked. A traditional tune's row says "US: public
+domain" only: its status elsewhere was not checked.
 
 ### Traditional tunes in the levels
 
