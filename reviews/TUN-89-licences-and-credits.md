@@ -631,3 +631,19 @@ Browser verification was blocked by an unavailable browser host and denied Chrom
 Every other round-2 item GPT marks resolved, three of them reproduced by GPT itself. This was the third
 round: the wording fix is pushed once, without a fourth review, and the PR stops at Needs Input.
 Whole suite 1013/1013 on the fix; syntax check OK.
+
+## Owner's decisions — after round 3
+
+The owner, in AO session `music-garden-41`, 2026-11-19:
+
+1. **A** — accept head `c1ed522` without a fourth GPT review. *(The question: round 3's only change was the
+   footnote wording GPT suggested; GPT's verdict on `bb3c24a` stays "Changes requested", for that optional
+   wording and the `file://` check.)*
+2. **A** — the owner's playtest closes the `file://` check, GPT's "sole required outstanding check".
+
+## Owner's review
+
+Playtest on `c1ed522`, 2026-11-19 — "I playtested everything, it all looks good": the footer and its
+*Credits & licences* link over `file://` from this worktree, the preview on the phone, `README.md` and
+`CREDITS.md` as GitHub renders them, and the wording of `CREDITS.md`. This commit adds only this record:
+the shipped files are byte-identical to `c1ed522`.
