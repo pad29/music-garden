@@ -42,8 +42,11 @@ All are.
 | TUN-114 Cloudflare settings that stay off | #149 | 11-19 | — |
 | TUN-120 GPT 6.2 Astra | #161 | 11-20 | — |
 
-**The live backend matches `main`:** `git diff a23ac09 origin/main -- backend/` touches only
-`backend/README.md`, so the stack the owner last deployed carries every backend change on `main`.
+**The owner's deploys carry every backend change on `main`:** `git diff a23ac09 origin/main -- backend/`
+touches only `backend/README.md`. TUN-88's record has the owner deploying `a23ac09`; TUN-113's records a
+**later** successful deploy as `mg-deploy`, from the project checkout on `main`. Either way the deployed
+source carries every backend change on `main`. This is the records and Git, not a query of AWS: no
+session read the live stack's state.
 
 **Not done, in the hardening phase (TUN-77):** **TUN-115** *Stop the deploy identity from giving itself
 more power through a Lambda role* (M, `needs-owner`, Backlog). It is not among TUN-103's blockers —
@@ -59,7 +62,10 @@ binary — samples, fonts, images), read whole with `git cat-file --batch` rathe
 merge resolutions and deleted files are covered, and all 356 commit messages. The script was a one-off
 in the system temp directory (Node, no dependencies), not committed.
 
-**Patterns — strict, run on every blob, binary included:**
+These are the first scan's patterns, as run. PR review round 1 added more and re-ran every snapshot
+(*The expanded scan*, below).
+
+**Patterns — strict, run on every blob, binary included, and on every commit message:**
 
 | Name | Regex |
 |---|---|
@@ -74,7 +80,8 @@ in the system temp directory (Node, no dependencies), not committed.
 | SendGrid key | `\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b` |
 | JWT | `\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}` |
 
-**Patterns — loose, text blobs and commit messages only, every hit read by hand** (case-insensitive):
+**Patterns — loose, run on text blobs and commit messages (not binary blobs), every hit read by hand**
+(case-insensitive):
 
 | Name | Regex |
 |---|---|
@@ -85,7 +92,8 @@ in the system temp directory (Node, no dependencies), not committed.
 
 **File names ever committed**, checked against
 `(^|/)(\.env(\..*)?|id_[rd]sa|id_ecdsa|id_ed25519|credentials|\.npmrc|\.netrc|.*\.(pem|key|p12|pfx|jks|keystore|tfstate|ppk))$`
-over all 643 paths in those commits.
+over all **603 file paths** in those commits. (The first count, 643, also counted 39 directories and the
+root — GPT's round 1 finding 2.)
 
 **Positive control:** the same script on a throwaway repository holding AWS's documented example key
 (`AKIA` followed by `IOSFODNN7EXAMPLE`; split here so this record does not match its own scan), an `OPENSSH PRIVATE KEY` header, a `ghp_` token and a `password = "…"` line
@@ -98,8 +106,9 @@ documentation account. The only AWS account IDs anywhere in history are AWS's do
 (`123456789012`, `444455556666`, `1111-2222-3333`). `backend/samconfig.toml` holds the stack name and
 region, no credentials.
 
-**Commit identities:** authors and committers are `pavel.dmitriev@gmail.com` (accepted by the owner,
-2026-11-13) and `noreply@github.com`; co-author trailers are only `noreply@anthropic.com`.
+**Commit identities:** authors and committers are the owner's own address (in the commit metadata,
+accepted by the owner, 2026-11-13; deliberately not copied here) and `noreply@github.com`; co-author
+trailers are only `noreply@anthropic.com`.
 
 **Also scanned — the GitHub issues and pull requests, which go public too:** 116 issues and 45 PRs —
 titles, bodies, comments and reviews, 566 texts (authors `pad29`, `linear-code`, `netlify`,
@@ -111,9 +120,9 @@ paths (`C:/Users/pavel/.ao/…`) in 13 PR comments and 2 issue bodies, and AO's 
 issue #119 and a PR #151 comment — the same kind `reviews/` keeps.
 
 **The scan, again — this PR's head.** Before its first push, the same script ran over all 91 remote
-refs plus this branch's commits: nothing new. Besides the same five fixture hits, it matched only this
-record quoting itself — `PuTTY-User-Key-File` in the pattern table, and the fixture's `SECRET = "arn:…"`
-line quoted above. Its PR head is therefore covered too; any later head is re-scanned under step A1.
+refs plus this branch's commits: no unexplained match. Besides the same five fixture hits, it matched
+only this record quoting itself — the strict pattern on `PuTTY-User-Key-File` in its own pattern table,
+and the loose one on the fixture's `SECRET = "arn:…"` line quoted above. Its PR head is therefore covered too; any later head is re-scanned under step A1.
 
 ### 3. Machine paths and personal email in tracked files, against TUN-98's record
 
@@ -250,8 +259,11 @@ changed. The four new commits (`05fdd5d`, `12fa98b`, `f69301d`, `80e1003`) add t
 else.
 
 - **Secret scan, all 94 refs, the patterns above:** 360 commits, 1,932 blobs (1,418 text, 514 binary),
-  644 paths. No strict hit, no risky file name. The only hits: the fake-ARN fixture, and this record
-  quoting its own pattern table and that fixture.
+  604 file paths (reported to the orchestrator as 644, which counted directories). No risky file name
+  and **no unexplained match**. The strict pattern matched `PuTTY-User-Key-File` 5 times — this
+  record's own pattern table, in its three versions (`05fdd5d`, `12fa98b`, `f69301d`); the loose hits
+  are the fake-ARN fixture and this record quoting it. (Reported then as "no strict hit", wrongly — GPT's
+  round 1 finding 2.)
 - **Paths and addresses in the new commits:** only what this record reports (AO worktree paths, the
   owner's accepted commit address, placeholders, `conduct@`, FreePats' credit). Identities as before.
 - **Issues and PRs again** (116 issues, 46 PRs, 570 texts): no credential; the same findings, plus the
@@ -286,20 +298,127 @@ afterwards.
 3. **Signed out** (`curl`, no credentials): the repository page, the API and the raw `SECURITY.md`
    answer 200. `SECURITY.md`'s advisory link answers 302 — GitHub sends a signed-out visitor to sign in,
    because a private report needs an account. Expected.
-4. **An agent session can still push its own branch and open a PR:** this commit's push to
-   `ao/publish-checklist/root` and its PR #162 (opened before the click as a draft, marked ready after
-   it). **The owner can still merge one:** this PR, when the owner merges it, is the proof — it needs
-   *Syntax check and tests* green and no approval. This session never pushed `main` to "test" the
-   protection: had the rule been wrong, that push would have deployed.
-5. **The docs**, in this commit:
+4. **An agent session can still push its own branch:** verified — `835cf28` pushed to
+   `ao/publish-checklist/root` after the click, and PR #162's checks ran on it. **…and open a PR:**
+   **not yet shown.** PR #162 was opened before the click and only marked ready after it; the next PR a
+   session opens is the evidence. **The owner can still merge one:** **not yet shown** — this PR, when
+   the owner merges it, is the proof: it needs *Syntax check and tests* green and no approval. This
+   session never pushed `main` to "test" the protection: had the rule been wrong, that push would have
+   deployed.
+5. **The docs**, in `835cf28`, corrected in the commit that answers PR review round 1:
    - `CLAUDE.md` § Outside contributions opens in the present tense ("The repository is public (since
-     2026-11-20): …"), and § AO, tickets and branches says GitHub enforces the merge rule, for `pad29`
-     too, so a push to `main` is refused.
+     2026-11-20): …"). § AO, tickets and branches says what GitHub enforces — for every account,
+     `pad29` included, a change reaches `main` through a pull request whose check passed, so an ordinary
+     direct push is refused — and that it cannot tell whether the owner agreed, which stays the
+     workflow's rule. (`835cf28` said "a push to `main` is refused", too broadly: GitHub accepts a
+     locally merged push that satisfies the rule — round 1 finding 4.)
    - `README.md` § Deployment records the protection and the security settings, with why no approval is
      required and why *Cloudflare Pages* is not a required check; § Current status records the
-     repository as public, with its licences and contributor docs.
+     repository as public, with its licences (AGPL-3.0-or-later, as `CREDITS.md` states) and contributor
+     docs, and its preview line now says previews are for branches of this repository, none for a fork
+     (round 1 finding 7).
    - `CONTRIBUTING.md` § 8: the owner merges only once the automatic checks have passed.
    - No doc called the repository private (§ 7 above).
+
+## PR review — round 1 (`gpt-6.2-astra`, `ask.sh fresh read-only`, on `835cf28`)
+
+Verdict: **CHANGES REQUESTED** — one high, four medium, three low, and one missing test.
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **High — `reviews/TUN-103-publish-the-repository.md:82`.** Expand the secret scan and rerun it. The Cloudflare rule misses standalone `cfut_`, `cfat_`, and `cfk_` credentials. The GitHub rule misses current `ghs_APPID_JWT` installation tokens, and the JWT rule’s leading word boundary misses the JWT after the underscore. The assignment rules also miss `AWS_SESSION_TOKEN` and opaque Cognito `RefreshToken` values. Apply the strict patterns to commit messages explicitly. Report the result as “no unexplained matches” and distinguish GitHub’s enabled setting from an actual check of its alerts. [Cloudflare credential formats](https://developers.cloudflare.com/changelog/post/2026-04-14-cloudflare-api-token-detections/) · [GitHub installation token format](https://github.blog/changelog/2026-10-02-stateless-github-app-installation-tokens-rolled-out/) · [GitHub secret-scanning scope](https://docs.github.com/en/code-security/reference/secret-security/secret-scanning-scope)
+
+2. **Medium — `reviews/TUN-103-publish-the-repository.md:252`.** Correct the scan accounting. I reproduced the initial 356 commits and 1,929 blobs, and the pre-click 360 commits and 1,932 blobs, from local Git objects. The two snapshots contain **603 and 604 distinct file paths**. The reported 643 and 644 include 39 directories and the root. Applying the written patterns also produced **three strict matches** before the click, one in each version of the record quoting `PuTTY-User-Key-File`. All three are explained. Finally, `835cf28` adds one commit and four blobs beyond that scan. Preserve the pre-click result under its actual SHA and record the expanded scan against the reviewed head in the handoff.
+
+3. **Medium — `reviews/TUN-103-publish-the-repository.md:101`.** Remove the owner’s literal personal email from the new record. The owner accepted its presence in commit metadata. Copying it into a tracked Markdown file creates a new hit in the very search this ticket must reconcile with TUN-98. “The owner’s accepted commit address” records the result without republishing the address. No history rewrite is needed.
+
+4. **Medium — `CLAUDE.md:134`, `README.md:254`.** Separate GitHub’s merge conditions from the owner’s authorization to deploy. The recorded rule applies to `pad29`, requires a PR with the named check, and requires zero approving reviews. GitHub cannot tell whether the owner authorized an agent using that account. “A push to `main` is refused” is also too broad. GitHub documents that a qualifying, up-to-date PR can be merged locally and pushed. Say that an ordinary direct change is blocked and retain the owner’s explicit-permission rule. Correct the same claim in the review record at lines 297 and 330. I could verify the workflow’s check name locally, but the live protection endpoint was unreachable from this session. [GitHub’s required-check behavior](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
+
+5. **Medium — `reviews/TUN-103-publish-the-repository.md:289`.** Mark **post-publication PR creation** pending alongside the owner’s merge. Pushing `835cf28` demonstrates branch push access. Marking an existing draft ready does not demonstrate opening a PR after protection took effect. Record the next ordinary session-created PR and the owner’s eventual merge as separate evidence. The expected wait for CI on #162 is not a defect.
+
+6. **Low — `reviews/TUN-103-publish-the-repository.md:45`.** Correct the deploy attribution. TUN-88 records the `a23ac09` deploy. TUN-113 records a **later** successful deploy from merged `main` as `mg-deploy`. The Git comparison supports the conclusion that the owner deployed every backend source change required by this ticket. It does not independently establish the live stack’s current state.
+
+7. **Low — `README.md:198`.** Replace “a preview per pull request” with “a preview for branches pushed to this repository,” and use the project’s declared **AGPL-3.0-or-later** identifier. The current summary contradicts the fork guidance in Deployment and drops the licence choice stated in `CREDITS.md:14`. I found no other current operating document describing the repository as private. The remaining pre-publication wording is in dated review history.
+
+8. **Low — `reviews/TUN-103-publish-the-repository.md:340`.** Record the actual passing test count and the head or CI run that produced it. “The whole suite pass[es]” omits the count in the review format. Add this first PR-review round and its dispositions with the fixes, as §8 specifies. The short S plan and owner checkpoint are already present.
+
+**Missing tests**
+
+- **Scan positive control:** Use dummy values for a standalone Cloudflare token, a current GitHub installation token, `AWS_SESSION_TOKEN`, and an opaque `RefreshToken`. Put one value only in a commit message and another only in a deleted blob reachable through a PR ref. Require the scan to identify each location without printing the value.
+- **Game tests:** None. This diff changes documentation and a publication record.
+
+**CHANGES REQUESTED**
+
+</details>
+
+### My answers
+
+1. **High — expand the scan.** **Agreed**, all but one clause, and done (*The expanded scan*, below):
+   standalone Cloudflare tokens (`cfut_`, `cfat_`, `cfk_`), GitHub tokens with `_`, `.` and `-` after
+   the prefix (the stateless `ghs_` shape), JWTs after a word character, AWS session tokens (the value's
+   own prefixes, and `AWS_SESSION_TOKEN=` assignments), JWE-shaped tokens such as Cognito's refresh
+   token, and `refresh`/`id`/`session` token assignments. The result is worded "no unexplained match".
+   GitHub's side is now checked, not just enabled: **0 secret-scanning alerts**, open or resolved, on
+   2026-11-20 after publishing; its scan-history endpoint needs paid Advanced Security ("Advanced Security
+   is disabled on this repository", HTTP 404), so whether GitHub's own backfill had finished is
+   **unknown**. **Disagreed on one clause** — "apply the strict patterns to commit messages explicitly":
+   the script already ran strict and loose patterns over every commit message; the record's headings
+   hid that, and now say it.
+2. **Medium — the scan accounting.** **Agreed and corrected:** 603 / 604 file paths (my 643 / 644
+   counted directories), and the pre-click strict matches — 5 occurrences of `PuTTY-User-Key-File`, in the
+   three versions of this record — are now stated instead of "no strict hit". The pre-click result stays
+   under its SHAs; the expanded scan names the head it covers.
+3. **Medium — the literal address.** **Agreed:** removed from this record (*Commit identities*). It
+   remains in the earlier versions of this file in Git history, as it remains in every commit's metadata.
+4. **Medium — what GitHub enforces vs. the owner's authority.** **Agreed:** `CLAUDE.md` and README now
+   say GitHub enforces the mechanics for every account, refuses an ordinary direct push, and cannot tell
+   whether the owner agreed — that rule stays the workflow's. The record's *After publishing* item 5 says
+   the same.
+5. **Medium — opening a PR after protection is not shown.** **Agreed:** item 4 now marks it, and the
+   owner's merge, **not yet shown**.
+6. **Low — the deploy attribution.** **Agreed:** § 1 now names TUN-113's later deploy from `main`, and
+   says the conclusion comes from the records and Git, not from AWS.
+7. **Low — README's preview line and licence id.** **Agreed and fixed:** "a preview for every branch
+   pushed to this repository — none for a fork's pull request", and AGPL-3.0-or-later.
+8. **Low — test count, head, and this round.** **Agreed:** *Tests* below names both; this section is the
+   round's record, in the same commit as its fixes.
+
+**Missing test — the scan's positive control. Added, as a control run** (the scanner is a one-off in
+the system temp directory, not part of the repository, so not a suite test): a throwaway repository
+with a standalone `cfut_` Cloudflare token and a stateless `ghs_…` GitHub token **only in a commit
+message**, and an `AWS_SESSION_TOKEN=IQoJb3JpZ2luX2Vj…` line and a JWE `"RefreshToken"` **only in a blob
+that a later commit deletes, reachable only through a `refs/pull/1/head` ref**. The expanded scan found
+all four, at their locations — 7 matches (the `ghs_` token also as a JWT, both blob values also by
+their assignment patterns) — and printed none of the values (each match is shown as its first six
+characters and its length). **Game tests:** none, as GPT says; no code changed.
+
+### The expanded scan
+
+The patterns above, **plus** these (strict: every blob and every commit message; loose: text blobs and
+commit messages), with every strict pattern now also refusing to start right after a letter or digit
+(`(?<![A-Za-z0-9])`) rather than at a `\b` word boundary, so a token after `_` is found:
+
+| Kind | Name | Regex |
+|---|---|---|
+| strict | GitHub token (replaces the first) | `(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9_.-]{30,}\|github_pat_[A-Za-z0-9_]{22,})` |
+| strict | Cloudflare token | `(?<![A-Za-z0-9])cf(?:ut\|at\|k)_[A-Za-z0-9_-]{20,}` |
+| strict | AWS session token value | `(?<![A-Za-z0-9/+])(?:FwoGZXIvYXdzE\|IQoJb3JpZ2luX2Vj)[A-Za-z0-9/+=]{50,}` |
+| strict | JWT (replaces the first) | `(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}` |
+| strict | JWE, e.g. a Cognito refresh token | `(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}` |
+| loose | AWS session token assignment | `aws_?session_?token["']?\s*[:=]\s*["']?[A-Za-z0-9/+=]{40,}` |
+| loose | Generic secret assignment (replaces the first) | adds `refresh[_-]?token`, `id[_-]?token`, `session[_-]?token` to its list of names |
+
+Run over three snapshots of everything GitHub exposes:
+
+| Snapshot | Refs | Commits | Blobs | File paths | Matches | Unexplained |
+|---|---|---|---|---|---|---|
+| First scan (`main` `a56e55d`, before this PR) | 91 | 356 | 1,929 | 603 | 5 loose — the fake-ARN fixture | **none** |
+| Before the click (PR head `f69301d`) | 94 | 360 | 1,932 | 604 | 5 strict + 8 loose — this record quoting itself, and the fixture | **none** |
+| After publishing (PR head `835cf28`, test merge `d35aa5c`) | 94 | 361 | 1,936 | 604 | 7 strict + 9 loose — the same | **none** |
+
+The issues and pull requests again (116 issues, 46 PRs, 570 texts), with the expanded patterns: the same
+34 Netlify QR-code JWTs and nothing else. No risky file name in any snapshot. The commit that answers this
+round adds one more version of this record and of three docs; it is scanned before it is pushed (*Tests*).
 
 ## Owner's decisions
 
@@ -337,6 +456,8 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
 
 ## Tests
 
-No code changed. The syntax check and the whole suite pass after the docs edits, on a fresh merge of
-`origin/main`. *After publishing* items 1–3 and 5 are verified above. **Still unverified:** the owner's
-merge under the new protection (item 4), which happens only when the owner merges this PR.
+No code changed. **1030/1030 tests and the syntax check pass** locally on `835cf28` (after merging
+`origin/main` at `a56e55d`, which had not moved), and again on the commit answering round 1; *Checks*
+runs on each pushed head. Before each push, the expanded scan ran over the new commit and found only this
+record quoting itself. *After publishing* items 1–3 and 5 are verified above. **Still unverified:** a
+session opening a new PR under the protection, and the owner's merge under it (item 4).

@@ -131,8 +131,9 @@ no Linear support: every Linear read and state change is the agents' own, throug
 **Branches** come from AO (`work-ticket` § 3). A session may commit, push its own branch
 (`git push -u origin HEAD`) and open PRs. **`main` is the deploy branch**: only the owner merges — or a
 session, when the owner says so in that session — and only when the owner says the work is done.
-GitHub enforces it (TUN-103): `main` takes a change only as a merged pull request whose *Syntax check and
-tests* check passed, for every account, `pad29` included — so a push to `main` is refused.
+GitHub enforces only the mechanics (TUN-103): for every account, `pad29` included, `main` takes a change
+through a pull request whose *Syntax check and tests* check passed, so an ordinary direct push is refused.
+It cannot tell whether the owner said so — that rule is still yours to keep.
 
 ## Outside contributions
 
