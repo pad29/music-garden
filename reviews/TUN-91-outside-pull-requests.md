@@ -174,8 +174,14 @@ given.
      your account is public and is you speaking to a stranger, and an AI review can be wrong.
 
 4. *May agents run code the owner has merged into `main`, whoever first wrote it — so that merging
-   `origin/main` and running the suite (`work-ticket` § 8) is not "running outside code"?* — **open**
-   (raised by GPT's PR review, rounds 1 and 2).
+   `origin/main` and running the suite (`work-ticket` § 8) is not "running outside code"?* — **A: merged `main` is project
+   code, and agents may run it** — the owner, through the orchestrator (session music-garden-5),
+   2026-11-19 (raised by GPT's PR review, rounds 1 and 2). Verbatim as relayed: *"4A. Merged main is
+   project code, and agents may run it (every worker merges origin/main and runs the suite). Please make
+   sure CLAUDE.md § Outside contributions also says plainly that this makes the owner's merge the real
+   gate for an outside pull request: once merged, every worker runs it, so the owner reads the whole diff,
+   not only the description, before merging an outside contribution."* Added to `CLAUDE.md` and pinned
+   in the test.
    - **A)** Yes: merged `main` is the project's code. The text in `CLAUDE.md` says this today.
    - **B)** No: say what agents do instead once outside code is on `main`.
    - **I'd pick A**: under B no agent could run the suite on any branch after the first outside merge.
@@ -309,3 +315,5 @@ Remaining required change:
 **Tests after round 2:** `node --test tests/workflow-refs.test.mjs` 10/10; the full suite below.
 
 Full suite after round 2: 1028/1028 (`origin/main` still `640945f`).
+
+**After question 4:** the merge-gate sentence added to `CLAUDE.md` and pinned (33 phrase mutations now); syntax check OK; full suite 1028/1028 (`origin/main` still `640945f`).
