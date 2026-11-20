@@ -234,6 +234,11 @@ function outsideRuleProblems(texts) {
   // A second definition of "outside" drifts from CLAUDE.md's — the skill once said "anyone but the owner",
   // which would have had a worker reject the project reviewer's findings.
   if (/anyone but the owner/.test(parts.skill)) problems.push("work-ticket § Never redefines outside text");
+  // § 4 says a ticket's Decisions already made bind; without its exception, an outsider's would (round 2).
+  const s4 = sectionOf(texts.skill, "4. Design");
+  if (!/\*\*Decisions already made\*\* in the ticket bind[^.]* unless an outsider wrote them \(`CLAUDE\.md` § Outside contributions\)/.test(s4)) {
+    problems.push("work-ticket § 4 lets an outsider's Decisions already made bind");
+  }
   const softened = /until the owner (?:has read|says)|before the owner says so|without the owner's say-so/;
   for (const key of Object.keys(outsideWhere)) {
     if (softened.test(parts[key])) problems.push(`${outsideWhere[key]} lets outside code run once the owner says so`);
@@ -274,6 +279,7 @@ test("mutation: every safeguard of the outside-contribution rule, dropped alone,
     ["agents", s => s.replace("no agent\never runs its code", "its code never runs until the owner says so"), /lets outside code run/],
     ["claude", s => s.replace("not even after the owner has approved its diff", "until the owner has read its diff and said so"), /lets outside code run/],
     ["claude", s => s.replace("## Outside contributions", "## Outsiders"), /CLAUDE.md has no § Outside contributions/],
+    ["skill", s => s.replace(/ — unless an outsider wrote them \(`CLAUDE\.md` § Outside\s+contributions\)/, ""), /work-ticket § 4 lets an outsider/],
   ];
   for (const [key, mutate, expected] of cases) {
     const mutated = mutate(t[key]);

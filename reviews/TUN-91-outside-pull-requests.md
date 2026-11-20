@@ -173,6 +173,14 @@ given.
    - **B)** It brings them to you; they go on the PR only when you say so. — **I'd pick B**: a post from
      your account is public and is you speaking to a stranger, and an AI review can be wrong.
 
+4. *May agents run code the owner has merged into `main`, whoever first wrote it — so that merging
+   `origin/main` and running the suite (`work-ticket` § 8) is not "running outside code"?* — **open**
+   (raised by GPT's PR review, rounds 1 and 2).
+   - **A)** Yes: merged `main` is the project's code. The text in `CLAUDE.md` says this today.
+   - **B)** No: say what agents do instead once outside code is on `main`.
+   - **I'd pick A**: under B no agent could run the suite on any branch after the first outside merge.
+     Your merge is the moment you accept the code, as it is for the live site.
+
 ## Build
 
 As *Owner's decisions* amended the plan: `CLAUDE.md` § Outside contributions, and the § Explicit
@@ -260,3 +268,44 @@ something `checks.yml` sets. `CONTRIBUTING.md` § 8 already promises it; checkin
 repository is public belongs to the launch configuration, outside this ticket.
 
 **Tests after round 1:** syntax check OK; `node --test "tests/*.test.mjs"` 1028/1028 (`origin/main` still `640945f`).
+
+### Round 2 (Astra, `ask.sh`) — head `3e28849`, the delta from `990ab96`
+
+<details><summary>GPT's verdict, verbatim</summary>
+
+**Changes requested** for head `3e28849ee5a80132b8ffb07064d89282377e5f27`.
+
+Round-1 findings:
+
+- **1 — Resolved.** Original authorship survives relays; unknown origin remains outside; account identity and Todo placement confer no authority. §4 now excludes outsider-written decisions.
+- **2 — Resolved.** The skill uses the central definition and routes project-reviewer findings through §8.
+- **3 — Partially resolved.** The boundary is explicit, but the record identifies it as the worker’s decision, not the owner’s.
+
+Remaining required change:
+
+1. **Medium — Record owner authorization for the new execution boundary.** [CLAUDE.md:145](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-43/CLAUDE.md:145) authorizes execution of owner-merged outside code. The [review response:244](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-43/reviews/TUN-91-outside-pull-requests.md:244) explicitly says “decided, not asked.” This is a plausible boundary, but round 1 required the owner’s intended boundary. Listing it for later overruling does not establish that authorization.
+
+   **Instead:** obtain and record the owner’s explicit decision that merging into `main` makes the code executable by agents. If confirmed, the current policy wording can stand. Until then, mark this boundary unresolved and prevent §8’s unconditional update-and-test instruction from overriding the existing ban.
+
+**Missing tests — case to add**
+
+- Remove only the outsider exception and its reference from [work-ticket §4:74](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-43/.claude/skills/work-ticket/SKILL.md:74), restoring the unconditional instruction that ticket decisions bind. Leave `CLAUDE.md` and §Never intact; require failure. The current [checker:217](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-43/tests/workflow-refs.test.mjs:217) examines only §Never for this skill, so it misses regression of this round’s §4 fix. The other specifically requested round-1 mutation cases are covered.
+
+`node --test tests/workflow-refs.test.mjs` passed **10/10**; delta `git diff --check` passed. Full suite not rerun. No files changed.
+
+</details>
+
+**My answers:**
+
+1. **Medium — the owner's authorization for the merged-`main` boundary. Agreed.** I called it mine because
+   its only alternative stops all agent work after the first outside merge. But it qualifies the flat never
+   the owner set at the checkpoint, so it is the owner's to confirm (`work-ticket` § 7's standing rule),
+   and a third review would only repeat the finding. Asked as question 4 under *Owner's decisions*. The
+   `CLAUDE.md` text stays as proposed: the PR is unmerged, so it binds nobody until the owner answers.
+2. **Missing test — added.** The check now requires work-ticket § 4's sentence that *Decisions already
+   made* bind to keep "unless an outsider wrote them (`CLAUDE.md` § Outside contributions)", and a mutation
+   restores the unconditional sentence with `CLAUDE.md` and § Never intact and expects it reported.
+
+**Tests after round 2:** `node --test tests/workflow-refs.test.mjs` 10/10; the full suite below.
+
+Full suite after round 2: 1028/1028 (`origin/main` still `640945f`).
