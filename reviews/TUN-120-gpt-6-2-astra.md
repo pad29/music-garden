@@ -75,7 +75,7 @@ the global CLI, 0.171.0, so the native reviewer is untested on the new model. If
 the orchestrator reverts the setting and tells the owner. `CLAUDE.md`'s *Model settings* line says so.
 The reviewer is out of service either way (`pr-review.md`).
 
-## PR review — round 1 (GPT 6.2 Astra, `ask.sh`) — head `63fd024`
+## PR review — round 1 (gpt-6.2-astra, `ask.sh`) — head `63fd024`
 
 <details><summary>GPT's review, verbatim</summary>
 
@@ -119,6 +119,36 @@ The exact old ID has no matches outside `reviews/`. The recorded real probe iden
    - Mutations, each run and then reverted: with `gpt-6-astra` back in `tester.md`, the static test fails
      and names `tester.md:42`. With `ask.sh` sending `-m gpt-6-astra` instead of `$MODEL`, the refusal test
      fails.
+
+## PR review — round 2 (gpt-6.2-astra, `ask.sh`) — head `7eb2912`, the delta from `63fd024`
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested** on `7eb29120525a861f4f5a032f08df393839c2304e`.
+
+- **Medium** — `tests/workflow-scripts.test.mjs:848–854` counts a direct `codex exec -m gpt-6.2-astra` as a valid call. Restoring the exact round‑1 diagnostic would keep the count at nine and pass. Require the limit probe to use `ask.sh fresh read-only` with the configured model.
+- **Low, retained** — `.claude/skills/work-ticket/handoff.md:80` and `reviews/README.md:30–31,43,60,63` use “Astra” where the completed record identifies which model did the work. Use `<model id used>` in the templates. That records the version without adding a hard-coded ID to maintain.
+
+**Missing test** — Replace the corrected probe in `pr-review.md` with its round‑1 direct command, keeping the model ID correct. The static check must fail and identify the probe.
+
+The AO setting and date, exit‑69 guidance, and single-call refusal test resolve the other findings. The worker reports 1030/1030 passing. I reviewed the delta without rerunning the suite.
+
+</details>
+
+**My answers**
+
+1. **Medium, the static test accepts a direct `codex exec`.** *Agreed.* Any doc line that runs
+   `codex exec … -m` now fails the test, whatever the model, and the failure names the line. The test is
+   now *"every GPT command in the docs goes through ask.sh, and it and the reviewer setting name the
+   model CLAUDE.md § Calling GPT names"*. `pr-review.md:9` still says in prose that a one-word
+   `codex exec` answers. It has no `-m`, it is history rather than a command, and it is not flagged.
+2. **Low, retained: "Astra" in the templates.** *Agreed, as amended.* `<model id>` meets my round-1
+   objection: it records which model ran without a hard-coded id to maintain. The five labels in
+   `reviews/README.md` (lines 30, 31, 43, 60 and 63) and `handoff.md:80` now say `<model id>`, and one
+   sentence under the size list defines it. This record's own headings use the id.
+3. **Missing test, the mutation itself.** *Run.* With round 1's command put back in `pr-review.md`,
+   correct model id and all, the test fails with `.claude\skills\work-ticket\pr-review.md:94 runs codex
+   directly`. With the file restored, it passes.
 
 ## Owner's decisions
 

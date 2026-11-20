@@ -77,7 +77,7 @@ This is how the owner spends his time, so it must be honest and short.
   trivial change".
 - GPT's test pass: L — what it found, and which of its test files were kept. S/M — "not run — <size>";
   the missing tests GPT's PR review listed, and which you added.
-- AO's review (Codex, Astra) — temporarily (`work-ticket` § 8), GPT's PR review through
+- AO's review (Codex, <model id>) — temporarily (`work-ticket` § 8), GPT's PR review through
   `ask.sh`: **approved** on `<short sha>` after N rounds — one line per finding: severity, the finding,
   agreed or disagreed, what you did. Full record: `reviews/<ID>-<slug>.md`.
 - Verified: N/N tests; what you checked in the browser, on which head.

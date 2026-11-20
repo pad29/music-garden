@@ -27,20 +27,23 @@ The one long part is GPT's design (L) or GPT's design review (M), kept **verbati
 
 **Sections by size** (`CLAUDE.md` § The loop, by size) — the example below is an L ticket:
 
-- **L:** *Design (Astra)*, *Critique (Claude)*, *Test pass (Astra)*.
-- **M:** *Plan (Claude)*, *Design review (Astra)* — GPT's findings verbatim — and *My answers*, one per
+- **L:** *Design (<model id>)*, *Critique (Claude)*, *Test pass (<model id>)*.
+- **M:** *Plan (Claude)*, *Design review (<model id>)* — GPT's findings verbatim — and *My answers*, one per
   finding: agreed or disagreed, and what was done.
 - **S:** *Plan (Claude)* — a few lines.
 - **Every size:** *Owner's decisions* (a `needs-owner` ticket's first checkpoint included), *PR review*
   with the missing tests it listed and which were added, *Owner's review*, and the tests line with
   whatever is still unverified.
 
+`<model id>` is the model that did the work: the id `ask.sh` was given, or AO's reviewer setting. That
+way a record says which GPT ran, and the template never names one.
+
 ```markdown
 # TUN-12 — Let the free tunes carry sixteenth-note bars
 
 Branch `claude/tun-12-sixteenth-grid` · PR #14
 
-## Design (Astra)
+## Design (<model id>)
 <details><summary>GPT's design, verbatim</summary>
 
 …GPT's output, unedited…
@@ -57,10 +60,10 @@ Branch `claude/tun-12-sixteenth-grid` · PR #14
 2. *The question, as asked* — **A**: the owner, in the AO session, 2026-11-09. (An unanswered one stays
    listed, marked **open**.)
 
-## Test pass (Astra)
+## Test pass (<model id>)
 What it tested, what it found, which of its test files were kept or deleted and why.
 
-## PR review (AO: Codex, Astra — temporarily GPT through `ask.sh`)
+## PR review (AO: Codex, <model id> — temporarily GPT through `ask.sh`)
 Round 1:
 1. **Medium — …** *"quoted comment"* **Agreed** — fixed in `abc1234`.
 2. **Low — …** **Disagreed** — why, in a sentence or two.
