@@ -262,15 +262,22 @@ diff first if you ever do it.
 
 ## Owner's decisions
 
-1. *Design checkpoint (`needs-owner`)* — **open.** Publish per the checklist above, or change it.
+Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garden-5`) to this session,
+2026-11-20.
+
+1. *Design checkpoint (`needs-owner`)* — **A: publish per the checklist as written**, the two choices
+   below included. The owner performs every publishing step; no session changes visibility, branch
+   protection or any repository setting.
 2. *TUN-117 open question 2: must the Jukebox's Faber-derived accompaniment be replaced before the
-   repository goes public?* — **open.** Replacing it first does not take it out of public view: the
+   repository goes public?* — **A: no.** TUN-117 stays in Backlog, for after publishing. My reasoning
+   at the checkpoint: replacing it first does not take it out of public view: the
    arrangement is in the git history either way, and rewriting history is out of this ticket's scope
    (decision of 2026-11-13: publish as it is). What changes is only whether the published `main` still
    plays it. I'd say **no — publish, and let TUN-117 land after**, as the owner's TUN-89 decision
    ("replace later") already reads.
 3. *TUN-115 (the deploy identity can create a stronger Lambda role) is the one hardening ticket not done
-   — must it land first?* — **open.** It is not among TUN-103's blockers. The gap only matters to
+   — must it land first?* — **A: no.** TUN-115 stays in Backlog. My reasoning at the checkpoint: it is
+   not among TUN-103's blockers. The gap only matters to
    someone who already holds `mg-deploy`'s credentials (IAM Identity Center, on the owner's machine);
    publishing exposes the policy's text (`backend/README.md`, already describing the gap under *Its
    limits*), not the credentials. I'd say **no — publish, and keep TUN-115 in Backlog.**
