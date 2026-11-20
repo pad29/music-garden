@@ -36,8 +36,8 @@ small throwaway pages. `tests/cloudflare-publish.test.mjs` checks that the deplo
 Pages' `cloudflare-build.sh`, copies `index.html`, every folder the page loads a script from, and
 every file in `vendor/` to the same path under `site/` — a file left out is served as `index.html` in
 production, and the game never starts. The checker is `helpers/cloudflare-publish.mjs`, and it is
-strict: the script must publish exactly `index.html`, `_headers`, `js/`, `voice/`, `samples/` and
-`vendor/` in one `&&` chain, a step it cannot read is refused rather than skipped, no `404.html` may
+strict: the script must publish exactly `index.html`, `_headers`, `CREDITS.md`, `LICENSE`,
+`LICENSE-CC-BY-SA.md`, `js/`, `voice/`, `samples/` and `vendor/` in one `&&` chain, a step it cannot read is refused rather than skipped, no `404.html` may
 be published, and the real script is run under bash in a scratch folder (skipped when no bash is found,
 as in `workflow-scripts.test.mjs`). (Netlify's `netlify.toml` and its checker went with TUN-85.)
 
@@ -77,6 +77,15 @@ else is always re-checked. It also checks that the page has nothing
 `script-src 'self'` would block: no inline script, no `on…=` attribute, no `eval`. The vendored Cognito
 library's webpack `globalThis` shim is allowed once, by its exact text. The browser half, with the
 `curl -I` output, is in `reviews/TUN-86-security-cache-headers.md`.
+
+**The licences and credits (TUN-89).** `licences.test.mjs` holds `LICENSE` to the GNU AGPL-3.0 text by
+its SHA-256 (line endings made LF first), and `CREDITS.md` to the game: one complete row per `FAMOUS`
+key and per `SAMPLED` voice (a new tune or instrument without a credit fails), each sample source a
+link, and the *Shave and a Haircut* row flagged while the code still names the Faber arrangement. The
+files the build publishes for the footer — `CREDITS.md`, `LICENSE`, `LICENSE-CC-BY-SA.md` — must link
+only to published files and be sent once as UTF-8 plain text. The footer itself is rendered through
+`renderPkgs` with recording elements, so a credit or link that is built but never attached, or loses its
+`target`/`rel`, fails. Whether a credit is *right* stays a human review.
 
 **Cloud progress sync (TUN-106).** `cloud-sync.test.mjs` signs a stub Cognito user in (a protocol stub,
 not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load that returns progress, `null`,

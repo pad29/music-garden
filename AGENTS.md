@@ -94,6 +94,8 @@ Backend (rarely touched): `backend/README.md` § Future deploys — the owner's,
 - Backend (Cognito + API Gateway + DynamoDB) → `backend/README.md`
 - The vendored fonts and sign-in library: versions, sources, licences, hashes, how to update →
   `vendor/README.md`
+- What is under which licence, and the credit for every sample, font, library, narration clip and
+  famous tune → `CREDITS.md` (licence texts: `LICENSE`, `LICENSE-CC-BY-SA.md`)
 - Audio-scheduler playback goldens and the console-capture procedure → `tools/goldens/README.md`
 - Each ticket's design, what its reviews flagged, and what was done → `reviews/` (one file per ticket;
   older history in `REVIEW-LOG.md`, closed 2026-09-27)
@@ -132,7 +134,8 @@ fire, at which step). Re-capture per `tools/goldens/README.md` before and after 
 Syntax check passes → `node --test "tests/*.test.mjs"` passes → behavior verified in a real browser (and
 on `file://` if assets are involved) → `gen-voice.mjs` re-run if narration text changed → the design docs
 (`DESIGN.md`, `PACKAGES*.md`, `SAVE-SHARE.md`, `QUESTS.md`, `MAKING-QUESTS.md`) updated to record what landed, and
-`vendor/README.md` with `SHA256SUMS` if a vendored file changed → reported to
+`vendor/README.md` with `SHA256SUMS` if a vendored file changed, and `CREDITS.md` if a sample pack, vendored
+file or `FAMOUS` tune was added or changed → reported to
 the owner. A required check you could not run (`file://`, the phone, sound by ear) is reported as
 pending, and stays the owner's to verify before merge. Merging to `main` happens only on the owner's
 explicit request.
