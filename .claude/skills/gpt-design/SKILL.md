@@ -19,7 +19,7 @@ GPT designs; you critique. Neither edits the other's words.
    (`PACKAGES-DETAILED.md` for level and package work, `SAVE-SHARE.md` for the song format,
    `EDITOR-DESIGN.md` for grid and editor architecture, `DESIGN.md` for the engine, `QUESTS.md` for
    quests).
-3. **Run** `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt` in the background,
+3. **Run** `.claude/gpt/ask.sh fresh read-only gpt-6.2-astra .claude/gpt/prompt.txt` in the background,
    with the GPT lock taken (`CLAUDE.md` § Cost). GPT's test pass later starts a thread of its own
    and learns the design only from the reviews file, so step 5's verbatim record is what it will test
    against.

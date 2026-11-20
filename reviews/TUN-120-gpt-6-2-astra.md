@@ -19,7 +19,7 @@ Then replace `gpt-6-astra` with `gpt-6.2-astra` everywhere outside `reviews/` an
 `ask.sh` passes the model straight to `codex -m`, with no default or check of its own, so it needs no
 edit. `AGENTS.md` gets no model name (ticket constraint).
 
-## Probe — the one-line call (2026-11-19, 23:08 America/Chicago)
+## Probe 1 — refused (2026-11-19, 23:08 America/Chicago, Codex CLI 0.155.1)
 
 GPT lock taken and released around it. Prompt: *"Reply with one line: the exact model id you are running
 as. Do not read any files."*
@@ -43,7 +43,38 @@ No other id was tried (ticket, *Open questions*). Local evidence, no GPT call:
 
 So the id may be right and the CLI too old to be offered it, or the id may be wrong. Nothing was edited.
 
+## Probe 2 — answered (2026-11-19, 23:41 America/Chicago, Codex CLI 0.171.0)
+
+After the owner updated the CLI (decision 1): the same command and prompt, under the GPT lock. Exit 0,
+`usage in=24318 (cached 0) out=56`. GPT's reply, verbatim:
+
+> I’m Codex, based on GPT-6. My exact model ID isn’t available to me.
+
+The model cannot name itself, so the record of which model ran is Codex's own, read from local files:
+
+- **The model that ran:** the session log for the call
+  (`~/.codex/sessions/2026/11/19/rollout-2026-11-19T23-41-10-01a1f779-….jsonl`, cwd this worktree)
+  records `"model":"gpt-6.2-astra"` on all seven of its turn records, and no error.
+- **The models on offer:** the list the 0.171.0 CLI fetched during the call (05:41 UTC) now has
+  `gpt-6.2-astra` — *"GPT-6.2-Astra"* — and `gpt-6.2-sol`, beside the older ones. So the CLI's version was
+  why probe 1 was refused.
+
+## Build
+
+The plan, as written: `gpt-6-astra` → `gpt-6.2-astra` at every site listed, one line each. The two wording
+edits: `CLAUDE.md` § Calling GPT now reads *"Both routes run **GPT 6.2 Astra (`gpt-6.2-astra`)** at effort
+high (owner, 2026-11-20)"*, and the design-reviewer brief *"Every role runs on GPT 6.2 Astra (owner,
+2026-09; 6.2 since 2026-11-20; …)"*. `git grep -n "gpt-6-astra"` outside `reviews/` and `REVIEW-LOG.md`
+now finds nothing.
+
+**Outside the repo:** AO's project config still runs the native reviewer on `gpt-6-astra`
+(`ao project get music-garden`: reviewer `codex`, model `gpt-6-astra`, effort high). `CLAUDE.md` § AO's
+*Model settings* line now names `gpt-6.2-astra`; changing the config is the orchestrator's (`CLAUDE.md`
+§ Calling GPT), so I asked it to. Until it does, that line is ahead of the config. The reviewer is out
+of service either way (`pr-review.md`).
+
 ## Owner's decisions
 
 1. *`gpt-6.2-astra` is refused for this ChatGPT account through the Codex CLI (0.155.1). What next?* —
-   **open**.
+   **A: update the CLI and probe again**: the owner, through the orchestrator, 2026-11-19. The owner
+   updated it to 0.171.0 (npm global).

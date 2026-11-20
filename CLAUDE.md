@@ -66,7 +66,7 @@ When the owner says any of these, route to GPT and do **not** do the work yourse
 
 ## Calling GPT
 
-Both routes run **Astra (`gpt-6-astra`)** at effort high:
+Both routes run **GPT 6.2 Astra (`gpt-6.2-astra`)** at effort high (owner, 2026-11-20):
 
 - **`.claude/gpt/ask.sh`**, which you call **yourself** — never through a Claude subagent (AO workers may
   not use them, and a subagent spends Claude credits relaying). Claude credits are the scarcer budget
@@ -83,8 +83,8 @@ Both routes run **Astra (`gpt-6-astra`)** at effort high:
 for, how to report back. Where their invocation disagrees with this section, this wins.
 
 ```bash
-.claude/gpt/ask.sh fresh read-only       gpt-6-astra .claude/gpt/prompt.txt   # design, design review, PR review
-.claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt   # L's test pass (may write tests/)
+.claude/gpt/ask.sh fresh read-only       gpt-6.2-astra .claude/gpt/prompt.txt   # design, design review, PR review
+.claude/gpt/ask.sh fresh workspace-write gpt-6.2-astra .claude/gpt/prompt.txt   # L's test pass (may write tests/)
 ```
 
 - Run it in the background; a call takes minutes.
@@ -102,7 +102,7 @@ for, how to report back. Where their invocation disagrees with this section, thi
 worktree is made from, first in `git worktree list` — stays on `main` and is never edited.
 
 **Model settings** (AO project config, 2026-11-10): workers `claude-opus-5-5`, orchestrator
-`claude-sonnet-5-5`, reviewer `codex` on `gpt-6-astra` — all at effort high.
+`claude-sonnet-5-5`, reviewer `codex` on `gpt-6.2-astra` — all at effort high.
 
 **Linear** (team *Tune Garden*): **Backlog → Todo → In Progress → Needs Input / In Review → Done.** AO has
 no Linear support: every Linear read and state change is the agents' own, through Linear's MCP server.

@@ -90,7 +90,7 @@ a result"*, came on 2026-11-08 with the limit spent, and on 2026-11-09 with it a
 shows the limit (it is a GPT job: take the GPT lock):
 
 ```bash
-codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply with one word: ok"
+codex exec --skip-git-repo-check --sandbox read-only -m gpt-6.2-astra "Reply with one word: ok"
 ```
 
 It answers *"You've hit your usage limit … try again at <time>"* when it is spent. At the limit, either

@@ -39,7 +39,7 @@ and to **run** the tests it writes and report actual results, not predicted ones
 **3. Run:**
 
 ```bash
-.claude/gpt/ask.sh fresh workspace-write gpt-6-astra .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh workspace-write gpt-6.2-astra .claude/gpt/prompt.txt
 ```
 
 `fresh`, like every GPT call (owner, 2026-11-09 and 2026-11-10): resuming a thread replays its whole

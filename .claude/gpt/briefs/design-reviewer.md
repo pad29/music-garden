@@ -39,11 +39,11 @@ constraint, stable slug IDs, generated files, score-validated melodies).
 **3. Run:**
 
 ```bash
-.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh read-only gpt-6.2-astra .claude/gpt/prompt.txt
 ```
 
-Every role runs on Astra (owner, 2026-09; see `CLAUDE.md` § Calling GPT), and every call is
-`fresh` — a second round of the same review too: its prompt quotes the first round's findings and
+Every role runs on GPT 6.2 Astra (owner, 2026-09; 6.2 since 2026-11-20; see `CLAUDE.md` § Calling
+GPT), and every call is `fresh` — a second round of the same review too: its prompt quotes the first round's findings and
 gives the delta. Take the GPT lock first (`CLAUDE.md` § Cost). If the ChatGPT limit runs out —
 `ask.sh` exits 69, naming the reset time when codex gave one — say so rather than silently switching models.
 

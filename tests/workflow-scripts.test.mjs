@@ -404,7 +404,7 @@ exit "$(cat "$s/$kind.exit" 2>/dev/null || echo 0)"
     copyFileSync(askScript, join(gpt, "ask.sh"));
     writeFileSync(join(gpt, "prompt.txt"), "the prompt\n");
     if (threadId) writeFileSync(join(gpt, ".thread-id"), threadId);
-    const res = spawnSync(bash, runScript(join(gpt, "ask.sh"), mode, "read-only", "gpt-6-astra", posix(join(gpt, "prompt.txt"))),
+    const res = spawnSync(bash, runScript(join(gpt, "ask.sh"), mode, "read-only", "gpt-6.2-astra", posix(join(gpt, "prompt.txt"))),
       { env: sb.env, encoding: "utf8" });
     const callsFile = join(sb.state, "codex.calls"), idFile = join(gpt, ".thread-id");
     return {
@@ -572,7 +572,7 @@ test("ask.sh: with no codex on PATH it exits 127 and says so", { skip }, () => {
     const bare = "PATH=/usr/bin:/bin; ";
     const which = spawnSync(bash, ["-c", bare + "command -v codex || echo none"], { env: sb.env, encoding: "utf8" }).stdout.trim();
     assert.strictEqual(which, "none", "no codex on the bare PATH");
-    const r = spawnSync(bash, ["-c", bare + 'exec "$BASH" "$@"', "_", join(gpt, "ask.sh"), "fresh", "read-only", "gpt-6-astra",
+    const r = spawnSync(bash, ["-c", bare + 'exec "$BASH" "$@"', "_", join(gpt, "ask.sh"), "fresh", "read-only", "gpt-6.2-astra",
       posix(join(gpt, "prompt.txt"))], { env: sb.env, encoding: "utf8" });
     assert.strictEqual(r.status, 127, r.stderr);
     assert.strictEqual(r.stdout, "");

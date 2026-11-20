@@ -162,7 +162,7 @@ one when the owner answers after more than an hour. **When the answer comes:** `
    has reviewed an earlier head, only the delta since that head, with that verdict and its findings
    quoted — plus the ticket and the reviews file by path. Ask for the changes it requires, each with a
    severity, **the tests it finds missing**, each as a case to add, or an approval that names the head
-   SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt`, then
+   SHA it reviewed. Run `.claude/gpt/ask.sh fresh read-only gpt-6.2-astra .claude/gpt/prompt.txt`, then
    release the lock, whatever the outcome. If the call fails: `CLAUDE.md` § When something external
    breaks. Exit 69 is the limit, with the reset time on stderr when codex gave one; anything else is a
    fault, its reason on stderr (`pr-review.md`, *The limit*).

@@ -16,7 +16,7 @@ ticket, paste the ticket itself, verbatim.
 **2. Run:**
 
 ```bash
-.claude/gpt/ask.sh fresh read-only gpt-6-astra .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh read-only gpt-6.2-astra .claude/gpt/prompt.txt
 ```
 
 `fresh` — every GPT call is (`CLAUDE.md` § Calling GPT), and authored work should not be coloured by
