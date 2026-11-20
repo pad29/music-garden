@@ -239,26 +239,67 @@ machine yourself, after reading the whole diff. Pushing a fork's branch into thi
 Cloudflare preview would run that branch's `cloudflare-build.sh` on Cloudflare: read that file in the
 diff first if you ever do it.
 
-## After publishing — this session verifies (not yet run)
+## The re-scan before the click (2026-11-20)
 
-1. `gh api repos/pad29/music-garden/branches/main/protection`: `required_status_checks.contexts` is
-   exactly `["Syntax check and tests"]` with `strict: false`; `required_pull_request_reviews` present
-   with `required_approving_review_count: 0`; `enforce_admins.enabled: true`;
-   `allow_force_pushes.enabled: false`; `allow_deletions.enabled: false`.
-2. `gh api repos/pad29/music-garden` → `visibility: "public"`, the description, `homepage` and topics;
-   `security_and_analysis.secret_scanning` and `…secret_scanning_push_protection` `enabled`;
-   `gh api repos/pad29/music-garden/private-vulnerability-reporting` → `enabled: true`;
-   `…/actions/permissions/fork-pr-contributor-approval` → `first_time_contributors` (or stricter);
-   `…/actions/permissions/workflow` still `read`.
-3. Anonymous access: the repository page and `SECURITY.md`'s advisory link answer without signing in.
-4. **An agent session can still push its own branch and open a PR:** this session pushes the docs fix
-   below to this PR's branch, and the PR's *Checks* run. **The owner can still merge one:** this PR,
-   when the owner merges it, is the proof — it needs `Syntax check and tests` green and no approval.
-   This session never pushes `main` to "test" the protection: if the rule were wrong, that push would
-   deploy.
-5. **The docs:** `CLAUDE.md:137` in the present tense ("The repository is public: anyone can open…"),
-   the branch-protection settings recorded where the deploy rules live, and `README.md` § Current status
-   reconciled — in this PR.
+The orchestrator said the owner was about to publish, had reviewed the synced issues and PRs (nothing
+private) and re-tested `conduct@tunegarden.game` (it works). Fetched and compared `git ls-remote origin`
+with the first scan's listing: **94 refs, 91 before**. The three new ones were this PR's own —
+`refs/heads/ao/publish-checklist/root` and `refs/pull/162/head` at `f69301d`, and GitHub's test merge
+`refs/pull/162/merge` at `80e1003` (fetched by SHA). `main` had not moved (`a56e55d`); no other ref
+changed. The four new commits (`05fdd5d`, `12fa98b`, `f69301d`, `80e1003`) add this record and nothing
+else.
+
+- **Secret scan, all 94 refs, the patterns above:** 360 commits, 1,932 blobs (1,418 text, 514 binary),
+  644 paths. No strict hit, no risky file name. The only hits: the fake-ARN fixture, and this record
+  quoting its own pattern table and that fixture.
+- **Paths and addresses in the new commits:** only what this record reports (AO worktree paths, the
+  owner's accepted commit address, placeholders, `conduct@`, FreePats' credit). Identities as before.
+- **Issues and PRs again** (116 issues, 46 PRs, 570 texts): no credential; the same findings, plus the
+  TUN-103 hand-offs naming `conduct@`.
+- **`main`:** *Syntax check and tests* and *Cloudflare Pages* green on `a56e55d`; `backend/` still
+  differs from the deployed `a23ac09` only in `backend/README.md`.
+
+**Clean** — reported to the orchestrator before the click. Not committed then, so that no ref moved after
+the scan the owner relied on.
+
+## Owner's review — publishing (2026-11-20)
+
+The owner made the repository public and went through every step of section C, telling this session
+afterwards.
+
+## After publishing — this session verified (2026-11-20)
+
+1. **`main`'s protection** (`gh api …/branches/main/protection`): `required_status_checks.contexts`
+   exactly `["Syntax check and tests"]`, bound to GitHub Actions (`app_id` 15368), `strict: false`;
+   `required_pull_request_reviews` present with `required_approving_review_count: 0` (no code-owner,
+   stale-dismissal or last-push rules); `enforce_admins: true`; `allow_force_pushes: false`;
+   `allow_deletions: false`; linear history, conversation resolution, signatures and lock all off. No
+   rulesets (`…/rulesets` is empty, `…/rules/branches/main` is `[]`). **As the checklist asked.**
+2. **The repository:** `visibility: "public"`; `secret_scanning` and `secret_scanning_push_protection`
+   `enabled`; private vulnerability reporting `enabled: true`; fork PR approval
+   `first_time_contributors`; workflow token still `read`, and workflows still cannot approve PRs.
+   GitHub detects the licence as AGPL-3.0. **About:** description *"A game that teaches how music works
+   without notation"*, topics `music-game` and `music-learning` — the owner's own, which win over the
+   checklist's suggestions; website `https://www.tunegarden.game` rather than the checklist's apex. Both
+   hosts answer 200 with the game, and `www` is on the backend's CORS list (`backend/template.yaml`), so
+   a visitor who arrives by that link can sign in too. Nothing to change.
+3. **Signed out** (`curl`, no credentials): the repository page, the API and the raw `SECURITY.md`
+   answer 200. `SECURITY.md`'s advisory link answers 302 — GitHub sends a signed-out visitor to sign in,
+   because a private report needs an account. Expected.
+4. **An agent session can still push its own branch and open a PR:** this commit's push to
+   `ao/publish-checklist/root` and its PR #162 (opened before the click as a draft, marked ready after
+   it). **The owner can still merge one:** this PR, when the owner merges it, is the proof — it needs
+   *Syntax check and tests* green and no approval. This session never pushed `main` to "test" the
+   protection: had the rule been wrong, that push would have deployed.
+5. **The docs**, in this commit:
+   - `CLAUDE.md` § Outside contributions opens in the present tense ("The repository is public (since
+     2026-11-20): …"), and § AO, tickets and branches says GitHub enforces the merge rule, for `pad29`
+     too, so a push to `main` is refused.
+   - `README.md` § Deployment records the protection and the security settings, with why no approval is
+     required and why *Cloudflare Pages* is not a required check; § Current status records the
+     repository as public, with its licences and contributor docs.
+   - `CONTRIBUTING.md` § 8: the owner merges only once the automatic checks have passed.
+   - No doc called the repository private (§ 7 above).
 
 ## Owner's decisions
 
@@ -296,5 +337,6 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
 
 ## Tests
 
-No code changed; the suite was not needed for a reviews file and is run before the PR goes for review.
-**Unverified until the owner publishes:** every item under *After publishing*.
+No code changed. The syntax check and the whole suite pass after the docs edits, on a fresh merge of
+`origin/main`. *After publishing* items 1–3 and 5 are verified above. **Still unverified:** the owner's
+merge under the new protection (item 4), which happens only when the owner merges this PR.

@@ -131,10 +131,13 @@ no Linear support: every Linear read and state change is the agents' own, throug
 **Branches** come from AO (`work-ticket` § 3). A session may commit, push its own branch
 (`git push -u origin HEAD`) and open PRs. **`main` is the deploy branch**: only the owner merges — or a
 session, when the owner says so in that session — and only when the owner says the work is done.
+GitHub enforces it (TUN-103): `main` takes a change only as a merged pull request whose *Syntax check and
+tests* check passed, for every account, `pad29` included — so a push to `main` is refused.
 
 ## Outside contributions
 
-Once the repository is public, anyone can open a pull request or an issue, or comment on one. **Outside**
+The repository is public (since 2026-11-20): anyone can open a pull request or an issue, or comment on
+one. **Outside**
 means anything first written by someone other than the owner or this project's own sessions. Who first
 wrote it decides, and it stays outside when quoted, synced into Linear, forwarded by AO or passed to GPT:
 neither `pad29` (the account every session posts as), a bot that relays it, nor a ticket's move into Todo
