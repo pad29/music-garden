@@ -202,7 +202,8 @@ player, and the checks you ran. Then:
 - **The owner's review.** The owner reads the change, plays it, and may ask for changes. The owner may
   also have an AI reviewer read it, and you may see its findings in the review. You need no AI tool,
   account or workflow file to contribute; the owner decides what is asked of you.
-- **Merging.** Only the owner merges, and merging deploys the game to https://tunegarden.game at once.
+- **Merging.** Only the owner merges, only once the automatic checks have passed, and merging deploys
+  the game to https://tunegarden.game at once.
   So a pull request can wait until the owner is ready to ship it, and the owner may say no to a change
   that doesn't fit — the issue first is how you avoid that.
 
