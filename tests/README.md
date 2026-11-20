@@ -229,7 +229,10 @@ owner to confirm it, on every path, with the old M default gone from every workf
 `reviews/TUN-74-size-label.md`). It also holds the rule for outside pull requests to the owner's flat
 never: `CLAUDE.md` § Outside contributions says no agent runs outside code even after the owner approves
 the diff, and work-ticket § Never, the design-reviewer brief and `AGENTS.md` point at it without
-softening it to "until the owner says so" (TUN-91, `reviews/TUN-91-outside-pull-requests.md`).
+softening it to "until the owner says so". Each of the rule's safeguards — outside decided by who first
+wrote it, the owner's answer as the owner's own words, the reviewer's findings apart from the owner's,
+merged `main` as the project's code, a read-only review whose findings go to the owner — is its own
+phrase, and the mutation test deletes each alone (TUN-91, `reviews/TUN-91-outside-pull-requests.md`).
 
 **The load-order guard (TUN-6).** One split bug gets past the harness: a script that, while loading,
 *probes* a name only a later script declares — `typeof later`, `window.later`, `"later" in window` —
