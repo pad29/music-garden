@@ -837,21 +837,27 @@ test("injection check: a failed or partial fetch, or a page that is not the game
 
 // --- the GPT model: one id, named in CLAUDE.md § Calling GPT, and every command in the docs uses it ---
 
-test("every GPT command in the docs goes through ask.sh, and it and the reviewer setting name the model CLAUDE.md § Calling GPT names", () => {
+test("every GPT command in the docs goes through ask.sh, read-only but for L's test pass, and it and the reviewer setting name the model CLAUDE.md § Calling GPT names", () => {
   const model = readFileSync(join(root, "CLAUDE.md"), "utf8").match(/^Both routes run \*\*[^*\n]*\(`([^`]+)`\)\*\*/m)?.[1];
   assert.ok(model, "CLAUDE.md § Calling GPT names the model as **… (`<id>`)**");
   const files = ["CLAUDE.md", "AGENTS.md", ...readdirSync(join(root, ".claude"), { recursive: true })
     .filter(f => f.endsWith(".md")).map(f => join(".claude", f))];
-  const uses = [], direct = [];
+  const uses = [], wrong = [];
   for (const f of files) readFileSync(join(root, f), "utf8").split("\n").forEach((line, i) => {
-    const at = m => uses.push({ where: `${f}:${i + 1}`, id: m[1] });
-    for (const m of line.matchAll(/ask\.sh +(?:fresh|thread) +(?:read-only|workspace-write) +([^\s`]+) +\S*prompt/g)) at(m);
-    for (const m of line.matchAll(/reviewer `codex` on `([^`]+)`/g)) at(m);
+    const where = `${f}:${i + 1}`;
+    for (const m of line.matchAll(/ask\.sh +(?:fresh|thread) +(read-only|workspace-write) +([^\s`]+) +\S*prompt/g)) {
+      uses.push({ where, id: m[2] });
+      // Only L's test pass may write (tests/): the tester brief, and CLAUDE.md's line for it. Anything
+      // else, the limit probe included, is read-only.
+      const testPass = /[\\/]briefs[\\/]tester\.md$/.test(f) || (f === "CLAUDE.md" && /test pass/.test(line));
+      if (m[1] === "workspace-write" && !testPass) wrong.push(`${where} is workspace-write`);
+    }
+    for (const m of line.matchAll(/reviewer `codex` on `([^`]+)`/g)) uses.push({ where, id: m[1] });
     // Every GPT call goes through ask.sh (CLAUDE.md § Calling GPT), the limit probe included: a doc
     // that runs codex itself, on any model, is wrong.
-    if (/\bcodex exec\b.*?(?:-m|--model) /.test(line)) direct.push(`${f}:${i + 1} runs codex directly`);
+    if (/\bcodex exec\b.*?(?:-m|--model) /.test(line)) wrong.push(`${where} runs codex directly`);
   });
-  assert.deepStrictEqual(direct, []);
+  assert.deepStrictEqual(wrong, []);
   // CLAUDE.md's two commands and the reviewer setting, the three briefs, gpt-design, work-ticket § 8 and
   // pr-review.md's limit probe: a pattern that stopped matching would otherwise pass with nothing checked.
   assert.ok(uses.length >= 9, "found only: " + uses.map(u => u.where).join(", "));

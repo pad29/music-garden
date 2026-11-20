@@ -150,6 +150,39 @@ The AO setting and date, exit‑69 guidance, and single-call refusal test resolv
    correct model id and all, the test fails with `.claude\skills\work-ticket\pr-review.md:94 runs codex
    directly`. With the file restored, it passes.
 
+## PR review — round 3 (gpt-6.2-astra, `ask.sh`) — head `9ea6cf7`, the delta from `7eb2912`
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested** on `9ea6cf73573591fae407cc2f30e9777f5c18f3d9`.
+
+- **Medium — `tests/workflow-scripts.test.mjs:848`.** The guard catches the round‑1 direct command, but the limit probe still counts toward the required nine if changed to `fresh workspace-write`. That gives a one-word diagnostic write access. Check the probe itself for `ask.sh fresh read-only` and the configured model.
+- **Low — `reviews/README.md:30–31` and `.claude/skills/work-ticket/handoff.md:80`.** Bare `<model id>` parses as an HTML tag and disappears in rendered Markdown. Use inline code for the placeholders outside fenced examples.
+
+**Missing test:** Change only `read-only` to `workspace-write` at `pr-review.md:94`. The static check should fail and identify that line.
+
+The worker reports 1030/1030 passing. I reviewed the delta without rerunning the suite.
+
+</details>
+
+**My answers**
+
+1. **Medium, the probe could become `workspace-write`.** *Agreed, and made general.* Every `ask.sh`
+   command in the docs must now be `read-only`, except L's test pass: the tester brief, and
+   `CLAUDE.md`'s line commented *"L's test pass"*. A failure names the line. The test is renamed to
+   *"every GPT command in the docs goes through ask.sh, read-only but for L's test pass, and it and the
+   reviewer setting name the model CLAUDE.md § Calling GPT names"*.
+2. **Low, a bare `<model id>` disappears when rendered.** *Agreed for `reviews/README.md:30–31`*, which
+   now use inline code. *Not for `handoff.md:80`*, which is inside the fenced hand-off template, like
+   README's lines 46, 63 and 66. The finding itself exempts fenced examples, and other placeholders in
+   that template are bare too. Unchanged.
+3. **Missing test, the mutation.** *Run.* With only `read-only` changed to `workspace-write` on
+   `pr-review.md:94`, the test fails with `.claude\skills\work-ticket\pr-review.md:94 is workspace-write`.
+   Round 2's mutation, a direct `codex exec`, still fails with `… pr-review.md:94 runs codex directly`.
+   With the file restored, the test passes.
+
+This was the third round, so the fixes go unreviewed: no fourth review without the owner (decision 3).
+
 ## Owner's decisions
 
 1. *`gpt-6.2-astra` is refused for this ChatGPT account through the Codex CLI (0.155.1). What next?* —
@@ -157,3 +190,5 @@ The AO setting and date, exit‑69 guidance, and single-call refusal test resolv
    updated it to 0.171.0 (npm global).
 2. *Switch AO's native reviewer to `gpt-6.2-astra` too?* — **yes**: the owner, through the orchestrator,
    2026-11-19. The orchestrator changed the config.
+3. *GPT's review budget of three rounds is spent, and the third round's fixes are unreviewed. Accept them
+   as they are, or allow a fourth round?* — **open**.

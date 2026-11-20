@@ -27,8 +27,8 @@ The one long part is GPT's design (L) or GPT's design review (M), kept **verbati
 
 **Sections by size** (`CLAUDE.md` § The loop, by size) — the example below is an L ticket:
 
-- **L:** *Design (<model id>)*, *Critique (Claude)*, *Test pass (<model id>)*.
-- **M:** *Plan (Claude)*, *Design review (<model id>)* — GPT's findings verbatim — and *My answers*, one per
+- **L:** *Design (`<model id>`)*, *Critique (Claude)*, *Test pass (`<model id>`)*.
+- **M:** *Plan (Claude)*, *Design review (`<model id>`)* — GPT's findings verbatim — and *My answers*, one per
   finding: agreed or disagreed, and what was done.
 - **S:** *Plan (Claude)* — a few lines.
 - **Every size:** *Owner's decisions* (a `needs-owner` ticket's first checkpoint included), *PR review*
