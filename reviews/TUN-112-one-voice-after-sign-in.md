@@ -111,3 +111,63 @@ its own fails tests (current-clip guard: 6, `NotAllowedError` check: 1, single n
 2, `renderStage` stop when off: 1, card timer `narrateSeq`: 1). Syntax OK; suite 1043/1043. Edge probe
 re-run on the new code: guest-then-sign-in and landing sign-in one `play()` each, no browser voice;
 off-while-loading silent.
+
+## PR review — round 2 (gpt-6.2-astra, through `ask.sh`), on fd5ffb1
+
+<details><summary>GPT's review, verbatim</summary>
+
+**CHANGES REQUESTED** on `fd5ffb17baace41a8f82d37b88da421143ea62ca`.
+
+### Round 1
+
+1. **Autoplay refusal — resolved for `NotAllowedError`.** A rejected `play()` with that name produces zero browser utterances. Other failures still violate the missing-clip rule, as described below.
+2. **Instrument card and loaded story — resolved.** The successful pull has one narration point. An open card keeps its turn, a cloud preference of Read aloud off stops it, and a card closed just before the pull completes cannot restart the loaded story. Round-1 tests 1, 2, 3, and 5 are present.
+3. **Famous-tune credit — scope call accepted.** The cloud-load render clears the famous-tune timers. The independent toggle bug and both variants of test 4 are recorded in the backlog ticket. [TUN-121](https://linear.app/pad29/issue/TUN-121/keep-a-famous-tunes-spoken-credit-quiet-once-read-aloud-is-turned-off)
+
+### Required changes and missing tests
+
+**Medium — An existing Polly clip can still restart in the browser voice.** The audio element sends every `error` event to `fallback()`, and the promise handler sends every rejection except `NotAllowedError` there too. A concrete case is a Polly clip that starts playing and then encounters a network or decoding error. The clip is still current, so `speakStory(text)` starts the same story from the beginning. Both errors can occur *after* the browser has established that the resource is usable. Gate both paths on whether the narration has a baked clip, preserving the quest fallback. The README and DESIGN currently promise this behavior. [js/play-scope.js:144](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/play-scope.js:144) · [HTML Standard, media errors](https://html.spec.whatwg.org/multipage/media.html#error-codes)
+
+**Missing test:** Start a known baked story, resolve `play()`, then emit `error` with `MEDIA_ERR_NETWORK` or `MEDIA_ERR_DECODE`. Assert zero browser utterances. Separately reject a still-current baked clip with `AbortError` and assert silence. Keep the existing unbaked-text case expecting exactly one utterance.
+
+**Medium — A successful pull can start the story while the buddy picker is still visible.** The landing form leaves Back enabled during sign-in. On a slow pull, the player can choose Back → Start playing and reach the picker. If the cloud returns valid First Garden progress without a companion, `onSignedIn()` enables narration, `renderStage()` requests the story, and `syncCompanion()` returns with the picker still open. Choosing a buddy then calls `enterPlay()` and requests the same story again. Even on the direct landing path, `hideLanding()` runs after the narration request. Make the transition into the visible level own the first read whenever either screen is up. [js/cloud.js:111](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/cloud.js:111) · [js/boot.js:110](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/boot.js:110) · [js/level-engine.js:249](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/level-engine.js:249)
+
+**Missing test:** Drive `doLandingSignIn()` with a deferred pull. In the direct case, assert the landing overlay is hidden at the first `play()` call. In the Back → Start playing case, resolve First Garden progress without a companion, assert zero clips and utterances while the picker remains visible, then pick a buddy and assert exactly one request for the cloud level’s story.
+
+I found no regression in quest or Studio restoration, stale-run handling, or TUN-106’s failed-load rules. This was a read-only source review. The suite and Edge results in the review record are the author’s runs.
+
+</details>
+
+**My answers**
+
+1. **Round 1 — GPT: findings 1 and 2 resolved; the scope call on finding 3 (TUN-121) accepted.**
+2. **Medium — an existing Polly clip can still restart in the browser voice. Agreed.** Measured first in
+   headless Edge (2026-11-20) what "missing" looks like: a 404 *and* an unreachable file (offline) both
+   give the `error` event with code 4 (`MEDIA_ERR_SRC_NOT_SUPPORTED`) and reject `play()` with
+   `NotSupportedError`; a baked clip gives neither. So the browser voice now stands in on exactly those
+   two signals, while the clip is current — not on a mid-play network or decode error (2, 3), not on
+   `AbortError`, not on `NotAllowedError`. There is no list of baked clips in the client to gate on, and
+   a lookup would be a new mechanism; the error kind carries the same fact. Re-checked in Edge: text
+   with no clip is still read by the browser voice (`NotSupportedError` → speak at 7 ms).
+3. **Medium — the story can start while the buddy picker is up. Disagreed.**
+   - *The direct landing path:* `onSignedIn` resolves and `doLandingSignIn` hides the landing in the same
+     task — no frame is drawn between the narration request and `hideLanding()`, so no player sees or
+     hears the story on the landing screen.
+   - *Back → Start playing during a slow pull:* it needs cloud progress **with no companion**.
+     `loadableProgress` accepts that, but the game never writes it now — sign-up only exists in the
+     World map, after a buddy is picked — so only a legacy save could carry it. Even then the result is
+     the story starting under the picker and once more, in the same voice, when a buddy is picked: not
+     two voices, and `main` behaves the same today (`enterPlay()` narrated there too). Fixing it means
+     reworking the landing sign-in's hand-off to play (who calls `enterPlay`, on which outcome), which is
+     TUN-106 territory and out of this ticket's scope. Recorded here for the owner; no ticket filed for a
+     path no current save reaches.
+
+**Missing tests:** mid-play network and decode errors → silence; the current clip's `AbortError` →
+silence; each missing-clip signal alone → one utterance — **added**. The `doLandingSignIn` cases — not
+added, with finding 3.
+
+**Tests after the round:** `tests/narration.test.mjs` 18 cases; mutation audit — round 1's rule
+restored: 3 fail; the error event taking any code: 2; either missing-clip branch dropped: 1 each; the
+current-clip guard dropped: 1. Syntax OK; suite 1048/1048. Edge probe on the new code: guest-then-sign-in
+and landing sign-in one `play()` each, no browser voice; off-while-loading silent; a missing clip read
+once by the browser voice.

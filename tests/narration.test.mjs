@@ -22,7 +22,9 @@ function voices(w) {
     play() { this.paused = false; return new Promise((res, rej) => { this.res = res; this.rej = rej; }); }
     settle(err) { const { res, rej } = this; this.res = this.rej = null; if (err) rej?.(err); else res?.(); }
     start() { this.settle(); }                                   // the clip loaded and is sounding
-    missing() { this.paused = true; this.settle(named("NotSupportedError")); this.emit("error"); }   // a 404
+    // A 404 or an unreachable file, as Edge reports it (measured 2026-11-20): error code 4, play() → NotSupportedError.
+    missing() { this.paused = true; this.error = { code: 4 }; this.settle(named("NotSupportedError")); this.emit("error"); }
+    breaks(code) { this.paused = true; this.error = { code }; this.emit("error"); }   // a clip that stops mid-play
     pause() { this.paused = true; this.settle(named("AbortError", "The play() request was interrupted by a call to pause()")); }
   }
   w.Audio = FakeAudio;
@@ -63,7 +65,7 @@ test("Read aloud turned off while the clip is still loading: silence, not the br
 test("a replaced clip whose file turns out missing stays silent", async () => {
   const { g, log } = game();
   g.narrate("Old text."); g.narrate("New text.");
-  log.clips[0].emit("error"); await tick();   // the old request's 404 lands after the new narrate
+  log.clips[0].error = { code: 4 }; log.clips[0].emit("error"); await tick();   // the old request's 404 lands after the new narrate
   assert.deepEqual(log.spoken, []);
   assert.equal(g.curClip, log.clips[1], "the current clip is untouched");
 });
@@ -74,6 +76,38 @@ test("a missing clip still falls back to the browser voice, once (quest text has
   log.clips[0].missing(); await tick();
   assert.deepEqual(log.spoken, ["Quest text with no clip."]);
   assert.equal(g.curClip, null);
+});
+
+test("only the missing-clip error event, on its own, is enough to fall back once", async () => {
+  const { g, log } = game();
+  g.narrate("Quest text.");
+  log.clips[0].error = { code: 4 }; log.clips[0].emit("error"); await tick();
+  assert.deepEqual(log.spoken, ["Quest text."]);
+});
+
+test("only play() rejecting with NotSupportedError, on its own, is enough to fall back once", async () => {
+  const { g, log } = game();
+  g.narrate("Quest text.");
+  log.clips[0].settle(named("NotSupportedError")); await tick();
+  assert.deepEqual(log.spoken, ["Quest text."]);
+});
+
+for (const [what, code] of [["a network error", 2], ["a decode error", 3]]) {
+  test(`a baked clip that breaks off mid-play with ${what}: no browser voice restarts the story`, async () => {
+    const { g, log } = game();
+    g.narrate("The garden is asleep.");
+    log.clips[0].start(); await tick();
+    log.clips[0].breaks(code); await tick();
+    assert.deepEqual(log.spoken, []);
+  });
+}
+
+test("the current clip's play() rejected with AbortError: silence", async () => {
+  const { g, log } = game();
+  g.narrate("Story.");
+  log.clips[0].settle(named("AbortError")); await tick();
+  assert.equal(g.curClip, log.clips[0]);
+  assert.deepEqual(log.spoken, []);
 });
 
 test("a clip the browser refuses to play (no gesture yet) exists: no browser voice stands in for it", async () => {
