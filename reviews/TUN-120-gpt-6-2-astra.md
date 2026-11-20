@@ -191,4 +191,7 @@ This was the third round, so the fixes go unreviewed: no fourth review without t
 2. *Switch AO's native reviewer to `gpt-6.2-astra` too?* — **yes**: the owner, through the orchestrator,
    2026-11-19. The orchestrator changed the config.
 3. *GPT's review budget of three rounds is spent, and the third round's fixes are unreviewed. Accept them
-   as they are, or allow a fourth round?* — **open**.
+   as they are, or allow a fourth round?* — **A: accept `2fc0955` as it is, with no fourth round**: the
+   owner, through the orchestrator, 2026-11-20.
+4. *Keep `handoff.md:80`'s `<model id>` bare inside its fenced template (round 3's disputed Low)?* —
+   **A: keep it bare**: the owner, through the orchestrator, 2026-11-20.
