@@ -269,3 +269,179 @@ Answered by the owner through the orchestrator (AO session `music-garden-5`), 20
 holds: § 5 of `CONTRIBUTING.md` says all three kinds may be built after a yes, and § 8 (*What you cannot
 do yourself*) gains one line per kind. So no revised plan and no second GPT design review (`resume.md`,
 *Continuing*, step 2); the PR review sees the result.
+
+## Cold-reader check
+
+**GPT (Astra), `ask.sh fresh workspace-write`, on `9482c63`, 2026-11-19.** Started in an empty scratch
+folder outside every repository, so codex loaded no `AGENTS.md`; told to clone the exact revision from
+this worktree's path, follow only `CONTRIBUTING.md`, and keep out of `AGENTS.md`, `CLAUDE.md`, `.claude/`
+and `reviews/`. Two qualifications: `ask.sh` loaded its Polly-only AWS credentials (the prompt forbade
+using them, and the report shows none used), and it ran on the owner's Windows machine, as the same
+user family, in PowerShell. The first attempt never started — codex refuses a folder that is not a git
+repository and `ask.sh` does not pass `--skip-git-repo-check` — so the scratch folder was made an empty
+repository (still no `AGENTS.md`) and the call made once more.
+
+<details><summary>GPT's cold-reader report, verbatim</summary>
+
+**Verdict: yes for the automated checks, with Windows onboarding gaps.** At the requested revision, the guide’s exact syntax and test commands passed. The optional server command failed in PowerShell. Browser play was not tested, as requested. No project files were changed.
+
+**1. Environment**
+
+| Item | Observed |
+|---|---|
+| OS | Windows NT `10.0.26300.0` |
+| Shell | Windows PowerShell `5.1.26100.9818`, Desktop edition |
+| Node | `v24.15.0` |
+| Git | `git version 2.56.1.windows.1` |
+| Bash | Found at `C:\Git\usr\bin\bash.exe` |
+| Revision | `9482c6370a7af9141f847e95d084fda59e6f7cab` |
+
+The initial clone failed because the source repository belonged to a different Windows account. A command-scoped trust exception for the exact source path allowed cloning. This was a complication of the supplied local setup, not a contributor-guide defect.
+
+**2. Every command run**
+
+Folder abbreviations:
+
+- **S:** `C:\Users\pavel\AppData\Local\Temp\tun92-cold`
+- **R:** `C:\Users\pavel\AppData\Local\Temp\tun92-cold\music-garden`
+
+I used the command tool’s working-directory setting to enter **R**, rather than issuing a separate `cd` command. Independent inspection commands were sometimes batched; the server, syntax check and test commands were launched in the guide’s order.
+
+| # | Command | Folder | Exit | Output excerpt or result |
+|---|---|---|---|---|
+| 1 | `git clone C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42 music-garden` | S | 1 | `fatal: detected dubious ownership in repository...` |
+| 2 | `git -c safe.directory=C:/Users/pavel/ao/projects/music-garden/.git/worktrees/music-garden-42 clone C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-42 music-garden` | S | 0 | `done.` |
+| 3 | `git checkout 9482c6370a7af9141f847e95d084fda59e6f7cab` | R | 0 | `HEAD is now at 9482c63 Tell a newcomer how to contribute, how to behave, and how to report a hole` |
+| 4 | `Get-Content CONTRIBUTING.md` | R | 0 | `# Contributing to Tune Garden` — non-ASCII punctuation displayed incorrectly. |
+| 5 | `[System.Environment]::OSVersion.VersionString; $PSVersionTable \| Format-List PSVersion, PSEdition; Get-Command bash -ErrorAction SilentlyContinue \| Format-List Source` | R | 0 | `Microsoft Windows NT 10.0.26300.0`; Bash path printed; shell-version fields did not. |
+| 6 | `node --version` | R | 0 | `v24.15.0` |
+| 7 | `git --version` | R | 0 | `git version 2.56.1.windows.1` |
+| 8 | `npx http-server -p 8377 -c-1 .` | R | 1 | `npx.ps1 cannot be loaded because running scripts is disabled on this system.` |
+| 9 | `Get-Content -Encoding UTF8 README.md` | R | 0 | `# 🌱 Tune Garden` |
+| 10 | `node tools/check-syntax.mjs` | R | 0 | `syntax OK (29 scripts: ...; vendored: vendor/cognito/amazon-cognito-identity.min.js)` |
+| 11 | `node --test "tests/*.test.mjs"` | R | 0 | `ℹ tests 1024` — complete summary below. |
+| 12 | `Get-Content -Encoding UTF8 CONTRIBUTING.md` | R | 0 | `# Contributing to Tune Garden` — punctuation now readable. |
+| 13 | `Get-Content -Encoding UTF8 SECURITY.md` | R | 0 | `# Security` |
+| 14 | `Get-Content -Encoding UTF8 .github/pull_request_template.md` | R | 0 | `**The issue it answers:** #` |
+| 15 | `rg --files .github/ISSUE_TEMPLATE` | R | 0 | Listed `idea.md`, `config.yml`, and `bug.md`. |
+| 16 | `[Console]::WriteLine(('PowerShell {0}; edition {1}' -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition))` | R | 0 | `PowerShell 5.1.26100.9818; edition Desktop` |
+| 17 | `Get-Content -Encoding UTF8 .github/ISSUE_TEMPLATE/bug.md` | R | 0 | `name: Bug` |
+| 18 | `Get-Content -Encoding UTF8 .github/ISSUE_TEMPLATE/idea.md` | R | 0 | `name: Idea` |
+| 19 | `Get-Content -Encoding UTF8 .github/ISSUE_TEMPLATE/config.yml` | R | 0 | `blank_issues_enabled: false` |
+| 20 | `Get-Content -Encoding UTF8 MAKING-QUESTS.md` | R | 0 | `# Making a quest` |
+| 21 | `Get-Content -Encoding UTF8 tests/README.md` | R | 0 | Explained the built-in runner, test harness and browser limitations. |
+| 22 | `rg -n '^##\|^###\|narrat\|owner\|commit\|test\|AGENTS\|CLAUDE\|review' MAKING-QUESTS.md` | R | 0 | `12:**Before you start, open an issue.**` |
+| 23 | `Get-Content -Encoding UTF8 PACKAGES-DETAILED.md -TotalCount 150` | R | 0 | `# Tune Garden — Detailed Package Specs (all shipped expansion packages)` |
+| 24 | `Get-Content -Encoding UTF8 tests/README.md -TotalCount 135` | R | 0 | Described Linux/Windows checks and fake dependencies for shell tests. |
+| 25 | `Get-Content -Encoding UTF8 CREDITS.md -TotalCount 85` | R | 0 | `# Credits and licences` |
+| 26 | `Get-Content -Encoding UTF8 MAKING-QUESTS.md \| Select-Object -Skip 833` | R | 0 | `## 7. Checking it` — read through the PR instructions. |
+| 27 | `rg -n '^##\|intro\|garden-basics\|two-new-colors\|sun-and-moon\|ways-home\|river-turns\|pull-of-the-moon\|false-doors' PACKAGES-DETAILED.md` | R | 0 | Included the pointer to `PACKAGES.md §6` for `two-new-colors`. |
+| 28 | `rg -n -A 36 '^## Key conventions' README.md` | R | 0 | Included `After changing narration text`, followed by the generator command. |
+| 29 | `git status --short` | R | 0 | No output: clean working tree. |
+
+Some long document output exceeded the tool’s display limit; the targeted reads above recovered the relevant passages. Test-session polling retrieved output from the same run and did not launch additional commands.
+
+The test run ended with:
+
+```text
+ℹ tests 1024
+ℹ suites 0
+ℹ pass 1024
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 203640.9887
+```
+
+**Skip reasons:** none; no tests skipped. The run did print `symlinks not permitted here; hard link only`, an informational coverage limitation rather than a skipped test.
+
+**3. Where I guessed**
+
+| Guide’s words | Uncertainty | What I did |
+|---|---|---|
+| “On Windows, install Git with **Git Bash**” | Does this mean run the instructions in Git Bash, or merely have Bash available for tests? | Used the supplied PowerShell shell, with Bash on PATH. The Node commands worked; `npx` was blocked by PowerShell’s execution policy. |
+| “`npx http-server -p 8377 -c-1 .`” | What should a Windows contributor do when `npx.ps1` is blocked? | Recorded the failure and continued, as instructed. I did not switch shells, substitute `npx.cmd`, or change execution policy. |
+| “and open http://localhost:8377” followed by “From the `music-garden` folder, run…” | If the server starts, should I stop it or open another terminal for tests? | This did not become an actual blocker because the server failed. A successful run would require an unstated terminal-management step. |
+| “**Play it.** Open `index.html` directly…” | What constitutes a sufficient initial play check? No particular level, action sequence or expected result is specified. | I would open `index.html`, add `?dev`, start playing, choose a friend, place seeds and listen to playback. The guide explains how to launch and find shortcuts, but does not define a baseline smoke test. No browser was opened. |
+| “**A bug fix, a test, or a docs correction:** open a pull request straight away” | How should I fill the PR template’s mandatory-looking “The issue it answers: #” without an issue? | For a hypothetical level bug fix, I would write “No issue; bug fix permitted by CONTRIBUTING §4.” The template does not say that. |
+| “`AGENTS.md` is written for the agents too” and “if this list and that one ever differ, that one wins” | Can I rely on the contributor guide alone, or must I check another authority? | Relied on the contributor guide and did not open the excluded file. |
+
+The initial PowerShell encoding problem was a reading-tool issue, not evidence of damaged documentation. Explicit UTF-8 decoding resolved it.
+
+**4. Where I got stuck or would need a person**
+
+- **Local cloning:** initially blocked by ownership. The narrowly scoped Git exception resolved it without changing global configuration.
+- **Optional HTTP serving:** blocked by PowerShell’s execution policy. The guide supplied no remedy, but its direct-file alternative meant this did not block the automated checks.
+- **Browser verification:** prohibited by this exercise, not blocked by the guide. I cannot certify appearance, interaction or audio.
+- **New quest:** the owner’s approval is explicitly required before building. That is a clear, intentional dependency. The linked quest guide otherwise gives concrete extraction, validation, installation, playtest and PR instructions.
+- **Level fix involving narration:** I would need the owner to generate clips. The README’s conflicting instruction makes the division of work less reliable.
+- **Fixing an introductory or otherwise undocumented level:** I would need to locate or ask for its authoritative design specification; the advertised reference does not cover every shipped level.
+- **No person was needed to obtain the passing automated test run.**
+
+**5. Findings in the remaining guide, policy and templates**
+
+Severity follows your definitions. These are documentation findings; I did not investigate implementation correctness.
+
+| Severity | Location and quotation | Finding |
+|---|---|---|
+| **High** | CONTRIBUTING §6: “Write the text; the owner records it before merging.” README, Key conventions: “**After changing narration text**, run `node tools/gen-voice.mjs`” | **Conflicting narration responsibility.** A contributor following the linked README would attempt an owner-account operation that CONTRIBUTING delegates to the owner. Particularly relevant to a level-text fix. I followed CONTRIBUTING and your restriction; I did not run the generator. |
+| **Medium** | CONTRIBUTING §§2–3: “the next section says them in plain words”; “if this list and that one ever differ, that one wins” | **The self-contained rules have an external override.** A newcomer cannot determine whether the restatement is sufficient without consulting the agent document or asking someone. The passing documentation tests offer reassurance, but do not remove the wording conflict. |
+| **Medium** | CONTRIBUTING §2: “`PACKAGES-DETAILED.md` — every shipped level”; linked document: “all shipped expansion packages” and “The `two-new-colors` … level list lives in PACKAGES.md §6” | **The level-fix reading route overpromises coverage.** The linked document explicitly sends one package elsewhere and is scoped to expansion packages. Its headings also omit the README’s shipped `two-kinds-of-walking` package. The guide gives no corresponding route for introductory levels. |
+| **Low** | `PACKAGES-DETAILED.md`: “Last updated: 2026-07-05 — all 14 expansion packages…”; later: “18 EXPANSION PACKAGES BUILT … as of 2026-07-13” | **The recommended reference has stale status text.** A newcomer must distinguish historical notes from current coverage. This matters when using the document to judge whether a level’s behavior is intentional. |
+| **Medium** | CONTRIBUTING §4: “An existing issue you'd like to take: say so in a comment first”; also “wait for the owner's yes before you build it” | **Claiming existing work has an unclear approval boundary.** For an existing quest/feature issue, does commenting suffice, or must the owner explicitly approve this contributor taking it? I would ask before beginning substantial work. |
+| **Medium** | CONTRIBUTING §7: “`git rebase --signoff main` fixes every commit on your branch” | **The bulk sign-off repair lacks prerequisites and recovery guidance.** It does not establish what local `main` should represent or explain what to do with conflicts or already-published commits. I would not treat this as an unconditional repair recipe. No history-changing command was run. |
+| **Low** | PR template: “**The issue it answers:** #”; CONTRIBUTING §4: “An issue first is welcome but not needed.” | **The template lacks the documented no-issue option.** A legitimate bug-fix PR needs an invented placeholder or explanation. |
+| **Low** | PR template: “Played it in a browser”; CONTRIBUTING §4 permits “a docs correction” | **Check applicability is unclear for non-runtime changes.** The template explains conditional direct-file testing, but not whether a docs-only PR may mark browser play as not applicable. |
+| **Low** | Bug template: “the address you were on (tunegarden.game, a local copy, a file)” | **Local reproduction lacks a revision field.** The template asks for browser/device and location, but not the commit or branch of a local copy. Reports from different revisions could look identical. |
+| **Medium** | SECURITY: “replies are on a best-effort basis”; “the advisory is published after that” | **No unanswered-report procedure.** The private reporting route and email fallback are clear, but the policy does not say when or how to follow up if there is no response, or how disclosure is coordinated in that case. This is a missing procedure, not a failed reporting attempt. |
+| **Low** | Linked `tests/README.md`, historical A7/A8 record: “Outstanding source regression” and “is intentionally red” | **Historical failure language can be mistaken for current expectations.** The passage is under a migration record, but uses present tense. The actual requested revision passed all tests. |
+
+The **Idea template was actionable** for a new quest: it asks for the musical idea, player experience, map placement and willingness to build, and explicitly requires approval. I found no additional contradiction in it.
+
+The quest guide also resolves several potential questions well: what file to commit, what temporary JSON not to commit, whether new quest-specific tests are necessary, how to unlock and find the quest, and why quest text needs no recorded narration clips.
+
+**6. Final assessment**
+
+A newcomer with the documented prerequisites can reach **a passing automated test run** using the guide’s exact check commands: this run proved that on Windows with Node 24 and Bash available.
+
+The guide does **not** provide a fully literal, frictionless Windows walkthrough: it leaves the shell choice and server-to-tests transition implicit, and its linked contribution guidance contains a significant narration conflict and incomplete level-reference routing. Browser behavior remains unverified.
+
+No fixes, commits or pushes were made. The checkout is clean.
+
+</details>
+
+**My answers** — each fixed in `91d717a` unless marked:
+
+- *Guess: Git Bash, or only bash on the PATH?* § 1 now says to run the commands in Git Bash on Windows;
+  PowerShell may refuse `npx`.
+- *Guess: the server and the tests in one terminal?* § 1: the server runs until Ctrl+C — use a second
+  terminal.
+- *Guess: what counts as a play check?* § 1 names one, in the game's own words: **▶ Start playing**,
+  plant a few seeds as the first level says, **▶ Play**, hear them.
+- *Guess: the PR template's issue line for a bug fix with no issue.* It now offers "none — a bug fix".
+- *Guess: `AGENTS.md` "wins".* Agreed in part: the authority stays (the test keeps the two in step), and
+  § 2 now says § 3 is all a contributor needs to read of `AGENTS.md`.
+- **High — narration: README's convention said to run `gen-voice.mjs`.** Agreed: README § Key
+  conventions now says it needs the owner's AWS account and a contributor leaves the clips to the owner.
+- **Medium — "every shipped level" overpromises.** Agreed: the route now names `js/packages.js` and both
+  spec homes, `PACKAGES-DETAILED.md` and `PACKAGES.md` § 6 (the intro, `two-new-colors`,
+  `two-kinds-of-walking`).
+- **Low — `PACKAGES-DETAILED.md`'s stale status lines** ("all 14", "18 … as of 2026-07-13"). Real, and out
+  of scope: noted for the owner, not fixed here.
+- **Medium — taking an existing issue: does a comment suffice?** Agreed: for anything larger than a bug
+  fix, wait for the owner to say it's yours.
+- **Medium — `git rebase --signoff main`.** Agreed: now `git rebase --signoff HEAD~3` (your count), and
+  `git push --force-with-lease` to your own branch if the commits were already pushed.
+- **Low — docs-only PRs and the browser box.** Agreed: "not needed for a docs-only change".
+- **Low — the bug form has no revision field.** Agreed: a local copy gives `git rev-parse --short HEAD`.
+- **Medium — no follow-up procedure in `SECURITY.md`.** Agreed: follow up after two weeks, in the report
+  or by email; keep it private until fixed or until a date is agreed. No fixed disclosure deadline — that
+  would be the owner's policy to set.
+- **Low — `tests/README.md`'s A7/A8 record reads as present tense.** Out of scope: a historical section,
+  not a contributor's path. Not changed.
+
+**My literal run, on `91d717a`** — verification, not a cold reading: a fresh `git clone` of this worktree,
+Git Bash, Node v24.15.0; `npx --yes http-server -p 8377 -c-1 .` served the page (HTTP 200, the game's
+title); `node tools/check-syntax.mjs` → `syntax OK (29 scripts …)`; `node --test "tests/*.test.mjs"` →
+1024/1024, 0 skipped; the clone left clean. No browser was opened in either run.

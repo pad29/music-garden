@@ -36,7 +36,7 @@ cd music-garden
 ```
 
 **Play it.** Open `index.html` directly in a browser — the game is built to work from a file — or serve
-the folder (the first run of `npx` downloads a small web server):
+the folder (the first time, `npx` asks before it downloads a small web server — answer `y`):
 
 ```bash
 npx http-server -p 8377 -c-1 .
