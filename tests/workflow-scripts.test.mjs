@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -404,7 +404,7 @@ exit "$(cat "$s/$kind.exit" 2>/dev/null || echo 0)"
     copyFileSync(askScript, join(gpt, "ask.sh"));
     writeFileSync(join(gpt, "prompt.txt"), "the prompt\n");
     if (threadId) writeFileSync(join(gpt, ".thread-id"), threadId);
-    const res = spawnSync(bash, runScript(join(gpt, "ask.sh"), mode, "read-only", "gpt-6-astra", posix(join(gpt, "prompt.txt"))),
+    const res = spawnSync(bash, runScript(join(gpt, "ask.sh"), mode, "read-only", "gpt-6.2-astra", posix(join(gpt, "prompt.txt"))),
       { env: sb.env, encoding: "utf8" });
     const callsFile = join(sb.state, "codex.calls"), idFile = join(gpt, ".thread-id");
     return {
@@ -442,6 +442,22 @@ test("ask.sh: another codex failure exits 1 with codex's exit status and its err
   assert.strictEqual(r.err.split(msg).length - 1, 1, "the message, de-duplicated: " + r.err);
   assert.match(r.err, /^ask\.sh:   stream disconnected before completion: connection reset$/m);
   assert.doesNotMatch(r.err, /usage limit/);
+});
+
+test("ask.sh: a model refusal exits 1 with codex's error, after one call on the model it was given", { skip }, () => {
+  // The refusal codex printed on 2026-11-19 for gpt-6.2-astra on CLI 0.155.1 (TUN-120): ask.sh must not
+  // retry it or fall back to another model.
+  const msg = JSON.stringify({ type: "error", status: 400, error: { type: "invalid_request_error",
+    message: "The 'gpt-6.2-astra' model is not supported when using Codex with a ChatGPT account.", code: "model_not_found" } });
+  const r = ask({ fresh: { exit: 1, events: events(started, { type: "error", message: msg },
+    { type: "turn.failed", error: { message: msg } }) } });
+  assert.strictEqual(r.code, 1, r.err);
+  assert.strictEqual(r.out, "");
+  assert.match(r.err, /codex failed \(exit 1\)/);
+  assert.ok(r.err.includes("model_not_found") && r.err.includes("is not supported"), r.err);
+  assert.doesNotMatch(r.err, /usage limit/);
+  assert.strictEqual(r.calls.length, 1, "no retry: " + r.calls.join(" | "));
+  assert.deepStrictEqual([...r.calls[0].matchAll(/(?:^| )(?:-m|--model) (\S+)/g)].map(m => m[1]), ["gpt-6.2-astra"]);
 });
 
 test("ask.sh: a codex failure with no error event exits 1 and prints the last events", { skip }, () => {
@@ -572,7 +588,7 @@ test("ask.sh: with no codex on PATH it exits 127 and says so", { skip }, () => {
     const bare = "PATH=/usr/bin:/bin; ";
     const which = spawnSync(bash, ["-c", bare + "command -v codex || echo none"], { env: sb.env, encoding: "utf8" }).stdout.trim();
     assert.strictEqual(which, "none", "no codex on the bare PATH");
-    const r = spawnSync(bash, ["-c", bare + 'exec "$BASH" "$@"', "_", join(gpt, "ask.sh"), "fresh", "read-only", "gpt-6-astra",
+    const r = spawnSync(bash, ["-c", bare + 'exec "$BASH" "$@"', "_", join(gpt, "ask.sh"), "fresh", "read-only", "gpt-6.2-astra",
       posix(join(gpt, "prompt.txt"))], { env: sb.env, encoding: "utf8" });
     assert.strictEqual(r.status, 127, r.stderr);
     assert.strictEqual(r.stdout, "");
@@ -817,4 +833,33 @@ test("injection check: a failed or partial fetch, or a page that is not the game
     for (const page of ["<html><body>Error 1016</body></html>", ""])
       assert.deepStrictEqual(verdicts(runCheck(sb, page)), ["NOT THE GAME PAGE", "NOT THE GAME PAGE"], JSON.stringify(page));
   } finally { sb.cleanup(); }
+});
+
+// --- the GPT model: one id, named in CLAUDE.md § Calling GPT, and every command in the docs uses it ---
+
+test("every GPT command in the docs goes through ask.sh, read-only but for L's test pass, and it and the reviewer setting name the model CLAUDE.md § Calling GPT names", () => {
+  const model = readFileSync(join(root, "CLAUDE.md"), "utf8").match(/^Both routes run \*\*[^*\n]*\(`([^`]+)`\)\*\*/m)?.[1];
+  assert.ok(model, "CLAUDE.md § Calling GPT names the model as **… (`<id>`)**");
+  const files = ["CLAUDE.md", "AGENTS.md", ...readdirSync(join(root, ".claude"), { recursive: true })
+    .filter(f => f.endsWith(".md")).map(f => join(".claude", f))];
+  const uses = [], wrong = [];
+  for (const f of files) readFileSync(join(root, f), "utf8").split("\n").forEach((line, i) => {
+    const where = `${f}:${i + 1}`;
+    for (const m of line.matchAll(/ask\.sh +(?:fresh|thread) +(read-only|workspace-write) +([^\s`]+) +\S*prompt/g)) {
+      uses.push({ where, id: m[2] });
+      // Only L's test pass may write (tests/): the tester brief, and CLAUDE.md's line for it. Anything
+      // else, the limit probe included, is read-only.
+      const testPass = /[\\/]briefs[\\/]tester\.md$/.test(f) || (f === "CLAUDE.md" && /test pass/.test(line));
+      if (m[1] === "workspace-write" && !testPass) wrong.push(`${where} is workspace-write`);
+    }
+    for (const m of line.matchAll(/reviewer `codex` on `([^`]+)`/g)) uses.push({ where, id: m[1] });
+    // Every GPT call goes through ask.sh (CLAUDE.md § Calling GPT), the limit probe included: a doc
+    // that runs codex itself, on any model, is wrong.
+    if (/\bcodex exec\b.*?(?:-m|--model) /.test(line)) wrong.push(`${where} runs codex directly`);
+  });
+  assert.deepStrictEqual(wrong, []);
+  // CLAUDE.md's two commands and the reviewer setting, the three briefs, gpt-design, work-ticket § 8 and
+  // pr-review.md's limit probe: a pattern that stopped matching would otherwise pass with nothing checked.
+  assert.ok(uses.length >= 9, "found only: " + uses.map(u => u.where).join(", "));
+  assert.deepStrictEqual(uses.filter(u => u.id !== model).map(u => `${u.where} names ${u.id}`), []);
 });

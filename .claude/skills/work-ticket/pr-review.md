@@ -90,9 +90,10 @@ a result"*, came on 2026-11-08 with the limit spent, and on 2026-11-09 with it a
 shows the limit (it is a GPT job: take the GPT lock):
 
 ```bash
-codex exec --skip-git-repo-check --sandbox read-only -m gpt-6-astra "Reply with one word: ok"
+printf 'Reply with one word: ok\n' > .claude/gpt/prompt.txt
+.claude/gpt/ask.sh fresh read-only gpt-6.2-astra .claude/gpt/prompt.txt
 ```
 
-It answers *"You've hit your usage limit … try again at <time>"* when it is spent. At the limit, either
+When the limit is spent it exits 69, with the reset time when codex gave one (above). At the limit, either
 way: no retry, and never another reviewer agent, model or effort — Needs Input, with the reset time; the
 owner decides whether to wait.
