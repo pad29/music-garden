@@ -35,6 +35,9 @@ The code's notice, as the AGPL asks:
 - **The licence texts** are their authors': `LICENSE` is the Free Software Foundation's, copied verbatim as
   it permits, and the licence and notice files in `vendor/` belong to the projects they came from.
 - **Quotations inside the docs** — AWS's terms, licence excerpts, other projects' words — stay their owners'.
+- **`CODE_OF_CONDUCT.md`** is the [Contributor Covenant](https://www.contributor-covenant.org/), version
+  2.1, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); only its contact address is the
+  project's.
 
 `vendor/README.md` and `vendor/SHA256SUMS` are the project's own; the files they describe are not.
 

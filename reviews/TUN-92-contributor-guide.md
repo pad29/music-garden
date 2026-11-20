@@ -239,9 +239,14 @@ Every finding is agreed, at least in part; the plan is built as amended here.
 
 ## Owner's decisions
 
-1. *Design checkpoint (`needs-owner`)* — **open**.
+Answered by the owner through the orchestrator (AO session `music-garden-5`), 2026-11-19: **1A, 2C, 3A**.
+
+1. *Design checkpoint (`needs-owner`)* — **build it per the plan as amended by** *My answers*.
 2. *The contact for conduct reports, and the fallback for security reports* (security goes through
-   GitHub's private reporting first either way) — **open**.
+   GitHub's private reporting first either way) — **A: `conduct@tunegarden.game`**, a Cloudflare Email
+   Routing forwarding alias; security reports through GitHub's private reporting first, the alias as
+   fallback; the owner's personal address is never published. The alias must exist before the repository
+   goes public (owner's note for TUN-103's checklist).
    **A)** one forwarding alias on the domain, e.g. `conduct@tunegarden.game`, by Cloudflare Email Routing
    (free; the domain is already on Cloudflare). Reports reach your inbox without your address being
    published, but a reply from that inbox shows your address unless you also set up sending as the alias.
@@ -250,12 +255,17 @@ Every finding is agreed, at least in part; the plan is built as amended here.
    address. **I'd pick A** to start, replying from your own address only when you choose to; **B** if
    replies must never show it.
 3. *What a contributor may build after your yes on an issue* (bug fixes, tests and docs go straight to a
-   pull request in every option) — **open**.
+   pull request in every option) — **C: quests, levels and packages**, against my pick of A. The guide says honestly what a contributor can and cannot do alone in each case: the contributor proposes and builds the content; the owner makes the narration clips (AWS) and deploys any backend change; the owner decides what ships.
    **A)** quests only; levels and packages welcome as ideas in issues. · **B)** quests and new levels in
    an existing package; new packages as ideas only. · **C)** all three. **I'd pick A** at first: a quest
    is data, checked by `tools/quest-catalog.mjs` and `MAKING-QUESTS.md`; a level needs a narration clip
    from your AWS account and a place in its package's ramp, and a package also a backend change deployed
    first. Widen it once the first contributions have gone well.
-4. *The guide's voice* — **open**. **A)** plain and warm, second person, short sentences — as
+4. *The guide's voice* — **A: plain and warm.** **A)** plain and warm, second person, short sentences — as
    `MAKING-QUESTS.md` (sample above) · **B)** neutral and formal · **C)** playful, the game's own voice.
    **I'd pick A.**
+
+**Does 2C change the plan materially?** No — it was one of the plan's options, and the plan's structure
+holds: § 5 of `CONTRIBUTING.md` says all three kinds may be built after a yes, and § 8 (*What you cannot
+do yourself*) gains one line per kind. So no revised plan and no second GPT design review (`resume.md`,
+*Continuing*, step 2); the PR review sees the result.
