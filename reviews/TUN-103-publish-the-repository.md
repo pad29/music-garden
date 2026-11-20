@@ -395,8 +395,11 @@ characters and its length). **Game tests:** none, as GPT says; no code changed.
 ### The expanded scan
 
 The patterns above, **plus** these (strict: every blob and every commit message; loose: text blobs and
-commit messages), with every strict pattern now also refusing to start right after a letter or digit
-(`(?<![A-Za-z0-9])`) rather than at a `\b` word boundary, so a token after `_` is found:
+commit messages), with the strict patterns refusing to start right after a letter or digit
+(`(?<![A-Za-z0-9])`) rather than at a `\b` word boundary, so a token after `_` is found. **Not quite
+every one, as run** (GPT's round 3 finding 2): the AWS access key rule kept its `\b` boundaries until
+round 3, and the Google, npm and SendGrid rules lost their trailing `\b` without this saying so. The
+exact expressions finally run are in *PR review — round 3*:
 
 | Kind | Name | Regex |
 |---|---|---|
@@ -464,7 +467,9 @@ The three snapshot rows reproduce, including **five** pre-click strict occurrenc
    matches are 25 in `vendor/cognito/amazon-cognito-identity.min.js` (one version in all of history),
    each read by hand: property names set from calls — `AccessToken:this.signInUserSession.getAccessToken`
    (×20, and two more of that shape), `AccessToken:`, `IdToken:` and `RefreshToken:this.storage.getItem` —
-   library code, no value. Issues and pull requests again: the same 34 Netlify JWTs, nothing else.
+   library code, no value. Issues and pull requests again: the same 34 Netlify JWTs, nothing else —
+   in the texts `gh issue list` / `gh pr list` return, which leave out inline review comments (round
+   3 finding 1, answered there).
 2. **Low — the scans backdated, line 421's count, line 102's wording.** **Agreed:** *Tests* now separates
    each pre-push scan, with the patterns of its time, from the retrospective re-scans — and admits that
    `f69301d` was pushed unscanned (covered by the re-scan before the click). Round 1's closing paragraph
@@ -479,6 +484,105 @@ JWE (`eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..<iv>.<ciphertext>.<tag>`, random 
 message. Round 2's patterns found both at their locations — `token-assignment-unquoted` in `form.txt`,
 `jwe-eg-cognito-refresh-token` in the commit message — printed as six characters and a length; round 1's
 patterns, on the same repository, found **neither**, which confirms the finding.
+
+## PR review — round 3 (`gpt-6.2-astra`, `ask.sh fresh read-only`, on the delta `581e930..0598d0f`)
+
+Verdict: **CHANGES REQUESTED** — one medium, two low, and two missing controls. GPT reproduced the four
+snapshots ("0/30, 5/33, 7/34 and 12/35" strict/loose) and the round 2 controls, and found the
+direct-push and preview wording correct. **This was the third and last review round** (`work-ticket`
+§ 8): its fixes are below and pushed, and there is **no fourth review** — the owner decides.
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Medium — `reviews/TUN-103-publish-the-repository.md:467`.** The 570 exported texts reproduce the 34 Netlify JWTs, but the export omits inline PR review comments. PR #95 had a resolved thread on `tests/workflow-refs.test.mjs`, documented in `reviews/TUN-74-size-label.md:112`. The scanner received the top-level review bodies and conversation comments only. Scan the paginated review-comment bodies and record their count and findings separately. [GitHub’s review-comments endpoint](https://docs.github.com/en/rest/pulls/comments#list-review-comments-in-a-repository)
+
+2. **Low — `reviews/TUN-103-publish-the-repository.md:398`.** The recorded boundary change does not match the scanner that ran. Both expanded scanner versions retain a leading `\b` for AWS access-key IDs. An underscore followed by AWS’s documented example ID matched the written rule and missed the actual one. The Google, npm and SendGrid rules also dropped trailing `\b` assertions without recording that change. Document the exact expressions used. The differences did not change the four snapshot totals.
+
+3. **Low — `reviews/TUN-103-publish-the-repository.md:525`.** “Each found only this record quoting itself” still overstates the first pre-push result. Lines 122–125 say that scan covered the remote history and also found five existing fixture occurrences. Say that only the **new** matches were self-quotes. The chronology now correctly identifies the unscanned `f69301d` push.
+
+Both round 2 controls passed at their specified locations and missed under the old rules. The four snapshots reproduced, in order, with strict/loose occurrence counts of **0/30, 5/33, 7/34 and 12/35**. The `0598d0f` delta added **5 strict and 3 loose**, all in the record. The ordinary-direct-push and non-production-preview wording is correct.
+
+**Missing tests**
+
+- Verify that the review-comment scan retrieves PR #95’s known inline thread and passes its body to the scanner.
+- Exercise the documented AWS boundary with an underscore immediately before the dummy access-key ID. Require the recorded and executed patterns to agree. No game test is missing.
+
+**CHANGES REQUESTED**
+
+</details>
+
+### My answers
+
+1. **Medium — inline review comments were never scanned.** **Agreed, and done.** Every inline PR review
+   comment in the repository (`gh api --paginate repos/pad29/music-garden/pulls/comments`) and every
+   commit comment (`…/comments`): **2 review comments, 0 commit comments** — the 2 are PR #95's thread
+   on `tests/workflow-refs.test.mjs` (`pad29`'s finding and reply), the one `reviews/TUN-74-size-label.md`
+   records. Their bodies, with the final patterns plus email addresses and machine paths: **no match.**
+2. **Low — the boundary claim vs. what ran.** **Agreed.** The AWS access key rule now uses the
+   lookaround boundaries too, and the record's round 1 paragraph says what actually ran until now. The
+   exact expressions are below, copied from the script, not retyped — so they cannot drift from it
+   again.
+3. **Low — "each found only this record quoting itself".** **Agreed:** *Tests* now says the only **new**
+   matches were self-quotes, and that the first scan also met the five fixture occurrences.
+
+**Missing controls — added, as throwaway-repository runs:**
+- **PR #95's inline thread:** the fetch above returned both of its comments, by path, and their bodies
+  went to the scanner (2 texts, 0 matches).
+- **The AWS boundary:** `key_` followed by AWS's documented example access key ID in a text blob. The
+  final patterns matched it (`aws-access-key-id`, printed as six characters and its length, 20); the
+  round 2 scanner, on the same repository, did not — confirming the finding.
+
+### The final patterns, exactly as run
+
+Strict: every blob, binary included, and every commit message. Loose: text blobs and commit messages
+(not binary blobs). Every loose match is read by hand. Matches are printed as six characters and a length,
+never whole. These are the script's own lines:
+
+```js
+const STRICT = {
+  'aws-access-key-id': /(?<![A-Za-z0-9])(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[A-Z0-9]{16}(?![A-Za-z0-9])/g,
+  'aws-session-token-value': /(?<![A-Za-z0-9\/+])(?:FwoGZXIvYXdzE|IQoJb3JpZ2luX2Vj)[A-Za-z0-9\/+=]{50,}/g,
+  'private-key-block': /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|PuTTY-User-Key-File/g,
+  'github-token': /(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9_.-]{30,}|github_pat_[A-Za-z0-9_]{22,})/g,
+  'cloudflare-token': /(?<![A-Za-z0-9])cf(?:ut|at|k)_[A-Za-z0-9_-]{20,}/g,
+  'openai-anthropic-key': /(?<![A-Za-z0-9])sk-(?:ant-|proj-)?[A-Za-z0-9_-]{32,}/g,
+  'slack-token-or-webhook': /(?<![A-Za-z0-9])xox[abprs]-[A-Za-z0-9-]{10,}|hooks\.slack\.com\/services\/T[A-Za-z0-9]+/g,
+  'google-api-key-or-oauth-secret': /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}|(?<![A-Za-z0-9])GOCSPX-[A-Za-z0-9_-]{20,}/g,
+  'stripe-key': /(?<![A-Za-z0-9])[rs]k_(?:live|test)_[0-9A-Za-z]{20,}/g,
+  'linear-npm-netlify-token': /(?<![A-Za-z0-9])(?:lin_(?:api|oauth)_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{36}|nfp_[A-Za-z0-9]{30,})/g,
+  'sendgrid-key': /(?<![A-Za-z0-9])SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}/g,
+  'jwt': /(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+  'jwe-eg-cognito-refresh-token': /(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/g,
+};
+const LOOSE = {
+  'aws-secret-assignment': /aws.{0,20}secret.{0,20}[:=]\s*['"]?[A-Za-z0-9\/+]{40}\b/gi,
+  'aws-session-token-assignment': /aws_?session_?token["']?\s*[:=]\s*["']?[A-Za-z0-9\/+=]{40,}/gi,
+  'token-assignment-unquoted': /\b(?:refresh|id|access|session|auth)[_-]?token\b["']?\s*[:=]\s*["']?[A-Za-z0-9._~+\/=-]{20,}/gi,
+  'cloudflare-token-assignment': /(?:cf|cloudflare)[_-]?(?:api)?[_-]?(?:token|key)\s*[:=]\s*['"]?[A-Za-z0-9_-]{30,}/gi,
+  'generic-secret-assignment': /\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|session[_-]?token|client[_-]?secret)\b["']?\s*[:=]\s*["'][^"'\s]{8,}["']/gi,
+  'credentials-in-url': /\b[a-z][a-z0-9+.-]*:\/\/[^\/\s:@"'<>]+:[^\/\s:@"'<>]+@[^\s"'<>]+/gi,
+};
+```
+
+File names checked in every snapshot, unchanged:
+`(^|/)(\.env(\..*)?|id_[rd]sa|id_ecdsa|id_ed25519|credentials|\.npmrc|\.netrc|.*\.(pem|key|p12|pfx|jks|keystore|tfstate|ppk))$`.
+
+### Every snapshot, with the final patterns
+
+| Snapshot | Refs | Commits | Blobs | File paths | Strict / loose | Where | Unexplained |
+|---|---|---|---|---|---|---|---|
+| First scan (`main` `a56e55d`, before this PR) | 91 | 356 | 1,929 | 603 | 0 / 30 | the fixture; the Cognito library | **none** |
+| Before the click (PR head `f69301d`) | 94 | 360 | 1,932 | 604 | 5 / 33 | + this record | **none** |
+| After publishing (`835cf28`) | 94 | 361 | 1,936 | 604 | 7 / 34 | the same | **none** |
+| Round 2 (`581e930`) | 94 | 362 | 1,939 | 604 | 12 / 35 | the same | **none** |
+| Round 3 (`0598d0f`, test merge `b4f82a9`) | 94 | 363 | 1,941 | 604 | 17 / 38 | the same | **none** |
+
+"The fixture" is the fake-ARN line in `tests/backend-handlers.test.mjs` and
+`tests/backend-presignup.test.mjs`; "the Cognito library" is the 25 property-name expressions in
+`vendor/cognito/amazon-cognito-identity.min.js` (round 2); "this record" is its pattern tables and
+its quotations of those two. No risky file name in any snapshot. The texts of the 116 issues and 46 PRs
+(570) again: the 34 Netlify QR-code JWTs and nothing else; the 2 inline review comments: nothing.
+GitHub's own secret scanning: 0 alerts (round 1).
 
 ## Owner's decisions
 
@@ -501,6 +605,10 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
    someone who already holds `mg-deploy`'s credentials (IAM Identity Center, on the owner's machine);
    publishing exposes the policy's text (`backend/README.md`, already describing the gap under *Its
    limits*), not the credentials. I'd say **no — publish, and keep TUN-115 in Backlog.**
+4. *The PR review's budget is spent (three rounds, `work-ticket` § 8): round 3's fixes are not reviewed by
+   GPT. Accept them and merge, or ask for a fourth round?* — **open.** No finding is disputed: every
+   finding of all three rounds was agreed and fixed. Round 3's fixes touch only this record and the
+   scan behind it — no doc a player or contributor reads. I'd say **accept and merge**.
 
 ## Choices I made that you might overrule
 
@@ -518,11 +626,13 @@ Answered **1A, 2A, 3A** — the owner, relayed by the orchestrator (`music-garde
 ## Tests
 
 No code changed. **1030/1030 tests and the syntax check pass** locally on `835cf28` (after merging
-`origin/main` at `a56e55d`, which had not moved), and again on the commits answering rounds 1 and 2; *Checks*
+`origin/main` at `a56e55d`, which had not moved), and again on the commits answering rounds 1, 2 and 3; *Checks*
 runs on each pushed head. **Which scan ran when:**
 - **Before its push, with the patterns of its time:** `05fdd5d`/`12fa98b` and `835cf28` with the first
   patterns; `581e930` with round 1's (*The expanded scan*); the commit answering round 2 with round 2's
-  (*PR review — round 2*). Each found only this record quoting itself. **Not** `f69301d` (the owner's
+  (*PR review — round 2*); the commit answering round 3 with the final patterns. In each, the only
+  **new** matches were this record quoting itself (the first, over the whole history, also met the
+  five known fixture occurrences). **Not** `f69301d` (the owner's
   answers): it was pushed unscanned while the repository was still private, and the re-scan before the
   click covered it.
 - **Retrospectively:** round 1's patterns over the first, pre-click and post-publishing snapshots; round
