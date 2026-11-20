@@ -106,7 +106,10 @@ async function onSignedIn(uploadLocal){ const run=++_cloudRun; cloudSync="off"; 
     const cloud=pull.ok ? pull.progress : undefined;
     if(cloud!==null && !loadableProgress(cloud)){ cloudSync="unreachable"; renderAuth(); return; }   // only an explicit null means "nothing saved yet"
     cloudSync="ready";
-    if(cloud){ progress=cloud; Store.set("progress",progress); applyProgress(); enterPlay(); renderAuth("loaded from cloud"); return; } }
+    // the loaded level is where play resumes: its render reads the story, once, and waits for an instrument card that
+    // is up (TUN-112: a further enterPlay() read it a second time, under the first, and over the card). Not while the
+    // buddy picker is still up — a save with no buddy yet — where picking one (enterPlay) reads it instead.
+    if(cloud){ progress=cloud; Store.set("progress",progress); narrateReady=compoverlay.style.display!=="flex"; applyProgress(); renderAuth("loaded from cloud"); return; } }
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
   const push=_pushSeq+1; const ok=await cloudPush(); if(run!==_cloudRun) return;
   // "saved to cloud" only for the newest progress save: once a newer one is queued or begun, this success no longer says
