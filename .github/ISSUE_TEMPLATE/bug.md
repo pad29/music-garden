@@ -12,7 +12,8 @@ about: Something in the game doesn't work as it should
 3.
 
 **Where**
-<!-- The level, quest or screen; the address you were on (tunegarden.game, a local copy, a file). -->
+<!-- The level, quest or screen; the address you were on (tunegarden.game, a local copy, a file).
+On a local copy, the commit too: `git rev-parse --short HEAD`. -->
 
 **Browser and device**
 <!-- For example: Chrome 131 on Windows 11, Safari on an iPhone 15. -->

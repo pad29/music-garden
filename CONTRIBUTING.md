@@ -24,9 +24,9 @@ decides what ships, and playtests everything a child would hear or see.
 
 You need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/): **Node 24**, which is what the
 project's automatic checks use (at least 22.15 on Node 22, or 23.5 on Node 23 — the test suite needs a
-feature those versions added). On Windows, install Git with **Git Bash**: a few tests run shell scripts
-and skip, saying why, when no `bash` is found. There is no build step and no project dependency to
-install.
+feature those versions added). On Windows, install Git with **Git Bash**, and run the commands below in
+Git Bash: a few tests run shell scripts and skip, saying why, when no `bash` is found, and PowerShell may
+refuse to run `npx`. There is no build step and no project dependency to install.
 
 Fork the repository on GitHub, then clone your fork:
 
@@ -42,8 +42,11 @@ the folder (the first run of `npx` downloads a small web server):
 npx http-server -p 8377 -c-1 .
 ```
 
-and open http://localhost:8377. Add `?dev` to the address for a level-jump menu and other testing
-shortcuts; README § [Quick start](README.md#quick-start) lists them.
+and open http://localhost:8377. The server keeps running until you press Ctrl+C, so use a second
+terminal for the commands below. Add `?dev` to the address for a level-jump menu and other testing
+shortcuts; README § [Quick start](README.md#quick-start) lists them. A quick check that it works: press
+**▶ Start playing**, follow the first level's instructions to plant a few seeds on the grid, and press
+**▶ Play** — you should hear them.
 
 **Check it.** From the `music-garden` folder, run the syntax check of every script the game loads, then
 the tests:
@@ -64,7 +67,7 @@ The repository holds a lot of documentation. You need only the part for your cha
 | You want to… | Read |
 |---|---|
 | Find the code for any part of the game | README § [How the game's code is organized](README.md#how-the-games-code-is-organized) — which `js/` file holds what |
-| Fix or change a level | [`PACKAGES-DETAILED.md`](PACKAGES-DETAILED.md) — every shipped level, and the difficulty ramp they follow |
+| Fix or change a level | The levels' code is `js/packages.js`. Their specs are in [`PACKAGES-DETAILED.md`](PACKAGES-DETAILED.md) (most packages, and the difficulty ramp they all follow) or [`PACKAGES.md`](PACKAGES.md) § 6 (the intro and a few others): search both for the package's ID |
 | Add a level or a package | [`PACKAGES.md`](PACKAGES.md) (the map of packages and its spec template), then `PACKAGES-DETAILED.md` |
 | Add a quest | [`MAKING-QUESTS.md`](MAKING-QUESTS.md) — a quest is data, and this guide walks you through one |
 | Understand what the game is for | [`REQUIREMENTS.md`](REQUIREMENTS.md), then [`DESIGN.md`](DESIGN.md) |
@@ -77,7 +80,7 @@ The repository holds a lot of documentation. You need only the part for your cha
 **You can ignore** `CLAUDE.md`, `.claude/` and `reviews/`. The project is built mostly by AI agents, and
 those are their instructions and their records. You don't need any of it, and you don't need to update
 it. `AGENTS.md` is written for the agents too, but its [hard invariants](AGENTS.md#hard-invariants--never-violate)
-are everyone's — the next section says them in plain words.
+are everyone's — the next section says them in plain words, and that is all you need to read of it.
 
 ## 3. Rules the code must keep
 
@@ -120,7 +123,7 @@ the owner's plans. **The owner decides what is worked on, and when.**
   *Idea* template. Say what the player would experience, and wait for the owner's yes before you build
   it. All of these are welcome; the next sections say which parts the owner finishes for you.
 - **An existing issue you'd like to take:** say so in a comment first, so two people don't do the same
-  work.
+  work. For anything larger than a bug fix, wait for the owner to say it's yours.
 
 ## 5. Making the change
 
@@ -180,8 +183,9 @@ Signed-off-by: Your Name <you@example.com>
 It says you have the right to contribute the change, as set out in the
 [Developer Certificate of Origin](https://developercertificate.org/). There is no contributor agreement
 to sign. `git commit -s` adds the line for you, from your `git config user.name` and `user.email`. Forgot
-it? `git commit --amend -s` fixes the last commit; `git rebase --signoff main` fixes every commit on your
-branch.
+it? `git commit --amend -s` fixes the last commit, and `git rebase --signoff HEAD~3` the last three (use
+your count). Either rewrites those commits, so if you had already pushed them, push your branch again
+with `git push --force-with-lease`.
 
 Your contribution is licensed like the files it changes — code under the AGPL, docs and narration under
 CC BY-SA. [`CREDITS.md` § Licences at a glance](CREDITS.md#licences-at-a-glance) says which is which.

@@ -33,5 +33,9 @@ Tune Garden is a small project with one owner, so replies are on a best-effort b
 answer as soon as the owner can read the report; a fix ships when it is ready, and the advisory is
 published after that. Say in your report if you would like to be credited.
 
+If you have heard nothing after two weeks, follow up in the same report, or by email to the address
+above. Please keep the problem private until it is fixed, or until you and the owner have agreed on a
+date to publish it.
+
 This file covers security problems only. For behaviour in the community, see
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); for everything else, [CONTRIBUTING.md](CONTRIBUTING.md).
