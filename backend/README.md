@@ -361,38 +361,69 @@ Each row's `Details` name the property and what caused it. `aws cloudformation l
 --stack-name music-garden` gives the name.
 
 The stop rule: `True` in the `Replacement` column on `UserPool`, `UserPoolClient`, `ProgressTable` or
-`SongsTable`, or a `Conditional` on one of them that this section does not explain, means answer `n`.
+`SongsTable`; a **Remove** or an **Add** of any of the four (a resource renamed in the template is removed
+and added, which `Replacement` does not show); or a `Conditional` on one of them that this section does not
+explain — any of these means answer `n`. Read every other `Conditional` row's `Details` too: the table
+above says why the usual ones are there, and anything else is a question before a `y`. The table is what
+past deploys showed, not a promise: a row it does not list is read, not waved through.
 
-**The first deploy after TUN-93** ([What an account may hold](#what-an-account-may-hold)) shows, besides
-the usual rows above: `UserPool` Modify / `False` (its `AccountRecoverySetting`, now `admin_only`);
-**`UserPoolClient` Modify / `False`** (its new `ReadAttributes` and `WriteAttributes`) — a row that has
-not appeared before; and `CloudSwitchFn` Modify / `False` with the other functions, since every function's
-code is the whole `src/` folder and `garden-words.mjs` is new in it. Nothing is added or removed, and
-nothing is replaced: a `True` or an unexplained `Conditional` on `UserPool` or `UserPoolClient` is the stop
-rule's. **Deploy the backend before merging the client**, then check it, in this order:
+After any deploy that touched the pool or the client, check they are the same ones:
+`aws cloudformation describe-stack-resources --stack-name music-garden --query "StackResources[?LogicalResourceId=='UserPool' || LogicalResourceId=='UserPoolClient'].[LogicalResourceId,PhysicalResourceId,ResourceStatus]"`
+lists `us-east-1_Ikzq1qoTI` and the client id in `js/cloud.js` (`AUTH`), both `UPDATE_COMPLETE`, and
+`aws cloudformation describe-stacks --stack-name music-garden --query "Stacks[0].StackStatus"` says
+`UPDATE_COMPLETE` (an `UPDATE_ROLLBACK_COMPLETE` means the update was undone: nothing changed).
+
+**The first deploy after TUN-93** ([What an account may hold](#what-an-account-may-hold)). Expect, besides
+the usual rows above: `UserPool` Modify / `False` (its `AccountRecoverySetting`, now `admin_only`), and
+**`UserPoolClient` Modify / `False`** (its new `ReadAttributes` and `WriteAttributes`) — a row not seen at
+earlier deploys. Nothing should be added, removed or replaced; the stop rule above holds as written.
+
+**Before deploying, close every tunegarden.game tab signed in to one of your accounts, and don't open the
+live site signed in until the merge's Cloudflare build is live.** Until then the live site is the old page,
+and against the new backend an old signed-in page goes wrong two ways: its saves are refused (it still sends
+the player's name), and its next pull — at a sign-in or a reload — gets a copy with no name and stores it,
+**erasing that device's name**. Only your own test accounts exist, so closing their tabs is the whole
+transition. A guest's page never pulls or saves, so the gap does not touch guests. The old page's sign-up
+form is refused for a typed name that is not a garden name (it says the garden isn't taking new accounts)
+and for an email (it may show Cognito's own text); a typed name that happens to be a valid garden name,
+with no email, is accepted — the trigger checks the name, not which page sent it.
+
+**Deploy the backend before merging the client**, then check it, in this order:
 1. Read the client back: `aws cognito-idp describe-user-pool-client --user-pool-id us-east-1_Ikzq1qoTI
    --client-id <UserPoolClientId>` shows `"ReadAttributes": ["updated_at"]` and `"WriteAttributes":
    ["updated_at"]`; `aws cognito-idp describe-user-pool --user-pool-id us-east-1_Ikzq1qoTI` shows
-   `AccountRecoverySetting` with `admin_only` alone. If Cognito refused the lists, the deploy rolled back
-   on its own: nothing changed, and the change goes back to the ticket.
+   `AccountRecoverySetting` with `admin_only` alone; and the pool and client ids are unchanged (above). If
+   Cognito refused the lists, the deploy rolled back on its own: nothing changed, and the change goes back
+   to the ticket.
 2. On the PR's **branch preview**: Home → *Create account* → roll a name → *Make my garden* → tick *I've
    kept my card* → *Go to my garden*. The account is made and signed in; the card then says "Your account
    is made, but your garden isn't in the cloud yet" — **expected on a preview**, whose origin the API's
    CORS refuses. Sign out, and sign in with the card's name and words typed in capitals with extra
-   spaces: it signs in (and then says the cloud is resting, for the same reason).
-3. Optionally, whether a taken name counts against the day: note today's row in
-   `music-garden-signup-count`, then `aws cognito-idp sign-up --no-sign-request --client-id
-   <UserPoolClientId> --username <the name just made, lower case> --password anything-at-all-here`. It
-   answers `UsernameExistsException`; if `signups` rose by one, Cognito runs the trigger before it checks
-   the name, and every taken name a child meets uses one of the day's 100.
-4. The refusals, from the CLI the same way: `--username kid-test` → `PreSignUp failed with error
+   spaces: it signs in (and then says the cloud is resting, for the same reason). The preview proves
+   Cognito, never the API.
+3. The API and the attribute permissions, from your own terminal, with that test account (keep its words
+   and its tokens out of anything you share or paste): `aws cognito-idp initiate-auth --no-sign-request
+   --auth-flow USER_PASSWORD_AUTH --client-id <UserPoolClientId> --auth-parameters
+   USERNAME=<garden-name>,PASSWORD=<word-word-word-word>` gives an `IdToken` and an `AccessToken`.
+   - `curl.exe -s -i https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/progress -H "Authorization:
+     Bearer <IdToken>"` answers `200` (no `Origin`, so CORS is not involved): the authorizer accepts the
+     new client's tokens.
+   - `aws cognito-idp update-user-attributes --no-sign-request --access-token <AccessToken>
+     --user-attributes Name=email,Value=test@example.com` is refused (`NotAuthorizedException`), and the
+     same for `phone_number`, `name` and `preferred_username`.
+   - Optionally, an old test account's fresh `IdToken`, decoded privately (its middle part is base64
+     JSON): no `email`, and `sub`, `iss` and `aud` still there.
+4. Optionally, whether a taken name counts against the day: at a quiet moment (no one else signing up),
+   note today's row in `music-garden-signup-count` with an identity that can read the table — the DynamoDB
+   console, as in TUN-88's check below; `mg-deploy` cannot read items — then `aws cognito-idp sign-up
+   --no-sign-request --client-id <UserPoolClientId> --username <the test account's name> --password
+   anything-at-all-here`. It answers `UsernameExistsException`; if `signups` rose by one, Cognito runs
+   the trigger before it checks the name, and every taken name a child meets uses one of the day's 100.
+5. The refusals, from the CLI the same way: `--username kid-test` → `PreSignUp failed with error
    signup-not-garden-name.`; a garden name with `--user-attributes Name=email,Value=test@example.com` →
    refused, by the trigger (`signup-has-attributes`) or by the client's attribute permissions
    (`NotAuthorizedException`). Neither makes a user.
-Then merge. **Between this deploy and the merge's Cloudflare build,** the live site is the old page: its
-sign-up form is refused (it says the garden isn't taking new accounts; one with an email typed in may show
-Cognito's own text), and an already signed-in old page's saves are refused, because it still sends the
-player's name, until it is reloaded after the merge. Keep the gap short.
+Then merge, and once the merge's Cloudflare build is live, reload any tunegarden.game tab before signing in.
 
 **The first deploy after TUN-82** adds the `BudgetEmail` parameter, which has no default, so pass it once
 on the command line — never in `samconfig.toml`, which is public:

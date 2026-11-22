@@ -1015,7 +1015,7 @@
   <!-- The garden card (TUN-93, js/garden-card.js): above Home, and closed only by its own buttons. When it is
        open, printing prints the card alone. -->
   <div id="cardoverlay" class="overlay" style="display:none">
-    <div class="card gardencard" id="gardencard"></div>
+    <div class="card gardencard" id="gardencard" role="dialog" aria-modal="true" aria-labelledby="gctitle"></div>
   </div>
 
 <!-- The Cognito sign-in library, pinned and served from this site (vendor/README.md). Not a game script: the

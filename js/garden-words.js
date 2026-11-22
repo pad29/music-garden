@@ -61,11 +61,14 @@ function gardenPicker(next32){ return n=>{ const lim=0x100000000-(0x100000000%n)
 const gardenPick=gardenPicker(()=>{ const b=new Uint32Array(1); crypto.getRandomValues(b); return b[0]; });
 
 const gardenPairBanned=(adj,noun)=> GARDEN_BANNED_PAIRS.includes(adj+"-"+noun);
-function rollGardenWords(pick=gardenPick){
+// avoid: an "adj-noun" pair not to draw (a crowded pair the card is leaving behind).
+function rollGardenWords(pick=gardenPick,avoid=""){
   for(;;){ const adj=GARDEN_ADJECTIVES[pick(GARDEN_ADJECTIVES.length)], noun=GARDEN_NOUNS[pick(GARDEN_NOUNS.length)];
-    if(!gardenPairBanned(adj,noun)) return [adj,noun]; } }
-const rollGardenNumber=(pick=gardenPick)=> GARDEN_NUMBERS[pick(GARDEN_NUMBERS.length)];
-function rollGardenName(pick=gardenPick){ const [adj,noun]=rollGardenWords(pick); return adj+"-"+noun+"-"+rollGardenNumber(pick); }
+    if(!gardenPairBanned(adj,noun) && adj+"-"+noun!==avoid) return [adj,noun]; } }
+// skip: numbers not to draw. pick() is asked only over the numbers left, so it never wastes a draw.
+function rollGardenNumber(pick=gardenPick,skip=[]){ const left=GARDEN_NUMBERS.filter(n=>!skip.includes(n));
+  return left.length ? left[pick(left.length)] : null; }
+function rollGardenName(pick=gardenPick,avoid=""){ const [adj,noun]=rollGardenWords(pick,avoid); return adj+"-"+noun+"-"+rollGardenNumber(pick); }
 const rollPassphrase=(pick=gardenPick)=> [0,1,2,3].map(()=>PASSPHRASE_WORDS[pick(PASSPHRASE_WORDS.length)]);
 
 // Whether the generator could have made this username: the rule a new account must meet (the backend's

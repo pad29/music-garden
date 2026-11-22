@@ -5,8 +5,11 @@ const homeBtn=document.getElementById("home"), homeoverlay=document.getElementBy
 // has to do what that button did. openHome() alone left the playback running, left the completion
 // session open, and left a half-pressed confirmation behind for the next visit.
 homeBtn.onclick=()=>{ if(isQuestScope()) leaveQuest(); else openHome(); };
-document.getElementById("homeclose").onclick=()=>homeoverlay.style.display="none";
-homeoverlay.onclick=e=>{ if(e.target===homeoverlay) homeoverlay.style.display="none"; };
+// Closing Home waits for a sign-in that is out (TUN-93: one the child thinks they closed must not land later), and
+// redraws the account panel, so a sign-in form's passphrase never stays in a hidden box.
+function closeHome(){ if(authBusy) return; homeoverlay.style.display="none"; renderAuth(); }
+document.getElementById("homeclose").onclick=closeHome;
+homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
 pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }

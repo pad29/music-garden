@@ -34,22 +34,29 @@ const FULL = "🌱 So many new gardeners joined today that the garden is full! K
 
 /** A game with the card's elements real enough to press; `cognito` records the calls the card makes. */
 function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = async () => true, landing = false } = {}) {
-  const authbox = el(), cardoverlay = el(), gardencard = el();
-  const elements = { authbox, cardoverlay, gardencard };
-  if (landing) for (const id of ["landingUser", "landingPass", "landingShow", "landingMsg", "landingLost"]) elements[id] = el(id === "landingShow" ? "button" : id.includes("Msg") || id.includes("Lost") ? "div" : "input");
+  const authbox = el(), cardoverlay = el(), gardencard = el(), homeoverlay = el();
+  const elements = { authbox, cardoverlay, gardencard, homeoverlay };
+  if (landing) for (const id of ["landingUser", "landingPass", "landingShow", "landingMsg", "landingLost", "landingBack"]) elements[id] = el(["landingShow", "landingBack"].includes(id) ? "button" : id.includes("Msg") || id.includes("Lost") ? "div" : "input");
+  // Who the pool says is signed in: the session in the storage every tab shares. A sign-in sets it; a test may
+  // change it, as another tab would.
+  const session = { user: null };
   const g = loadGame({ fresh: true, elements, setup: w => {
     w.crypto = webcrypto; w.Uint32Array = Uint32Array;
-    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return null; } } };
+    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() {
+      return session.user ? { getUsername: () => session.user, signOut() { session.user = null; } } : null; } } };
   } });
   const doc = g.__window.document;
   Object.defineProperty(doc, "createElement", { value: tag => el(tag), configurable: true });
   Object.defineProperty(doc, "createTextNode", { value: t => ({ textContent: String(t) }), configurable: true });
   const cognito = { signUps: [], signIns: [], uploads: 0 };
   g.cogSignUp = async (u, p) => { cognito.signUps.push([u, p]); return signUp(u, p); };
-  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); return signIn(u, p); };
-  g.onSignedIn = async up => { assert.equal(up, true, "a new garden uploads this device's"); cognito.uploads++; return upload(); };
+  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; };
+  g.onSignedIn = async (up, onlyFor) => {
+    assert.equal(up, true, "a new garden uploads this device's");
+    assert.equal(onlyFor, session.user, "only to the account the card signed in to");
+    cognito.uploads++; return upload(); };
   g.renderPkgs = () => {};
-  return { g, authbox, cardoverlay, gardencard, cognito, elements };
+  return { g, authbox, cardoverlay, gardencard, cognito, elements, session };
 }
 // Home → Create account → Make my garden: the card for the name the roller showed.
 function openCard(t) {
@@ -124,48 +131,87 @@ test("a taken name gets a new number, keeps the child's words and secret words, 
   assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
 });
 
-test("taken names: a number is never tried twice, and after five a whole new name is rolled", () => {
+test("taken names: a number is never tried twice, the fifth gets a different pair, and a pair with no number left is left", () => {
   const t = cardGame();
+  const ADJ = [...t.g.GARDEN_ADJECTIVES], NOUN = [...t.g.GARDEN_NOUNS], NUM = [...t.g.GARDEN_NUMBERS];
+  // pick() answers from a script, then 0: "the first of what is left".
+  const scripted = xs => { const q = [...xs]; return n => { const v = q.length ? q.shift() : 0; assert.ok(v < n); return v; }; };
   const a = t.g.gardenAttempt("brave-otter-42", ["acorn", "map", "tulip", "wren"]);
-  // pick() scripted: numbers by index into GARDEN_NUMBERS, and for the fifth a new pair.
-  const NUM = [...t.g.GARDEN_NUMBERS], ADJ = [...t.g.GARDEN_ADJECTIVES], NOUN = [...t.g.GARDEN_NOUNS];
-  const ix = x => NUM.indexOf(x);
-  // 1st: 42 is the name already tried, so 50. 2nd: 42 and 50 tried, so 51. 3rd: 52. 4th: 53. 5th: a new pair and number.
-  const script = [ix(42), ix(50), ix(42), ix(50), ix(51), ix(52), ix(53), ADJ.indexOf("calm"), NOUN.indexOf("wren"), ix(10)];
-  let i = 0; const pick = () => script[i++];
-  const names = [];
-  for (let k = 0; k < 5; k++) names.push(t.g.nextGardenName(a, pick));
-  assert.deepEqual(names, ["brave-otter-50", "brave-otter-51", "brave-otter-52", "brave-otter-53", "calm-wren-10"]);
-  assert.equal(i, script.length, "every draw used: the tried numbers were drawn and thrown back");
-  assert.equal(a.name, "calm-wren-10");
+  // The fifth draws brave-otter again first: it must be drawn over.
+  const pick = scripted([0, 0, 0, 0, ADJ.indexOf("brave"), NOUN.indexOf("otter"), ADJ.indexOf("calm"), NOUN.indexOf("wren"), 0]);
+  const names = []; for (let k = 0; k < 5; k++) names.push(t.g.nextGardenName(a, pick));
+  assert.deepEqual(names, ["brave-otter-10", "brave-otter-11", "brave-otter-15", "brave-otter-16", "calm-wren-10"],
+    "the numbers left, in order (42 was tried first); then a new pair, never the crowded one");
   assert.equal(a.taken, 5);
+  // A pair whose every number was tried goes to a new pair at once.
+  const b = t.g.gardenAttempt("brave-otter-42", ["acorn", "map", "tulip", "wren"]);
+  for (const n of NUM) b.tried.add(`brave-otter-${n}`);
+  const next = t.g.nextGardenName(b, scripted([ADJ.indexOf("brave"), NOUN.indexOf("otter"), ADJ.indexOf("zippy"), NOUN.indexOf("wren"), 0]));
+  assert.equal(next, "zippy-wren-10");
 });
 
-test("a lost answer keeps the card; trying again with the same card finds out whether the account was made", async () => {
-  // 1) lost, then "taken": the card's own words open it, so it was this card's account all along.
+test("a lost answer keeps the card; the retry signs in with it before sending another sign-up", async () => {
+  // 1) The account was made, its answer lost: the retry's sign-in finds it. No second sign-up.
   let n = 0;
-  const t = cardGame({ signUp: async () => { if (++n === 1) throw new TypeError("Failed to fetch"); throw { code: "UsernameExistsException" }; } });
+  const t = cardGame({ signUp: async () => { if (++n === 1) throw new TypeError("Failed to fetch"); } });
   const shown = openCard(t);
   keep(t); await go(t);
   assert.equal(said(t), "☁️ Can't reach the garden just now. Keep your card, and press Try again.");
   assert.equal(byClass(face(t), "gcname").textContent, shown, "the same card");
-  assert.ok(button(t.gardencard, "Try again"), "Try again, with the same words");
-  assert.ok(button(t.gardencard, "Cancel"), "not made as far as anyone knows: still cancellable");
+  assert.ok(button(t.gardencard, "Try again"));
+  assert.ok(button(t.gardencard, "Cancel"), "not known to be made: still cancellable");
   await go(t);
-  assert.equal(t.cognito.signUps.length, 2);
-  assert.equal(t.cognito.signIns.length, 1, "one sign-in, which proved the account");
+  assert.equal(t.cognito.signUps.length, 1, "no second sign-up");
+  assert.deepEqual(t.cognito.signIns.map(s => s[0]), [shown.toLowerCase()], "the card's own name and words opened it");
   assert.equal(t.cognito.uploads, 1);
   assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
 
-  // 2) lost, then "taken", and the card's words do not open it: someone else has the name.
+  // 2) The request never reached Cognito: the sign-in is refused, so the sign-up is sent again, and makes it.
   let m = 0;
-  const u = cardGame({ signUp: async () => { if (++m === 1) throw { code: "NetworkError", message: "Network error" }; if (m === 2) throw { code: "UsernameExistsException" }; },
+  const u = cardGame({ signUp: async () => { if (++m === 1) throw { code: "NetworkError", message: "Network error" }; },
     signIn: async () => { if (u.cognito.signIns.length === 1) throw { code: "NotAuthorizedException", message: "Incorrect username or password." }; } });
   const first = openCard(u);
   keep(u); await go(u); await go(u);
-  assert.notEqual(byClass(face(u), "gcname").textContent, first, "a new number");
-  assert.equal(byClass(u.gardencard, "gcnotice").textContent, "Someone just took that name, so here is your new card. Keep this one.");
-  assert.equal(u.cognito.uploads, 0);
+  assert.equal(u.cognito.signUps.length, 2);
+  assert.equal(byClass(face(u), "gcname").textContent, first, "the same name: it was free");
+  assert.equal(said(u), "☁️ Your garden is saved in the cloud ✓");
+
+  // 3) A real collision: the card's words don't open it, and the name is taken — only now a new name.
+  let k = 0;
+  const v = cardGame({ signUp: async () => { if (++k === 1) throw new TypeError("Load failed"); throw { code: "UsernameExistsException" }; },
+    signIn: async () => { throw { code: "NotAuthorizedException", message: "Incorrect username or password." }; } });
+  const before = openCard(v);
+  keep(v); await go(v); await go(v);
+  assert.notEqual(byClass(face(v), "gcname").textContent, before);
+  assert.equal(byClass(v.gardencard, "gcnotice").textContent, "Someone just took that name, so here is your new card. Keep this one.");
+});
+
+test("while it is unsettled whether the card's account exists, nothing withdraws or renames the card", async () => {
+  const warn = console.warn; console.warn = () => {};
+  try {
+    for (const [what, err] of [["a lockout", { code: "NotAuthorizedException", message: "Password attempts exceeded" }],
+      ["a throttle", { code: "TooManyRequestsException", message: "Rate exceeded" }],
+      ["an internal error", { code: "InternalErrorException", message: "x" }], ["no network again", new TypeError("Failed to fetch")]]) {
+      const t = cardGame({ signUp: async () => { throw new TypeError("Failed to fetch"); }, signIn: async () => { throw err; } });
+      const shown = openCard(t);
+      keep(t); await go(t); await go(t);
+      assert.equal(t.cognito.signUps.length, 1, `${what}: no second sign-up while it is unsettled`);
+      assert.equal(byClass(face(t), "gcname").textContent, shown, `${what}: the same card`);
+      assert.ok(button(t.gardencard, "Try again"), what);
+      assert.doesNotMatch(said(t), /Exception|Rate exceeded/, what);
+    }
+    // A sign-up refused for the day after an ambiguous one is believed only once the card's words are refused.
+    let n = 0;
+    const t = cardGame({ signUp: async () => { if (++n === 1) throw { code: "InternalErrorException", message: "x" };
+      throw { code: "UserLambdaValidationException", message: "PreSignUp failed with error daily-signup-limit." }; },
+      signIn: async () => { throw { code: "NotAuthorizedException", message: "Incorrect username or password." }; } });
+    openCard(t); keep(t); await go(t);
+    assert.ok(face(t), "the first, ambiguous failure keeps the card");
+    await go(t);
+    assert.deepEqual(t.cognito.signIns.length, 1, "the words were tried first");
+    assert.equal(said(t), FULL);
+    assert.equal(face(t), undefined, "and only then is the card withdrawn");
+  } finally { console.warn = warn; }
 });
 
 test("sign-ups closed or full: the card is withdrawn, nothing signs in, and Close is all that is left", async () => {
@@ -197,12 +243,13 @@ test("an account made but not uploaded says so; Try again uploads again; once ma
   assert.equal(all(t.gardencard).filter(e => e.tagName === "BUTTON" && e.textContent === "Done").length, 1, "one Done button");
 });
 
-test("a sign-in that fails after the account was made tries only the sign-in again", async () => {
+test("a sign-in that fails after the account was made tries only the sign-in again, and the child can leave", async () => {
   let n = 0;
   const t = cardGame({ signIn: async () => { if (++n === 1) throw new TypeError("Load failed"); } });
   openCard(t); keep(t); await go(t);
-  assert.equal(said(t), "☁️ Can't reach the garden just now. Your garden is still saved on this device.");
+  assert.match(said(t), /^☁️ Can't reach the garden just now\. Your garden is still saved on this device\. Your account is made\. Keep your card/);
   assert.equal(button(t.gardencard, "Cancel"), undefined);
+  assert.ok(button(t.gardencard, "Done"), "a way out: the account exists, and the card signs in later");
   await go(t);
   assert.equal(t.cognito.signUps.length, 1);
   assert.equal(t.cognito.signIns.length, 2);
@@ -290,4 +337,83 @@ test("Home's sign-in form and the landing screen's: no length limit, help for a 
   assert.deepEqual(t.cognito.signIns.at(-1), ["brave-otter-42", "acorn-map-tulip-wren"]);
   assert.match(t.authbox.textContent, /don't match/);
   assert.doesNotMatch(t.authbox.textContent, /⚠️|Exception|Incorrect/);
+});
+
+test("the tick is held once Go is pressed: unticking mid-request can't strand Try again; the box is locked meanwhile", async () => {
+  let release; const held = new Promise(r => { release = r; });
+  let n = 0;
+  const t = cardGame({ upload: async () => { if (++n === 1) { await held; return false; } return true; } });
+  openCard(t); keep(t);
+  const box = checkbox(t.gardencard);
+  const pressing = go(t); await tick();
+  assert.equal(box.disabled, true, "the box can't be changed while it works");
+  box.checked = false; box.onchange();   // a child unticks it anyway
+  release(); await pressing;
+  const retry = button(t.gardencard, "Try again");
+  assert.equal(retry.disabled, false, "Try again stays usable");
+  await retry.onclick();
+  assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
+});
+
+test("the card uploads only to its own account: another tab's sign-in, or a sign-out, sends it back to its card", async () => {
+  let n = 0;
+  const t = cardGame({ upload: async () => ++n > 1 });
+  const shown = openCard(t); keep(t); await go(t);
+  assert.match(said(t), /isn't in the cloud yet/);
+  t.session.user = "someone-else";   // another tab signed someone else in
+  await go(t);
+  assert.deepEqual(t.cognito.signIns.map(s => s[0]), [shown.toLowerCase(), shown.toLowerCase()], "the card signed in again, as itself");
+  assert.equal(t.cognito.uploads, 2, "and only then uploaded (the fake upload checks the account)");
+  // The real onSignedIn's own refusal, and its token check, are cloud-sync.test.mjs's.
+});
+
+test("the card is a modal dialog: the page behind is inert while it is up, and given back when it closes", () => {
+  const t = cardGame();
+  const behind = [el(), el()], before = el(); before.inert = true;   // one already inert stays inert
+  const body = el("body"); body.children = [...behind, before, t.cardoverlay];
+  Object.defineProperty(t.g.__window.document, "body", { value: body, configurable: true });
+  openCard(t);
+  assert.ok(behind.every(e => e.inert === true), "Home and the game can't be reached behind the card");
+  assert.equal(t.cardoverlay.inert, undefined);
+  button(t.gardencard, "Cancel").onclick();
+  assert.ok(behind.every(e => e.inert === false));
+  assert.equal(before.inert, true, "what was inert before stays inert");
+});
+
+test("the sign-in forms: busy forms can't be dismissed; every way out empties and hides the passphrase", async () => {
+  let release; const held = new Promise(r => { release = r; });
+  const t = cardGame({ landing: true, signIn: () => held });
+  const { landingUser, landingPass, landingShow, landingBack } = t.elements;
+  // boot wired these before the test's DOM existed: wire them the way it does, then exercise.
+  t.g.setUpSignInBoxes(landingUser, landingPass, landingShow);
+  landingShow.onclick(); assert.equal(landingPass.type, "text");
+  landingPass.value = "acorn map tulip wren";
+  t.g.clearPassBox(landingPass, landingShow);
+  assert.deepEqual([landingPass.value, landingPass.type, landingShow.textContent], ["", "password", "👁️ Show"]);
+
+  // Home's form: Cancel and Home's Close do nothing while the sign-in is out.
+  t.g.onSignedIn = async () => {};   // a sign-in's pull; cloud-sync.test.mjs has the real one
+  t.g.showSignInForm();
+  const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
+  user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
+  const signing = button(t.authbox, "Sign in").onclick(); await tick();
+  assert.equal(t.g.authBusy, true);
+  assert.equal(button(t.authbox, "Cancel").disabled, true);
+  button(t.authbox, "Cancel").onclick();
+  assert.equal(pass.value, "acorn map tulip wren", "Cancel did nothing mid-sign-in");
+  t.elements.homeoverlay.style.display = "flex"; t.g.closeHome();
+  assert.equal(t.elements.homeoverlay.style.display, "flex", "Home stays open until the sign-in is answered");
+  release(); await signing;
+  assert.equal(t.g.authBusy, false);
+  assert.equal(pass.value, "", "emptied once signed in");
+  t.g.closeHome();
+  assert.equal(t.elements.homeoverlay.style.display, "none", "and Home closes once it is answered");
+
+  // A failing session lookup still gives the form back.
+  const u = cardGame({ signIn: async () => {} });
+  u.g.onSignedIn = async () => { throw new Error("storage refused"); };
+  const warn = console.warn; console.warn = () => {};
+  try { assert.deepEqual({ ...await u.g.signInWith("brave-otter-42", "acorn map tulip wren") }, { ok: false, msg: "🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment." }); }
+  finally { console.warn = warn; }
+  assert.equal(u.g.authBusy, false);
 });

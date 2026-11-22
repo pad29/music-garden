@@ -1,7 +1,6 @@
 # TUN-93 — Create accounts with a generated garden name and passphrase, and keep the profile name on the device
 
-Branch `ao/garden-accounts/root` · Size **M** (label and `## Size` agree) · `needs-owner` · PR: draft, at the
-design checkpoint
+Branch `ao/garden-accounts/root` · Size **M** (label and `## Size` agree) · `needs-owner` · PR #166
 
 ## Plan (Claude)
 
@@ -560,3 +559,121 @@ was **not** pressed: it would make a real account in the production pool under t
 **Not verified here** (the owner's): the account flow against the deployed backend (deploy check 2, on the
 PR preview, then laptop to phone on production); print preview and the saved picture on a phone; the
 layout on a phone-sized screen; a `file://` load of the two new scripts.
+
+## PR review, round 1 (`gpt-6.2-astra`, through `ask.sh`)
+
+`ask.sh fresh read-only`, 2026-11-22, on head `eaa7aa2`. Prompt: the ticket verbatim, the owner's answers, the
+files built, the departures, what to look at. Usage: in 2,751,130 (cached 2,607,744), out 11,146.
+**Verdict: changes requested.**
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+**Request changes on PR #166 at `eaa7aa2a59445591d47a7ae476b1e45d638ca29f`.** A card retry can overwrite a different account’s unread progress, an ambiguous sign-up can discard a valid card, and the card can report a successful save after newer progress failed to upload.
+
+### Required before merge
+
+1. **High — Bind the card’s upload permission to the account it created.** `createGarden` remembers `a.signedIn` as a boolean. After a failed upload, *Try again* calls `onSignedIn(true)`, which starts a new cloud run using whichever user the SDK currently has in shared browser storage. If another tab has signed in to account B, the retry can PUT this device’s progress to B without reading B’s garden. It can also override B’s failed-load protection. Capture the authenticated subject for the card, verify the subject of the token actually used for the PUT, and invalidate the upload permission when the session changes. A missing session should offer sign-in with the kept card. [js/garden-card.js:49](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:49) · [js/cloud.js:106](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:106)
+
+2. **High — Resolve a lost sign-up answer before submitting another sign-up.** The retry repeats `cogSignUp` first. A quota or trigger refusal on that second request withdraws the card even though the first request might have created the account. If the retry returns `UsernameExistsException`, a throttled or temporarily locked sign-in is treated as proof that somebody else owns the name. Both paths can strand an account and tell the child to discard its valid card. Try signing in with the original card first, as the revised plan specifies. Preserve the card through ambiguous service failures. Rename only after establishing a collision and a definitive credential mismatch. [js/garden-card.js:36](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:36) · [design decision:294](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/reviews/TUN-93-garden-name-accounts.md:294)
+
+3. **High — Give the card the same save guarantee as Home.** `onSignedIn` checks `_pushSeq===push` before telling Home “saved to cloud,” then returns the unqualified `ok` to the card. A delayed first PUT can succeed after a newer save was queued or failed. The card then says “Your garden is saved in the cloud ✓” and removes *Try again*. Return whether the **current** progress was confirmed saved, and show success only for that outcome. Two existing tests already construct this race but assert only Home’s text. [js/cloud.js:116](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:116) · [js/garden-card.js:104](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:104) · [tests/cloud-sync.test.mjs:564](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/cloud-sync.test.mjs:564)
+
+4. **Medium — Fix the card controls after submission.** The checkbox stays editable during the request. If the child unticks it and the upload fails, the handler removes the checkbox and disables *Try again* based on its now-unchecked value. There is no way to re-enable it. A separate failure leaves the child stuck: when sign-up succeeds but sign-in fails, Cancel is removed and Done has never been created. Latch acknowledgment for that exact card, reset it only on a rename, and drive the controls from the operation’s state. After account creation, offer an exit that explains the account exists and the local garden still needs uploading. [js/garden-card.js:90](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:90)
+
+5. **Medium — Make the card a keyboard- and screen-reader-accessible modal.** Opening it destroys the initiating button, moves no focus, and leaves Home’s actions reachable with Tab. A keyboard user can operate the account panel behind the card or open a second roller while the first attempt is visible. `overlayUp()` suppresses game shortcuts but does not stop native button activation. Use a labelled modal dialog, move and contain focus, make the background inert, announce collision and operation messages, and restore focus to an appropriate Home control when the card closes. [index.html:1017](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/index.html:1017) · [js/garden-card.js:78](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:78)
+
+6. **Medium — Stop telling the child the PNG was saved when the browser has only received a download request.** A canceled or blocked download still produces “Saved.” That assurance comes immediately before the child decides whether they have kept their only recovery credential. Also, exceptions inside the asynchronous `toBlob` callback escape the surrounding `try`. Say to check the downloaded picture before ticking the box, handle callback failures, and retain the print and handwritten alternatives. [js/garden-card.js:126](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:126) · [HTML download behavior](https://html.spec.whatwg.org/multipage/links.html#downloading-resources)
+
+7. **Medium — Protect the local name during the backend-first deploy gap.** An old page signing in or resuming during the gap assigns `progress=cloud` and immediately persists it. The new GET strips `name`, so that old page erases the device’s name. Its subsequent nameless PUT can also succeed. The runbook describes only rejected saves and recommends reloading, which can itself trigger the destructive pull while the old site is still live. Keep old clients from applying the new GET during the transition, or, for the owner’s few accounts, document and enforce a window with those sessions closed until the new client is confirmed live. Also qualify the claim that the old sign-up form is refused: the trigger accepts an allowed garden name with no attributes regardless of which page supplied it. [backend/src/progress-api.mjs:27](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/src/progress-api.mjs:27) · [backend/README.md:392](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/README.md:392)
+
+8. **Medium — Correct the change-set stop rule and the owner’s deploy checks.** The runbook omits the revised plan’s explicit stop on **Remove/Add** for the pool, client, or either player table. Those actions need not have a `Replacement: True` row. `CloudSwitchFn` is already in the usual-rows table. Describe the rows as expectations, require inspection of dependent `Conditional` rows, and verify stack status and physical IDs after an update or rollback. The optional counter check also needs an authorized data reader and a quiet interval before attributing an increment to the duplicate attempt. The documented `mg-deploy` identity cannot read table items. [backend/README.md:352](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/README.md:352) · [backend/README.md:383](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/README.md:383) · [AWS change-set examples](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-changesets-samples.html)
+
+9. **Medium — Correct the privacy inventory.** Cognito assigns a persistent `sub`. The backend stores it as the progress key and song owner, and the vendored SDK persists the last username and ID, access, and refresh tokens on the device. The configured refresh-token lifetime is 365 days. These facts matter on a shared device and explain why losing the card need not end an existing session. The trigger also cannot inspect the password or prove who generated the username. Document what the game generates, what the trigger enforces, which identifiers link records, and which credentials the browser retains. Correct the same section’s claim that the client loads Cognito from a CDN. [DESIGN.md:338](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/DESIGN.md:338) · [DESIGN.md:368](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/DESIGN.md:368) · [backend/template.yaml:257](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/template.yaml:257) · [AWS ID-token claims](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-the-id-token.html)
+
+10. **Medium — Finish the sign-in form lifecycle on both screens.** After *Show → Back* on the landing screen, the next visitor’s passphrase field is still plain text. Closing Home by its normal Close button or backdrop leaves the password in a hidden input. Back and Cancel also remain active during sign-in, so an operation the child believes they canceled can finish and apply cloud progress. Clear and remask on every exit. Disable dismissal while signing in or invalidate the pending operation on dismissal. Restore the busy controls in `finally` so a rejected session lookup cannot leave either form stuck. [js/boot.js:117](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/boot.js:117) · [js/cloud.js:199](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:199) · [js/home.js:8](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/home.js:8)
+
+11. **Low — Make the fifth collision choose a different word pair.** `rollGardenName` can draw the current adjective and noun again. `tried` rejects only a repeated *full* name, so a different suffix satisfies the check and defeats the promised escape from a crowded pair. Exclude the current pair on that draw and select from remaining suffixes on number-only retries. [js/garden-card.js:25](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:25)
+
+### Missing tests and acceptance evidence
+
+12. **`tests/garden-card.test.mjs` — Uncertain creation.** Lose the first sign-up response after simulated account creation. Assert that the next call is sign-in with the same credentials. Return a throttle, lockout, or internal error and assert the original face and retry survive. Separately cover a request that never reached Cognito, a genuine collision, and a quota refusal after an ambiguous request. Assert no second account or replacement card while ownership remains unresolved.
+
+13. **`tests/cloud-sync.test.mjs` — Account-bound retry and truthful success.** Fail A’s initial PUT, switch the cached session to B, fail B’s GET, then retry A’s card. Assert zero PUTs to B and that B stays write-blocked. Also complete an older successful PUT after a newer save is queued or rejected. Assert the **card** retains a retry and does not report the current garden saved.
+
+14. **`tests/garden-card.test.mjs` — Controls and dismissal.** Hold the first request open, attempt to untick, then fail the upload. Assert Retry remains usable. Fail sign-in after confirmed creation and assert the child can exit with their local progress intact. Exercise Show/Back/reopen, Home Close and backdrop, pending sign-in dismissal, and a rejected session lookup. Assert masking, field cleanup, correct busy state, and no late application of a canceled sign-in. Force the fifth collision to draw the old pair with a fresh suffix and assert it redraws.
+
+15. **`tests/cloud-sync.test.mjs` — Profile name through actual entry points.** Type the name through Home, reload from the same storage, pull a nameless cloud record, and reopen Home. Assert the field, title, and stored name agree. Repeat after accepted and declined `?reset`. Cover the deploy-gap procedure with an old-client pull against the new GET. The current tests cover the helper and in-memory pull but miss the old client persisting the nameless response.
+
+16. **`backend/README.md` — Effective AWS permissions and JWT acceptance.** After the owner deploys, verify an ordinary signed-in account is denied post-sign-up writes to email, phone, name, and `preferred_username`. Inspect a freshly issued legacy-account token privately for omitted profile attributes and retained `sub`, `iss`, and `aud`. Use the fresh token for an authenticated progress request through API Gateway. A CORS failure from the branch preview proves none of those API properties. AWS documents `updated_at` as a mutable numeric standard attribute, the changed pool/client properties as in-place updates, and issuer/audience as authorizer inputs. I found no template change requiring pool, client, or table replacement. Acceptance by this deployed pool and authorizer remains an owner check. [AWS attribute schema](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_DescribeUserPool.html) · [Pool updates](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-cognito-userpool.html) · [Client updates](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-cognito-userpoolclient.html) · [API Gateway JWT validation](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html)
+
+17. **`reviews/TUN-93-garden-name-accounts.md` — Real-browser card acceptance.** Use a fictional longest-name, long-word card. Open `index.html` through `file://`, traverse the card with keyboard and assistive technology, inspect print preview, and **open the saved PNG** on a phone. Assert that the name, all four words in order, and the site address are legible, that print excludes the surrounding game, and that Home cannot be activated behind the card. Record the owner’s backend-first preview sign-up and subsequent production laptop-to-phone sign-in separately.
+
+**Verification.** Syntax passed for all 31 game scripts and the vendored SDK. All **133 tests** in the eight directly affected suites passed. My full-suite run produced **949 passes and 113 failures** in the read-only sandbox, including `EPERM` creating temporary test directories. I could not independently confirm the reported 1,062-pass run. The working tree remained clean.
+
+</details>
+
+### My answers
+
+1. **High, the card's upload bound to its account — agreed.** `onSignedIn(true, name)` and `cloudPush(name)` now
+   run only while the card's account is the one signed in, and fetch a token only for it (`freshToken(onlyFor)`);
+   a mismatch returns `false` without touching sync state. The card re-signs in with its own words when another
+   tab has switched accounts. Tests: `cloud-sync` (another tab's sign-in, its failed load untouched, a switch
+   while the token is fetched) and `garden-card`.
+2. **High, a lost answer settled before another sign-up — agreed.** After any sign-up failure that is not a
+   collision or the trigger's refusal, the card is *uncertain*; its next try signs in with the card first. Only
+   a plain "incorrect username or password" settles that the card's account does not exist (the pool answers
+   "no such user" the same way); a lockout, a throttle, an internal error or no network keeps the card and its
+   Try again, with no second sign-up. A collision renames only after that settling.
+3. **High, the card's "saved" — agreed.** `onSignedIn` returns the same test as Home's "saved to cloud": the
+   push succeeded *and* no newer save was queued or begun. The two existing race tests now assert the card's
+   answer too.
+4. **Medium, the card's controls — agreed.** Pressing Go latches the tick for that card (a renamed card is a new
+   one); the box is locked while it works and removed after; Try again follows the operation's state. Once the
+   account exists, a failure shows Done with "Your account is made. Keep your card…".
+5. **Medium, a modal card — agreed.** `role="dialog"`, `aria-modal`, labelled by the card's title; everything
+   else on the page is made `inert` while it is up and given back on close; Tab cycles inside; focus moves in on
+   open and back to Home on close; the notice is an alert, the message a polite live region. Not checked with a
+   screen reader (the owner's list).
+6. **Medium, the picture message — agreed.** It now says the browser *should have* saved it, and to open it and
+   check the words before ticking; a failure inside the `toBlob` callback is caught.
+7. **Medium, the deploy gap — agreed on the facts, disagreed on the remedy.** The facts are right: an old
+   signed-in page pulling from the new `GET` would store a nameless copy and erase that device's name, and the
+   old sign-up form accepts a typed name that happens to be a valid garden name. But only the owner's test
+   accounts exist and a guest never pulls, so code to keep old clients from the new `GET` would serve three
+   accounts for minutes. The runbook now says to close every signed-in tunegarden.game tab before the deploy
+   and not to open the live site signed in until the merge's build is live, says what goes wrong otherwise, and
+   qualifies the sign-up claim. The order stays the owner's: backend, preview, merge.
+8. **Medium, the runbook — agreed.** The stop rule adds Remove/Add of the pool, client or tables; every other
+   `Conditional` is read, not waved through; the table is described as past expectations; the stack status and
+   the pool's and client's physical ids are checked after the deploy; the redundant `CloudSwitchFn` line is
+   gone; the counter check names an identity that can read the table and a quiet moment.
+9. **Medium, the privacy inventory — agreed.** `DESIGN.md` §11b adds the `sub` and what it links, what the
+   sign-in library keeps on the device (the username and tokens; the refresh token lasts 365 days), what the
+   trigger enforces and cannot (the name's form, not its origin; never the password); the "CDN" claim is
+   corrected.
+10. **Medium, the sign-in forms — agreed.** A shared `authBusy`: Home's Close and backdrop, the landing's Back and
+    the form's Cancel do nothing while a sign-in is out; every way out empties and re-masks the passphrase;
+    closing Home redraws the panel; busy state is restored in `finally`, and a failing session lookup returns
+    the calm message.
+11. **Low, the fifth collision — agreed.** A number is drawn only from the numbers this pair has not tried; the
+    fifth (or a pair with none left) draws a different pair, never the crowded one.
+12. **Tests, uncertain creation — added** (`garden-card`: a made account found by signing in; a request that
+    never arrived; a real collision; a lockout, a throttle, an internal error and no network keep the card; a
+    full day believed only after the words are refused).
+13. **Tests, account-bound retry and truthful success — added** (`cloud-sync`).
+14. **Tests, controls and dismissal — added** (`garden-card`: unticking mid-request; leaving after a failed
+    sign-in; the modal's inert page; Cancel and Home's Close mid-sign-in; the passphrase box emptied and
+    re-masked; a failing session lookup; the fifth collision drawing the old pair).
+15. **Tests, the name through the real entry points — added, but not the old-client part.** Home's box, a reload
+    from the same storage, a nameless pull and Home reopened agree (`cloud-sync`); `?reset` was already covered
+    by TUN-84's tests. **Disagreed:** an old client against the new `GET` cannot be tested from this code — the
+    old client is gone from it — so that risk is handled by the runbook (7).
+16. **Owner checks, permissions and the authorizer — agreed**, added as step 3 of the TUN-93 deploy checks: an
+    authenticated `GET /progress` from the CLI with the new client's token, `update-user-attributes` refused for
+    `email`, `phone_number`, `name` and `preferred_username`, and an old account's fresh token read privately.
+17. **Real-browser card acceptance — partly here, the rest the owner's.** AO's browser showed the card as a dialog
+    with the page behind it inert, and Cancel giving it back. `file://`, a screen reader, print preview and the
+    saved PNG on a phone are on the playtest list.
+
+GPT's verification note (113 failures in its sandbox) was its read-only sandbox refusing to create temporary
+directories; the suite here: 1069/1069.

@@ -112,17 +112,20 @@ document.getElementById("landingSignin").onclick=()=>{ landingMain.style.display
   document.getElementById("landingUser").focus(); };
 // The same two boxes as Home's form (TUN-93): a garden name and four secret words, forgiven as signInPair says.
 const landingUser=document.getElementById("landingUser"), landingPass=document.getElementById("landingPass");
-setUpSignInBoxes(landingUser, landingPass, document.getElementById("landingShow"));
+const landingShow=document.getElementById("landingShow"), landingBackBtn=document.getElementById("landingBack");
+setUpSignInBoxes(landingUser, landingPass, landingShow);
 document.getElementById("landingLost").appendChild(lostCardLink());
-document.getElementById("landingBack").onclick=()=>{ landingPass.value=""; landingAuth.style.display="none"; landingMain.style.display=""; };
 let landingBusy=false;
+// Back is off while a sign-in is out; leaving empties and hides the passphrase box for whoever comes next.
+landingBackBtn.onclick=()=>{ if(landingBusy) return; clearPassBox(landingPass, landingShow);
+  document.getElementById("landingMsg").textContent=""; landingAuth.style.display="none"; landingMain.style.display=""; };
 async function doLandingSignIn(){ if(landingBusy) return;
   const msg=document.getElementById("landingMsg");
-  landingBusy=true; msg.textContent="Signing in…";
-  const r=await signInWith(landingUser.value, landingPass.value);   // pulls cloud progress → applyProgress resumes the game
-  landingBusy=false;
+  landingBusy=true; landingBackBtn.disabled=true; msg.textContent="Signing in…";
+  let r; try{ r=await signInWith(landingUser.value, landingPass.value); }   // pulls cloud progress → applyProgress resumes the game
+  finally{ landingBusy=false; landingBackBtn.disabled=false; }
   if(!r.ok){ msg.textContent=r.msg; return; }
-  landingPass.value=""; msg.textContent=""; renderPkgs(); hideLanding(); }
+  clearPassBox(landingPass, landingShow); msg.textContent=""; renderPkgs(); hideLanding(); }
 document.getElementById("landingDo").onclick=doLandingSignIn;
 document.getElementById("landingPass").addEventListener("keydown",e=>{ if(e.key==="Enter") doLandingSignIn(); });
 

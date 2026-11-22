@@ -566,7 +566,8 @@ test("TUN-87: a sign-up's first save never says 'saved to cloud' once a newer sa
   const signUp = g.onSignedIn(true); await tick();
   g.progress.packages.intro.level = 8; g.commitProgress(); await runSaves();   // B: the changed progress, refused
   assert.deepEqual(await g.cloudSongList(), []);                           // the cloud answers again
-  first.resolve(reply(200, { ok: true })); await signUp;                   // A: the old progress, stored
+  first.resolve(reply(200, { ok: true }));
+  assert.equal(await signUp, false, "nor does it tell the garden card it was (TUN-93)");    // A: the old progress, stored
   assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress was never saved");
   // and the plain case still says it
   const fresh = cloudGame();
@@ -583,7 +584,8 @@ test("TUN-87: a save queued while the sign-up's first save is out stops it sayin
   const signUp = g.onSignedIn(true); await tick();
   g.progress.packages.intro.level = 8; g.commitProgress();
   assert.equal(queuedSaves(), 1, "the changed progress waits on the debounce");
-  first.resolve(reply(200, { ok: true })); await signUp;
+  first.resolve(reply(200, { ok: true }));
+  assert.equal(await signUp, false, "the garden card is told the same (TUN-93)");
   assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress is not in the cloud yet");
   const queued = runSaves(); await tick();
   assert.equal(n, 2, "the queued save is out, and hangs");
@@ -688,4 +690,50 @@ test("a sign-up uploads this device's garden without its name, and says whether 
   const failed = cloudGame();
   failed.net.answer = answers(() => assert.fail("no pull"), () => reply(503, {}));
   assert.equal(await failed.g.onSignedIn(true), false, "a failed upload is reported, for the garden card");
+});
+
+test("the garden card's upload (onlyFor) never reaches another account: not after another sign-in, not over its failed load", async () => {
+  // ann's card: her first upload fails.
+  const { g, net, signIn, holdTokens } = cloudGame();
+  let putOk = false;
+  net.answer = answers(() => reply(503, {}), () => reply(putOk ? 200 : 503, {}));
+  assert.equal(await g.onSignedIn(true, "ann"), false);
+  // Another tab signs bea in; bea's load fails, so bea's cloud copy must not be written.
+  g.doSignOut(); signIn("bea"); await g.onSignedIn(false);
+  assert.equal(g.cloudSync, "unreachable");
+  const before = net.requests.length;
+  putOk = true;
+  assert.equal(await g.onSignedIn(true, "ann"), false, "ann's card's Try again does nothing while bea is signed in");
+  assert.equal(net.requests.length, before, "no request at all, with anyone's token");
+  assert.equal(g.cloudSync, "unreachable", "bea stays blocked");
+  // Signed in as ann again (the card signs in with its words), the retry uploads with ann's token only.
+  g.doSignOut(); signIn("ann");
+  assert.equal(await g.onSignedIn(true, "ann"), true);
+  assert.deepEqual(puts(net).slice(-1).map(r => r.token), ["token-ann"]);
+  // A switch while ann's token is being fetched: the push asks for ann's token and gets none once bea is in.
+  const h = cloudGame();
+  h.net.answer = answers(() => reply(200, null), () => reply(200, { ok: true }));
+  const release = h.holdTokens("ann");
+  const pending = h.g.onSignedIn(true, "ann"); await tick();
+  h.g.doSignOut(); h.signIn("bea"); release();
+  assert.equal(await pending, false);
+  assert.deepEqual(puts(h.net), [], "nothing pushed with anyone's token");
+});
+
+test("the name through Home's box, a reload and a nameless pull: the box, the title and the stored name agree", async () => {
+  const title = { textContent: "" }, pname = { value: "", focus() {}, addEventListener() {} };
+  const first = cloudGame({ elements: { title, pname } });
+  pname.value = " Pasha "; pname.oninput();   // home.js wired Home's box at load
+  assert.equal(first.g.Store.get("progress").name, "Pasha");
+  assert.equal(title.textContent, "🌱 Pasha's Tune Garden");
+  // A reload: the same storage, then the cloud answers a copy with no name (since TUN-93, every copy).
+  const stored = first.g.Store.get("progress");
+  const title2 = { textContent: "" }, pname2 = { value: "", focus() {}, addEventListener() {} };
+  const second = cloudGame({ local: stored, elements: { title: title2, pname: pname2 } });
+  const { name, ...nameless } = clone(CLOUD);
+  second.net.answer = answers(() => reply(200, nameless));
+  await second.g.onSignedIn(false);
+  second.g.openHome();
+  assert.deepEqual([pname2.value, title2.textContent, second.g.Store.get("progress").name, lvl(second.g.progress)],
+    ["Pasha", "🌱 Pasha's Tune Garden", "Pasha", 3]);
 });
