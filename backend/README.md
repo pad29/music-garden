@@ -367,11 +367,16 @@ explain — any of these means answer `n`. Read every other `Conditional` row's 
 above says why the usual ones are there, and anything else is a question before a `y`. The table is what
 past deploys showed, not a promise: a row it does not list is read, not waved through.
 
-After any deploy that touched the pool or the client, check they are the same ones:
-`aws cloudformation describe-stack-resources --stack-name music-garden --query "StackResources[?LogicalResourceId=='UserPool' || LogicalResourceId=='UserPoolClient'].[LogicalResourceId,PhysicalResourceId,ResourceStatus]"`
-lists `us-east-1_Ikzq1qoTI` and the client id in `js/cloud.js` (`AUTH`), both `UPDATE_COMPLETE`, and
-`aws cloudformation describe-stacks --stack-name music-garden --query "Stacks[0].StackStatus"` says
-`UPDATE_COMPLETE` (an `UPDATE_ROLLBACK_COMPLETE` means the update was undone: nothing changed).
+**Before and after any deploy that touches the pool, the client or a table**, list the four protected
+resources' physical ids, and compare:
+`aws cloudformation describe-stack-resources --stack-name music-garden --query "StackResources[?contains(['UserPool','UserPoolClient','ProgressTable','SongsTable'], LogicalResourceId)].[LogicalResourceId,PhysicalResourceId,ResourceStatus]"`.
+After the deploy the four ids must be the ones you noted before (the pool is `us-east-1_Ikzq1qoTI`; the
+client id is the one in `js/cloud.js`'s `AUTH`), and `aws cloudformation describe-stacks --stack-name
+music-garden --query "Stacks[0].StackStatus"` should say `UPDATE_COMPLETE`. A changed id is a stop: the
+game points at the old resource. **An `UPDATE_ROLLBACK_COMPLETE` does not by itself prove nothing changed**
+(a rollback can skip resources): read the stack's events (`aws cloudformation describe-stack-events
+--stack-name music-garden --max-items 40`), check the four ids again, and read back the settings the deploy
+was changing (for TUN-93, step 1 below) before deciding anything.
 
 **The first deploy after TUN-93** ([What an account may hold](#what-an-account-may-hold)). Expect, besides
 the usual rows above: `UserPool` Modify / `False` (its `AccountRecoverySetting`, now `admin_only`), and
@@ -392,27 +397,30 @@ with no email, is accepted — the trigger checks the name, not which page sent 
 1. Read the client back: `aws cognito-idp describe-user-pool-client --user-pool-id us-east-1_Ikzq1qoTI
    --client-id <UserPoolClientId>` shows `"ReadAttributes": ["updated_at"]` and `"WriteAttributes":
    ["updated_at"]`; `aws cognito-idp describe-user-pool --user-pool-id us-east-1_Ikzq1qoTI` shows
-   `AccountRecoverySetting` with `admin_only` alone; and the pool and client ids are unchanged (above). If
-   Cognito refused the lists, the deploy rolled back on its own: nothing changed, and the change goes back
-   to the ticket.
+   `AccountRecoverySetting` with `admin_only` alone; and the four protected ids are the ones you noted (above).
+   If Cognito refused the lists, the deploy rolled back: check as above that it left the old settings and the
+   same four ids, and the change goes back to the ticket.
 2. On the PR's **branch preview**: Home → *Create account* → roll a name → *Make my garden* → tick *I've
    kept my card* → *Go to my garden*. The account is made and signed in; the card then says "Your account
    is made, but your garden isn't in the cloud yet" — **expected on a preview**, whose origin the API's
    CORS refuses. Sign out, and sign in with the card's name and words typed in capitals with extra
    spaces: it signs in (and then says the cloud is resting, for the same reason). The preview proves
    Cognito, never the API.
-3. The API and the attribute permissions, from your own terminal, with that test account (keep its words
-   and its tokens out of anything you share or paste): `aws cognito-idp initiate-auth --no-sign-request
+3. The API and the attribute permissions, from your own terminal (keep the words and the tokens out of
+   anything you share or paste; record only the outcomes). `aws cognito-idp initiate-auth --no-sign-request
    --auth-flow USER_PASSWORD_AUTH --client-id <UserPoolClientId> --auth-parameters
-   USERNAME=<garden-name>,PASSWORD=<word-word-word-word>` gives an `IdToken` and an `AccessToken`.
-   - `curl.exe -s -i https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/progress -H "Authorization:
-     Bearer <IdToken>"` answers `200` (no `Origin`, so CORS is not involved): the authorizer accepts the
-     new client's tokens.
-   - `aws cognito-idp update-user-attributes --no-sign-request --access-token <AccessToken>
-     --user-attributes Name=email,Value=test@example.com` is refused (`NotAuthorizedException`), and the
-     same for `phone_number`, `name` and `preferred_username`.
-   - Optionally, an old test account's fresh `IdToken`, decoded privately (its middle part is base64
-     JSON): no `email`, and `sub`, `iss` and `aud` still there.
+   USERNAME=<name>,PASSWORD=<password>` gives an `IdToken` and an `AccessToken`. Do it for **one of your
+   old test accounts** (its old name and password) **and** for the new test account (its garden name and
+   `word-word-word-word`):
+   - The old account's fresh `IdToken`, decoded privately (its middle part is base64 JSON): no `email`, no
+     other profile claim, and `sub`, `iss` and `aud` still there.
+   - With each account's `IdToken`: `curl.exe -s -i https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/progress
+     -H "Authorization: Bearer <IdToken>"` answers `200` (no `Origin`, so CORS is not involved): the
+     authorizer accepts tokens from the client as it now is.
+   - With the new account's `AccessToken`: `aws cognito-idp update-user-attributes --no-sign-request
+     --access-token <AccessToken> --user-attributes Name=email,Value=test@example.com` is refused
+     (`NotAuthorizedException`), and the same for `phone_number` (`+15555550100`), `name` (`Test`) and
+     `preferred_username` (`test`) — valid values, so only the permission refuses them.
 4. Optionally, whether a taken name counts against the day: at a quiet moment (no one else signing up),
    note today's row in `music-garden-signup-count` with an identity that can read the table — the DynamoDB
    console, as in TUN-88's check below; `mg-deploy` cannot read items — then `aws cognito-idp sign-up

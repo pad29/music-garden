@@ -11,7 +11,7 @@ const GARDEN_SAYS={
   offline:"☁️ Can't reach the garden just now. Keep your card, and press Try again.",
   saved:"☁️ Your garden is saved in the cloud ✓",
   notSaved:"Your account is made, but your garden isn't in the cloud yet. Keep this page open and press Try again.",
-  madeNotIn:"Your account is made. Keep your card: you can press Try again, or sign in with it on Home later, and your garden goes up then.",
+  madeNotIn:"Your account is made, but your garden isn't in the cloud yet. Keep your card, and press Try again on this device to send your garden up.",
   noRandom:"🌱 This browser can't make a garden name. Keep playing as a guest: your garden is saved on this device.",
   pictureAsked:"🖼️ Your browser should have saved the picture. Open it and check the words before you tick the box.",
   pictureFailed:"That didn't work here. Print the card, or copy the words onto paper.",
@@ -34,10 +34,10 @@ function nextGardenName(a,pick=gardenPick){ a.taken++;
   while(id===null || a.tried.has(id)) id=rollGardenName(pick,pair);
   a.tried.add(id); a.name=id; return id; }
 
-// A refusal that settles it: these words do not open an account of this name — it does not exist, or someone
-// else's does (the pool answers both the same way). A lockout ("attempts exceeded") or any other failure settles
-// nothing.
-const wordsDontOpenIt=e=> authCode(e)==="NotAuthorizedException" && !/attempts exceeded/i.test(String((e&&e.message)||""));
+// A refusal that settles it: Cognito's own answer for a wrong name or password, word for word — these words do not
+// open an account of this name: it does not exist, or someone else's does (the pool answers both the same way).
+// Any other refusal settles nothing — a lockout, a sign-in that took too long, a message never seen before, none.
+const wordsDontOpenIt=e=> authCode(e)==="NotAuthorizedException" && /^Incorrect username or password\.?$/.test(String((e&&e.message)||""));
 
 // Makes the account on the card, signs in, uploads. Resumable: called again after a failure, it skips what is
 // done. { ok:true, saved } when signed in (saved: this device's current garden reached the cloud); { ok:false,
@@ -63,7 +63,7 @@ async function createGarden(a,say=()=>{},pick=gardenPick){
     catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; } }
   say("☁️ Saving your garden to the cloud…");
   const saved=(await onSignedIn(true,a.name))===true;   // only this card's account, with its own token
-  if(!saved && !currentUserIs(a.name)) a.signedIn=false;
+  if(!saved) a.signedIn=false;   // the next try signs in with the card again: its session may be gone or replaced
   return { ok:true, saved }; }
 
 function showGardenRoller(){ authbox.innerHTML=""; _authShowsSignedIn=false;
@@ -97,6 +97,7 @@ function setCardModal(on){
   if(on) for(const el of Array.from(document.body.children||[])) if(el!==cardoverlay && !el.inert && el.tagName!=="SCRIPT"){ el.inert=true; _cardInerted.push(el); } }
 
 function showGardenCard(a,notice){ _gardenCard=a; gardencard.innerHTML="";
+  gardencard.removeAttribute("aria-label"); gardencard.setAttribute("aria-labelledby","gctitle");
   const face=gardenCardFace(a);
   const note=document.createElement("div"); note.className="gcnotice"; note.setAttribute("role","alert");
   note.textContent=notice||""; note.style.display=notice?"":"none";
@@ -113,17 +114,18 @@ function showGardenCard(a,notice){ _gardenCard=a; gardencard.innerHTML="";
   // `latched`: the child said this card is kept and pressed Go. It holds for this card from then on (a renamed
   // card is a new card, drawn afresh), so unticking the box mid-request can never strand Try again.
   let busy=false, latched=false, done=null;
-  const ready=()=>{ go.disabled=busy || !(latched || box.checked); box.disabled=busy || latched; };
-  const addDone=()=>{ if(!done){ done=mkBtn("Done",closeGardenCard); actions.appendChild(done); } };
+  const ready=()=>{ go.disabled=busy || !(latched || box.checked); box.disabled=busy || latched; if(done) done.disabled=busy; };
+  const addDone=()=>{ if(!done){ done=mkBtn("Done",()=>{ if(!busy) closeGardenCard(); }); actions.appendChild(done); } };
   box.onchange=ready;
   go.onclick=async()=>{ if(busy || !(latched || box.checked) || _gardenCard!==a) return;
-    busy=true; latched=true; ready(); cancel.disabled=true;
+    busy=true; latched=true; ready(); cancel.disabled=true;   // Done too (ready): no leaving while it works
     let r; try{ r=await createGarden(a,t=>{ msg.textContent=t; }); }
     catch(e){ console.warn("Tune Garden: making a garden failed", e); r={ ok:false, msg:AUTH_SAYS.other }; }
     finally{ busy=false; }
     if(_gardenCard!==a) return;   // closed meanwhile
     if(r.renamed){ showGardenCard(a,GARDEN_SAYS.taken); return; }
     if(r.stop){ face.remove(); tools.remove(); kept.remove(); note.style.display="none";   // no account: the card is no good now
+      gardencard.removeAttribute("aria-labelledby"); gardencard.setAttribute("aria-label","Tune Garden: no new account");
       msg.textContent=r.msg; go.remove(); cancel.textContent="Close"; cancel.disabled=false; cancel.focus(); return; }
     kept.remove(); ready();
     if(!r.ok){ go.textContent="Try again";

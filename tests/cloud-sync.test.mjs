@@ -59,7 +59,8 @@ function recording(stub) {
  * them, with the token each was sent with. `signIn(name)` switches the stored user; `holdTokens(name)` makes
  * that user's sessions asked for from then on wait until the function it returns is called.
  */
-function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {} } = {}) {
+// claimOf(name): the account a session's ID token names (TUN-93's token check); extraSetup(window): more page set-up.
+function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {}, claimOf = n => n, extraSetup = null } = {}) {
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
   let current = bootUser; const holds = new Map();
@@ -69,11 +70,12 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
     get textContent() { return this.kids.map(k => k.textContent ?? "").join(""); } };
   const userNamed = name => ({ getUsername: () => name, signOut() { if (current === name) current = null; },
     getSession(cb) {
-      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "token-" + name }) });
+      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name) }, getJwtToken: () => "token-" + name }) });
       const h = holds.get(name); if (h) h.then(give); else give();
     } });
   const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
     w.localStorage.setItem("mg_progress", JSON.stringify(local));
+    if (extraSetup) extraSetup(w);
     w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return current ? userNamed(current) : null; } } };
     w.fetch = async (url, opts = {}) => {
       const req = { url: String(url), method: opts.method || "GET", body: opts.body,
@@ -737,3 +739,46 @@ test("the name through Home's box, a reload and a nameless pull: the box, the ti
   assert.deepEqual([pname2.value, title2.textContent, second.g.Store.get("progress").name, lvl(second.g.progress)],
     ["Pasha", "🌱 Pasha's Tune Garden", "Pasha", 3]);
 });
+
+test("another tab signing someone else in leaves this tab's saves unsent, the debounced ones included, until it signs in and loads", async () => {
+  const { g, net, runSaves, signIn, panel } = cloudGame();
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(200, { ok: true }));
+  await g.onSignedIn(false); await runSaves();
+  const before = net.requests.length;
+  signIn("bea");   // only the storage every tab shares changes — no doSignOut in this tab
+  g.progress.packages.intro.level = 9; g.commitProgress(); await runSaves();
+  assert.equal(await g.cloudPush(), false);
+  assert.equal(net.requests.length, before, "no PUT: not with bea's token, not at all");
+  assert.doesNotMatch(panel(), /saved to cloud/);
+  // This tab's own sign-in as bea reads bea's copy first, and only then saves to it.
+  await g.onSignedIn(false); await runSaves();
+  g.commitProgress(); await runSaves();
+  const after = net.requests.slice(before);
+  assert.deepEqual(after[0] && [after[0].method, after[0].token], ["GET", "token-bea"], "bea's copy is read first");
+  assert.ok(after.length > 1 && after.every(r => r.token === "token-bea"), "then saves go to bea, and only with bea's token");
+});
+
+test("a session whose token names another account is no session: nothing is read or written with it", async () => {
+  const { g, net } = cloudGame({ claimOf: n => (n === "ann" ? "bea" : n) });
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(200, { ok: true }));
+  assert.equal(await g.onSignedIn(false), false);
+  assert.equal(await g.onSignedIn(true, "ann"), false);
+  assert.equal(await g.cloudPush(), false);
+  assert.deepEqual(net.requests, [], "no request carried the mismatched token");
+  assert.equal(g.cloudOn, false);
+});
+
+for (const accept of [true, false]) {
+  test(`the name after ?reset ${accept ? "accepted" : "declined"}, a nameless pull and Home: the box, the title and the stored name agree`, async () => {
+    const title = { textContent: "" }, pname = { value: "", focus() {}, addEventListener() {} };
+    const { g, net } = cloudGame({ elements: { title, pname }, extraSetup: w => { w.location.search = "?reset"; w.confirm = () => accept; } });
+    const want = accept ? "" : "Ann";
+    assert.equal(g.progress.name, want);
+    const { name, ...nameless } = clone(CLOUD);
+    net.answer = answers(() => reply(200, nameless));
+    await g.onSignedIn(false);
+    g.openHome();
+    assert.deepEqual([pname.value, title.textContent, g.Store.get("progress").name],
+      [want, accept ? "🌱 Tune Garden" : "🌱 Ann's Tune Garden", want]);
+  });
+}

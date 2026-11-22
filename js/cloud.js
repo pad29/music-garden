@@ -41,14 +41,23 @@ function cogSignIn(username,password){ return new Promise((res,rej)=>{
   const u=new AmazonCognitoIdentity.CognitoUser({Username:username,Pool:userPool});
   const d=new AmazonCognitoIdentity.AuthenticationDetails({Username:username,Password:password});
   u.authenticateUser(d,{ onSuccess:s=>res(s), onFailure:e=>rej(e) }); }); }
-function doSignOut(){ const u=userPool&&userPool.getCurrentUser(); if(u) u.signOut(); _cloudRun++; cloudOn=false; cloudSync="off"; cloudResting=false; clearTimeout(_pushT); renderAuth(); }
+function doSignOut(){ const u=userPool&&userPool.getCurrentUser(); if(u) u.signOut(); _cloudRun++; cloudOn=false; cloudSync="off"; _syncUser=null; cloudResting=false; clearTimeout(_pushT); renderAuth(); }
 // onlyFor (TUN-93): a token only while that account is the one signed in. The session lives in storage the
 // browser's tabs share, so another tab can sign someone else in at any time; the garden card's upload must
 // never go to an account it did not make.
-const currentUserIs=name=>{ const u=userPool&&userPool.getCurrentUser(); return !!u && String(u.getUsername()).toLowerCase()===name; };
+const currentUserName=()=>{ const u=userPool&&userPool.getCurrentUser(); return u ? String(u.getUsername()).toLowerCase() : null; };
+const currentUserIs=name=>currentUserName()===name;
+// With onlyFor, the token is refused unless both the stored user and the token itself (its cognito:username
+// claim) are that account.
 function freshToken(onlyFor){ return new Promise(res=>{ const u=userPool&&userPool.getCurrentUser(); if(!u) return res(null);
   if(onlyFor && String(u.getUsername()).toLowerCase()!==onlyFor) return res(null);
-  u.getSession((err,sess)=>res((err||!sess||!sess.isValid())?null:sess.getIdToken().getJwtToken())); }); }
+  u.getSession((err,sess)=>{ if(err||!sess||!sess.isValid()) return res(null);
+    const id=sess.getIdToken(), claim=String(((id&&id.payload)||{})["cognito:username"]||"").toLowerCase();
+    res(onlyFor && claim!==onlyFor ? null : id.getJwtToken()); }); }); }
+// The account this tab's sync belongs to (TUN-93): set when a sign-in's run reads (or seeds) the cloud copy, and
+// every push — the debounced saves included — goes only with that account's token. Another tab signing someone
+// else in leaves this tab unable to write until it signs in and loads again.
+let _syncUser=null;
 // { ok:true, progress } — progress is null when nothing is saved yet; { ok:false } when it could not be read
 // (no token, 429, 5xx, a network error, a body that is not JSON). Never confuse the two: see onSignedIn, which also
 // treats a 200 that is neither null nor loadable progress as a failed load.
@@ -61,7 +70,7 @@ function cloudCopy(p){ const c=Object.assign({},p); delete c.name; return c; }
 function keepLocalName(cloud){ const c=cloudCopy(cloud); c.name=progress.name||""; return c; }
 let _pushSeq=0;   // counts progress saves queued or begun: a save's success says "saved" only if no newer one came since
 async function cloudPush(onlyFor){ if(cloudSync!=="ready") return false;   // never over a cloud copy we haven't read
-  _pushSeq++; const run=_cloudRun; const done=cloudCall(); const t=await freshToken(onlyFor);
+  _pushSeq++; const run=_cloudRun; const done=cloudCall(); const t=await freshToken(onlyFor||_syncUser);
   if(run!==_cloudRun || cloudSync!=="ready") return false;   // signed out, or someone else signed in, while the token came
   if(!t){ done(false); return false; }
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(cloudCopy(progress))});
@@ -109,9 +118,11 @@ function applyProgress(){   // re-apply the progress object to the running game
 // progress; the next onSignedIn (the next page load or sign-in) tries the load again. Each call is a new run
 // (_cloudRun): when an await returns into a run that sign-out or another sign-in has replaced, it does nothing.
 // onlyFor (the garden card, TUN-93): run only while that account is signed in, and push only with its token.
+// false: no usable session for that account (signed out, superseded, or another account in its place).
 async function onSignedIn(uploadLocal,onlyFor){ if(onlyFor && !currentUserIs(onlyFor)) return false;
-  const run=++_cloudRun; cloudSync="off"; cloudResting=false; clearTimeout(_pushT);   // drop a save queued for whoever was here before
-  const t=await freshToken(onlyFor); if(run!==_cloudRun) return false;
+  const who=currentUserName();   // this run's account: its pull, its pushes
+  const run=++_cloudRun; cloudSync="off"; _syncUser=who; cloudResting=false; clearTimeout(_pushT);   // drop a save queued for whoever was here before
+  const t=await freshToken(who); if(run!==_cloudRun) return false;
   if(!t){ cloudOn=false; renderAuth(); return false; } cloudOn=true;
   if(!uploadLocal){ cloudSync="loading"; renderAuth();
     const pull=await cloudPull(); if(run!==_cloudRun) return;
@@ -120,7 +131,7 @@ async function onSignedIn(uploadLocal,onlyFor){ if(onlyFor && !currentUserIs(onl
     cloudSync="ready";
     if(cloud){ progress=keepLocalName(cloud); Store.set("progress",progress); applyProgress(); enterPlay(); renderAuth("loaded from cloud"); return; } }
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
-  const push=_pushSeq+1; const ok=await cloudPush(onlyFor); if(run!==_cloudRun) return false;
+  const push=_pushSeq+1; const ok=await cloudPush(who); if(run!==_cloudRun) return false;
   // "saved to cloud" only for the newest progress save: once a newer one is queued or begun, this success no longer says
   // the current progress is in the cloud. A failure needs no word here: cloudResting already says so, calmly.
   const saved=ok && _pushSeq===push;
@@ -189,7 +200,10 @@ async function signInWith(nameText,passText){
   authBusy=true;
   try{
     try{ await cogSignIn(username,password); }catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; }
-    await onSignedIn(false); return { ok:true }; }
+    // false: the session was gone or replaced before it could be used — not signed in, so the form stays. A
+    // failed progress load is still a sign-in (the panel says the cloud is resting).
+    if(await onSignedIn(false)===false) return { ok:false, msg:AUTH_SAYS.other };
+    return { ok:true }; }
   catch(e){ console.warn("Tune Garden: signing in failed", e); return { ok:false, msg:AUTH_SAYS.other }; }
   finally{ authBusy=false; } }
 // The passphrase box, emptied and hidden again: on every way out of a sign-in form.

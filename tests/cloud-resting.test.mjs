@@ -87,7 +87,7 @@ Object.defineProperty(g.__document, "createElement", { value: tag => el(String(t
 g.toast = t => toasts.push(String(t));
 g.copyLink = () => {};
 g.userPool = { getCurrentUser: () => ({ getUsername: () => "ann",
-  getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "t" }) }) }) };
+  getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": "ann" }, getJwtToken: () => "t" }) }) }) };
 const answerWith = fn => { g.__window.__answer = fn; };
 const texts = () => { const out = []; const walk = e => { out.push(e.textContent); e.children.forEach(walk); }; walk(mlist); return out.join(" | "); };
 const button = (label) => { const out = []; const walk = e => { if (e.tag === "button" && e.textContent === label) out.push(e); e.children.forEach(walk); }; walk(mlist); return out[0]; };

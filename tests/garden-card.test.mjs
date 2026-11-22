@@ -15,7 +15,7 @@ function el(tag = "div") {
     append(...c) { for (const k of c) { if (k && typeof k === "object") { if (k.parent) k.remove(); k.parent = e; } e.kids.push(k); } },
     appendChild(c) { e.append(c); return c; },
     remove() { if (e.parent) { e.parent.kids = e.parent.kids.filter(k => k !== e); e.parent = null; } },
-    setAttribute(k, v) { e.attrs[k] = String(v); },
+    setAttribute(k, v) { e.attrs[k] = String(v); }, removeAttribute(k) { delete e.attrs[k]; },
     addEventListener(t, f) { (e.listeners[t] ||= []).push(f); },
     focus() {}, classList: { add() {}, remove() {} },
     get textContent() { return e._text + e.kids.map(k => k.textContent ?? "").join(""); },
@@ -51,12 +51,13 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
   const cognito = { signUps: [], signIns: [], uploads: 0 };
   g.cogSignUp = async (u, p) => { cognito.signUps.push([u, p]); return signUp(u, p); };
   g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; };
+  const realOnSignedIn = g.onSignedIn;
   g.onSignedIn = async (up, onlyFor) => {
     assert.equal(up, true, "a new garden uploads this device's");
     assert.equal(onlyFor, session.user, "only to the account the card signed in to");
     cognito.uploads++; return upload(); };
   g.renderPkgs = () => {};
-  return { g, authbox, cardoverlay, gardencard, cognito, elements, session };
+  return { g, authbox, cardoverlay, gardencard, cognito, elements, session, realOnSignedIn };
 }
 // Home → Create account → Make my garden: the card for the name the roller showed.
 function openCard(t) {
@@ -237,7 +238,7 @@ test("an account made but not uploaded says so; Try again uploads again; once ma
   assert.ok(button(t.gardencard, "Done"), "the child may still go on: the next save uploads");
   await go(t);
   assert.equal(t.cognito.signUps.length, 1, "the account is not made twice");
-  assert.equal(t.cognito.signIns.length, 1, "nor signed into twice");
+  assert.equal(t.cognito.signIns.length, 2, "signed in again with the card before the retry: its session may have gone");
   assert.equal(t.cognito.uploads, 2);
   assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
   assert.equal(all(t.gardencard).filter(e => e.tagName === "BUTTON" && e.textContent === "Done").length, 1, "one Done button");
@@ -247,7 +248,7 @@ test("a sign-in that fails after the account was made tries only the sign-in aga
   let n = 0;
   const t = cardGame({ signIn: async () => { if (++n === 1) throw new TypeError("Load failed"); } });
   openCard(t); keep(t); await go(t);
-  assert.match(said(t), /^☁️ Can't reach the garden just now\. Your garden is still saved on this device\. Your account is made\. Keep your card/);
+  assert.match(said(t), /^☁️ Can't reach the garden just now\. Your garden is still saved on this device\. Your account is made, but your garden isn't in the cloud yet\. Keep your card, and press Try again on this device/);
   assert.equal(button(t.gardencard, "Cancel"), undefined);
   assert.ok(button(t.gardencard, "Done"), "a way out: the account exists, and the card signs in later");
   await go(t);
@@ -416,4 +417,93 @@ test("the sign-in forms: busy forms can't be dismissed; every way out empties an
   try { assert.deepEqual({ ...await u.g.signInWith("brave-otter-42", "acorn map tulip wren") }, { ok: false, msg: "🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment." }); }
   finally { console.warn = warn; }
   assert.equal(u.g.authBusy, false);
+});
+
+test("an unfamiliar refusal after a lost answer settles nothing: one sign-up, the same card, Try again", async () => {
+  const warn = console.warn; console.warn = () => {};
+  try {
+    for (const message of ["A challenge took too long to answer.", undefined, ""]) {
+      let ins = 0;
+      const t = cardGame({ signUp: async () => { throw new TypeError("Failed to fetch"); },
+        signIn: async () => { if (++ins === 1) throw { code: "NotAuthorizedException", message }; } });
+      const shown = openCard(t), words = byClass(face(t), "gcwords").textContent;
+      keep(t); await go(t); await go(t);
+      assert.equal(t.cognito.signUps.length, 1, `${JSON.stringify(message)}: no second sign-up`);
+      assert.deepEqual([byClass(face(t), "gcname").textContent, byClass(face(t), "gcwords").textContent], [shown, words]);
+      assert.equal(button(t.gardencard, "Try again").disabled, false);
+      await go(t);   // now the card's words open it: it was made after all
+      assert.equal(t.cognito.signUps.length, 1);
+      assert.equal(t.cognito.uploads, 1);
+      assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
+    }
+  } finally { console.warn = warn; }
+});
+
+test("Done waits while a retry is out; pressed when idle it closes the card and leaves this device's garden as it was", async () => {
+  let ins = 0, release; const held = new Promise(r => { release = r; });
+  const t = cardGame({ signIn: async () => { ins++; if (ins === 1) throw new TypeError("Failed to fetch"); if (ins === 2) await held; } });
+  openCard(t); keep(t); await go(t);
+  const done = button(t.gardencard, "Done");
+  const retry = go(t); await tick();
+  assert.equal(done.disabled, true, "Done is off while the retry works");
+  done.onclick();
+  assert.equal(t.cardoverlay.style.display, "flex", "the card stays");
+  release(); await retry;
+  const u = cardGame({ signIn: async () => { throw new TypeError("Failed to fetch"); } });
+  openCard(u); keep(u); await go(u);
+  const garden = JSON.stringify(u.g.progress);
+  button(u.gardencard, "Done").onclick();
+  assert.equal(u.cardoverlay.style.display, "none");
+  assert.equal(JSON.stringify(u.g.progress), garden, "this device's garden untouched");
+});
+
+test("the wired exits: the landing's Show then Back empties and hides the words; leaving Home mid-sign-in does nothing, idle it clears the form", async () => {
+  let release; const held = new Promise(r => { release = r; });
+  const t = cardGame({ landing: true, signIn: () => held });
+  const { landingPass, landingShow, landingBack } = t.elements;   // boot wired these at load
+  landingPass.value = "acorn map tulip wren";
+  landingShow.onclick(); assert.equal(landingPass.type, "text");
+  landingBack.onclick();
+  assert.deepEqual([landingPass.value, landingPass.type, landingShow.textContent], ["", "password", "👁️ Show"]);
+  t.g.onSignedIn = async () => {};
+  t.g.showSignInForm();
+  const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
+  user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
+  const signing = button(t.authbox, "Sign in").onclick(); await tick();
+  t.elements.homeoverlay.style.display = "flex";
+  const scope = JSON.stringify(t.g.activeScope);
+  assert.equal(t.g.leaveHome(), false);
+  t.g.openPkg("intro", 0); t.g.openStudio();
+  assert.equal(t.elements.homeoverlay.style.display, "flex", "no package, Studio or quest while the sign-in is out");
+  assert.equal(JSON.stringify(t.g.activeScope), scope);
+  release(); await signing;
+  t.g.showSignInForm();
+  const [, pass2] = all(t.authbox).filter(e => e.tagName === "INPUT");
+  pass2.value = "acorn map tulip wren";
+  assert.equal(t.g.leaveHome(), true);
+  assert.equal(all(t.authbox).filter(e => e.tagName === "INPUT").length, 0, "the form, and its words, are gone");
+});
+
+test("a sign-in whose session is gone before it can be used is not a sign-in: the landing form stays, with its words", async () => {
+  const t = cardGame({ landing: true });
+  t.g.onSignedIn = t.realOnSignedIn;   // the real one, which finds no usable session
+  t.g.userPool = { getCurrentUser: () => ({ getUsername: () => "brave-otter-42", getSession: cb => cb(new Error("no session")) }) };
+  const { landingUser, landingPass, landingMsg } = t.elements;
+  landingUser.value = "brave-otter-42"; landingPass.value = "acorn map tulip wren";
+  await t.g.doLandingSignIn();
+  assert.equal(landingMsg.textContent, "🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment.");
+  assert.equal(landingPass.value, "acorn map tulip wren", "kept, to try again");
+});
+
+test("a refused sign-up's screen keeps the dialog's name", async () => {
+  const t = cardGame({ signUp: async () => { throw { code: "UserLambdaValidationException", message: "PreSignUp failed with error daily-signup-limit." }; } });
+  openCard(t);
+  assert.equal(t.gardencard.attrs["aria-labelledby"], "gctitle");
+  keep(t); await go(t);
+  assert.equal(face(t), undefined);
+  assert.equal(t.gardencard.attrs["aria-labelledby"], undefined, "not pointing at a title that is gone");
+  assert.equal(t.gardencard.attrs["aria-label"], "Tune Garden: no new account");
+  button(t.gardencard, "Close").onclick();
+  openCard(t);
+  assert.deepEqual([t.gardencard.attrs["aria-labelledby"], t.gardencard.attrs["aria-label"]], ["gctitle", undefined], "a new card is named by its title again");
 });
