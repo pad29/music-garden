@@ -82,7 +82,8 @@ function closeInstrCard(){ instroverlay.style.display="none"; stopSpeech();
   initAudio();                                                // the claim click is our user gesture — let the new voice introduce itself
   const t=actx.currentTime+0.05;
   [0,4,7,12].forEach((st,i)=>voice(instrEl.value, midiToFreq(60+st), t+i*0.22));
-  setTimeout(()=>{ if(speakOn) narrate(curStage().intro||""); }, 1400);   // then the level story gets its turn
+  const seq=narrateSeq;   // …unless something has spoken since — a cloud load's story, a new step — which it would restart (TUN-112)
+  setTimeout(()=>{ if(speakOn && narrateSeq===seq) narrate(curStage().intro||""); }, 1400);   // then the level story gets its turn
 }
 document.getElementById("instrClose").onclick=closeInstrCard;
 const playBtn=document.getElementById("play"), loopBtn=document.getElementById("loop");

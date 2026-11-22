@@ -75,7 +75,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   const teachTxt = st.teach || L.teach || "";                            // the theory "why" — a quiet aside, story+task stay the focus
   levelTeach.textContent = teachTxt ? ("🎓 "+teachTxt) : "";
   levelTeach.style.display = teachTxt ? "" : "none";
-  if(speakOn && narrateReady && !instrCardUp()) narrate(st.intro||""); else if(!instrCardUp()) stopSpeech();  // narrate the story (baked clip → browser-voice fallback) — but not on the landing screen, and not over an instrument-discovery card
+  if(speakOn && narrateReady && !instrCardUp()) narrate(st.intro||""); else if(!speakOn || !instrCardUp()) stopSpeech();  // narrate the story (baked clip → browser-voice fallback) — but not on the landing screen, and not over an instrument-discovery card
   const goals=st.goals||[]; goalList.innerHTML="";
   goals.forEach(g=>{ const li=document.createElement("li"); li.id="goal-"+g.id; li.textContent="◻ "+g.label; goalList.appendChild(li); });
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
