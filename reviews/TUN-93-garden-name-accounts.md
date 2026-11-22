@@ -910,3 +910,12 @@ pre-PR client (15/31) as enough; the rest partly, and 32–33 the owner's.
 
 Suite: 1084/1084. **Round 3 was the third review round:** by `work-ticket` § 8 the fixes are pushed without a
 fourth review, and the owner decides (*Owner's decisions* 7).
+
+## Merged `origin/main` after TUN-112 (PR #163), 2026-11-22
+
+`origin/main` merged into the branch (a merge, not a rebase: the branch is shared and never force-pushed). One
+conflict, in `onSignedIn`'s pull in `js/cloud.js`: kept TUN-112's narration handling around the load, with this
+PR's `keepLocalName(cloud)` and its `{ signedIn, saved }` result. TUN-112's new `tests/narration.test.mjs` stubbed
+the session the old way, so two stubs gained what this PR checks: the token's `cognito:username` and `sub`
+claims, and `freshId` in place of `freshToken`. Its assertions are unchanged. Suite: 1105/1105. Not reviewed by
+GPT: owner's question 1 (*Owner's decisions* 7) still decides whether a fourth round runs.
