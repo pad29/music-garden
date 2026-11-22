@@ -492,7 +492,8 @@ took the ticket over from `music-garden-47`.
 1. *Design checkpoint (`needs-owner`)*: **passed** — build *Plan, revised after the design review*.
 2. *The words (Question 1), and the festival-award pairs*: **A, the revised lists approved.** The answer did
    not mention `Golden-`/`Silver-` `Bear`/`Lion`; read as the recommended option, **kept**. The hand-off
-   says so, so the owner can correct it.
+   says so, so the owner can correct it. **Confirmed 2026-11-22: "2A" — keep them (323,189 names)**, the
+   owner's answer relayed by the orchestrator to session `music-garden-48`.
 3. *The card (Question 2)*: **A** — print and save as a picture, shown once, before the account is made;
    Home later shows the garden name only.
 4. *The number in the name (Question 3)*: **A** — kept; 323,189 names.
@@ -501,7 +502,11 @@ took the ticket over from `music-garden-47`.
    as typed until TUN-101; `AdminCreateUser` follows the same name and no-email rules; a browser may offer
    to remember the passphrase): **not overruled; they stand.**
 7. *A fourth PR review round, on round 3's fixes* (the budget is three; round 3 still requested changes, which
-   are fixed but unreviewed — *PR review, round 3*): **open**.
+   are fixed but unreviewed — *PR review, round 3*): **A — one fourth round, the last**, on the change since
+   `e1efafc` at the head after the `origin/main` merge, GPT to rule also on the two tests not added (the quest
+   card and the quest-trail row). If it approves: In Review; if it requests changes: back to the owner as Needs
+   Input, with no fifth round and no unreviewed fixes handed off as done. The owner's answer of 2026-11-22,
+   relayed by the orchestrator.
 
 ## Build (session `music-garden-48`, 2026-11-22)
 
