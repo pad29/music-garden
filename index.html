@@ -420,6 +420,32 @@
   .authrow{ font-size:.85rem; margin-bottom:6px;}
   .authform input{ width:100%; box-sizing:border-box; background:var(--cream); color:var(--soil); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; margin:4px 0;}
   .authmsg{ margin-top:4px; min-height:1.1em;}
+  .passrow{ display:flex; gap:6px; align-items:center;}
+  .passrow input{ flex:1; min-width:0;}
+  .lostcard{ margin-top:6px;}
+  .lostcard .hint{ margin-top:6px; text-align:left;}
+  .namehint{ margin:-4px 0 10px;}
+  .gardenname{ font-size:1.45rem; font-weight:700; text-align:center; margin:10px 0; font-family:var(--font-display);}
+  /* ---- The garden card (TUN-93) ---- */
+  #cardoverlay{ z-index:90;}
+  .gardencard{ width:460px; max-width:94vw; max-height:94vh; overflow:auto; text-align:center;}
+  .gcface{ background:#FFFDF6; border:3px dashed #F4C95D; border-radius:14px; padding:14px 12px; color:var(--soil);}
+  .gctitle{ font-size:1.2rem; font-weight:700; font-family:var(--font-display); margin-bottom:4px;}
+  .gclabel{ font-size:.85rem; opacity:.85; margin-top:10px;}
+  .gcname{ font-size:1.7rem; font-weight:700; font-family:var(--font-display); overflow-wrap:anywhere;}
+  .gcwords{ font-size:1.55rem; font-weight:700; word-spacing:.35em; overflow-wrap:anywhere;}
+  .gcnote{ font-size:.8rem; font-style:italic;}
+  .gcsite{ margin-top:12px; font-weight:600;}
+  .gcnotice{ background:#FFF1C9; border-radius:8px; padding:6px 8px; margin:10px 0 0;}
+  .gctools, .gcactions{ justify-content:center; margin-top:10px;}
+  .gckept{ display:flex; gap:8px; align-items:center; justify-content:center; margin:12px 0 4px; font-weight:600;}
+  .gckept input{ width:20px; height:20px;}
+  @media print{
+    body.cardopen > *:not(#cardoverlay){ display:none !important;}
+    body.cardopen #cardoverlay{ position:static; background:none; display:block !important;}
+    body.cardopen .gardencard{ box-shadow:none; border:none; max-height:none; width:auto; animation:none;}
+    body.cardopen #gardencard > *:not(.gcface){ display:none !important;}
+  }
   .bloom{ position:fixed; z-index:60; pointer-events:none; font-size:18px; animation:bloomUp 1.2s ease-out forwards;}
   @keyframes bloomUp{ 0%{ transform:translateY(0) scale(.4); opacity:0;} 25%{ opacity:.95;} 100%{ transform:translateY(-46px) scale(1.05) rotate(18deg); opacity:0;} }
   #gardenbed{ height:160px; overflow-y:auto; display:flex; flex-wrap:wrap; align-content:flex-start; gap:2px; padding:7px;
@@ -872,13 +898,15 @@
       </div>
       <div id="landingauth" style="display:none">
         <div class="authform">
-          <input id="landingUser" type="text" placeholder="Username" maxlength="24" />
-          <input id="landingPass" type="password" placeholder="Password" />
+          <!-- js/boot.js sets these boxes up as js/cloud.js setUpSignInBoxes says (TUN-93): no length limit. -->
+          <input id="landingUser" type="text" />
+          <div class="passrow"><input id="landingPass" type="password" /><button id="landingShow" class="secondary"></button></div>
           <div id="landingMsg" class="authmsg hint"></div>
           <div class="pkgactions" style="justify-content:center;">
             <button id="landingDo">Sign in</button>
             <button id="landingBack" class="secondary">← Back</button>
           </div>
+          <div id="landingLost"></div>
         </div>
       </div>
     </div>
@@ -974,6 +1002,7 @@
       <label class="ctl" style="display:flex; gap:6px; margin-bottom:10px;">Name
         <input id="pname" type="text" maxlength="20" placeholder="Gardener" style="flex:1;">
       </label>
+      <div class="hint namehint">Your name stays on this device. It is never sent to the cloud.</div>
       <div id="authbox"></div>
       <div id="pkglist"></div>
       <!-- ONE calm card below the map, outside the SVG. Q22: no badge, no dot, no exclamation mark,
@@ -981,6 +1010,12 @@
       <div id="questhome"></div>
       <button class="secondary" id="homeclose">Close</button>
     </div>
+  </div>
+
+  <!-- The garden card (TUN-93, js/garden-card.js): above Home, and closed only by its own buttons. When it is
+       open, printing prints the card alone. -->
+  <div id="cardoverlay" class="overlay" style="display:none">
+    <div class="card gardencard" id="gardencard"></div>
   </div>
 
 <!-- The Cognito sign-in library, pinned and served from this site (vendor/README.md). Not a game script: the
@@ -1012,7 +1047,9 @@
 <script src="js/persistence.js"></script>
 <script src="js/save-share.js"></script>
 <script src="js/home.js"></script>
+<script src="js/garden-words.js"></script>
 <script src="js/cloud.js"></script>
+<script src="js/garden-card.js"></script>
 <script src="js/living-garden.js"></script>
 <script src="js/boot.js"></script>
 </body>

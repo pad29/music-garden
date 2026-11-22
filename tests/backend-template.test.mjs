@@ -228,6 +228,31 @@ function signUpLimitProblems(t) {
   return problems;
 }
 
+// TUN-93: accounts hold nothing personal. No self-service recovery (there is no email to recover with), and the
+// browser client may read and write one attribute that holds no typed text: left out, the lists would mean every
+// standard attribute, so a signed-in page could add an email or a name after sign-up. And the properties Cognito
+// fixes when a pool or client is made stay exactly as they are: changing one fails, or needs a new, empty pool
+// (every account lost to the game) or a new client (a new client id, and every page broken).
+const POOL_FIXED = { UserPoolName: "music-garden-users", UsernameConfiguration: { CaseSensitive: "false" } };
+const POOL_UNSET = ["UsernameAttributes", "AliasAttributes", "Schema", "AutoVerifiedAttributes", "EmailConfiguration",
+  "SmsConfiguration", "VerificationMessageTemplate", "UserAttributeUpdateSettings"];
+function accountProblems(t) {
+  const problems = [], R = t.Resources || {};
+  const P = (n) => (R[n] || {}).Properties || {};
+  const need = (cond, msg) => { if (!cond) problems.push(msg); };
+  const pool = P("UserPool"), client = P("UserPoolClient");
+  need(same(pool.AccountRecoverySetting, { RecoveryMechanisms: [{ Name: "admin_only", Priority: "1" }] }),
+    "UserPool's recovery must be exactly admin_only: accounts have no email or phone");
+  for (const [k, v] of Object.entries(POOL_FIXED)) need(same(pool[k], v), `UserPool's ${k} must stay ${JSON.stringify(v)} (fixed when the pool was made)`);
+  for (const k of POOL_UNSET) need(!(k in pool), `UserPool sets ${k}: an account holds nothing personal, and some of these are fixed when the pool is made`);
+  need((R.UserPoolClient || {}).Type === "AWS::Cognito::UserPoolClient", "UserPoolClient is missing");
+  need(same(client.UserPoolId, ref("UserPool")) && client.GenerateSecret === "false",
+    "UserPoolClient's UserPoolId and GenerateSecret must stay as they are (a change makes a new client)");
+  need(same(client.ReadAttributes, ["updated_at"]) && same(client.WriteAttributes, ["updated_at"]),
+    "UserPoolClient must read and write exactly [updated_at]: left out, every standard attribute is writable");
+  return problems;
+}
+
 // ---- the checks -------------------------------------------------------------------------------------
 const num =(v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
 const fmt = ([r, b]) => `${r}/s burst ${b}`;
@@ -326,6 +351,7 @@ export function templateProblems(template, samconfig) {
   }
   problems.push(...switchProblems(t));
   problems.push(...signUpLimitProblems(t));
+  problems.push(...accountProblems(t));
   const pe =(t.Parameters || {}).BudgetEmail;
   if (!pe) problems.push("the BudgetEmail parameter is missing");
   else {
@@ -451,6 +477,18 @@ test("the template check refuses each mistake it guards against, with the right 
     ["no invoke permission for the pool", TEMPLATE.replace(/  PreSignUpPermission:\n(?:    .*\n|      .*\n)+/, ""), /PreSignUpPermission must let exactly this user pool invoke PreSignUpFn/],
     ["the pool's permission on another function", TEMPLATE.replace("      FunctionName: !Ref PreSignUpFn\n", "      FunctionName: !Ref SongsFn\n"), /PreSignUpPermission must let exactly/],
     ["a timeout under the counter's deadline", TEMPLATE.replace("    Timeout: 10\n", "    Timeout: 2\n"), /PreSignUpFn's timeout \(Globals\) is 2 s/],
+    // TUN-93: nothing personal in an account
+    ["email recovery back", TEMPLATE.replace("          - Name: admin_only\n", "          - Name: verified_email\n"), /recovery must be exactly admin_only/],
+    ["a second recovery", TEMPLATE.replace("          - Name: admin_only\n            Priority: 1\n", "          - Name: admin_only\n            Priority: 1\n          - Name: verified_email\n            Priority: 2\n"), /recovery must be exactly admin_only/],
+    ["the client able to write every attribute", TEMPLATE.replace("      WriteAttributes:\n        - updated_at\n", ""), /read and write exactly \[updated_at\]/],
+    ["the client able to write an email", TEMPLATE.replace("      WriteAttributes:\n        - updated_at\n", "      WriteAttributes:\n        - updated_at\n        - email\n"), /read and write exactly \[updated_at\]/],
+    ["the client able to read every attribute", TEMPLATE.replace("      ReadAttributes:\n        - updated_at\n", ""), /read and write exactly \[updated_at\]/],
+    ["a case-sensitive pool", TEMPLATE.replace("        CaseSensitive: false\n", "        CaseSensitive: true\n"), /UsernameConfiguration must stay/],
+    ["a renamed pool", TEMPLATE.replace("      UserPoolName: music-garden-users\n", "      UserPoolName: music-garden-users-2\n"), /UserPoolName must stay/],
+    ["email as the username", TEMPLATE.replace("      DeletionProtection: ACTIVE\n", "      DeletionProtection: ACTIVE\n      UsernameAttributes:\n        - email\n"), /UserPool sets UsernameAttributes/],
+    ["an email verified automatically", TEMPLATE.replace("      DeletionProtection: ACTIVE\n", "      DeletionProtection: ACTIVE\n      AutoVerifiedAttributes:\n        - email\n"), /UserPool sets AutoVerifiedAttributes/],
+    ["a schema attribute", TEMPLATE.replace("      DeletionProtection: ACTIVE\n", "      DeletionProtection: ACTIVE\n      Schema:\n        - Name: nickname\n          Required: true\n"), /UserPool sets Schema/],
+    ["a client with a secret", TEMPLATE.replace("      GenerateSecret: false\n", "      GenerateSecret: true\n"), /UserPoolId and GenerateSecret must stay/],
     ["a kept counter table", TEMPLATE.replace("  SignUpCountTable:\n    Type: AWS::DynamoDB::Table\n", "  SignUpCountTable:\n    Type: AWS::DynamoDB::Table\n    DeletionPolicy: Retain\n"), /SignUpCountTable sets DeletionPolicy/],
   ];
   for (const [what, mutated, expect] of cases) {

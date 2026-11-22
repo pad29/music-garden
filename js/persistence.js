@@ -31,7 +31,9 @@ function saveUserSettings(){
   progress.settings={voice:instrEl.value, tempo:playerTempo(), mix:mix, speak:speakOn, click:clickMode};
   commitProgress(); }
 
-function savePlayerName(name){ progress.name=name; commitProgress(); }
+// The player's name stays on this device (TUN-93): saved here, never uploaded (cloudPush leaves it out), so a
+// change to it schedules no cloud save either.
+function savePlayerName(name){ progress.name=name; Store.set("progress", progress); }
 
 // Package advancement. Deliberately does NOT touch progress.settings — that is the whole point of the
 // split, and re-adding a snapshot here would reopen the laundering path.

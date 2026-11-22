@@ -8,7 +8,7 @@ import assert from "node:assert";
 import { registerHooks } from "node:module";
 import {
   makePreSignUpHandler, signUpConfig, counterParams, sdkAdapter, utcDay,
-  FULL, UNAVAILABLE, UNSUPPORTED, KEEP_DAYS, DEADLINE_MS, CLIENT_OPTIONS,
+  FULL, UNAVAILABLE, UNSUPPORTED, NOT_GARDEN_NAME, HAS_ATTRIBUTES, REFUSED_ATTRIBUTES, KEEP_DAYS, DEADLINE_MS, CLIENT_OPTIONS,
 } from "../backend/src/presignup-api.mjs";
 
 const DAY = 86_400_000;
@@ -17,7 +17,8 @@ const MIDNIGHT = Date.UTC(2026, 10, 16);               // 2026-11-16 00:00 UTC
 const TABLE = "music-garden-signup-count";
 const SECRET = "arn:aws:dynamodb:us-east-1:123456789012:table/SECRET-internal";
 const cfg = (limit) => ({ ok: true, limit, table: TABLE });
-const signUp = (email) => ({ triggerSource: "PreSignUp_SignUp", userName: "kid", request: { userAttributes: email ? { email } : {} }, response: {} });
+// A garden name with nothing else (TUN-93): what the game sends. `over` replaces fields for the refusal tests.
+const signUp = (over = {}) => ({ triggerSource: "PreSignUp_SignUp", userName: "brave-otter-42", request: { userAttributes: {} }, response: {}, ...over });
 
 function quietLog() {
   const lines = [];
@@ -52,15 +53,14 @@ async function outcome(h, event) {
   catch (e) { return e.message; }
 }
 
-test("a sign-up is counted against its UTC day and confirmed as before; an email is auto-verified", async () => {
+test("a sign-up is counted against its UTC day and confirmed as before; nothing is ever auto-verified", async () => {
   const t = memoryTable(), { log } = quietLog();
   const h = makePreSignUpHandler(t.counter, { config: cfg(100), now: () => T0, log });
-  const r = await h(signUp("parent@example.com"));
+  const r = await h(signUp());
   assert.equal(r.response.autoConfirmUser, true);
-  assert.equal(r.response.autoVerifyEmail, true);
-  const r2 = await h(signUp());
+  assert.deepStrictEqual(Object.keys(r.response), ["autoConfirmUser"], "no autoVerifyEmail or autoVerifyPhone");
+  const r2 = await h(signUp({ userName: "Golden-Lion-99" }));   // a capitalised name is checked lower-cased
   assert.equal(r2.response.autoConfirmUser, true);
-  assert.equal(r2.response.autoVerifyEmail, undefined, "no email, nothing to verify");
   assert.deepStrictEqual(t.rows.get("2026-11-15"), { day: "2026-11-15", signups: 2, expiresAt: Date.UTC(2026, 10, 15) / 1000 + KEEP_DAYS * 86400 });
   assert.equal(t.calls.length, 2);
   assert.ok(t.calls[0].signal instanceof AbortSignal, "every counter call carries the deadline's signal");
@@ -86,7 +86,7 @@ test("N sign-ups pass; the next is refused with exactly the daily-limit token, u
   const t = memoryTable(), { log } = quietLog();
   const h = makePreSignUpHandler(t.counter, { config: cfg(3), now: () => T0, log });
   for (let i = 0; i < 3; i++) assert.equal(await outcome(h, signUp()), "ok");
-  const ev = signUp("x@example.com");
+  const ev = signUp();
   await assert.rejects(h(ev), (e) => e.message === FULL && e.stack === `Error: ${FULL}`);
   assert.deepStrictEqual(ev.response, {}, "a refused sign-up is never given the confirm flags");
   assert.equal(t.rows.get("2026-11-15").signups, 3);
@@ -172,7 +172,7 @@ test("a limit of 0 refuses every sign-up as full, without touching DynamoDB, whe
 test("only the game's sign-up is counted; the owner's AdminCreateUser is not; any other source is refused before a write", async () => {
   const t = memoryTable(), { log, lines } = quietLog();
   const h = makePreSignUpHandler(t.counter, { config: cfg(1), now: () => T0, log });
-  const admin = await h({ triggerSource: "PreSignUp_AdminCreateUser", request: { userAttributes: {} }, response: {} });
+  const admin = await h(signUp({ triggerSource: "PreSignUp_AdminCreateUser" }));
   assert.equal(admin.response.autoConfirmUser, true);
   assert.equal(t.calls.length, 0, "AdminCreateUser is not counted");
   for (const source of ["PreSignUp_ExternalProvider", "PostConfirmation_ConfirmSignUp", "", undefined, null, 42]) {
@@ -294,7 +294,7 @@ test("the deployed entry point: SDK options, the environment, the signal on send
     for (const late of ["resolve", "reject"]) {
       let settle;
       sdk.send = () => new Promise((res, rej) => { settle = { resolve: () => res({}), reject: () => rej(conditionFailed()) }; });
-      const ev = signUp("parent@example.com"), started = Date.now();
+      const ev = signUp(), started = Date.now();
       await assert.rejects(handler(ev), (e) => e.message === UNAVAILABLE, `held past the deadline, then ${late}d`);
       const took = Date.now() - started;
       assert.ok(took >= DEADLINE_MS - 50 && took < 4500, `refused at the deadline, inside Cognito's 5 s (${took} ms)`);
@@ -323,4 +323,47 @@ test("sdkAdapter sends an UpdateCommand of the handler's parameters, with the de
   assert.ok(sent[0].cmd instanceof UpdateCommand);
   assert.deepStrictEqual(sent[0].cmd.input, counterParams(TABLE, 100, T0));
   assert.ok(sent[0].opts.abortSignal instanceof AbortSignal);
+});
+
+// ---------- TUN-93: an account is a generated garden name and nothing personal ----------
+test("a username that is not a generated garden name is refused before anything is counted, from either source", async () => {
+  const t = memoryTable(), { log } = quietLog();
+  const h = makePreSignUpHandler(t.counter, { config: cfg(100), now: () => T0, log });
+  const bad = ["kid", "", "brave-otter", "brave-otter-4", "brave-otter-042", "brave-otter-05", "brave-otter-100",
+    "brave-otter-69", "brave-otter-13", "silver-fox-42", "sleepy-bear-42", "dancing-bear-10", "otter-brave-42",
+    "brave_otter_42", "brave otter 42", "brave-otter-42 ", " brave-otter-42", "brave--otter-42", "brave-otter-42-1",
+    "brave-dragon-42", "lunar-otter-42", "brave-otter-٤٢", "brave-otter-42\n", "bravé-otter-42"];
+  for (const source of ["PreSignUp_SignUp", "PreSignUp_AdminCreateUser"]) {
+    for (const userName of [...bad, undefined, null, 42, {}]) {
+      const ev = signUp({ triggerSource: source, userName });
+      await assert.rejects(h(ev), (e) => e.message === NOT_GARDEN_NAME && e.stack === `Error: ${NOT_GARDEN_NAME}`, `${source} ${JSON.stringify(userName)}`);
+      assert.deepStrictEqual(ev.response, {}, "never confirmed");
+    }
+  }
+  assert.equal(t.calls.length, 0, "no refusal touched the day's count");
+  for (const userName of ["brave-otter-42", "BRAVE-OTTER-42", "golden-lion-10", "zippy-wren-99", "silver-bear-11"])
+    assert.equal(await outcome(h, signUp({ userName })), "ok", userName);
+});
+
+test("a sign-up carrying an email, a phone number or any free-text attribute is refused before anything is counted; only names are logged", async () => {
+  const t = memoryTable(), { log, lines } = quietLog();
+  const h = makePreSignUpHandler(t.counter, { config: cfg(100), now: () => T0, log });
+  for (const source of ["PreSignUp_SignUp", "PreSignUp_AdminCreateUser"]) {
+    for (const k of REFUSED_ATTRIBUTES) {
+      for (const v of ["parent@example.com", ""]) {   // present at all is enough, even empty
+        lines.length = 0;
+        const ev = signUp({ triggerSource: source, request: { userAttributes: { [k]: v } } });
+        await assert.rejects(h(ev), (e) => e.message === HAS_ATTRIBUTES, `${source} ${k}=${JSON.stringify(v)}`);
+        assert.deepStrictEqual(ev.response, {});
+        assert.ok(lines.some((l) => l[0] === "log" && l[2] === k), "the attribute's name is logged");
+        assert.ok(!JSON.stringify(lines).includes("example.com"), "its value never is");
+      }
+    }
+  }
+  assert.equal(t.calls.length, 0, "no refusal touched the day's count");
+  for (const k of ["email", "phone_number", "name", "given_name", "family_name", "nickname", "preferred_username", "birthdate", "address"])
+    assert.ok(REFUSED_ATTRIBUTES.includes(k), `${k} is refused`);
+  // What the event may carry without a refusal: nothing, no map at all, or an attribute Cognito itself might add.
+  for (const request of [{ userAttributes: {} }, {}, undefined, { userAttributes: null }, { userAttributes: { sub: "x", "cognito:user_status": "UNCONFIRMED" } }])
+    assert.equal(await outcome(h, signUp({ request })), "ok", JSON.stringify(request));
 });

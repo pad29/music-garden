@@ -126,7 +126,8 @@ export const fusePackages = g => Object.keys(g.PACKAGES).filter(id => id !== "st
 /**
  * A played-through progress, written by the game: every package entered and finished through
  * savePackageProgress, tools crafted (`tools`: "some" or "every" distinct one) in each Fuse package,
- * settings saved, a companion picked, regions met, F and B discovered, the longest name.
+ * settings saved, a companion picked, regions met, F and B discovered, the longest name. `progress` is what the
+ * game sends to the cloud — without the name, which stays on the device (TUN-93).
  */
 export function playedThroughProgress({ tools = "some" } = {}) {
   const { g, requests } = clientGame();
@@ -149,5 +150,5 @@ export function playedThroughProgress({ tools = "some" } = {}) {
   g.instrEl.value = "glockenspiel"; g.mix = { voice: 1.37, band: 0, drums: 2 }; g.speakOn = false; g.clickMode = "both";
   g.saveUserSettings();
   g.commitProgress();
-  return { g, requests, progress: clone(g.progress) };
+  return { g, requests, progress: clone(g.cloudCopy(g.progress)) };
 }

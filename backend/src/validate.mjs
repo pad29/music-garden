@@ -19,7 +19,6 @@ export const MAX_SONG_BODY_BYTES = 17 * 1024;      // the request: the song, its
 export const MAX_PROGRESS_BYTES = 16 * 1024;       // the request and the stored progress; real max 13,457
 export const MAX_PER_USER = 50;                    // cloud songs per account — a SOFT cap (songs-api.mjs)
 export const TITLE_MAX = 60;
-export const NAME_MAX = 20;                        // #pname maxlength, unchanged in all of history
 export const MAX_NOTES = 1000;                     // more than 16 KB can hold; checked first, cheaply
 export const MAX_HITS = 1000;
 
@@ -170,7 +169,9 @@ export const chooseTitle = (reqTitle, song) =>
 // ---- progress (js/persistence.js commitProgress, saveUserSettings, savePackageProgress) ----
 // `toolbox` at the top is the retired global bag; commitProgress deletes it, but sign-up pushes the local
 // progress without committing first, so an old guest's may still carry one. It is dropped, not refused.
-const PROGRESS_KEYS = set("v", "name", "current", "packages", "settings", "updatedAt", "instruments",
+// `name` is refused (TUN-93): the player's name stays on their device, and only a page opened before that
+// change still sends one — its saves fail until it is reloaded.
+const PROGRESS_KEYS = set("v", "current", "packages", "settings", "updatedAt", "instruments",
   "metRegions", "companion", "colors", "toolbox");
 const PACKAGE_KEYS = set("level", "maxLevel", "done", "completed", "toolbox");
 const TOOL_KEYS = set("offs", "midis");
@@ -186,10 +187,6 @@ export function checkProgress(p) {
   if (!isObj(p) || !onlyKeys(p, PROGRESS_KEYS)) return bad("progress key");
   if (p.v !== 1) return bad("v");
   const out = { v: 1 };
-  if (has(p, "name")) {   // still accepted for now (TUN-83 out of scope); cut, never refused for length
-    if (typeof p.name !== "string") return bad("name");
-    out.name = stripControls(p.name).slice(0, NAME_MAX);
-  }
   if (has(p, "current")) { if (!PACKAGES.has(p.current)) return bad("current"); out.current = p.current; }
   if (!isObj(p.packages)) return bad("packages");
   out.packages = {};

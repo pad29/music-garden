@@ -433,7 +433,7 @@ function syncPatchCopy(){ const m=meterAt(), k=barCols();
                                : "Take back the last patch — 16 steps"; }
 const moreMenu=document.getElementById("moremenu"), roomGroup=document.getElementById("roomgroup");
 // ONE keyboard handler, a priority ladder — never two listeners fighting over the same key (design-panel rule).
-function overlayUp(){ return ["powoverlay","congratsoverlay","moverlay","homeoverlay","landingoverlay","compoverlay","instroverlay","mixoverlay","questfinale"]
+function overlayUp(){ return ["powoverlay","congratsoverlay","moverlay","homeoverlay","landingoverlay","compoverlay","instroverlay","mixoverlay","questfinale","cardoverlay"]
   .some(id=>{ const el=document.getElementById(id); return el && getComputedStyle(el).display!=="none"; }); }
 document.addEventListener("keydown",e=>{
   const t=e.target;

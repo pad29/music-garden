@@ -350,6 +350,21 @@ test("GET /progress returns an old row unchanged, and null when there is none", 
   assert.deepStrictEqual(json(await api.call(ev("GET", {}))), legacy);
 });
 
+test("GET /progress never returns a player's name saved before TUN-93, in either stored shape; everything else is as stored", async () => {
+  const saved = { v: 1, name: "Ann", current: "intro", packages: { intro: { level: 2 } }, settings: { speak: false }, anything: "kept" };
+  const { name, ...without } = saved;
+  for (const [shape, data] of [["a DynamoDB map (before TUN-83)", { ...saved }], ["JSON text (since TUN-83)", JSON.stringify(saved)]]) {
+    const api = progressApi();
+    api.rows.set("user-1", { userId: "user-1", data, updated: 1 });
+    const got = json(await api.call(ev("GET", {})));
+    assert.deepStrictEqual(got, without, shape);
+    assert.strictEqual(api.writes.length, 0, "reading never rewrites the row");
+  }
+  const api = progressApi();
+  api.rows.set("user-1", { userId: "user-1", data: { v: 1, packages: {}, settings: { name: "inner" } }, updated: 1 });
+  assert.deepStrictEqual(json(await api.call(ev("GET", {}))), { v: 1, packages: {}, settings: { name: "inner" } }, "only the top-level name goes");
+});
+
 test("PUT /progress refuses, with fixed messages and no write, everything that is not real progress", async () => {
   const fine = JSON.stringify({ v: 1, packages: {} });
   const cases = [
@@ -358,9 +373,11 @@ test("PUT /progress refuses, with fixed messages and no write, everything that i
     [ev("PUT", { body: "null" }), 400, "bad progress"],
     [ev("PUT", { body: '"progress"' }), 400, "bad progress"],
     [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, note: "hi" }) }), 400, "bad progress"],
+    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, name: "Ann" }) }), 400, "bad progress"],   // TUN-93
+    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, name: "" }) }), 400, "bad progress"],
     [ev("PUT", { body: '{"v":1,"packages":{"__proto__":{}}}' }), 400, "bad progress"],
-    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, name: "x".repeat(MAX_PROGRESS_BYTES) }) }), 413, "too large"],
-    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, name: "一".repeat(6000) }) }), 413, "too large"],
+    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, pad: "x".repeat(MAX_PROGRESS_BYTES) }) }), 413, "too large"],
+    [ev("PUT", { body: JSON.stringify({ v: 1, packages: {}, pad: "一".repeat(6000) }) }), 413, "too large"],   // bytes, not characters
     [ev("PUT", { body: fine, sub: null }), 401, "unauthorized"],
     [ev("POST", { body: fine }), 405, "method not allowed"],
   ];
@@ -375,15 +392,16 @@ test("PUT /progress refuses, with fixed messages and no write, everything that i
 });
 
 test("PUT /progress reads a body of exactly 16 KB and refuses one byte more, plain and base64", async () => {
-  // multibyte padding in `name`, which the validator cuts to 20 characters — the BODY is what is measured
-  const bodyOf = n => { const b = { v: 1, packages: { intro: { level: 1 } }, name: "" };
-    const pad = MAX_PROGRESS_BYTES - Buffer.byteLength(JSON.stringify(b)) + n;
-    b.name = "é".repeat(pad >> 1) + "x".repeat(pad & 1); return JSON.stringify(b); };
+  // Progress has no free-text field since TUN-93 (the name was the last), so the padding is JSON whitespace, which
+  // the parse ignores: the BODY is what is measured. That bytes, not characters, are counted is the 413 case of
+  // multibyte text in the refusals test above.
+  const body = { v: 1, packages: { intro: { level: 1 } } };
+  const bodyOf = n => JSON.stringify(body) + " ".repeat(MAX_PROGRESS_BYTES - Buffer.byteLength(JSON.stringify(body)) + n);
   assert.strictEqual(Buffer.byteLength(bodyOf(0)), MAX_PROGRESS_BYTES);
   for (const base64 of [false, true]) {
     const ok = progressApi();
     assert.strictEqual((await ok.call(ev("PUT", { body: bodyOf(0), base64 }))).statusCode, 200);
-    assert.strictEqual(JSON.parse(ok.rows.get("user-1").data).name.length, 20);
+    assert.deepStrictEqual(JSON.parse(ok.rows.get("user-1").data), body);
     const over = progressApi();
     const r = await over.call(ev("PUT", { body: bodyOf(1), base64 }));
     assert.deepStrictEqual([r.statusCode, json(r), over.writes.length], [413, { error: "too large" }, 0]);

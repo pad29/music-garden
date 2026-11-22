@@ -71,8 +71,9 @@ test("a played-through progress is accepted, and the largest one the game can wr
   const r = V.checkProgress(some);
   assert.ok(r.ok, r.why);
   assert.deepStrictEqual(r.value, some, "a real progress is stored exactly as the game wrote it");
-  for (const k of ["v", "name", "current", "packages", "settings", "updatedAt", "instruments", "companion", "metRegions", "colors"])
+  for (const k of ["v", "current", "packages", "settings", "updatedAt", "instruments", "companion", "metRegions", "colors"])
     assert.ok(k in some, "the fixture exercises " + k);
+  assert.ok(!("name" in some), "the game never sends the player's name (TUN-93)");
 
   // THE CONTENT-GROWTH GUARD (the owner, 2026-11-14): every package completed, and every distinct tool
   // crafted in every package that has Fuse, through the real craftFromCells. A new Fuse package, a wider
@@ -101,18 +102,21 @@ test("a fresh guest's progress and an old guest's are accepted (the sign-up push
   const { g, requests } = clientGame({ local: old });
   g.ensureInstruments();
   await g.cloudPush();
-  const r = V.checkProgress(JSON.parse(requests.at(-1).body));
+  const sentOld = JSON.parse(requests.at(-1).body);
+  assert.ok(!("name" in sentOld), "the old guest's name stays on the device (TUN-93)");
+  const r = V.checkProgress(sentOld);
   assert.ok(r.ok, r.why);
   assert.ok(!("toolbox" in r.value), "the retired root toolbox is dropped, not stored");
   assert.strictEqual(r.value.settings.voice, "pluck");
-  assert.ok(V.checkProgress({ ...old, settings: { voice: "pad" } }).ok, "the retired pad voice too");
+  assert.ok(V.checkProgress({ ...sentOld, settings: { voice: "pad" } }).ok, "the retired pad voice too");
 });
 
-test("the name is cut to its cap and stripped of control characters, never refused for them", () => {
-  const p = { v: 1, packages: {}, name: "a\u0000b" + "c".repeat(40) };
-  const r = V.checkProgress(p);
-  assert.ok(r.ok);
-  assert.strictEqual(r.value.name, "ab" + "c".repeat(V.NAME_MAX - 2));
+test("a progress carrying the player's name is refused, whatever the name (TUN-93: it stays on the device)", () => {
+  for (const name of ["Ann", "", "a\u0000b", 42, null, { first: "Ann" }]) {
+    const r = V.checkProgress({ v: 1, packages: {}, name });
+    assert.deepStrictEqual([r.ok, r.error, r.why], [false, "bad progress", "progress key"], JSON.stringify(name));
+  }
+  assert.ok(!("NAME_MAX" in V), "nothing in the backend sizes a name any more");
 });
 
 // ---------- 2. refused ----------
@@ -229,7 +233,7 @@ test("progress: unknown keys, closed lists and own-property lookups", () => {
     [p => { p.packages.intro.toolbox[0].offs = []; }, "tool"],
     [p => { p.updatedAt = 1e300; }, "updatedAt"], [p => { p.updatedAt = 1e-200; }, "updatedAt"],
     [p => { p.updatedAt = -1; }, "updatedAt"],
-    [p => { p.name = 42; }, "name"],
+    [p => { p.name = 42; }, "progress key"], [p => { p.name = "Ann"; }, "progress key"],
     [p => { delete p.packages; }, "packages"], [p => { p.packages = []; }, "packages"],
   ];
   for (const [edit, why] of cases) { const p = ok(); edit(p); refusedProgress(p, why); }
@@ -264,7 +268,6 @@ test("the closed lists match the client they describe", () => {
   for (const t of Object.values(g.FAMOUS_TEMPO)) assert.ok(t >= V.TEMPO_MIN && t <= V.TEMPO_MAX, "FAMOUS_TEMPO " + t);
   assert.deepStrictEqual([...V.CLICK_MODES].sort(), selectOptions("click").sort());
   assert.deepStrictEqual([...V.COMPANIONS].sort(), keys(g.COMPANIONS));
-  assert.strictEqual(V.NAME_MAX, Number(inputAttr("pname", "maxlength")));
   for (const id of Object.keys(g.PACKAGES))
     assert.ok(V.PACKAGES.has(id), `package ${id} is not in validate.mjs PACKAGES: add it, and deploy the backend before the client`);
   for (const p of Object.values(g.PACKAGES)) if (p.region)
