@@ -412,8 +412,9 @@ with no email, is accepted — the trigger checks the name, not which page sent 
    USERNAME=<name>,PASSWORD=<password>` gives an `IdToken` and an `AccessToken`. Do it for **one of your
    old test accounts** (its old name and password) **and** for the new test account (its garden name and
    `word-word-word-word`):
-   - The old account's fresh `IdToken`, decoded privately (its middle part is base64 JSON): no `email`, no
-     other profile claim, and `sub`, `iss` and `aud` still there.
+   - The old account's fresh `IdToken`, decoded privately (its middle part is base64 JSON): no `email`,
+     `phone_number`, `name` or any other personal attribute — `updated_at` may be there, the one attribute
+     the client may read — and `sub`, `iss` and `aud` still there.
    - With each account's `IdToken`: `curl.exe -s -i https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/progress
      -H "Authorization: Bearer <IdToken>"` answers `200` (no `Origin`, so CORS is not involved): the
      authorizer accepts tokens from the client as it now is.

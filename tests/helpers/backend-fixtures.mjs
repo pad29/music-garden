@@ -58,7 +58,7 @@ export function clientGame({ local, saves } = {}) {
       return { ok: true, json: async () => ({ id: "fake-id" }) };
     };
   } });
-  g.freshToken = async () => "test-token";      // signed in, as far as the cloud calls can tell
+  g.freshId = async () => ({ token: "test-token", sub: "sub-test" });      // signed in, as far as the cloud calls can tell
   g.cloudSync = "ready";                         // …with the cloud copy read, so cloudPush may send (TUN-106)
   g.initAudio();                                 // the Craft button does this before craftFromCells
   return { g, requests, copied };

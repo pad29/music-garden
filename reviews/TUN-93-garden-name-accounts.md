@@ -500,6 +500,8 @@ took the ticket over from `music-garden-47`.
 6. *The previous worker's choices* (old tabs fail to save until reloaded; the owner's test accounts sign in
    as typed until TUN-101; `AdminCreateUser` follows the same name and no-email rules; a browser may offer
    to remember the passphrase): **not overruled; they stand.**
+7. *A fourth PR review round, on round 3's fixes* (the budget is three; round 3 still requested changes, which
+   are fixed but unreviewed — *PR review, round 3*): **open**.
 
 ## Build (session `music-garden-48`, 2026-11-22)
 
@@ -789,3 +791,122 @@ I verified the requested Git head and reviewed the delta statically. I made no e
   screen reader, print preview, the PNG opened on a phone, the preview before merge and laptop to phone after).
 
 Suite: 1078/1078.
+
+## PR review, round 3 (`gpt-6.2-astra`, through `ask.sh`) — the last round of the budget
+
+`ask.sh fresh read-only`, 2026-11-22, on head `e1efafc` (the delta since `c994b34`, with rounds 1–2 and my answers
+by path). Usage: in 1,828,410 (cached 1,689,344), out 7,339. **Verdict: changes requested** — two High. GPT judged
+round 2's findings 2, 5, 8, 12, 15, 19, 20, 23, 24, 28, 29 and 31 resolved; it accepted the one-off run of the
+pre-PR client (15/31) as enough; the rest partly, and 32–33 the owner's.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+**Request changes on PR #166 at `e1efafc628af50762d0eff013d21b635181ef4b7`.** Two High findings remain. A sync run can read one account’s garden and become ready to write it to another. A stale tab can also write to a replacement account that has the same garden name. Both failures cross the boundary the backend enforces with Cognito’s `sub`.
+
+### Round‑2 disposition
+
+| Item | Disposition | Reason |
+|---:|---|---|
+| 1 | Partly | Ordinary saves now reject a different username. The read and write still lack a shared, authenticated subject. |
+| 2 | Resolved | An unfamiliar or empty denial preserves the original card and does not trigger a second sign-up. |
+| 5 | Resolved | The refusal dialog has an accessible name after its heading is removed. A new card restores the heading reference. |
+| 8 | Resolved | The runbook compares all four physical IDs and requires event and settings inspection after rollback. |
+| 9 | Partly | The token formats and surviving session are described correctly. The new lost-card statement overlooks the approved password-manager path. |
+| 10 | Partly | Every listed Home exit checks `authBusy`. Overlapping sign-ins can release it early, and Home can discard a failed form. |
+| 12 | Resolved | The tests cover unfamiliar, absent, and empty denial messages followed by successful recovery with the same card. |
+| 13 | Partly | The new test changes shared identity without a local sign-out. It misses a switch during the pull and different subjects sharing a username. |
+| 14 | Partly | Done is pressed and local progress is checked. Several dismissal tests still bypass the wired controls. |
+| 15 | Resolved | Both reset decisions are covered. The recorded merge-base run is sufficient for this one-time transition. |
+| 16 | Partly | The legacy-token check is mandatory. Effective AWS permissions and authorizer acceptance still need owner evidence. |
+| 17 | Partly | The earlier browser run verified the dialog and inert background. The remaining browser and device checks belong to the owner. |
+| 18 | Partly | A routine username switch blocks the PUT. Subject binding, read binding, and revocation of stale write permission remain incomplete. |
+| 19 | Resolved | Only the recognized credential-mismatch response advances the uncertain creation attempt. Item 39 concerns what the child is told. |
+| 20 | Resolved | Done is disabled during retry, and its handler independently checks `busy`. |
+| 21 | Partly | Close, backdrop, package, Studio, quest card, and quest trail use the guard. Its shared boolean can become false during a second sign-in. |
+| 22 | Partly | Landing handles a missing initial session. A superseded pull can still report success, and a failed seed upload can report authentication failure. |
+| 23 | Resolved | The copy identifies the outstanding upload and directs the child to Retry on the original device. |
+| 24 | Resolved | The refusal dialog retains a name, and reopening restores `aria-labelledby`. |
+| 25 | Partly | The resource, rollback, and two-token GET checks are present. The legacy-claim acceptance criterion also rejects a permitted attribute. |
+| 26 | Partly | JWT and refresh-token wording is correct. Losing the physical card still permits a fresh sign-in with credentials remembered by the browser. |
+| 27 | Partly | The added tests cover a changed cached username and a mismatch at the first token lookup. They miss the actual GET/PUT boundaries and an unusable cached session through card Retry. |
+| 28 | Resolved | The tests assert one sign-up, unchanged credentials, enabled Retry, and one eventual upload. |
+| 29 | Resolved | The test invokes Done during a held retry and separately closes an idle failed card with local progress intact. |
+| 30 | Partly | Wired landing Show and Back are covered. Reopen, backdrop, and both quest actions are missing. The Home test substitutes a successful sync stub. |
+| 31 | Resolved | The one-off run used the identified pre-PR client and observed name loss in memory and storage. Closing signed-in tabs removes the old pull during the deploy window. A permanent historical-client fixture adds no acceptance evidence here. |
+| 32 | Not resolved | Deployment outcomes have not been recorded. Owner check only. |
+| 33 | Partly | Basic modal evidence exists. The longest-card, accessibility, print, phone, preview, and production evidence is outstanding. Owner check only. |
+
+### Required changes
+
+34. **High — Bind the progress GET to the account that authorized the run.** `signInWith` discards Cognito’s authenticated session. `onSignedIn` selects an account from shared storage, checks one token, then `cloudPull()` obtains a second token without an account constraint. A switch during token refresh can load B’s progress into A’s run. The tab persists B’s garden locally and can later write it to A when A is current again. Carry the authenticated subject from sign-in, use its token for the GET, and discard a superseded response before changing local storage or granting write permission. A card upload must retain the card’s identity throughout the same path. [js/cloud.js:64](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:64) · [js/cloud.js:122](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:122) · [js/cloud.js:202](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:202)
+
+35. **High — Bind write permission to `sub` and revoke it on an observed identity change.** Cognito permits a deleted username to be reused. If a shared browser signs into the replacement account, an old ready tab accepts its token because the username matches. The backend then writes the old garden into the replacement account’s `sub` row. A detected username mismatch also leaves `cloudSync` ready, allowing writes to resume when the old name reappears. Capture the sign-up `userSub` or authenticated `sub`, require that subject on the actual PUT token, and revoke readiness on identity loss or mismatch. A subsequent ordinary sign-in must read its cloud copy before saving. [js/cloud.js:55](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:55) · [js/cloud.js:73](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:73) · [backend/src/progress-api.mjs:34](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/src/progress-api.mjs:34) · [AWS username reuse rules](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-attributes.html)
+
+36. **Medium — Return authentication and save outcomes separately.** A superseded GET returns `undefined`, which `signInWith` accepts as success. Conversely, a valid sign-in followed by `GET null` and a failed seed PUT returns `false`. Landing then displays a sign-in error and retains the words even though the account is signed in. Return explicit session and sync outcomes. Dismiss the form on a valid sign-in and report the failed save through cloud status. Preserve the form when authentication was lost or superseded. This leaves TUN‑122’s empty-copy policy intact. [js/cloud.js:128](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:128) · [js/cloud.js:139](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:139) · [js/cloud.js:205](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:205)
+
+37. **Medium — Keep Home’s retry form attached on session failure.** When the initial session lookup fails, `onSignedIn` calls `renderAuth()`, which removes the form. Its submit handler then writes the error into a detached `msg`. The child sees the guest panel and must re-enter both credentials. Let the submitting form retain its fields and display the failure until retry or explicit dismissal. [js/cloud.js:126](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:126) · [js/cloud.js:233](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:233)
+
+38. **Medium — Give the pending sign-in ownership of the Home navigation guard.** During a slow GET, Home already shows Sign out. Signing out and starting another sign-in leaves two pending operations. When the first finishes, its `finally` clears `authBusy` while the second is still running. Home can then open an activity before the second pull applies. Serialize submissions or give each operation an identity so an older completion cannot unlock navigation for a newer one. [js/cloud.js:127](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:127) · [js/cloud.js:152](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:152) · [js/cloud.js:208](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:208)
+
+39. **Low — Give an ambiguous card check an accurate message.** The card now correctly survives an unfamiliar `NotAuthorizedException`, but `friendlyAuthError` tells the child that the generated name and words “don't match.” The child cannot correct either field and can discard a valid card on that advice. For this uncertain-creation branch, say the game could not check the account and ask the child to keep the same card and retry. [js/garden-card.js:51](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/garden-card.js:51) · [js/cloud.js:189](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/js/cloud.js:189)
+
+40. **Low — Qualify the lost-card statement.** A child who loses the printout can still sign in afresh with a browser-saved password or another copy of the words. Replace “no new sign-in … anywhere, ever” with the actual limit: once all copies of the credentials are gone, the game offers no self-service recovery. Keep the existing-session explanation. [DESIGN.md:345](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/DESIGN.md:345)
+
+41. **Low — Specify which legacy profile claims must be absent.** The runbook permits `updated_at` as the sole readable attribute, then requires “no other profile claim.” A legacy account with a populated `updated_at` can fail that instruction under the intended configuration. Require omission of personal attributes, explicitly permit `updated_at`, and retain the required identity and authorizer checks. [backend/README.md:398](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/README.md:398) · [backend/README.md:415](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/backend/README.md:415) · [AWS readable attribute permissions](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-settings-attributes.html)
+
+### Missing tests
+
+42. **`tests/cloud-sync.test.mjs` — identity changes during the read.** Authenticate A, hold session resolution, and change only the shared user to B. Give the two accounts distinct progress. Also switch while A’s GET response is pending. Assert that B’s copy never lands in A’s run, a stale response cannot change local storage, and no unread account becomes writable. [tests/cloud-sync.test.mjs:743](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/cloud-sync.test.mjs:743)
+
+43. **`tests/cloud-sync.test.mjs` — identity changes at the PUT.** Fail A’s first card PUT and queue an ordinary save. Supply a replacement token with the same username and a different `sub` only at the PUT lookup. Assert zero replacement-account PUTs, no saved message, and revoked readiness. Also observe a switch away and back and assert that ordinary writes require a fresh load. The current mismatch fixture fails at the first lookup and never exercises a ready writer. [tests/cloud-sync.test.mjs:761](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/cloud-sync.test.mjs:761)
+
+44. **`tests/garden-card.test.mjs` — recover a stale cached session through Retry.** Keep the card’s username cached, make its session unusable during upload, then press Retry with the real sync path. Assert one sign-up, reauthentication with the original words, and one successful PUT to the original subject. The existing card test replaces the upload path with a boolean stub. [tests/garden-card.test.mjs:54](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/garden-card.test.mjs:54)
+
+45. **`tests/garden-card.test.mjs` — distinguish the three form outcomes.** Through Home, fail session lookup and assert that the visible form retains its words, error, and enabled retry. Through landing, return `GET null` then PUT 503 and assert that sign-in completes with a save failure. Supersede a held GET and assert that the stale submission cannot dismiss the active form. [tests/garden-card.test.mjs:487](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/garden-card.test.mjs:487)
+
+46. **`tests/garden-card.test.mjs` — operate the actual navigation controls.** Reopen landing after Show and Back. Exercise Home Close, backdrop, package, Studio, quest card, and enabled quest-trail action with visible words, both idle and during sign-in. Assert cleanup and masking on exit, unchanged activity while busy, and no late pull into play. Include a superseded first sign-in finishing while a second is held. Calling `leaveHome()` directly cannot catch a handler that bypasses it. [tests/garden-card.test.mjs:460](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/garden-card.test.mjs:460)
+
+47. **`tests/garden-card.test.mjs` — check the ambiguous-denial copy.** Extend the existing unfamiliar and empty denial cases to assert that the card asks the child to keep it and retry, without claiming the words are wrong. Keep the existing credential and eventual-upload assertions. [tests/garden-card.test.mjs:422](/C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-48/tests/garden-card.test.mjs:422)
+
+### Owner checks
+
+48. **Deployment.** Keep signed-in production tabs closed through the transition. Read the change set, compare all four physical IDs, verify effective pool and client settings, and record four denied attribute writes with valid values. Privately inspect the fresh legacy ID token and confirm HTTP 200 with that token and with the new account’s token. Record outcomes only.
+
+49. **Browser and devices.** Use a fictional longest-name, long-word card through `file://`. Verify keyboard containment and restored focus, the refusal dialog’s announced name, card-only print preview, and legibility of all four words and the site address in the PNG opened on a phone. Verify preview sign-up and sign-in after backend deployment and before merge. Verify production laptop-to-phone play after the merged build is live.
+
+50. **Review evidence.** I verified the requested Git head and reviewed the delta statically. I made no edits and executed no PR code. The 1,078 passing tests and the merge-base client run are the author’s recorded results.
+
+</details>
+
+### My answers — all agreed, fixed in the commit that records this round, **not yet reviewed**
+
+- **34 (High), the read bound to the run's account — agreed.** A run's `GET` now fetches its token through
+  `freshId(name, sub)`, the same check the writes use; an account switched while the session or the load was out
+  is a mismatch: nothing is applied or stored, the run gives up its right to write (`loseSync`), and the result
+  is "not signed in".
+- **35 (High), the `sub` — agreed.** A run records the `sub` from its first token; every write checks both the
+  name and the `sub` on the very token it sends. A different account under the same name (a deleted name reused)
+  or another account in this one's place revokes readiness at once: no write until a sign-in reads the cloud
+  copy again. The card also passes the `userSub` its sign-up returned.
+- **36 (Medium), separate outcomes — agreed.** `onSignedIn` returns `{ signedIn, saved }`. A superseded or
+  sessionless run is not a sign-in; a failed load or save is (the form goes, the panel says the cloud is resting).
+- **37 (Medium), Home's form on a session failure — agreed.** A run with no session no longer redraws a sign-in
+  form: the form keeps its words and shows the failure, with Sign in usable.
+- **38 (Medium), overlapping sign-ins — agreed.** `authBusy` counts sign-ins that are out; an older one finishing
+  can't unlock Home while a newer one is out.
+- **39 (Low), the unsettled check's words — agreed.** "The garden couldn't check your account just now. Keep this
+  same card, and press Try again." — never "they don't match".
+- **40 (Low), the lost card — agreed.** No way back once every copy of the words is gone, a browser's remembered
+  copy included; a signed-in device keeps access until it signs out or its session lapses.
+- **41 (Low), the old token's claims — agreed.** No personal attribute; `updated_at` may be there.
+- **Tests 42–47 — added.** `cloud-sync`: an account switched while the session or the `GET` is out; the same name
+  with a different `sub` at the `PUT`, readiness revoked, and a fresh load needed after switching back; the card's
+  `sub` check. `garden-card`: the unsettled check's words; the real sync path with an unusable session, the card
+  signing in again and uploading once to its own account; Home's form keeping its words, and a landing sign-in
+  whose seed save fails still closing the landing; Home's wired Close and backdrop waiting through two overlapping
+  sign-ins; the landing reopened empty and masked. **Not added:** pressing the quest card and the quest-trail row
+  themselves (they need a profile with a quest on offer); both call the same `leaveHome()` the tested exits use.
+- **48–49 — the owner's** (the deploy checks and the playtest list).
+
+Suite: 1084/1084. **Round 3 was the third review round:** by `work-ticket` § 8 the fixes are pushed without a
+fourth review, and the owner decides (*Owner's decisions* 7).

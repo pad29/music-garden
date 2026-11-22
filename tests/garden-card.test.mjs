@@ -39,23 +39,29 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
   if (landing) for (const id of ["landingUser", "landingPass", "landingShow", "landingMsg", "landingLost", "landingBack"]) elements[id] = el(["landingShow", "landingBack"].includes(id) ? "button" : id.includes("Msg") || id.includes("Lost") ? "div" : "input");
   // Who the pool says is signed in: the session in the storage every tab shares. A sign-in sets it; a test may
   // change it, as another tab would.
-  const session = { user: null };
+  const session = { user: null, broken: false, requests: [],
+    api: method => ({ ok: true, status: 200, json: async () => (method === "GET" ? null : { ok: true }) }) };
   const g = loadGame({ fresh: true, elements, setup: w => {
     w.crypto = webcrypto; w.Uint32Array = Uint32Array;
     w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() {
-      return session.user ? { getUsername: () => session.user, signOut() { session.user = null; } } : null; } } };
+      return session.user ? { getUsername: () => session.user, signOut() { session.user = null; },
+        getSession(cb) { const name = session.user;
+          if (session.broken) return cb(new Error("the session could not be refreshed"));
+          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": name, sub: "sub-" + name }, getJwtToken: () => "token-" + name }) }); } } : null; } } };
+    w.fetch = async (url, opts = {}) => { session.requests.push({ url: String(url), method: opts.method || "GET", token: String(opts.headers?.Authorization || "") });
+      return session.api(opts.method || "GET"); };
   } });
   const doc = g.__window.document;
   Object.defineProperty(doc, "createElement", { value: tag => el(tag), configurable: true });
   Object.defineProperty(doc, "createTextNode", { value: t => ({ textContent: String(t) }), configurable: true });
   const cognito = { signUps: [], signIns: [], uploads: 0 };
   g.cogSignUp = async (u, p) => { cognito.signUps.push([u, p]); return signUp(u, p); };
-  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; };
+  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; session.broken = false; };
   const realOnSignedIn = g.onSignedIn;
   g.onSignedIn = async (up, onlyFor) => {
     assert.equal(up, true, "a new garden uploads this device's");
     assert.equal(onlyFor, session.user, "only to the account the card signed in to");
-    cognito.uploads++; return upload(); };
+    cognito.uploads++; return { signedIn: true, saved: await upload() }; };
   g.renderPkgs = () => {};
   return { g, authbox, cardoverlay, gardencard, cognito, elements, session, realOnSignedIn };
 }
@@ -393,19 +399,19 @@ test("the sign-in forms: busy forms can't be dismissed; every way out empties an
   assert.deepEqual([landingPass.value, landingPass.type, landingShow.textContent], ["", "password", "👁️ Show"]);
 
   // Home's form: Cancel and Home's Close do nothing while the sign-in is out.
-  t.g.onSignedIn = async () => {};   // a sign-in's pull; cloud-sync.test.mjs has the real one
+  t.g.onSignedIn = async () => ({ signedIn: true, saved: true });   // a sign-in's pull; cloud-sync.test.mjs has the real one
   t.g.showSignInForm();
   const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
   user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
   const signing = button(t.authbox, "Sign in").onclick(); await tick();
-  assert.equal(t.g.authBusy, true);
+  assert.equal(t.g.authBusy, 1);
   assert.equal(button(t.authbox, "Cancel").disabled, true);
   button(t.authbox, "Cancel").onclick();
   assert.equal(pass.value, "acorn map tulip wren", "Cancel did nothing mid-sign-in");
   t.elements.homeoverlay.style.display = "flex"; t.g.closeHome();
   assert.equal(t.elements.homeoverlay.style.display, "flex", "Home stays open until the sign-in is answered");
   release(); await signing;
-  assert.equal(t.g.authBusy, false);
+  assert.equal(t.g.authBusy, 0);
   assert.equal(pass.value, "", "emptied once signed in");
   t.g.closeHome();
   assert.equal(t.elements.homeoverlay.style.display, "none", "and Home closes once it is answered");
@@ -416,7 +422,7 @@ test("the sign-in forms: busy forms can't be dismissed; every way out empties an
   const warn = console.warn; console.warn = () => {};
   try { assert.deepEqual({ ...await u.g.signInWith("brave-otter-42", "acorn map tulip wren") }, { ok: false, msg: "🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment." }); }
   finally { console.warn = warn; }
-  assert.equal(u.g.authBusy, false);
+  assert.equal(u.g.authBusy, 0);
 });
 
 test("an unfamiliar refusal after a lost answer settles nothing: one sign-up, the same card, Try again", async () => {
@@ -465,7 +471,7 @@ test("the wired exits: the landing's Show then Back empties and hides the words;
   landingShow.onclick(); assert.equal(landingPass.type, "text");
   landingBack.onclick();
   assert.deepEqual([landingPass.value, landingPass.type, landingShow.textContent], ["", "password", "👁️ Show"]);
-  t.g.onSignedIn = async () => {};
+  t.g.onSignedIn = async () => ({ signedIn: true, saved: true });
   t.g.showSignInForm();
   const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
   user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
@@ -506,4 +512,88 @@ test("a refused sign-up's screen keeps the dialog's name", async () => {
   button(t.gardencard, "Close").onclick();
   openCard(t);
   assert.deepEqual([t.gardencard.attrs["aria-labelledby"], t.gardencard.attrs["aria-label"]], ["gctitle", undefined], "a new card is named by its title again");
+});
+
+// ---------- PR review round 3 (TUN-93) ----------
+test("an unsettled check says to keep the same card and try again — never that the words don't match", async () => {
+  for (const message of ["A challenge took too long to answer.", undefined]) {
+    const t = cardGame({ signUp: async () => { throw new TypeError("Failed to fetch"); },
+      signIn: async () => { throw { code: "NotAuthorizedException", message }; } });
+    openCard(t); keep(t); await go(t); await go(t);
+    assert.equal(said(t), "🌱 The garden couldn't check your account just now. Keep this same card, and press Try again.");
+    assert.doesNotMatch(said(t), /don't match/);
+  }
+});
+
+test("through the real sync path: a session that can't be used makes the card sign in again with its words, and upload once", async () => {
+  const t = cardGame();
+  t.g.onSignedIn = t.realOnSignedIn;
+  openCard(t); keep(t);
+  // Signed in, but the session breaks before the upload asks for it.
+  const signIn = t.g.cogSignIn;
+  t.g.cogSignIn = async (u, p) => { await signIn(u, p); t.session.broken = true; };
+  await go(t);
+  assert.match(said(t), /isn't in the cloud yet/);
+  assert.equal(t.session.requests.length, 0, "nothing was sent without a usable session");
+  t.g.cogSignIn = signIn;
+  await go(t);
+  assert.equal(t.cognito.signUps.length, 1);
+  assert.equal(t.cognito.signIns.length, 2, "signed in again with the card's words");
+  assert.deepEqual(t.session.requests.map(r => [r.method, r.token]), [["PUT", "Bearer token-" + t.cognito.signUps[0][0]]], "one PUT, to the card's own account");
+  assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
+});
+
+test("the forms tell three outcomes apart: no session keeps Home's form and its words; a failed save is still a sign-in", async () => {
+  // Home: the session can't be used after the sign-in — the form, its words and the message stay, Sign in usable.
+  const t = cardGame();
+  t.g.onSignedIn = t.realOnSignedIn;
+  const signIn = t.g.cogSignIn;
+  t.g.cogSignIn = async (u, p) => { await signIn(u, p); t.session.broken = true; };
+  t.g.showSignInForm();
+  const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
+  user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
+  await button(t.authbox, "Sign in").onclick();
+  assert.ok(pass.parent, "the form is still on the page");
+  assert.equal(pass.value, "acorn map tulip wren");
+  assert.match(t.authbox.textContent, /Something went wrong just now/);
+  assert.equal(button(t.authbox, "Sign in").disabled, false);
+  // Landing: GET null, then the seed PUT refused — signed in, so the landing closes; the panel says the cloud is resting.
+  const u = cardGame({ landing: true });
+  u.g.onSignedIn = u.realOnSignedIn;
+  u.session.api = method => (method === "GET" ? { ok: true, status: 200, json: async () => null } : { ok: false, status: 503, json: async () => ({}) });
+  let hidden = 0; u.g.hideLanding = () => { hidden++; };
+  u.elements.landingUser.value = "brave-otter-42"; u.elements.landingPass.value = "acorn map tulip wren";
+  await u.g.doLandingSignIn();
+  assert.equal(hidden, 1, "signed in: the landing goes");
+  assert.equal(u.elements.landingPass.value, "", "and its words with it");
+  assert.equal(u.elements.landingMsg.textContent, "");
+});
+
+test("the wired controls: Home's Close and backdrop wait for a sign-in; the landing reopens empty and masked; an older sign-in can't unlock a newer one", async () => {
+  const homeclose = el("button");
+  let release1, release2; const held1 = new Promise(r => { release1 = r; }), held2 = new Promise(r => { release2 = r; });
+  let n = 0;
+  const t = cardGame({ landing: true, signIn: () => (++n === 1 ? held1 : held2) });
+  // homeclose is wired at load; this game's was a stub, so wire the fake the same way home.js does.
+  homeclose.onclick = t.g.closeHome;
+  t.g.onSignedIn = async () => ({ signedIn: true, saved: true });
+  t.elements.homeoverlay.style.display = "flex";
+  const first = t.g.signInWith("brave-otter-42", "acorn map tulip wren");
+  const second = t.g.signInWith("calm-wren-10", "fig map oak ivy");
+  await tick();
+  assert.equal(t.g.authBusy, 2);
+  homeclose.onclick(); t.elements.homeoverlay.onclick({ target: t.elements.homeoverlay });
+  assert.equal(t.elements.homeoverlay.style.display, "flex", "Close and the backdrop wait");
+  release1(); await first;
+  assert.equal(t.g.authBusy, 1, "the older sign-in finishing doesn't unlock Home");
+  homeclose.onclick();
+  assert.equal(t.elements.homeoverlay.style.display, "flex");
+  release2(); await second;
+  t.elements.homeoverlay.onclick({ target: t.elements.homeoverlay });
+  assert.equal(t.elements.homeoverlay.style.display, "none", "the backdrop closes Home once nothing is out");
+  // The landing: Show, Back, then opened again — empty and masked.
+  const { landingPass, landingShow, landingBack } = t.elements;
+  landingPass.value = "acorn map tulip wren"; landingShow.onclick(); landingBack.onclick();
+  t.g.__window.document.getElementById("landingSignin").onclick();
+  assert.deepEqual([landingPass.value, landingPass.type], ["", "password"]);
 });

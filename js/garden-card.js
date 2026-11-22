@@ -15,6 +15,7 @@ const GARDEN_SAYS={
   noRandom:"🌱 This browser can't make a garden name. Keep playing as a guest: your garden is saved on this device.",
   pictureAsked:"🖼️ Your browser should have saved the picture. Open it and check the words before you tick the box.",
   pictureFailed:"That didn't work here. Print the card, or copy the words onto paper.",
+  cantCheck:"🌱 The garden couldn't check your account just now. Keep this same card, and press Try again.",
 };
 const GARDEN_NUMBER_TRIES=5;   // taken names in a row that keep the child's two words before a new pair is rolled
 
@@ -48,10 +49,10 @@ async function createGarden(a,say=()=>{},pick=gardenPick){
   const password=a.words.join("-");
   if(!a.made && a.uncertain){ say("🌱 Checking your garden…");
     try{ await cogSignIn(a.name,password); a.made=a.signedIn=true; a.uncertain=false; }
-    catch(e){ if(!wordsDontOpenIt(e)) return { ok:false, msg:authOffline(e) ? GARDEN_SAYS.offline : friendlyAuthError(e,"in") };
+    catch(e){ if(!wordsDontOpenIt(e)) return { ok:false, msg:authOffline(e) ? GARDEN_SAYS.offline : GARDEN_SAYS.cantCheck };   // never "they don't match": the card is still good
       a.uncertain=false; } }   // not this card's: it was never made, or the name is someone else's — sign-up says which
   if(!a.made){ say("🌱 Making your garden…");
-    try{ await cogSignUp(a.name,password); a.made=true; }
+    try{ const r=await cogSignUp(a.name,password); a.made=true; a.sub=(r&&r.userSub)||null; }   // the account's permanent id
     catch(e){
       if(authCode(e)==="UsernameExistsException"){ nextGardenName(a,pick); return { ok:false, renamed:true }; }
       if(signUpTriggerFailed(e)) return { ok:false, stop:true, msg:friendlyAuthError(e,"up") };   // refused: nothing was made
@@ -62,7 +63,8 @@ async function createGarden(a,say=()=>{},pick=gardenPick){
     try{ await cogSignIn(a.name,password); a.signedIn=true; }
     catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; } }
   say("☁️ Saving your garden to the cloud…");
-  const saved=(await onSignedIn(true,a.name))===true;   // only this card's account, with its own token
+  const r=await onSignedIn(true,a.name,a.sub);   // only this card's account, by name and id, with its own token
+  const saved=r.signedIn && r.saved;
   if(!saved) a.signedIn=false;   // the next try signs in with the card again: its session may be gone or replaced
   return { ok:true, saved }; }
 
