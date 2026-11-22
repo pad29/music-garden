@@ -233,6 +233,11 @@ browser voice.
 
 ## Owner's decisions
 
-1. *GPT's round-3 finding on unreachable shipped clips (TUN-124): ship this PR without it?* — **open**.
+1. *GPT's round-3 finding on unreachable shipped clips (TUN-124): ship this PR without it?* — **A: ship
+   without it; it stays with TUN-124 for the owner's decision**: the owner, relayed by the orchestrator
+   (music-garden-5) to this session, 2026-11-21.
 2. *Round 3's fix (the buddy-picker condition and its test) has had no GPT review: one more round, or
-   hand off as it is?* — **open**.
+   hand off as it is?* — **A: one more GPT round (a fourth) on 15d1a7e..4f32607**, quoting round 3 and
+   saying plainly that the test drives `onSignedIn` and `pickCompanion` rather than `doLandingSignIn`'s
+   form, and why; if it requests changes again, fix what I agree with and stop at Needs Input — no fifth
+   round: the owner, relayed by the orchestrator (music-garden-5), 2026-11-21.
