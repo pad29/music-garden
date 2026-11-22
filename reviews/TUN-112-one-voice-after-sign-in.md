@@ -282,4 +282,30 @@ owner, no fifth round without them: Needs Input.
 ## Owner's decisions (continued)
 
 3. *Round 4's fix (a saved buddy that closes the picker resumes play, and `enterPlay` waits for a card)
-   has had no GPT review: hand off as it is, or one more round?* — **open**.
+   has had no GPT review: hand off as it is, or one more round?* — **B: a fifth and last GPT round,
+   scoped to 4f32607..94476d0**, telling GPT what rounds 1–4 settled; no sixth round without the owner:
+   the owner, relayed by the orchestrator (music-garden-5), 2026-11-21. (I had suggested A.)
+
+## PR review — round 5 (gpt-6.2-astra, through `ask.sh`), on 94476d0 — the owner's last round
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Round-4 finding resolved.** With the picker open, `onSignedIn()` keeps narration silent while applying the cloud save. When the saved sprout closes the picker, `enterPlay()` enables narration and requests the loaded level’s story once. The new regression test verifies all four requested outcomes, including zero browser utterances, without calling `pickCompanion()`. [Cloud-load logic](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/cloud.js:115) · [Regression test](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/tests/narration.test.mjs:226)
+
+I traced all three `enterPlay()` callers: buddy selection, returning-player boot, and the new cloud-load path. With an instrument card open, `enterPlay()` leaves `narrateSeq` untouched. `closeInstrCard()` captures the sequence at dismissal. After 1,400 ms it reads the current story if Read aloud is on and the sequence still matches. The existing tests cover both the deferred read and a newer story superseding the timer. [Entry guard](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/play-scope.js:152) · [Close timer](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/playback.js:81) · [Timer tests](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/tests/narration.test.mjs:172)
+
+**Required changes:** None. **Missing tests:** None.
+
+This was a read-only source review. The 1051/1051 suite result and Edge checks are the author’s runs.
+
+**APPROVED on 94476d05e7314d653d4c3cd04aa196b28a727146**
+
+</details>
+
+**Verdict: APPROVED on `94476d05e7314d653d4c3cd04aa196b28a727146`** — no required changes, no missing
+tests. Round 4's finding resolved; all three `enterPlay()` callers traced against the instrument card's
+close timer. The commit that adds this section changes only this file, so the approved code is the
+PR's code.
+
+**Review rounds used: 5** (the fourth and fifth authorized by the owner). Final: suite 1051/1051 on
+94476d0; CI green on 94476d0.
