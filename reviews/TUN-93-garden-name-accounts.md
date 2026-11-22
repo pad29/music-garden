@@ -487,8 +487,17 @@ Giggly-Starfish-66 · Dancing-Honeybee-37 · Bubbly-Hedgehog-22
 
 ## Owner's decisions
 
-1. *Design checkpoint (`needs-owner`)*: **open**.
-2. *The words (Question 1), and the festival-award pairs*: **open**.
-3. *The card (Question 2)*: **open**.
-4. *The number in the name (Question 3)*: **open**.
-5. *The passphrase's strength (Question 4)*: **open**.
+All given 2026-11-21 as "1A, 2A, 3A, 4A", relayed by the orchestrator to session `music-garden-48`, which
+took the ticket over from `music-garden-47`.
+
+1. *Design checkpoint (`needs-owner`)*: **passed** — build *Plan, revised after the design review*.
+2. *The words (Question 1), and the festival-award pairs*: **A, the revised lists approved.** The answer did
+   not mention `Golden-`/`Silver-` `Bear`/`Lion`; read as the recommended option, **kept**. The hand-off
+   says so, so the owner can correct it.
+3. *The card (Question 2)*: **A** — print and save as a picture, shown once, before the account is made;
+   Home later shows the garden name only.
+4. *The number in the name (Question 3)*: **A** — kept; 323,189 names.
+5. *The passphrase's strength (Question 4)*: **A** — 256 words, 32 bits, under the recorded assumptions.
+6. *The previous worker's choices* (old tabs fail to save until reloaded; the owner's test accounts sign in
+   as typed until TUN-101; `AdminCreateUser` follows the same name and no-email rules; a browser may offer
+   to remember the passphrase): **not overruled; they stand.**
