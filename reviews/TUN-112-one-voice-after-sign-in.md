@@ -241,3 +241,45 @@ browser voice.
    saying plainly that the test drives `onSignedIn` and `pickCompanion` rather than `doLandingSignIn`'s
    form, and why; if it requests changes again, fix what I agree with and stop at Needs Input — no fifth
    round: the owner, relayed by the orchestrator (music-garden-5), 2026-11-21.
+
+## PR review — round 4 (gpt-6.2-astra, through `ask.sh`), on 3eaf3df — the owner's extra round
+
+<details><summary>GPT's review, verbatim</summary>
+
+**CHANGES REQUESTED**
+
+**The buddy-less case is resolved, and I accept the test’s shape.** Back → Start playing opens the picker. Driving `onSignedIn(false)` and `pickCompanion()` directly covers the relevant behavior. The test checks silence while the picker stays open and exactly one request for the loaded level’s story after selection. [Landing handlers](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/boot.js:110) · [Regression test](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/tests/narration.test.mjs:210)
+
+**Medium — A returning player’s saved buddy can close the picker and leave narration off.** Take the same Back → Start playing path on a fresh device, then let the pull return First Garden progress **with** a saved buddy. `onSignedIn()` sees the open picker and sets `narrateReady=false`. `renderLevel()` calls `renderStage()`, which skips the story, then `syncCompanion()`, which finds the saved buddy and hides the picker. The player is now looking at the loaded level. There is no buddy left to pick, so `enterPlay()` never runs and subsequent level renders also stay silent. Defer narration only when the picker will remain open after the loaded progress is applied. [Cloud-load decision](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/cloud.js:112) · [Render order](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/level-engine.js:49) · [Automatic picker dismissal](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-46/js/level-engine.js:247)
+
+**Missing test — one case.** Use the same deferred-pull harness with the picker visible, `narrateReady=false`, and the existing `CLOUD` fixture, which already has a saved `sprout`. Resolve the pull without calling `pickCompanion()`. Assert that the picker closes, exactly one clip for the cloud level’s story is requested, no browser utterance is issued, and `narrateReady` is true for subsequent levels.
+
+This was a read-only source review of `3eaf3dfe1967e587f06684813074c076d7b5817c`. The suite and Edge results in the review record are the author’s runs.
+
+</details>
+
+**My answers**
+
+1. **Round 3's buddy-picker finding — GPT: resolved; the test's shape (driving `onSignedIn` and
+   `pickCompanion` rather than `doLandingSignIn`) accepted.**
+2. **Medium — a saved buddy closes the picker and leaves narration off. Agreed; my round-3 fix caused
+   it.** Now, when the picker was up before the load and the loaded save's render closed it
+   (`syncCompanion` found the buddy), play resumes there: `enterPlay()` reads the loaded story once and
+   turns narration on. `enterPlay` now also waits for an open instrument card, as `renderStage` does,
+   so this path can't talk over a card. GPT's missing test added (the picker up, the save with its
+   buddy, no pick: the picker closes, one clip of the cloud story, no browser voice, `narrateReady`
+   true), plus one for `enterPlay` with a card up.
+
+**Tests after the round:** `tests/narration.test.mjs` 21 cases; dropping the resume fails 1, dropping
+`enterPlay`'s card check fails 1. Syntax OK; suite 1051/1051. Edge (cache disabled): the round-4 path
+(`showCompPicker()`, then a save with a buddy) closes the picker and plays one clip with narration on;
+real clicks on *Start playing* and a buddy play the story once, no page errors; the sign-in and
+off-while-loading probes unchanged.
+
+**Review rounds used: 4** (the fourth authorized by the owner). Round 4's fix is unreviewed; per the
+owner, no fifth round without them: Needs Input.
+
+## Owner's decisions (continued)
+
+3. *Round 4's fix (a saved buddy that closes the picker resumes play, and `enterPlay` waits for a card)
+   has had no GPT review: hand off as it is, or one more round?* — **open**.

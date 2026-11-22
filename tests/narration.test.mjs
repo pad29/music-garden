@@ -223,6 +223,25 @@ test("a cloud save with no buddy yet, loaded while the buddy picker is up: silen
   assert.deepEqual(log.spoken, []);
 });
 
+test("a cloud save that has a buddy, loaded while the picker is up: the save closes the picker, and the story is read once", async () => {
+  // Back → Start playing on a fresh device during the pull, as above, but the cloud save has its buddy: applying it
+  // closes the picker, so there is no pick left to make — play resumes as the load lands.
+  const { g, log, compoverlay, signIn } = signInGame({ narrateReady: false, pickerUp: true });
+  await signIn();
+  assert.equal(compoverlay.style.display, "none", "the loaded buddy closed the picker");
+  assert.deepEqual(log.clips.map(c => c.src), [cloudStory(g)], "the loaded story, once");
+  assert.deepEqual(log.spoken, []);
+  assert.equal(g.narrateReady, true, "narration is on for the levels that follow");
+});
+
+test("entering play while an instrument card is up: the card keeps the voice", async () => {
+  const { g, log, instroverlay } = signInGame({ narrateReady: false });
+  instroverlay.style.display = "flex";
+  g.enterPlay();
+  assert.deepEqual(log.clips, []);
+  assert.equal(g.narrateReady, true);
+});
+
 test("a signed-in reload: silent until the cloud answers, then the cloud level's story, once", async () => {
   // The real boot gate: a stored session at load, so boot.js calls onSignedIn(false) itself. Voices are recorded
   // from before boot; the cloud's answer is held until the test releases it.

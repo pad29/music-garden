@@ -148,7 +148,8 @@ function narrate(text){ narrateSeq++; const t=toSpeech(text); stopSpeech(); if(!
 function stopSpeech(){ if("speechSynthesis" in window){ try{ speechSynthesis.cancel(); }catch(e){} }
   if(curClip){ try{ curClip.pause(); }catch(e){} curClip=null; } }
 // The player has reached a level (picked a buddy / signed in / opened a package) — let narration begin and speak the current story.
-function enterPlay(){ narrateReady=true; if(speakOn) narrate(curStage().intro||""); }
+// An instrument card that is up keeps the voice (closing it reads the story), as in renderStage.
+function enterPlay(){ narrateReady=true; if(speakOn && !instrCardUp()) narrate(curStage().intro||""); }
 function renderSpeak(){ if(!speakBtn) return; speakBtn.classList.toggle("on",speakOn);
   speakBtn.textContent=speakOn?"🔊":"🔇"; speakBtn.title=speakOn?"Read aloud: ON":"Read aloud: OFF";
   const lb=document.getElementById("speakLabel"); if(lb) lb.textContent="Read aloud: "+(speakOn?"on":"off"); }
