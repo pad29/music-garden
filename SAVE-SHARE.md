@@ -190,7 +190,7 @@ New serverless storage alongside the existing progress API (same `music-garden` 
 
 The audience skews under-13, so DESIGN §12's COPPA caveat governs:
 - The record carries `visibility`; **`public`** (gallery-listed) is **deliberately unimplemented**. **`unlisted`** (link-only) gives the full P2P sharing loop with **no public surface to moderate**.
-- Shipping `public` later requires: title moderation (pre- or post-queue), a **report** flow, and a takedown path. Music itself is low-risk; **text is the surface** (titles, profile names).
+- Shipping `public` later requires: title moderation (pre- or post-queue), a **report** flow, and a takedown path. Music itself is low-risk; **text is the surface** (titles). Profile names never leave the device, and a maker's garden name is generated from hand-picked lists, never typed (TUN-93, `DESIGN.md` §11b).
 - Until then: private library + unlisted links only. No listing endpoint exists to enumerate others' songs.
 
 ---

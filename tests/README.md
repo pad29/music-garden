@@ -106,15 +106,27 @@ the cloud couldn't be reached. Users can switch and their tokens can be held bac
 returns after sign-out or another player's sign-in is shown to do nothing. `scheduleCloud`'s 900 ms timer is caught and run by hand, and the panel's text is read through
 recording elements over the harness's stubs. Since TUN-87 it also holds the panel's "the cloud is resting"
 line (`cloudResting`): a failed save or song call shows it, a good one clears it, the newest call to start
-wins in either completion order, and a result from an earlier sign-in never moves it.
+wins in either completion order, and a result from an earlier sign-in never moves it. Since TUN-93 it tells
+which copy was applied by a package's level, not the name, and checks the name stays on the device: never in
+a `PUT`, kept by a pull (one typed while the pull is out included), and saved with no cloud push.
+
+**Garden names and the garden card (TUN-93).** `garden-words.test.mjs` enumerates every one of the 323,189
+garden names (in the game's and the backend's copies of the rule, which must hold identical lists), checks
+every list word and every adjective–noun join against a blocklist, and every one of the 65,536 ordered pairs
+of passphrase words against a phrase blocklist (both ROT13-encoded, so the file does not spell them out); it
+drives the generators with scripted randomness (rejection sampling, banned pairs, repeated words) and with
+the real `crypto`, and pins sign-in's forgiveness. `garden-card.test.mjs` presses the card's buttons through a
+small DOM of its own: nothing is sent until the card is kept; a taken name, a lost answer, closed or full
+sign-ups, a failed upload or sign-in; no double press; Cancel; and a child never sees Cognito's words on
+either sign-in form.
 
 **The cloud resting (TUN-87).** `cloud-resting.test.mjs` answers every way a switched-off or busy API can
 (429, 503, API Gateway's own 404, 403, a thrown fetch, bodies that are not the song) and checks the player
 is told the cloud is resting — on a `#song=` link at boot, in Melodies' list, ▶ Load and 🗑, and when
 sharing a big song — and that only the API's own `{"error":"not found"}` says a song may be deleted. It
-also maps Cognito's sign-up trigger failures to the calm refusal, and the day's limit (TUN-88, the token
+also maps Cognito's sign-up trigger failures (through the garden card's `createGarden` since TUN-93) to the calm refusal, and the day's limit (TUN-88, the token
 `daily-signup-limit` on a trigger failure) to "the garden is full" — no sign-in, the guest's progress
-untouched — also through the vendored Cognito library itself, run in a context of its own that shares the game's `localStorage` (the guest's saved progress checked unchanged), with only its HTTP answer synthetic (`__type`, namespaced, `code`, and a header-only error that loses the token and gets the generic line). `backend-cloud-switch.test.mjs` drives
+untouched — also through the vendored Cognito library itself, run in a context of its own that shares the game's `localStorage` (the guest's saved progress checked unchanged), with only its HTTP answer synthetic — and what the library sends: the card's name and words, no attributes — (`__type`, namespaced, `code`, and a header-only error that loses the token and gets the generic line). `backend-cloud-switch.test.mjs` drives
 `backend/src/cloud-switch-api.mjs` against a fake account: off from any alarm-topic message, never on;
 the owner's on/off/status; refusals; other topics ignored; a trip published before the owner's last
 switch-on ignored, a later or late one acted on; failing, hanging (aborted) steps;
@@ -141,15 +153,19 @@ at its effective path, so the same text under `Metadata` doesn't count:
 - the daily sign-up limit (TUN-88): `PreSignUpFn`'s environment (`DAILY_SIGNUP_LIMIT` = the approved
   `"100"`, the counter table), its role (exactly `UpdateItem` on that table) and nothing else set on it,
   the counter table (on-demand, keyed by `day`, TTL on `expiresAt`, deleted with the stack), the pool's trigger and its invoke permission, and a Lambda timeout above the counter's deadline.
+- accounts hold nothing personal (TUN-93): recovery exactly `admin_only`; the browser client reads and writes
+  exactly `[updated_at]`; and the properties Cognito fixes at creation pinned — the pool's name and
+  case-insensitivity, no username or alias attributes, schema, auto-verified attributes or email/SMS
+  settings, the client's pool and secret — so an edit cannot slip in a new, empty pool or a new client.
 
-**The daily sign-up limit (TUN-88).** `backend-presignup.test.mjs` drives `backend/src/presignup-api.mjs`
+**The daily sign-up limit (TUN-88), and what an account may hold (TUN-93).** `backend-presignup.test.mjs` drives `backend/src/presignup-api.mjs`
 against an in-memory day table that applies the conditional `ADD` atomically and throws on any
 expression it was not written for: N pass and the next is refused with the exact token, 2N at once let
 exactly N through, several containers share a count, a changed limit keeps the day's count, a full day is
 remembered without another write, midnight (a write begun on one day counts there; a late refusal never
 marks the new day full), limit 0, trigger sources, the settings' validation, a failing counter (no AWS
 text out, recovery), a lost answer, a hanging counter cut off at the deadline with its signal aborted, the
-SDK settings and the SDK adapter — and the deployed entry point, `presignup.mjs`, imported with its two AWS SDK packages swapped for recording stand-ins (`registerHooks`): the client options, the environment, the signal on the real send, and late answers after the real 2.5 s deadline.
+SDK settings and the SDK adapter — and the deployed entry point, `presignup.mjs`, imported with its two AWS SDK packages swapped for recording stand-ins (`registerHooks`): the client options, the environment, the signal on the real send, and late answers after the real 2.5 s deadline. Since TUN-93, from both the game's sign-up and `AdminCreateUser`: a username the garden-name rule refuses (wrong shape, a skipped number, a banned pair, a word not on the lists) and any of the named personal attributes, even empty, are refused before the counter is touched, with only the attribute's name logged; what the event may carry without a refusal; and nothing ever auto-verified.
 
 It also refuses any email address other than an `@example.com` placeholder in the template or
 `samconfig.toml`, comments included: the repository is public. It is a static check, not

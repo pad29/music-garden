@@ -501,3 +501,62 @@ took the ticket over from `music-garden-47`.
 6. *The previous worker's choices* (old tabs fail to save until reloaded; the owner's test accounts sign in
    as typed until TUN-101; `AdminCreateUser` follows the same name and no-email rules; a browser may offer
    to remember the passphrase): **not overruled; they stand.**
+
+## Build (session `music-garden-48`, 2026-11-22)
+
+Built *Plan, revised after the design review*, with the owner's answers above. **No property that replaces
+the pool, the client or a table changes**; the template test now pins them (below).
+
+**The two to-verify items, from the AWS documentation:**
+
+1. *An empty `WriteAttributes` list.* AWS documents only that **omitting** `ReadAttributes` / `WriteAttributes`
+   grants every standard attribute; nothing says an empty list means "none" (the CloudFormation and
+   `CreateUserPoolClient` references, and the user-attributes guide). Both update with *No interruption*. So,
+   as the plan said, the client names the narrowest list instead: `[updated_at]`, a number no one types.
+   That Cognito accepts it is the deploy's to prove: if it refused, the deploy rolls back with nothing
+   changed, and the owner's first check reads the client back.
+2. *The PreSignUp event.* The request holds `userAttributes`, `validationData` and `clientMetadata`; AWS does
+   not say that a sign-up with no attributes sends an empty map, and says the case-insensitive pool flattens
+   "attribute values" in trigger input to lower case without naming `userName`. So the trigger lower-cases
+   `userName` itself, and refuses a **named** list of attributes (`REFUSED_ATTRIBUTES`) rather than "any
+   key", tolerating a missing or `null` map. AWS also says nothing of when the trigger runs relative to the
+   uniqueness check: the owner's optional deploy check 3 (`backend/README.md`) finds out.
+
+**Departures from the plan, and why:**
+
+- *The card's code is its own file*, `js/garden-card.js` (the roller, the card, `createGarden`), loaded after
+  `js/cloud.js`; `js/garden-words.js` holds only lists and pure functions, so the backend-copy test can read
+  it. The plan had the card in `cloud.js`.
+- *A taken name keeps the secret words*; only the name changes, and the card must be kept again. A card
+  already copied stays half right, and the redrawn card says what changed.
+- *An error that is not the trigger's* (a throttle, an unknown error) leaves the card and offers Try again with
+  the same words; only the trigger's refusals (closed, full) withdraw the card, since no account can be made.
+- *Sign-in's "as typed" path* (old test accounts) sends the name trimmed and the password untouched, as the old
+  form did.
+- *Sign-in forgives Unicode dashes* (‐ to ―) as separators too: a card's words pasted from a document may carry them.
+- *The progress-size test* pads with JSON whitespace: the name was the last free-text field, so a multibyte
+  padding is no longer possible inside a valid record. That bytes, not characters, are measured is the
+  multibyte `413` case.
+- *`AdminCreateUser`* now runs the same rules, so `backend/README.md` says how the owner makes an account by
+  hand (a garden name, no attributes, a permanent four-word password).
+
+**Tests** (1062 pass): new `tests/garden-words.test.mjs` (all 323,189 names in both copies of the rule; the two
+copies' lists identical; every word and adjective–noun join against a ROT13-encoded blocklist, with one
+reviewed exception, `butterfly`; all 65,536 passphrase pairs against a phrase blocklist; scripted and real
+randomness; forgiveness; no storage) and `tests/garden-card.test.mjs` (the card through a DOM of its own:
+nothing sent before the card is kept, taken names, lost answers both ways, closed and full sign-ups, a
+failed upload and a failed sign-in, double presses, Cancel, friendly errors on both forms). Changed:
+`backend-presignup` (the rules, both sources, before the counter), `backend-validate` and
+`backend-handlers` (`name` refused with no write; `GET` strips it from both stored shapes),
+`backend-template` (recovery, the client's lists, the creation-fixed properties, each with a mutation),
+`cloud-sync` (markers moved to package levels; the name never uploaded, kept by a pull, saved with no push)
+and `cloud-resting` (the sign-up refusals through `createGarden`; what the real library sends).
+
+**Browser** (AO's browser on this worktree, files checked byte for byte): the landing sign-in form and its
+lost-card help; Home's name hint, roller, card (Go disabled until the box is ticked), *Save as a picture*
+reporting success, Cancel clearing the card, Home's sign-in form, and the empty-form message. No errors. Go
+was **not** pressed: it would make a real account in the production pool under the old trigger.
+
+**Not verified here** (the owner's): the account flow against the deployed backend (deploy check 2, on the
+PR preview, then laptop to phone on production); print preview and the saved picture on a phone; the
+layout on a phone-sized screen; a `file://` load of the two new scripts.
