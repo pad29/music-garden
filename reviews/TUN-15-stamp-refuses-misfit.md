@@ -15,6 +15,11 @@ need a truncated stamp:
 
 So refusing is safe for every shipped level; no owner question.
 
+The sleeping-row refusal is not reachable in a shipped level today either: the Toolbox and Fuse appear
+only once a package's levels have unlocked `fuse` (`scopeFeatures` → `unlockedSet(levelIdx)`), and in
+`two-new-colors` that is *A Brand-New Tower*, where F and B are both awake. It is a guard for later
+levels and quests (which declare their own features), matching `cellClick`'s refusal of the tapped row.
+
 ## Plan (Claude)
 
 - **Approach.** `stampTool` keeps its placement rule (stack upward from the tapped cell; flip downward if
