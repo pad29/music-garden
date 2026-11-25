@@ -221,6 +221,26 @@ test("a cloud profile with no settings at all resets the live click too", () => 
   assert.strictEqual(el.value, "off");
 });
 
+test("a cloud profile with an unknown click value resets to off, not to a count-in", () => {
+  // MUTATION: keep `|| "off"` without checking the value — "bogus" is truthy, so clickOn() goes true
+  // and the select shows no option. GPT's PR review, round 1.
+  const { f, el } = liveBoth();
+  f.progress = arriving(f, p => { p.settings.click = "bogus"; });
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "off", "only off / in / both are modes");
+  assert.strictEqual(el.value, "off", "…and the control shows one of its own options");
+  assert.strictEqual(studioClicks(f), false, "…so the metered Studio does not count in");
+});
+
+test("a cloud profile with an empty settings object resets the live click too", () => {
+  // settings:{} is the shape a profile saves before any control changes (the progress default).
+  const { f, el } = liveBoth();
+  f.progress = arriving(f, p => { p.settings = {}; });
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "off");
+  assert.strictEqual(el.value, "off");
+});
+
 test("a cloud profile WITH a click still wins over the live one", () => {
   // MUTATION: reset to "off" unconditionally — the profile's own "in" is lost.
   const { f, el } = liveBoth();
@@ -230,6 +250,17 @@ test("a cloud profile WITH a click still wins over the live one", () => {
   assert.strictEqual(el.value, "in", "…and shown");
   assert.strictEqual(studioClicks(f), true, "a count-in is still a click");
   assert.strictEqual(f.metronomeOn(), false, "…but no tick over the music");
+});
+
+test("a cloud profile's own count in + tick arrives on a game whose click is off", () => {
+  // MUTATION: accept only "in" — the profile's "both" falls back to "off".
+  const f = loadGame({ fresh: true }), el = f.__document.getElementById("click");
+  assert.strictEqual(f.clickMode, "off", "precondition: a fresh game's click is off");
+  f.progress = arriving(f, p => { p.settings = Object.assign({}, p.settings, { click: "both" }); });
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "both");
+  assert.strictEqual(el.value, "both");
+  assert.strictEqual(studioClicks(f) && f.metronomeOn(), true, "count in, and tick over the music");
 });
 
 // ---------------------------------------------------------------- the no-swing rule
