@@ -252,3 +252,37 @@ The approach and the files of § *Plan (Claude)* stand, with these changes (R = 
   session when sign-up gave none — and never overwritten); otherwise no upload and "keep this same card".
 - **Tests:** as § *Tests that would prove it*, with answers 2, 3, 5, 6, 8, 9 and 10's cases added; each new guard gets
   a mutation that a test must catch.
+
+## Build (session `music-garden-49`, 2026-11-25)
+
+Built as the revised plan (R1–R8). Departures, and choices the owner might overrule:
+
+- **`loseSync()` advances `_cloudRun`** (R3), so a lost run's other calls end where they next check. Every caller
+  returns at once after it.
+- **`onSignedIn` sets `cloudOn=false` at the start of every run** with the rest of the revocation (R5). A sign-in
+  that fails its checks leaves the tab signed out of sync, not still syncing an older account.
+- **A successful PUT whose account is gone by the time it returns is not credited** (R6): the card says "isn't in
+  the cloud yet" and Try again sends the same garden again, although the PUT did land in the card's account. A
+  false "not saved" was chosen over crediting a save while another account is signed in.
+- **The card's sub can't change once known:** a session for the card's name with another `sub` gets *"Keep this
+  same card, and press Try again"* — practically unreachable (the same name and the same four words for a new
+  account), so no new wording.
+- **Test 53 records `startQuestRun`'s argument** for the idle press instead of opening the quest: opening one paints
+  the grid, which the card tests' DOM does not have. The busy press is asserted by Home staying open, the scope,
+  `QUEST_RUNS` and no `startQuestRun` call.
+- **Test 58's map** is a stand-in `<svg>` (the card tests' `el()`): it keeps the listeners the real `renderPkgs`
+  installs, and the tests press a land, then the package's and the Studio's buttons the game draws in its box.
+- `currentUserIs` is gone (its last caller, the card, now uses `accountIs`).
+
+**Tests:** 1122/1122 (1105 before; 17 new or split). Narration's two fixtures, the card fixture and the
+cloud fixture now carry the cached ID token (`harness.mjs`); the card's two wrappers and the landing outage
+stub pass the session through (GPT 8). **Mutation audit** (`node`, a script outside the repo, each mutation
+against `cloud-sync`, `garden-card` and `narration`): 21 mutations of the new guards, 20 killed. The survivor —
+*every retry overwrites `a.sub`* — is equivalent: the line before it refuses any session whose `sub` differs, so
+the overwrite can only write the same value.
+
+**Browser** (AO preview of this worktree, files checked byte for byte): the landing's and Home's sign-in forms
+keep their words and show the message on an empty submit, Cancel brings the guest row back, the name roller
+opens and cancels, no page errors. A real sign-in is not reachable from the preview (CORS allows only
+tunegarden.game), nor is a second tab's session change. **Not verified here:** `file://` (AO's browser refuses
+it), the two-tab cases on a real deployment — both on the playtest list.

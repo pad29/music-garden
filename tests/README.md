@@ -108,7 +108,13 @@ recording elements over the harness's stubs. Since TUN-87 it also holds the pane
 line (`cloudResting`): a failed save or song call shows it, a good one clears it, the newest call to start
 wins in either completion order, and a result from an earlier sign-in never moves it. Since TUN-93 it tells
 which copy was applied by a package's level, not the name, and checks the name stays on the device: never in
-a `PUT`, kept by a pull (one typed while the pull is out included), and saved with no cloud push.
+a `PUT`, kept by a pull (one typed while the pull is out included), and saved with no cloud push. Since TUN-128
+another tab can change the shared session at any await: the sign-in's own account against a different stored
+one (another name, or the same name with another `sub`), a load or save that returns after a switch or a
+sign-out (never applied, stored, read aloud, shown or credited — every panel drawn is recorded), nobody signed
+in at the load's own lookup, a refresh refused (signed out) against one that is only offline (resting), and a
+stale call that must not revoke a newer run. The fake session carries the cached ID token the game reads after
+each await (`cachedIdToken`, `FakeIdToken` and `signedInSession` in `harness.mjs`).
 
 **Garden names and the garden card (TUN-93).** `garden-words.test.mjs` enumerates every one of the 323,189
 garden names (in the game's and the backend's copies of the rule, which must hold identical lists), checks
@@ -118,7 +124,11 @@ drives the generators with scripted randomness (rejection sampling, banned pairs
 the real `crypto`, and pins sign-in's forgiveness. `garden-card.test.mjs` presses the card's buttons through a
 small DOM of its own: nothing is sent until the card is kept; a taken name, a lost answer, closed or full
 sign-ups, a failed upload or sign-in; no double press; Cancel; and a child never sees Cognito's words on
-either sign-in form.
+either sign-in form. Since TUN-128 it also keeps the card on the account it made or found (one name, `sub`s
+told apart), keeps Home's form through a sign-in that fails late and a newer form through an older sign-in's
+finish, and presses the controls the game wires — Home's Close, backdrop, a land's package and Studio buttons
+on the map it draws (a stand-in `<svg>`), the quest card and a quest-trail row, the landing's Show and Back —
+busy and idle.
 
 **The cloud resting (TUN-87).** `cloud-resting.test.mjs` answers every way a switched-off or busy API can
 (429, 503, API Gateway's own 404, 403, a thrown fetch, bodies that are not the song) and checks the player
