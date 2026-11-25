@@ -22,9 +22,11 @@ function levelList() {
   });
 }
 
-function devBoot() {
+// `devpkg`: a test's own recording #devpkg, or none for the harness's default makeSelect.
+function devBoot({ devpkg = null } = {}) {
   const devjump = levelList(), instr = remembering();
-  const g = loadGame({ elements: { devjump, instr }, setup: w => {
+  const elements = devpkg ? { devjump, instr, devpkg } : { devjump, instr };
+  const g = loadGame({ elements, setup: w => {
     w.location = { ...w.location, search: "?dev", pathname: "/index.html" };
     w.history = { state: null, replaceState() {} };
     // populateDevJump builds <option>s; give them a value that sticks
@@ -33,6 +35,7 @@ function devBoot() {
       value: tag => tag === "option" ? { value: "", textContent: "" } : create(tag) });
   } });
   const pkg = g.__document.getElementById("devpkg");
+  if (devpkg) assert.equal(pkg, devpkg, "a caller's own #devpkg wins over the harness's");
   assert.equal(typeof pkg.onchange, "function", "?dev installs the #devpkg handler");
   const pick = id => { pkg.value = id; pkg.onchange({ target: pkg }); };
   return { g, pick, devjump, instr };
@@ -55,19 +58,36 @@ test("picking Studio in #devpkg opens the Studio, as the map's Open Studio does"
   assert.ok(instr.value, "a voice was set");
 });
 
-test("picking a real package in #devpkg jumps to its first level and lists its levels", () => {
-  const { g, pick, devjump } = devBoot();
+test("Studio then a real package: each jump lands, and #devjump follows it", () => {
+  // the package list, recorded: a pick must be one of its options, not any string the stub accepts
+  const opts = [];
+  const devpkg = Object.defineProperties(remembering(), {
+    options: { value: opts },
+    appendChild: { value: o => { opts.push(o); return o; } },
+  });
+  const { g, pick, devjump } = devBoot({ devpkg });
+  const listed = () => devjump.opts.map(o => [String(o.value), o.textContent]);
+  const levelsOf = id => Array.from(g.PACKAGES[id].levels, (L, i) => [String(i), `${i + 1}. ${L.name}`]);
+  const values = opts.map(o => o.value);
+  assert.ok(values.includes("studio"), "#devpkg lists Studio");
+  assert.ok(values.includes("footsteps"), "#devpkg lists Footsteps");
+  const bootPkg = g.scopeCatalogId();
+  assert.ok(bootPkg && bootPkg !== "footsteps" && bootPkg !== "studio", "boot opens another package");
+  assert.deepEqual(listed(), levelsOf(bootPkg), "#devjump lists the boot package's levels");
+
   pick("studio");
-  const id = Object.keys(g.PACKAGES).find(k => k !== "studio" && g.PACKAGES[k].levels.length > 1);
-  pick(id);
-  assert.equal(g.activePackageId(), id);
+  assert.equal(g.isStudioScope(), true);
+  assert.deepEqual(listed(), levelsOf("studio"), "#devjump lists the Studio's one level");
+
+  pick("footsteps");
+  assert.equal(g.activePackageId(), "footsteps");
   assert.equal(g.levelIdx, 0);
-  assert.deepEqual(devjump.opts.map(o => +o.value), Array.from(g.PACKAGES[id].levels, (_, i) => i),
-    "#devjump lists the package's levels");
+  assert.ok(g.PACKAGES.footsteps.levels.length > 1);
+  assert.deepEqual(listed(), levelsOf("footsteps"), "#devjump lists Footsteps' levels, in order");
 
   // re-picking the package you are in leaves you where you are
   g.__document.getElementById("devjump").onchange({ target: { value: "1" } });
   assert.equal(g.levelIdx, 1);
-  pick(id);
+  pick("footsteps");
   assert.equal(g.levelIdx, 1, "re-picking the current package does not restart it");
 });

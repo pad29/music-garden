@@ -227,8 +227,8 @@ export function loadGame({ fresh = false, root = ROOT, elements = null, setup = 
   Object.defineProperty(stubDoc, "getElementById", {
     value: (id) => (id === "tempo" ? tempoInput
                   : id === "click" ? clickSelect
-                  : id === "devpkg" ? devpkgSelect
                   : elements && Object.hasOwn(elements, id) ? elements[id]
+                  : id === "devpkg" ? devpkgSelect     // after elements: a caller's own #devpkg wins
                   : makeStub(`document#${id}`)),
   });
   const sandbox = {
