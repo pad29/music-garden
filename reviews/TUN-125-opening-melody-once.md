@@ -1,6 +1,6 @@
 # TUN-125 — Play a level's opening melody once, not twice
 
-Branch `ao/melody-once/root` · PR pending · Size S
+Branch `ao/melody-once/root` · PR #178 · Size S
 
 ## Diagnosis (Claude)
 
