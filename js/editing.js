@@ -193,12 +193,19 @@ function fuseField(){                              // Fuse pressed with no pick:
     craftFromCells(list); return; }
   enterTray(); setStatus("A few stacks here — 🧺 <b>scoop the 2–3 seeds</b> you want to bond, then press <b>🔨 Fuse</b>.");
 }
+// A stamp is the WHOLE tool or nothing (TUN-15): a shape that doesn't fit used to be trimmed to
+// whatever rows were left — one seed, still "Stamped!", still a stamp goal. Each refusal names its wall
+// and, like 🌿 Grow's, plants nothing and writes no journal entry; the tool stays armed to try elsewhere.
+const STAMP_COPY = {
+  room:  "📐 Not enough room for the whole shape here — tap nearer the <b>bottom</b> or the <b>top</b> of the field so every seed lands 🌱.",
+  sleep: "That color isn't awake yet 🔒 — part of this shape would land on it. Stamp it somewhere else."
+};
 function stampTool(r,c){
   const offs=activeTool.offs;
   let rows=offs.map(o=>r-o);                        // stack upward from clicked cell
   if(rows.some(x=>x<0)) rows=offs.map(o=>r+o);      // flip downward if it runs off the top
-  rows=rows.filter(x=>x>=0&&x<ROWS);
-  if(!rows.length) return;
+  if(rows.some(x=>x<0||x>=ROWS)){ setStatus(STAMP_COPY.room); return; }   // too tall for this spot either way
+  if(rows.some(isLockedRow)){ setStatus(STAMP_COPY.sleep); return; }      // cellClick refuses a sleeping tapped row; this is the rest of the shape
   tx("stamp",()=>rows.forEach(rr=>setCell(rr,c,true)));   // ONE journal entry — undo removes the whole stamped chord, not one seed of it
   rows.forEach((rr,i)=>playRow(rr,actx.currentTime+i*0.05));
   const stable=stableMidis(rows.map(r2=>MIDI[r2]).sort((a,b)=>a-b));

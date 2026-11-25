@@ -91,6 +91,88 @@ test("stamping an octave twin creates an OPEN placed column", () => {
   assert.strictEqual(g.ev.stampedTool, true);
 });
 
+// TUN-15: a stamp is the whole tool or nothing. Each case records the status line, the journal, the
+// column and the goal flag, because the old bug got every one of them wrong at once.
+function stampProbe(g) {
+  const said = [], txs = [];
+  g.setStatus = (html) => said.push(html);
+  // The journal opens only through tx, and only an OUTERMOST tx makes an entry (setCell nests its own).
+  const realTx = g.tx;
+  let depth = 0;
+  g.tx = (label, fn) => {
+    if (depth === 0) txs.push(label);
+    depth++;
+    try { return realTx(label, fn); } finally { depth--; }
+  };
+  return { said, txs };
+}
+function column(g, c) {
+  const lit = [];
+  for (let r = 0; r < g.ROWS; r++) if (g.grid[r][c]) lit.push(r);
+  return lit;
+}
+
+test("TUN-15: a 9-rung pair stamped at row 1 refuses instead of planting one seed", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 0, c: 0 }, { r: 9, c: 0 }]);   // C4–A5, offsets [0, 9] on the 10-row field
+  const tall = g.toolbox[0];
+  clearMelody(g);
+  g.ev.stampedTool = false;
+  g.activeTool = tall;
+  const { said, txs } = stampProbe(g);
+
+  g.stampTool(1, 3);   // up: [1,-8] → flipped down: [1,10] — row 10 doesn't exist
+
+  assert.deepEqual(column(g, 3), [], "nothing is planted");
+  assert.deepEqual(txs, [], "a refusal writes no journal entry");
+  assert.strictEqual(g.ev.stampedTool, false, "a refused stamp is not a stamp");
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room, "the status line names the reason");
+  assert.strictEqual(g.activeTool, tall, "the tool stays armed to try elsewhere");
+
+  // …and the same tool stamps whole where it fits.
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [0, 9]);
+  assert.deepEqual(txs, ["stamp"], "one stamp = one journal entry");
+  assert.strictEqual(g.ev.stampedTool, true);
+  assert.match(said.at(-1), /^Stamped!/);
+});
+
+test("TUN-15: a stamp that fits — upward, and flipped down off the top — is unchanged", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 9, c: 0 }, { r: 7, c: 0 }, { r: 5, c: 0 }]);   // C4 E4 A4 on the pentatonic field, offsets [0,2,4]
+  const tower = g.toolbox[0];
+  clearMelody(g);
+  g.activeTool = tower;
+
+  g.stampTool(6, 2);   // upward from row 6: rows 6, 4, 2
+  assert.deepEqual(column(g, 2), [2, 4, 6]);
+  g.stampTool(1, 4);   // up runs off the top → flips down: rows 1, 3, 5
+  assert.deepEqual(column(g, 4), [1, 3, 5]);
+  assert.strictEqual(g.ev.stampedTool, true);
+});
+
+test("TUN-15: a stamp that would land on a sleeping color refuses, as cellClick does", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");                                  // rows: 0 B5 … 7 B4 … 9 G4, 11 E4, 13 C4
+  g.craftFromCells([{ r: 13, c: 0 }, { r: 11, c: 0 }, { r: 9, c: 0 }]);   // C4 E4 G4, offsets [0,2,4]
+  const tower = g.toolbox[0];
+  clearMelody(g);
+  g.setColorReveal(["F"]);                                   // B is still asleep: rows 0 and 7
+  g.ev.stampedTool = false;
+  g.activeTool = tower;
+  const { said, txs } = stampProbe(g);
+
+  g.stampTool(11, 2);   // E4 G4 B4 — the tapped row is awake, the top of the shape is not
+  assert.deepEqual(column(g, 2), []);
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.sleep);
+
+  g.stampTool(13, 2);   // C4 E4 G4 — all awake
+  assert.deepEqual(column(g, 2), [9, 11, 13]);
+  assert.strictEqual(g.ev.stampedTool, true);
+});
+
 test("placed columns count raw-width bands and ignore non-pairs", () => {
   const g = readyGame();
   // C4–D4 = close; C4–E4 = bright; C4–A5 = compound open; C4–C5 = octave/open.
