@@ -66,7 +66,7 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   let subNow = subOf;
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
-  let current = bootUser; const holds = new Map(), offline = new Set();
+  let current = bootUser; const holds = new Map(), offline = new Set(), revoked = new Set();
   const saves = new Map(); let serial = 1e6;
   const authbox = { kids: [], set innerHTML(v) { this.kids = []; }, get innerHTML() { return ""; },
     appendChild(c) { this.kids.push(c); return c; },
@@ -75,7 +75,9 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
     storage: cachedIdToken(() => ({ "cognito:username": claimOf(name), sub: subNow(name) })),
     getSession(cb) {
       const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name), sub: subNow(name) }, getJwtToken: () => "token-" + name + ":" + subNow(name) }) });
-      const go = () => (offline.has(name) ? cb(new Error("Network error")) : give());   // offline: can't refresh, still signed in
+      // offline: can't refresh, still signed in; revoked: the service refuses the refresh, and the library clears the session
+      const go = () => (offline.has(name) ? cb(new Error("Network error"))
+        : revoked.has(name) ? (current === name && (current = null), cb({ code: "NotAuthorizedException" })) : give());
       const h = holds.get(name); if (h) h.then(go); else go();
     } });
   const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
@@ -100,7 +102,8 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   const holdTokens = name => { let release; holds.set(name, new Promise(r => { release = r; })); return () => { holds.delete(name); release(); }; };
   return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent, authbox,
     signIn: name => { current = name; }, holdTokens, setSubOf: f => { subNow = f; },
-    offline: (name, on = true) => { if (on) offline.add(name); else offline.delete(name); } };
+    offline: (name, on = true) => { if (on) offline.add(name); else offline.delete(name); },
+    revoke: name => { revoked.add(name); } };
 }
 
 // GET /progress answers `get`; PUT /progress answers `put` (default 200).
@@ -831,16 +834,20 @@ test("an account switched while this run's session or load is out: the other cop
   assert.deepEqual(puts(a.net), []);
   a.g.commitProgress(); await a.runSaves();
   assert.deepEqual(puts(a.net), [], "and nothing is writable");
-  // 2) While ann's GET is out: ann's own copy may land (it was read with ann's token), but nothing is written to bea.
+  // 2) While ann's GET is out (TUN-128): not even ann's own copy lands once bea holds the tab's session, and nothing
+  // becomes writable — before any later save could find out.
   const b = cloudGame();
   const get = deferred();
   b.net.answer = answers(() => get.promise, () => reply(200, { ok: true }));
   const signing2 = b.g.onSignedIn(false); await tick();
   b.signIn("bea");
-  get.resolve(reply(200, clone(CLOUD))); await signing2;
+  get.resolve(reply(200, withLevel(clone(CLOUD), 6)));
+  assert.equal((await signing2).signedIn, false);
+  assert.notEqual(lvl(b.g.progress), 6, "ann's copy never lands under bea");
+  assert.notEqual(lvl(b.g.Store.get("progress")), 6);
+  assert.equal(b.g.cloudSync, "off", "nothing is writable, before any save");
   b.g.commitProgress(); await b.runSaves();
-  assert.ok(puts(b.net).every(p => !p.token.startsWith("token-bea")), "no PUT with bea's token");
-  assert.equal(b.g.cloudSync, "off", "the first save that meets bea ends this run's right to write");
+  assert.deepEqual(puts(b.net), [], "and nothing is written");
 });
 
 test("the same name with a different sub (a deleted name reused) is another account: no write, and writing needs a fresh load", async () => {
@@ -865,4 +872,185 @@ test("the same name with a different sub (a deleted name reused) is another acco
   c.net.answer = answers(() => assert.fail("no pull"), () => reply(200, { ok: true }));
   assert.equal((await c.g.onSignedIn(true, "ann", "sub-someone-else")).signedIn, false);
   assert.deepEqual(puts(c.net), []);
+});
+
+// ---------- TUN-128: a tab's sync stays on the account its sign-in authenticated ----------
+const ANN = { "cognito:username": "ann", sub: "sub-ann" };
+// Every panel the game draws from now on, as text: a premature redraw is caught, not only the last one.
+const panelHistory = t => { const shown = [], render = t.g.renderAuth; t.g.renderAuth = s => { render(s); shown.push(t.panel()); }; return shown; };
+
+test("TUN-128 (48, 54): a sign-in syncs the account it authenticated, never the one the shared storage names by then", async () => {
+  for (const [what, change] of [
+    ["another account", t => t.signIn("bea")],
+    ["the same name with another sub", t => { t.signIn("ann"); t.setSubOf(n => "sub-" + n + "-reused"); }],
+  ]) {
+    const t = cloudGame(); const { g, net } = t;
+    net.answer = routes();
+    t.signIn(null);
+    g.cogSignIn = async () => { change(t); return signedInSession(ANN); };   // ann authenticated; another tab acted first
+    const r = await g.signInWith("ann", "acorn map tulip wren");
+    assert.equal(r.ok, false, `${what}: not a successful sign-in`);
+    assert.deepEqual(net.requests, [], `${what}: no request with anyone's token`);
+    assert.notEqual(g.cloudSync, "ready", what);
+  }
+  // A session that names no account is no sign-in either.
+  const u = cloudGame(); u.net.answer = routes();
+  u.g.cogSignIn = async () => signedInSession({ "cognito:username": "ann" });
+  const warned = [], warn = console.warn; console.warn = (...a) => warned.push(a.join(" "));
+  try { assert.equal((await u.g.signInWith("ann", "acorn map tulip wren")).ok, false); } finally { console.warn = warn; }
+  assert.deepEqual(u.net.requests, []);
+  assert.deepEqual(warned, [], "refused as no account, not by a failure along the way");
+  // And when the storage agrees: the authenticated account's load.
+  const v = cloudGame(); v.net.answer = routes();
+  v.g.cogSignIn = async () => signedInSession(ANN);
+  assert.equal((await v.g.signInWith("ann", "acorn map tulip wren")).ok, true);
+  assert.deepEqual(v.net.requests.map(r => [r.method, r.token]), [["GET", "token-ann:sub-ann"]]);
+});
+
+test("TUN-128 (49, 54): a load that returns after another tab changed the account is thrown away: not stored, applied, shown or read aloud", async () => {
+  const BEA = withLevel(clone(CLOUD), 5);
+  for (const [what, change, answer] of [
+    ["bea signed in", t => t.signIn("bea"), () => reply(200, clone(BEA))],
+    ["ann's name with another sub", t => t.setSubOf(n => "sub-" + n + "-reused"), () => reply(200, clone(BEA))],
+    ["nobody signed in", t => t.signIn(null), () => reply(200, clone(BEA))],
+    ["bea signed in, and the load failed", t => t.signIn("bea"), () => reply(503, {})],
+    ["nobody signed in, and the load failed", t => t.signIn(null), () => reply(503, {})],
+  ]) {
+    const t = cloudGame(); const { g, net } = t;
+    const get = deferred(); net.answer = answers(() => get.promise);
+    const before = JSON.stringify(g.progress), stored = g.__window.localStorage.getItem("mg_progress");
+    let applied = 0; const apply = g.applyProgress; g.applyProgress = () => { applied++; apply(); };
+    const narrate = g.narrateReady;
+    const signing = g.onSignedIn(false); await tick();   // boot's resume: the loading row is up
+    assert.match(t.panel(), /loading your progress/, `${what}: the loading row`);
+    const shown = panelHistory(t);
+    change(t); get.resolve(answer());
+    const r = await signing; await tick();
+    assert.deepEqual({ ...r }, { signedIn: false, saved: false }, what);
+    assert.equal(JSON.stringify(g.progress), before, `${what}: progress unchanged`);
+    assert.equal(g.__window.localStorage.getItem("mg_progress"), stored, `${what}: the stored copy unchanged`);
+    assert.equal(applied, 0, `${what}: nothing applied`);
+    assert.equal(g.narrateReady, narrate, `${what}: the narration block never entered`);
+    assert.equal(g.cloudSync, "off", `${what}: not writable`);
+    assert.equal(g.cloudResting, false, `${what}: no cloud failure reported`);
+    for (const p of shown) assert.doesNotMatch(p, /\bbea\b|Signed in as|loaded from cloud|resting/i, `${what}: nothing shown for this load`);
+    g.commitProgress(); await t.runSaves();
+    assert.deepEqual(puts(net), [], `${what}: nothing written`);
+  }
+});
+
+test("TUN-128 (50): nobody signed in at the load's own lookup ends the sign-in, even if the account is back before it would return", async () => {
+  const t = cloudGame(); const { g, net } = t; net.answer = routes();
+  const release = t.holdTokens("ann");
+  const signing = g.onSignedIn(false); await tick();
+  release(); t.signIn(null);   // the first lookup answers for ann; by the load's own lookup, nobody is signed in
+  await tick(); t.signIn("ann");   // …and ann is back
+  assert.deepEqual({ ...await signing }, { signedIn: false, saved: false });
+  assert.deepEqual(net.requests, [], "no load");
+  assert.equal(g.cloudSync, "off");
+  assert.equal(g.cloudResting, false, "not the cloud resting");
+});
+
+test("TUN-128 (50, 55): after a failed card upload, a save that meets another sub, or nobody, sends nothing; writing again needs a fresh load", async () => {
+  for (const [what, change] of [["a replacement sub", t => t.setSubOf(n => "sub-" + n + "-new")], ["nobody signed in", t => t.signIn(null)]]) {
+    const t = cloudGame(); const { g, net } = t;
+    net.answer = answers(() => assert.fail("a card reads nothing"), () => reply(503, {}));
+    assert.deepEqual({ ...await g.onSignedIn(true, "ann", "sub-ann") }, { signedIn: true, saved: false }, "the card's upload failed");
+    assert.equal(g.cloudSync, "ready");
+    g.commitProgress();   // an ordinary save, queued
+    change(t); await t.runSaves();
+    assert.equal(puts(net).length, 1, `${what}: no second PUT`);
+    assert.equal(g.cloudSync, "off", `${what}: readiness revoked`);
+    assert.doesNotMatch(t.panel(), /saved to cloud|syncs across|resting/, what);
+    // ann back as she was: still nothing until a sign-in has read the cloud copy.
+    t.setSubOf(n => "sub-" + n); t.signIn("ann");
+    g.commitProgress(); await t.runSaves(); assert.equal(await g.cloudPush(), false);
+    assert.equal(puts(net).length, 1, `${what}: nothing without a fresh load`);
+    net.answer = routes();
+    await g.onSignedIn(false);
+    assert.equal(net.requests.at(-1).method, "GET", `${what}: a sign-in reads first`);
+    g.commitProgress(); await t.runSaves();
+    assert.equal(puts(net).length, 2, `${what}: then saves go up again`);
+  }
+  // A 503 with ann still signed in is a cloud failure, not a lost account: still writable, and it says so.
+  const t = cloudGame(); const { g, net } = t;
+  let ok = false; net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(ok ? 200 : 503, {}));
+  await g.onSignedIn(false);
+  g.commitProgress(); await t.runSaves();
+  assert.equal(g.cloudSync, "ready"); assert.equal(g.cloudResting, true);
+  assert.match(t.panel(), /Signed in as .*resting/);
+  ok = true; g.commitProgress(); await t.runSaves();
+  assert.equal(g.cloudResting, false);
+});
+
+test("TUN-128 (49, 55): a save that succeeds after another tab changed the account is never credited to it", async () => {
+  for (const how of ["a sign-up's first save", "an ordinary save"]) {
+    const t = cloudGame(); const { g, net } = t;
+    const put = deferred();
+    net.answer = answers(() => reply(200, clone(CLOUD)), () => put.promise);
+    if (how === "an ordinary save") await g.onSignedIn(false);
+    const shown = panelHistory(t);
+    const saving = how === "a sign-up's first save" ? g.onSignedIn(true, "ann", "sub-ann") : (g.commitProgress(), t.runSaves());
+    await tick();
+    assert.equal(puts(net).length, 1, `${how}: sent, with ann's token`);
+    t.signIn("bea");
+    put.resolve(reply(200, { ok: true }));
+    const r = await saving; await tick();
+    if (how === "a sign-up's first save") assert.deepEqual({ ...r }, { signedIn: false, saved: false }, how);
+    assert.equal(g.cloudSync, "off", `${how}: this run ends`);
+    for (const p of [...shown, t.panel()]) assert.doesNotMatch(p, /\bbea\b|saved to cloud|syncs across/i, `${how}: never credited to bea`);
+  }
+});
+
+test("TUN-128: a save from a run that ended while it was out leaves the newer run alone", async () => {
+  // ann's save waits for its final check; meanwhile ann signs in again here (a newer run) and loads.
+  const t = cloudGame(); const { g, net } = t;
+  const put = deferred(); let first = true;
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => (first ? (first = false, put.promise) : reply(200, { ok: true })));
+  await g.onSignedIn(false);
+  g.commitProgress(); const saving = t.runSaves(); await tick();
+  t.signIn("bea"); await g.onSignedIn(false);   // a newer run, bea's, loaded and ready
+  assert.equal(g.cloudSync, "ready");
+  put.resolve(reply(200, { ok: true })); await saving; await tick();
+  assert.equal(g.cloudSync, "ready", "ann's old save did not revoke bea's run");
+  assert.match(t.panel(), /Signed in as bea/);
+  g.commitProgress(); await t.runSaves();
+  assert.equal(puts(net).at(-1).token, "token-bea:sub-bea", "bea can still save");
+});
+
+test("TUN-128 (50): a refresh the service refuses signs the browser out — a lost account; an offline refresh does not", async () => {
+  const t = cloudGame(); const { g, net } = t; net.answer = routes();
+  await g.onSignedIn(false);
+  t.revoke("ann");   // the library clears the session when the refresh is refused
+  g.commitProgress(); await t.runSaves();
+  assert.deepEqual(puts(net), []);
+  assert.equal(g.cloudSync, "off", "revoked: the run ends");
+  assert.equal(g.cloudResting, false, "and it is not the cloud resting");
+});
+
+test("TUN-128 (50): a sign-in that fails its first check leaves no older writer behind", async () => {
+  // ann's tab is synced and has a save queued; this tab signs ann in again, but another tab signs out first.
+  const t = cloudGame(); const { g, net } = t; net.answer = routes();
+  await g.onSignedIn(false); const before = puts(net).length;
+  g.commitProgress();   // queued
+  g.cogSignIn = async () => { t.signIn(null); return signedInSession(ANN); };
+  assert.equal((await g.signInWith("ann", "acorn map tulip wren")).ok, false);
+  t.signIn("ann");   // ann back, from the other tab
+  await t.runSaves(); g.commitProgress(); await t.runSaves();
+  assert.equal(puts(net).length, before, "the old run's queued save, and any later one, wait for a fresh load");
+  assert.notEqual(g.cloudSync, "ready");
+});
+
+test("TUN-128 (50): once a save finds the account lost, the run's other calls still out end with it", async () => {
+  // The sign-up's first save is out; an ordinary save meets bea and ends the run; ann is back when the first save returns.
+  const t = cloudGame(); const { g, net } = t;
+  const put = deferred(); let first = true;
+  net.answer = answers(() => assert.fail("no read"), () => (first ? (first = false, put.promise) : reply(200, { ok: true })));
+  const signingUp = g.onSignedIn(true, "ann", "sub-ann"); await tick();
+  g.commitProgress(); t.signIn("bea"); await t.runSaves();
+  assert.equal(g.cloudSync, "off");
+  t.signIn("ann"); put.resolve(reply(200, { ok: true }));
+  assert.deepEqual({ ...await signingUp }, { signedIn: false, saved: false }, "the ended run's first save is not a sign-in");
+  assert.equal(g.cloudSync, "off");
+  assert.equal(puts(net).length, 1);
 });
