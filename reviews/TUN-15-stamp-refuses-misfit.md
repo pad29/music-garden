@@ -64,11 +64,14 @@ Not checked in the browser: the sleeping-row refusal (Node test only).
 No question at the design checkpoint — the ticket has no open questions and the level check found nothing.
 
 1. *Round 1, finding 4: keep the level intro "Build once, place anywhere" and the armed-tool prompt, or
-   change them (and regenerate the intro's narration) here?* — put to the owner by the coordinator,
-   2026-11-25 — **pending**.
+   change them (and regenerate the intro's narration) here?* — **Fix the armed-tool prompt in this PR, as
+   GPT asked; leave the level intro unchanged here and file a Backlog ticket for it (content,
+   `needs-owner`: the wording and its narration are the owner's to approve)**: the owner, relayed by the
+   coordinator, 2026-11-25. Filed as **TUN-130**.
 2. *Round 1, finding 2: refuse damaged shapes inside `stampTool` and file restore-time toolbox
-   validation as a Backlog ticket, or validate restored shapes in `loadScopeToolbox` in this PR?* — put
-   to the owner by the coordinator, 2026-11-25 — **pending**.
+   validation as a Backlog ticket, or validate restored shapes in `loadScopeToolbox` in this PR?* —
+   **Validate restored shapes in `loadScopeToolbox` in this PR, as GPT asked, with GPT's restore-path
+   test; no Backlog ticket**: the owner, relayed by the coordinator, 2026-11-25.
 
 ## PR review — round 1 (`gpt-6.2-astra`, through `ask.sh`, head `09e8618`)
 
@@ -143,3 +146,64 @@ both rows — directly as `activeTool`, not through a save restore (restore vali
 of finding 2); a `[0,13]` diatonic shape on the pentatonic field refuses at rows 0, 9 and 4 with the
 too-tall line. **Mutation check:** following the cursor before the check, dropping the damaged-shape
 guard, and always giving edge advice each fail exactly their own test.
+
+**Owner's rulings on the two rejections** (2026-11-25, *Owner's decisions*): both overruled in GPT's
+favour except the level intro, which became TUN-130. Done in round 2's fixes below.
+
+## PR review — round 2 (`gpt-6.2-astra`, through `ask.sh`, head `1955d37`)
+
+**Verdict: Changes requested.** In 370k (315k cached) / out 2.1k.
+
+<details><summary>GPT's review, verbatim</summary>
+
+## Changes required
+
+1. **Medium — `js/editing.js:206–209`.** The guard validates rows after arithmetic has coerced the offsets. I restored `[0,"2"]` through `loadScopeToolbox`. At row 9 it planted two seeds and earned stamp credit. At row 0 the same tool reported itself broken because the flip uses `+`. Validate `offs` before either calculation. Require an array of two or three distinct nonnegative integers containing zero, in any order. Restore-time cleanup can stay in the backlog.
+2. **Low — `js/editing.js:203`.** “Craft it again” can promise an unavailable repair. I tried fusing the valid `[0,2]` replacement. The signature check at line 170 reported “already in your toolbox” and kept `[0,"2"]`. Give a refusal that makes no repair promise, or let Fuse replace the damaged entry.
+3. **Low (held) — `js/packages.js:723`, `DESIGN.md:179`.** “Place anywhere” and the new “every tap stamping it again” both promise success on a tap the game can refuse. Qualify both with “where the whole shape fits.” The owner can defer the narration change. I accept the armed-tool prompt as written.
+
+## Missing tests
+
+- Restore `[0,"2"]` alongside a valid unsorted `[9,0]` → tap both edges with each tool → the damaged tool gives a fresh refusal each time, plants nothing, and earns no credit. The valid pair stamps both rows at either edge. Also exercise negative offsets, a missing zero, and four distinct offsets against the same guard.
+- Craft `[0,10]` on the diatonic field → switch to the ten-row field and tap an edge → get `STAMP_COPY.tooTall` with no edit. The current `[0,13]` case would still pass if `>= ROWS` regressed to `> ROWS`.
+
+Cursor follow is correctly after all refusals and before the successful stamp transaction. The syntax check and all 14 pair-integration tests passed on `1955d37`.
+
+## Verdict
+
+**Changes requested**
+
+</details>
+
+### My answers
+
+1. **Medium — the guard validated rows after the arithmetic coerced the offsets (`[0,"2"]` stamped and
+   earned credit at row 9, refused at row 0). Agreed, fixed.** One validator, `isToolShape` (`js/palettes.js`,
+   beside `sig`): an `offs` array of 2–3 distinct non-negative integers including 0, in any order, and a
+   `midis` array of at least two finite numbers. `stampTool` checks it **before** any arithmetic; per the
+   owner's ruling on round 1's finding 2, `loadScopeToolbox` (`js/persistence.js`) now uses it too, so a
+   damaged saved shape never reaches the bag (GPT's "restore-time cleanup can stay in the backlog" is
+   overruled by the owner).
+   - `midis` is checked loosely on purpose (not "same length as `offs`"): a stricter rule could silently
+     delete a real player's tool if any older save stored pitches differently, and the stamp uses only
+     `offs`.
+2. **Low — "craft it again" promised a repair Fuse refuses (the damaged `[0,"2"]` shares `[0,2]`'s
+   signature). Agreed, fixed both ways:** the line no longer promises a repair ("This tool has lost its
+   shape, so it can't be stamped"), and since restore now drops damaged shapes, the damaged entry is gone
+   before Fuse could collide with it — the restore test fuses a fresh `[0,2]` after restoring `[0,"2"]`.
+3. **Low (held) — "place anywhere" and DESIGN.md's "every tap stamping it again".**
+   - *DESIGN.md: agreed, fixed* — "every tap stamping it again wherever the whole shape fits".
+   - *The level intro:* the owner's ruling — out of this PR, filed as **TUN-130** (`needs-owner`).
+   - *The armed-tool prompt:* GPT now accepts it as written; the owner ruled it be fixed anyway, so it
+     reads "click the field to stamp it, again and again wherever the whole shape fits. Click it again (or
+     press Esc) to stop."
+
+**Missing tests — both added.** (a) A restore through the real `loadScopeToolbox` of every damaged shape
+— `[]`, `[0]`, `[0,"2"]`, `[0,"bad"]`, `[0,0]`, `[-1,0]` (negative), `[1,2]` (no zero), `[0,1,2,3]` (four),
+`[0,1.5]`, `null`, a tool with no pitches and one with a string pitch — beside a valid unsorted `[9,0]`:
+only `[9,0]` survives, a fresh `[0,2]` then fuses, and `[9,0]` stamps whole at both edges. A second test
+drives each damaged shape straight into `stampTool` at rows 0, 9 and 4 (and once through `cellClick`):
+the broken line every time, nothing planted, no transaction, no credit. (b) The too-tall boundary: a
+diatonic `[0,10]` on the 10-row field gets the too-tall line at both edges, while `[0,9]` gets the edge
+advice and stamps at row 9. **Mutation check:** the old restore check, dropping the stamp-side
+validation, `>=` → `>`, and a validator without the zero rule each fail their own test(s).

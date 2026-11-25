@@ -200,13 +200,13 @@ const STAMP_COPY = {
   room:    "📐 Not enough room for the whole shape here — tap nearer the <b>bottom</b> or the <b>top</b> of the field so every seed lands 🌱.",
   tooTall: "📐 This shape is taller than this whole field — there's nowhere here it can land in one piece.",   // a tool crafted on a taller palette (the Studio can switch)
   sleep:   "That color isn't awake yet 🔒 — part of this shape would land on it. Stamp it somewhere else.",
-  broken:  "🎒 This tool has lost its shape — craft it again with 🔨 Fuse."   // a damaged saved tool: never plant part of it, never throw halfway
+  broken:  "🎒 This tool has lost its shape, so it can't be stamped."   // a damaged shape (restore drops these; this is the floor): never plant part of it, never throw halfway
 };
 function stampTool(r,c){
-  const offs=activeTool.offs||[];
+  if(!isToolShape(activeTool)){ setStatus(STAMP_COPY.broken); return; }   // validate the shape BEFORE any arithmetic with it
+  const offs=activeTool.offs;
   let rows=offs.map(o=>r-o);                        // stack upward from clicked cell
   if(rows.some(x=>x<0)) rows=offs.map(o=>r+o);      // flip downward if it runs off the top
-  if(rows.length<2 || !rows.every(Number.isInteger) || new Set(rows).size!==rows.length){ setStatus(STAMP_COPY.broken); return; }
   if(rows.some(x=>x<0||x>=ROWS)){                   // too tall for this spot either way — or for any spot on this field
     setStatus(Math.max(...offs)-Math.min(...offs)>=ROWS ? STAMP_COPY.tooTall : STAMP_COPY.room); return; }
   if(rows.some(isLockedRow)){ setStatus(STAMP_COPY.sleep); return; }      // cellClick refuses a sleeping tapped row; this is the rest of the shape
@@ -239,7 +239,7 @@ function toggleStamp(tool){
   activeTool = (activeTool&&sig(activeTool.offs)===sig(tool.offs)) ? null : tool;
   exitTray(); renderBag();
   if(activeTool){ const m=toolMeta(tool.offs, tool.midis);
-    setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the grid to stamp it once.`);
+    setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the field to stamp it, again and again wherever the whole shape fits. Click it again (or press Esc) to stop.`);
   } else setStatus("Plant seeds 🌱, or 🔨 Fuse to craft.");
 }
 

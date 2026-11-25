@@ -214,27 +214,57 @@ test("TUN-15: a refused stamp through cellClick leaves notes, cursor pin, journa
   assert.strictEqual(g.ev.played, false);
 });
 
-test("TUN-15: a damaged saved tool refuses without planting or throwing; a valid unsorted one stamps whole", () => {
+// Every way a saved shape can be damaged. "2" is the sly one: r-"2" coerces to a number but r+"2" does
+// not, so a guard that looked at rows after the arithmetic stamped it one way and refused it the other.
+const DAMAGED = [[], [0], [0, "2"], [0, "bad"], [0, 0], [-1, 0], [1, 2], [0, 1, 2, 3], [0, 1.5], null];
+
+test("TUN-15: restoring a toolbox drops damaged shapes and keeps valid ones, unsorted ones included", () => {
+  const g = readyGame();
+  const id = g.activePackageId();
+  g.pkgProg(id).toolbox = [
+    ...DAMAGED.map((offs) => ({ offs, midis: [60, 64] })),
+    { offs: [0, 2] },                                    // no pitches
+    { offs: [0, 2], midis: [60, "64"] },                 // a pitch that isn't a number
+    { offs: [9, 0], midis: [81, 60] },                   // valid, unsorted
+  ];
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+
+  assert.deepEqual(g.toolbox.map((t) => t.offs), [[9, 0]]);
+
+  // …so the bag can Fuse a fresh [0,2] even though a damaged [0,"2"] was saved (its sig looks the same).
+  g.craftFromCells([{ r: 9, c: 0 }, { r: 7, c: 0 }]);
+  assert.deepEqual(g.toolbox.map((t) => t.offs), [[9, 0], [0, 2]]);
+
+  // The valid unsorted pair stamps whole at either edge.
+  clearMelody(g);
+  g.activeTool = g.toolbox[0];
+  g.stampTool(9, 3);
+  g.stampTool(0, 5);   // flips down from the top
+  assert.deepEqual(column(g, 3), [0, 9]);
+  assert.deepEqual(column(g, 5), [0, 9]);
+});
+
+test("TUN-15: a damaged shape that reaches the stamp anyway refuses at every row, before any arithmetic", () => {
   const g = readyGame();
   clearMelody(g);
   g.ev.stampedTool = false;
   const { said, txs } = stampProbe(g);
 
-  for (const offs of [[], [0, "bad"], [0, 0], ["x", 2], [0, 1.5]]) {
-    g.activeTool = { offs, midis: [] };
-    assert.doesNotThrow(() => g.stampTool(9, 3), `offs ${JSON.stringify(offs)}`);
-    assert.deepEqual(column(g, 3), [], `offs ${JSON.stringify(offs)} planted something`);
-    assert.strictEqual(said.at(-1), g.STAMP_COPY.broken, `offs ${JSON.stringify(offs)}`);
+  for (const offs of DAMAGED) {
+    g.activeTool = { offs, midis: [60, 64] };
+    for (const r of [0, 9, 4]) {
+      said.length = 0;
+      assert.doesNotThrow(() => g.stampTool(r, 3), `offs ${JSON.stringify(offs)} at row ${r}`);
+      assert.deepEqual(column(g, 3), [], `offs ${JSON.stringify(offs)} at row ${r} planted something`);
+      assert.strictEqual(said.at(-1), g.STAMP_COPY.broken, `offs ${JSON.stringify(offs)} at row ${r}`);
+    }
   }
-  g.activeTool = { offs: [], midis: [] };
-  assert.doesNotThrow(() => g.cellClick(4, 3, {}), "the same through cellClick");
+  g.activeTool = { offs: [0, "2"], midis: [60, 64] };
+  assert.doesNotThrow(() => g.cellClick(9, 3, {}), "the same through cellClick");
+  assert.deepEqual(column(g, 3), []);
   assert.deepEqual(txs, []);
-  assert.strictEqual(g.ev.stampedTool, false);
-
-  g.activeTool = { offs: [9, 0], midis: [81, 60] };   // a persisted tool, unsorted
-  g.stampTool(9, 3);
-  assert.deepEqual(column(g, 3), [0, 9]);
-  assert.strictEqual(g.ev.stampedTool, true);
+  assert.strictEqual(g.ev.stampedTool, false, "a damaged shape earns no stamp credit");
 });
 
 test("TUN-15: a shape taller than the whole field refuses at both edges, without edge advice", () => {
@@ -254,6 +284,31 @@ test("TUN-15: a shape taller than the whole field refuses at both edges, without
   }
   assert.deepEqual(txs, []);
   assert.strictEqual(g.ev.stampedTool, false);
+});
+
+test("TUN-15: the too-tall line starts exactly at a span of the field's height", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");
+  g.craftFromCells([{ r: 10, c: 0 }, { r: 0, c: 0 }]);        // offsets [0, 10]: one rung taller than the 10-row field can hold
+  g.craftFromCells([{ r: 9, c: 1 }, { r: 0, c: 1 }]);         // offsets [0, 9]: fits the 10-row field at its edges
+  const ten = g.toolbox.find((t) => Math.max(...t.offs) === 10);
+  const nine = g.toolbox.find((t) => Math.max(...t.offs) === 9);
+  g.setPalette("pentatonic");
+  const { said, txs } = stampProbe(g);
+
+  g.activeTool = ten;
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), []);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall);
+  g.stampTool(0, 3);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall);
+
+  g.activeTool = nine;
+  g.stampTool(4, 3);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room, "a shape that fits somewhere gets the edge advice");
+  assert.deepEqual(txs, []);
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [0, 9]);
 });
 
 test("placed columns count raw-width bands and ignore non-pairs", () => {
