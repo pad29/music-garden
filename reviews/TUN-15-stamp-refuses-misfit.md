@@ -74,7 +74,9 @@ No question at the design checkpoint — the ticket has no open questions and th
    test; no Backlog ticket**: the owner, relayed by the coordinator, 2026-11-25.
 3. *Round 3 asked for one Low copy fix and one missing test; both are done on the head after `588d16d`,
    and the three review rounds are used up. Accept that fix without a fourth GPT review, or allow a
-   fourth round?* — put to the owner through the coordinator, 2026-11-25 — **open**.
+   fourth round?* — **B: run a fourth GPT round, on the head after merging `origin/main` (TUN-69,
+   merged 2026-11-25), so the head GPT approves is the head the owner merges; no fifth round** — the
+   owner, relayed by the coordinator, 2026-11-25.
 
 ## PR review — round 1 (`gpt-6.2-astra`, through `ask.sh`, head `09e8618`)
 
