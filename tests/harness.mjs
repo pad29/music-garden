@@ -222,11 +222,13 @@ export function loadGame({ fresh = false, root = ROOT, elements = null, setup = 
 
   const tempoInput = makeTempoRange(tempoRangeFromHtml(html));
   const clickSelect = makeSelect("off");        // its handler is the only way its persistence is testable
+  const devpkgSelect = makeSelect("");          // the ?dev package jump keeps its onchange here (TUN-69)
   const stubDoc = makeStub("document");
   Object.defineProperty(stubDoc, "getElementById", {
     value: (id) => (id === "tempo" ? tempoInput
                   : id === "click" ? clickSelect
                   : elements && Object.hasOwn(elements, id) ? elements[id]
+                  : id === "devpkg" ? devpkgSelect     // after elements: a caller's own #devpkg wins
                   : makeStub(`document#${id}`)),
   });
   const sandbox = {
