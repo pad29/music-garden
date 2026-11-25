@@ -114,8 +114,10 @@ function applyProgress(){   // re-apply the progress object to the running game
   ensureInstruments();   // cloud progress may predate the gradual reveal — derive/refresh the unlocked set
   if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();
-    if(progress.settings.click) clickMode=progress.settings.click;
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
+  // A profile saved before the count-in has no click: that means the default, "off", as on a fresh page —
+  // never the live mode a previous profile left behind (TUN-12). renderLevel's syncMeterUI shows it in #click.
+  clickMode=(progress.settings && progress.settings.click) || "off";
   toolbox.length=0; toolboxOwner=null;   // force a per-scope toolbox reload on the renderLevel below
   restoreLastPackage();
   renderBag(); renderLevel(); updateTitle();     // renderLevel now syncs the region companion

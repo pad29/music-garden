@@ -172,6 +172,66 @@ test("saving settings does not disturb the rest of progress", () => {
   g.clickMode = "off";
 });
 
+// ---------------------------------------------------------------- a cloud profile arriving (TUN-12)
+
+// applyProgress() runs when a signed-in pull lands. A profile saved before the count-in shipped has no
+// settings.click, and that must mean the default — not the live "count in + tick" the last profile left.
+// Each case gets a fresh game: applyProgress reloads the package scope and the toolbox.
+function liveBoth() {
+  const f = loadGame({ fresh: true });
+  const el = f.__document.getElementById("click");
+  f.setPlayScope({ kind: "studio" });
+  f.doc.meterMap = [{ tick: 0, preset: "4/4", originTick: 0 }]; f._tintKey = null;
+  el.value = "both"; el.onchange();                       // the control's OWN handler, not a poke
+  assert.strictEqual(f.clickMode, "both", "precondition: the live preference is count in + tick");
+  assert.strictEqual(f.metronomeOn(), true, "precondition: …and the metered Studio ticks");
+  // …then the child walks into a level, where the pull lands. No meter there, so nothing on the way in
+  // redraws the meter controls but applyProgress's own renderLevel — the path the control must follow.
+  f.doc.meterMap = []; f._tintKey = null;
+  f.setPlayScope({ kind: "package", packageId: "stepping-stones" });
+  assert.strictEqual(f.clickMode, "both", "precondition: the preference follows the child out of the Studio");
+  return { f, el };
+}
+// The profile as it was on that device: everything this one has, minus whatever `edit` takes away.
+const arriving = (f, edit) => { const p = JSON.parse(JSON.stringify(f.progress)); edit(p); return p; };
+const studioClicks = f => {
+  f.setPlayScope({ kind: "studio" });
+  f.doc.meterMap = [{ tick: 0, preset: "4/4", originTick: 0 }]; f._tintKey = null;
+  return f.clickOn();
+};
+
+test("a cloud profile with settings but no click resets the live click to off, control included", () => {
+  // MUTATION: keep `if(progress.settings.click) clickMode=…` (the old line) — the live "both" survives.
+  const { f, el } = liveBoth();
+  f.progress = arriving(f, p => { delete p.settings.click; });
+  assert.ok(f.progress.settings && "mix" in f.progress.settings && !("click" in f.progress.settings),
+    "the profile really has settings, just no click");
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "off", "the preference is the default, as on a fresh page");
+  assert.strictEqual(el.value, "off", "…and the control says so, rather than the mode the game left");
+  assert.strictEqual(studioClicks(f), false, "…so the metered Studio no longer counts in");
+});
+
+test("a cloud profile with no settings at all resets the live click too", () => {
+  // MUTATION: put the reset inside `if(progress.settings)` — a settings-less profile keeps "both".
+  const { f, el } = liveBoth();
+  f.progress = arriving(f, p => { delete p.settings; });
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "off");
+  assert.strictEqual(el.value, "off");
+});
+
+test("a cloud profile WITH a click still wins over the live one", () => {
+  // MUTATION: reset to "off" unconditionally — the profile's own "in" is lost.
+  const { f, el } = liveBoth();
+  f.progress = arriving(f, p => { p.settings.click = "in"; });
+  f.applyProgress();
+  assert.strictEqual(f.clickMode, "in", "the profile's own preference is applied");
+  assert.strictEqual(el.value, "in", "…and shown");
+  assert.strictEqual(studioClicks(f), true, "a count-in is still a click");
+  assert.strictEqual(f.metronomeOn(), false, "…but no tick over the music");
+});
+
 // ---------------------------------------------------------------- the no-swing rule
 
 // The metronome books at the unswung tick. The distinction only matters where swing is non-zero, so
