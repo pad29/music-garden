@@ -145,6 +145,87 @@ new stage, the leave in `openHome`, the cancel in `start` or Listen, the clear o
 `leaveOpening` forgetting the stage, or going back to round 1's `!== "suspended"` check — each fails at least one
 test.
 
+## PR review — round 2 (gpt-6.2-astra, through `ask.sh`), on 67fd410
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested on PR #178, head `67fd410`.** The late same-stage redraw is fixed, and `placeCall` still runs on every draw. The remaining high-severity issue is that a cloud redraw can arm a new opening while Home is visible, even after `openHome()` correctly cancelled the previous one.
+
+### Finding 2 ruling — resolved, High withdrawn
+
+I accept the ticket’s booking boundary. If `playPhrase` books the notes at 350 ms on a running clock and the player leaves at 400 ms, the first note can sound at 470 ms in the next package. Those notes are already on the audio clock. The ticket explicitly allows them to finish and requires cancellation of work that can still schedule a phrase. My round‑1 expectation of zero note starts after departure was incorrect. The Home and quest failure below occurs **before booking** and falls within the ticket. `js/goal-helpers.js:84`, `js/level-engine.js:13–24`.
+
+### Other round‑1 findings
+
+| Finding | Ruling |
+|---|---|
+| **1. Late same-stage redraw** | **Resolved.** Package restoration reuses `PACKAGES[id].levels`, and `curStage()` returns the catalog level or step itself. A redraw therefore retains the entry, while the two Q&A 6/9 steps have distinct identities despite their identical notes. `placeCall` remains outside the identity check. `js/play-scope.js:17`, `js/play-scope.js:102`, `js/level-engine.js:105`, `js/level-engine.js:120`. |
+| **3. Interrupted audio** | **Resolved.** An interrupted context stores the phrase without booking it. The listener checks for `running` and clears the waiting phrase before playing it. A later recovery cannot replay the same phrase. `js/level-engine.js:18–24`. |
+| **4. Play then Stop** | **Resolved.** `start()` clears both the timer and the waiting phrase. Stop cannot re-arm either. The tests cover Stop before the timer and before delivery of `statechange`. `js/playback.js:302`, `tests/opening-melody.test.mjs:233`, `tests/opening-melody.test.mjs:245`. |
+| **5. Home** | **Not fully resolved.** Opening Home cancels everything outstanding at that instant. A subsequent cloud draw can schedule the melody again while the map stays open. Conversely, closing the map directly can lose an unheard opening. |
+| **6. Guest-reload test** | **Resolved for the original false positive.** The field-tap test now requires zero bookings before activation and exactly one phrase booked while running afterward. Loop uses its actual handler under both resume models. The separate Listen event-order gap is below. `tests/opening-melody.test.mjs:177–193`. |
+| **7. Quick Next** | **Resolved.** The forced cases are labeled. The new player-path test completes the goals, asserts Next is visible, and advances through both 6/9 steps to 7/9. `tests/opening-melody.test.mjs:108–111`, `tests/opening-melody.test.mjs:271–285`. |
+
+### Findings and missing regression cases
+
+| Severity | Concrete failure | Regression case |
+|---|---|---|
+| **High** | **A cloud redraw re-arms playback behind Home, and the call can follow the player into a quest.** Open Home while a signed-in reload is pending, then let the cloud restore Q&A 6/9. `applyProgress()` draws the level while the map stays visible. `openHome()` has cleared the stage key, so this draw starts a fresh 350 ms timer. Staying on the map plays the call there. Entering an eligible quest before the timer fires also leaves it live, because the quest branch returns before `openingFor()`. This also applies to signing in through Home’s own form, which stays open after success. `js/home.js:18`, `js/cloud.js:121`, `js/cloud.js:256`, `js/level-engine.js:85`, `js/level-engine.js:105`. | Hold the cloud response, open Home, then resolve a save on 6/9 with a quest unlocked. In one run, stay on Home past 350 ms. In another, enter the quest before 350 ms. Expect zero call bookings in both. In a third, choose Continue on 6/9 and expect one call after entry. |
+| **Medium** | **Closing Home directly loses an unheard opening.** Enter 6/9, open Home before the timer fires, then use **Close** or the backdrop. `leaveOpening()` discarded the timer. `closeHome()` only hides the overlay, so the player returns to the untouched level and hears zero calls. The “coming back” test passes because it calls `openPkg()`, which redraws the level. `js/home.js:11–18`, `tests/opening-melody.test.mjs:216–223`. | Open Home before booking, let the timer deadline pass, then dismiss via Close or backdrop. Expect silence on Home and one call after returning, with the player’s grid preserved. |
+| **Medium** | **Listen as the first gesture can still double the call under the PR’s pending-resume model.** With a call waiting, press and hold the mouse on Listen. Mouse-down grants activation. If the running `statechange` is delivered before release, the listener books the automatic call. Release then invokes `onclick`, which books the manual copy. The test puts `page.gesture()` and `listen.onclick()` in the same turn, forcing cancellation to win. `js/level-engine.js:22–23`, `js/playback.js:345`, `tests/opening-melody.test.mjs:173`. [HTML activation event ordering](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event) | Set `pendingResume: true`, fire the opening timer, deliver mouse-down activation on Listen, let `statechange` run, then deliver the click. Expect one phrase for that press. This checks prevention of a duplicate booking. |
+| **Medium** | **A delayed reveal can spend the next stage’s opening.** Claim the Garden Basics “Call the Band” power card while a cloud pull is outstanding. Closing the card schedules `runReveal` for 350 ms. If the cloud restores “Answer the Garden” before then, the old callback survives the redraw and calls `start()` on the new stage. That cancels its opening, and the echo target is absent from the empty grid the reveal plays. The player hears zero copies without pressing Play, Jam, or Listen on that stage. `js/level-engine.js:184`, `js/packages.js:18`, `js/playback.js:302`, `js/packages.js:82`. | Queue the old reveal, restore the echo stage, then fire the reveal and opening timers in deadline order. Expect no old-stage transport start and exactly one echo. |
+
+Jam warrants a separate test because it deliberately starts the current transport. On an empty echo stage, **Jam on → Jam off before 350 ms** now permanently spends the prompt, although the backing played none of its notes. If Jam is intended to have Play’s override, pin that expectation explicitly. Jukebox playback enters Studio before `start()`, and the famous-tune reward checks that it still belongs to the current level. `js/playback.js:349–354`, `js/save-share.js:181–184`, `js/famous.js:301–303`.
+
+One further test can pass with the wrong stage playing. The forced 6/9 step-change test counts a single copy of a phrase shared by both steps. Keeping step one’s timer and dropping step two’s produces the same result. Advance partway through step one’s delay, transition, then check **zero** bookings at the old deadline and **one** at the new deadline. `tests/opening-melody.test.mjs:286–294`.
+
+This was a read-only source review. I did not run the PR or independently verify the reported suite or audible browser behavior.
+
+</details>
+
+**On the High I had declined (round 1, finding 2), GPT withdrew it:** "I accept the ticket's booking boundary. [...]
+My round‑1 expectation of zero note starts after departure was incorrect."
+
+### My answers
+
+1. **High — a cloud redraw re-arms playback behind Home, and the call can follow the player into a quest. Agreed.**
+   The root cause was round 2's own fix, which made Home *drop* the opening. Now Home *holds* it instead.
+   `openingDue` books nothing while 🏠 Home is up, and keeps the melody waiting. `closeHome()` (Close, the
+   backdrop) lets it play. `openPkg()` is a fresh entry (`leaveOpening`). The quest branch of `renderStage` frees it
+   again (the line round 2 had removed as redundant was not). Tests added for all three runs GPT described: stay on
+   Home, enter a quest the way Home's row does (`leaveHome`, then the run), and Continue on 6/9.
+2. **Medium — closing Home directly loses an unheard opening. Agreed**, same change: Close and the backdrop each
+   play it once, with the player's field kept. A melody already heard is not replayed by Home and back. Tests added.
+3. **Medium — Listen as the first gesture can still double under pending resume. Agreed.** A melody released by
+   the clock starting, or by Home closing, now plays after the same 350 ms pause as on entry (`openingSoon`). A
+   Listen click inside that pause cancels it. Test added: activation at pointer-down, `statechange`, then the click
+   → one copy. (A press held longer than 350 ms would still give two. That is the limit of this approach. Every
+   other way would mean taking back notes already on the clock.)
+4. **Medium — a delayed reveal's `start()` spends the next stage's opening; Jam too. Agreed.** Only the ▶ Play
+   button spends it now (`playBtn.onclick`), not `start()`. A scripted start, a leftover power-card reveal, or Jam on
+   and off leaves the opening to play once. Tests added for all three. A reveal that outlives its level and plays on
+   the next is older than this PR and outside the ticket; it is not changed here.
+5. **Test — the forced step-change test could not tell which timer survived. Agreed.** The test timers now run on a
+   clock of their own (`advance`). The test moves on 200 ms in and checks there is nothing at step 1's deadline and
+   one call at step 2's.
+
+Also from my mutation checks: two lines were redundant and went — `openingSoon`'s own `clearTimeout`, and
+`openStudio`'s `leaveOpening` (the Studio is another stage). `releaseOpening` no longer checks Home itself, since
+`openingDue` looks again. A new test covers drawing a stage with no melody while the old stage's echo is pending or
+held.
+
+### Round-3 tests
+
+`tests/opening-melody.test.mjs`, 35 tests, all pass. On round 2's head, the eight covering findings 1–4 fail. A
+mutation check run by hand on each line of the round-3 code fails at least one test. The lines checked:
+- Home holding the melody;
+- the release's pause, and that it clears the held melody;
+- the quest branch, and the leave on a new stage;
+- the same-stage keep;
+- the interrupted state;
+- Close's release, and `openPkg`'s fresh entry;
+- the Play button's and Listen's cancel.
+
 ## Owner's decisions
 
 None asked.

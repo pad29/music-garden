@@ -2,26 +2,30 @@
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
 // ---- A stage's opening melody (an echo level's phrase, a Question & Answer call), heard ONCE per entry (TUN-125) ----
-// An ENTRY, not a draw: openingStage is the stage whose entry has used its melody — pending, waiting or played. A
+// An ENTRY, not a draw: openingStage is the stage whose entry has used its melody — pending, held or played. A
 // redraw of that same stage (a sign-in's cloud load landing on the level the player is on, early or late) keeps it
-// as it is; only drawing another stage, or Home, frees it. 🔊 Listen and ▶ Play spend it. And never onto a frozen
-// clock: until the page's first gesture the AudioContext is suspended at time 0 (iOS can also interrupt it later),
-// and notes booked then are not lost — they all sound together the moment it runs, over whatever is booked then.
-// So a melody whose timer finds the clock not running books nothing and waits; the context's own "running" plays
-// it, once. (Notes already booked on a RUNNING clock are left to finish: nothing can take them back.)
+// as it is; drawing another stage, opening a package or the Studio, or a quest frees it. 🔊 Listen and the ▶ Play
+// button spend it (a scripted start() — a reveal, Jam — does not). It plays only where it can be heard: never onto a
+// frozen clock — until the page's first gesture the AudioContext is suspended at time 0 (iOS can also interrupt it
+// later), and notes booked then are not lost, they all sound together the moment it runs, over whatever is booked
+// then — and never behind 🏠 Home. Either way it is HELD (booked nothing), and plays 350 ms after the clock runs and
+// Home is closed, the same pause as on entry, which a Listen press inside it cancels. (Notes already booked on a
+// running clock are left to finish: nothing can take them back.)
 let openingTimer=null, openingWaits=null, openingHooked=null, openingStage=null;
 function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }   // spent: Listen, ▶ Play
-function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: Home, where every package and quest is entered — the next entry plays again
+function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: a package, the Studio or a quest is entered — it plays anew
+function openingSoon(notes){ openingTimer=setTimeout(()=>{ openingTimer=null; openingDue(notes); }, 350); }
 function openingFor(st,notes){ if(st===openingStage) return;     // a redraw of the entered stage: as it was
   leaveOpening(); if(!notes || !notes.length) return;
-  openingStage=st; openingTimer=setTimeout(()=>{ openingTimer=null; playOpening(notes); }, 350); }
-function playOpening(notes){ initAudio();
-  if(actx.state===undefined || actx.state==="running"){ playPhrase(notes); return; }   // (an old context with no state: play)
+  openingStage=st; openingSoon(notes); }
+function openingDue(notes){ initAudio();
+  const runs = actx.state===undefined || actx.state==="running";   // (a context too old to report a state: it runs)
+  if(runs && homeoverlay.style.display!=="flex"){ playPhrase(notes); return; }
   openingWaits=notes;
-  if(openingHooked!==actx){ openingHooked=actx;
-    actx.addEventListener("statechange",()=>{ if(actx.state!=="running" || !openingWaits) return;
-      const n=openingWaits; openingWaits=null; playPhrase(n); }); }
-  actx.resume(); }   // starts the clock if the page has had a gesture; otherwise a gesture's resume() will
+  if(openingHooked!==actx){ openingHooked=actx; actx.addEventListener("statechange",releaseOpening); }
+  if(!runs) actx.resume(); }   // starts the clock if the page has had a gesture; otherwise a gesture's resume() will
+function releaseOpening(){ if(!openingWaits || !actx || actx.state!=="running") return;
+  const n=openingWaits; openingWaits=null; openingSoon(n); }   // statechange to running, or Home closed: openingDue looks again
 function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
@@ -82,7 +86,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   // which a quest has no goals, hint or "Next level" for.
   // The status line is written by renderQuestShell, which questPaintField ends by calling: it says what
   // this phase is for and that leaving is free, instead of "press Play" and a Hint that does not exist.
-  if(isQuestScope()){ questPaintField(activeScope.runId); renderVines(); populateDevJump();
+  if(isQuestScope()){ leaveOpening(); questPaintField(activeScope.runId); renderVines(); populateDevJump();
     if(speakOn && narrateReady && !instrCardUp()) narrate(curStage().intro||""); else stopSpeech();
     return; }
   const L=currentLevel(), st=curStage(), U=scopeFeatures();

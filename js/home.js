@@ -9,14 +9,13 @@ homeBtn.onclick=()=>{ if(isQuestScope()) leaveQuest(); else openHome(); };
 // (TUN-93: one the child thinks they left must not land in what they opened next), and redraws the account
 // panel, so a sign-in form's passphrase never stays in a hidden box. false: not now.
 function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth(); return true; }
-function closeHome(){ leaveHome(); }
+function closeHome(){ if(leaveHome()) releaseOpening(); }   // back to the level as it was: an opening melody held behind Home plays now (TUN-125)
 document.getElementById("homeclose").onclick=closeHome;
 homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
 pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
-function openHome(){ leaveOpening();   // a level's opening melody not yet heard stays there; coming back plays it anew (TUN-125)
-  pname.value=progress.name||""; renderAuth(); renderPkgs(); renderQuestHome();
+function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); renderQuestHome();
   homeoverlay.style.display="flex"; }
 let questTrailOpen=false;
 // textContent throughout — a quest title is authored text, and this is the second place it could have
@@ -61,6 +60,7 @@ function renderQuestHome(){
   }
 }
 function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull would land in this level (TUN-93)
+  leaveOpening();   // a fresh entry: a melody held behind Home stays unheard, and this level's plays (TUN-125)
   setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
   leaveHome();

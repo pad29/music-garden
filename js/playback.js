@@ -299,7 +299,7 @@ document.addEventListener("visibilitychange",()=>{            // spike: hidden t
   if(document.hidden){ if(paintRaf){ cancelAnimationFrame(paintRaf); paintRaf=0; } camStop(); }   // …and drop any camera tween: it cannot advance while hidden
   else if(!paintRaf) paintRaf=requestAnimationFrame(paintLoop);
   pump(); });
-function start(opts){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); cancelOpening(); playing=true;   // hush narration, any famous-tune flashes and an opening melody not yet heard (TUN-125), so they don't collide with the main sweep
+function start(opts){ initAudio(); actx.resume(); stopSpeech(); clearFamousTimers(); playing=true;   // hush narration & any famous-tune flashes so they don't collide with the main sweep
   // ▶ starts at the cursor only if it was put there DELIBERATELY; otherwise at the loop's start. This replaces
   // 2d's `if(growPkg() && cursorCol!==0) setCursor(0)` walk-home, which is deleted rather than generalized:
   // that hack had ▶ DRAG the cursor to 0, so planting a seed and pressing 🌿 Grow afterwards grew whatever
@@ -333,7 +333,7 @@ function stop(){ cancelCompletionSession("stop"); playing=false; Transport.end()
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
 }
-playBtn.onclick=()=> playing?stop():start({countIn:true});
+playBtn.onclick=()=>{ if(playing) stop(); else { cancelOpening(); start({countIn:true}); } };   // ▶ plays the field, call and all: the opening melody not yet heard is spent (TUN-125)
 document.getElementById("undoBtn").onclick=undoEdit;
 document.getElementById("redoBtn").onclick=redoEdit;
 loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
