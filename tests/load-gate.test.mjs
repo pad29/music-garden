@@ -45,7 +45,7 @@ test("load gate: it is the first game script, boot is the last, and boot asks it
 // Mutations: drop "keydown" or "pointerleave" from LOAD_GATE_EVENTS; wire a "dblclick" listener without listing
 // it. Each fails here: a new kind of listener has to be declared input (gated) or not.
 const NOT_INPUT = new Set(["scroll", "resize", "visibilitychange", "pagehide", "blur", "error", "load",
-  "voiceschanged", "DOMContentLoaded"]);
+  "voiceschanged", "DOMContentLoaded", "statechange"]);   // statechange: the AudioContext's, for a waiting opening melody (TUN-125)
 test("load gate: every kind of player input the game listens for is held back", () => {
   const listened = new Set();
   for (const s of gameScripts().scripts) {

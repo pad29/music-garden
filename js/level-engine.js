@@ -1,7 +1,26 @@
 // ---------- The level engine: a level's layout and stages, its goals, rewards, the world strip and companions ----------
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
+// ---- A stage's opening melody (an echo level's phrase, a Question & Answer call), heard ONCE per entry (TUN-125) ----
+// One slot: a new draw, a step/level/package change (resetTransient) or 🔊 Listen drops the one before, so two
+// draws in a row — the boot's and a cloud load's — or a quick Next never book two copies. And never onto a frozen
+// clock: before the page's first gesture the AudioContext is suspended at time 0, and notes booked then are not
+// lost — they all sound together the moment it runs, over whatever is booked at that moment. So a melody whose
+// timer finds the clock suspended books nothing and waits; the context's own "running" plays it, once.
+let openingTimer=null, openingWaits=null, openingHooked=null;
+function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }
+function scheduleOpening(notes){ cancelOpening(); if(!notes || !notes.length) return;
+  openingTimer=setTimeout(()=>{ openingTimer=null; playOpening(notes); }, 350); }
+function playOpening(notes){ if(playing) return;   // ▶ Play got there first: the sweep plays the stage's own notes
+  initAudio();
+  if(actx.state!=="suspended"){ playPhrase(notes); return; }
+  openingWaits=notes;
+  if(openingHooked!==actx){ openingHooked=actx;
+    actx.addEventListener("statechange",()=>{ if(actx.state!=="running" || !openingWaits) return;
+      const n=openingWaits; openingWaits=null; if(!playing) playPhrase(n); }); }
+  actx.resume(); }   // starts the clock if the page has had a gesture; otherwise the first gesture's resume() will
 function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
+  cancelOpening();                                             // …and an opening melody not yet heard (TUN-125)
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
@@ -81,7 +100,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
   hintBtn.style.display = st.hint?"":"none";
   listenBtn.style.display = (st.echo||st.call)?"":"none";
-  if(st.echo) setTimeout(()=>playPhrase(st.echo),350);   // play the phrase once on entry
+  if(st.echo) scheduleOpening(st.echo);                  // play the phrase once on entry
   if(drumsOn && st.carryDrums && carriedDrums){ placeDrums(carriedDrums); carriedDrums=null; }   // reuse the player's beat from the previous step
   else if(drumsOn && st.drumSetup) st.drumSetup();                                                // otherwise the fixed starting pattern
   if(st.setup) st.setup();
@@ -96,7 +115,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
   setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
   setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
-  if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
+  if(st.call){ placeCall(st.call); scheduleOpening(st.call); }           // pre-place the call (every draw) & play it once on entry
   setStatus( choiceStatus ? choiceStatus                                 // a picker's own prompt survives — setup() runs BEFORE this line
     : L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."

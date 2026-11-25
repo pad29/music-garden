@@ -342,7 +342,7 @@ drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   if(drumsOn) syncCursor();          // the lane was display:none, so its pads had no geometry — re-measure the cursor rail now that they do
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
-listenBtn.onclick=()=>playPhrase(curStage().call ? curCall() : echoTarget());
+listenBtn.onclick=()=>{ cancelOpening(); playPhrase(curStage().call ? curCall() : echoTarget()); };   // heard every press — and the opening melody not yet heard is this one (TUN-125)
 function applyGrooveTempo(){ tempoOnLoan=null;   // picking a groove is a choice too
   tempoEl.value=GROOVES[grooveIdx].bpm;
   Transport.retime(); }
