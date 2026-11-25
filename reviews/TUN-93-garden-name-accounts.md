@@ -508,7 +508,11 @@ took the ticket over from `music-garden-47`.
    Input, with no fifth round and no unreviewed fixes handed off as done. The owner's answer of 2026-11-22,
    relayed by the orchestrator.
 8. *After round 4's changes requested: fix 48–51 and add the tests here, or merge after the playtest and move them
-   to a follow-up ticket with its own review loop* (*PR review, round 4*): **open**.
+   to a follow-up ticket with its own review loop* (*PR review, round 4*): **A — a follow-up.** "1A: file the
+   follow-up ticket for findings 48–51 and tests 53–59, then hand off In Review with the deploy order and playtest
+   checklist" — the owner, in the AO session `music-garden-48`, 2026-11-25. Filed as **TUN-128** (Backlog, M,
+   blocked by TUN-93). So this PR is handed off **without a GPT approval**: round 4's verdict on `091de09` stands as
+   changes requested, and the owner chose to go on to the deploy and the playtest.
 
 ## Build (session `music-garden-48`, 2026-11-22)
 
@@ -1029,3 +1033,14 @@ review loop**, and let this PR go through the deploy, the preview and the playte
 are narrower than what `main` has today, so holding this PR keeps the wider gap live; and fixes made here now could
 not be reviewed (no fifth round), while a follow-up gets a full loop. The other defensible answer is to fix them here
 first and have the owner read the diff, or grant one more round.
+
+## Hand-off (2026-11-25)
+
+In Review, by the owner's decision 8. No code changed since `d3ba7c9` (the merge with TUN-112): the commits after it
+touch only this file. GPT's round-4 findings 48–51 and tests 53–59 are TUN-128's. Suite on the hand-off head:
+1105/1105. Still the owner's to verify: the deployed backend and its checks, the preview sign-up and sign-in, the
+laptop-to-phone play, print preview, the saved picture on a phone, a screen reader, and `file://`.
+
+## Owner's review
+
+*(for the owner's playtest notes)*
