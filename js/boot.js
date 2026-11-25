@@ -26,7 +26,7 @@ ensureInstruments();   // derive the unlocked-instrument set for saves that pred
 if(progress.settings && progress.settings.voice) setVoice(progress.settings.voice);
 if(progress.settings && progress.settings.tempo) tempoEl.value=progress.settings.tempo;
 if(progress.settings && progress.settings.mix) mix=Object.assign(mix, progress.settings.mix);
-if(progress.settings && progress.settings.click) clickMode=progress.settings.click;
+clickMode=clickModeFrom(progress.settings);   // a stored unknown value is "off", as on a cloud pull (TUN-12)
 speakOn = !(progress.settings && progress.settings.speak===false); renderSpeak();   // read-aloud ON by default (unless turned off)
 loadQuestCatalog(BUILTIN_QUEST_CATALOG_JSON, "official");   // all-or-nothing: a bad definition publishes an EMPTY registry
 hydrateQuestRuns();  // drafts live at their own Store key; a malformed run is dropped, never guessed at

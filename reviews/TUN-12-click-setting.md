@@ -33,8 +33,8 @@ Size **S** (label and `## Size` agree). The finding is `REVIEW-LOG.md` § "Mergi
 - **TUN-129** (Backlog, `needs-owner`, S) — a cloud profile with no `settings` object keeps this device's
   voice, tempo, mix and read-aloud. Whether "absent" should mean the defaults or the device's own choices
   has two defensible answers, so it is the owner's. Broadened after round 1 to the empty `settings:{}`
-  profile too, and to `boot.js`'s page-load read of the click, which is as unvalidated as the one this
-  PR fixed (that file is another worker's today, TUN-69, so it is not touched here).
+  profile too. (Round 1 also moved `boot.js`'s unvalidated click read there; round 2 brought it back
+  into this PR, and TUN-129 no longer carries it.)
 
 ## Build
 
@@ -94,3 +94,39 @@ The requested absent-field behavior works. Every applied pull reaches `renderLev
 
 Mutations after the fixes, each against `tests/click.test.mjs` (17 tests): no value check → 1 fails (bogus);
 accept only `"in"` → 1 fails (`"both"` arriving); unconditional `"off"` → 2 fail; the original line → 4 fail.
+
+### Round 2 (`gpt-6.2-astra`, `ask.sh fresh read-only`) — on `a62852e`: changes requested
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes required on `a62852e`**
+
+1. **Low — Reloading restores the invalid click value from the same cloud profile.** I reproduced this through `onSignedIn(false)` with a legacy row containing `settings.click: "bogus"`. Sign-in set the live mode to `"off"` but stored `"bogus"` in `mg_progress`. A fresh boot from that copy restored `"bogus"`, leaving `#click` without a matching option and enabling the count-in in a metered Studio. Boot must apply the same fallback in this PR. Deferring it to TUN-129 leaves the round‑1 failure reachable after sign-out and reload. [Cloud profile write](https://github.com/pad29/music-garden/blob/a62852e/js/cloud.js#L152) · [Boot restore](https://github.com/pad29/music-garden/blob/a62852e/js/boot.js#L29) · [Count-in gate](https://github.com/pad29/music-garden/blob/a62852e/js/playback.js#L117)
+
+**Missing test**
+
+1. Pull a profile with `settings.click: "bogus"` through `onSignedIn(false)` → boot a fresh game from the resulting `mg_progress` with no signed-in session → assert `clickMode` and `#click.value` are `"off"`, then enter a metered Studio and assert `clickOn()` is `false`.
+
+The review notes and TUN-129 now describe both `settings: {}` and absent `settings` correctly. All 17 click tests passed, and I reproduced the four mutation failure counts of **1, 1, 2, and 4**. I did not independently verify the reported full-suite result. [TUN-129](https://linear.app/pad29/issue/TUN-129/decide-what-a-cloud-profile-with-no-saved-settings-does-to-this)
+
+</details>
+
+**My answers**
+
+1. **Low — a reload restores the invalid click from the same cloud profile.** **Agreed** — my round-1 answer
+   was wrong to defer it: the pull stores the profile as it came (`Store.set` before `applyProgress`), so
+   the page load is part of the same failure. Fixed here: one helper, `clickModeFrom(settings)` beside
+   `clickMode` in `js/playback.js`, used by both `applyProgress` and `boot.js`'s page-load read, so the
+   two restores cannot drift apart. The `boot.js` change is that one line, reported to the coordinator
+   first because TUN-69 is working in that file today. I did not normalise the stored copy itself:
+   changing what is saved back to the cloud is out of scope ("how settings sync").
+
+**Missing test** — **added**, along GPT's path: the real `onSignedIn(false)` pulls a profile with
+`click:"bogus"` (a small Cognito/fetch stand-in in `tests/click.test.mjs`, rather than editing
+`cloud-sync.test.mjs`, TUN-128's today), then a fresh page boots from the `mg_progress` it stored →
+`clickMode` and `#click` read "off", and a metered Studio does not count in. Also added: a page load still
+restores a stored "both", so a "boot always off" fix would fail.
+
+Mutations after the fixes, each against `tests/click.test.mjs` (19 tests): `boot.js`'s old read → 1 fails;
+boot always "off" → 1; `applyProgress`'s original line → 5; unconditional "off" in `applyProgress` → 2;
+the helper without its value check → 2; the helper accepting only "in" → 2.

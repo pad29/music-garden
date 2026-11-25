@@ -241,6 +241,46 @@ test("a cloud profile with an empty settings object resets the live click too", 
   assert.strictEqual(el.value, "off");
 });
 
+// A page whose localStorage holds `stored` as mg_progress, a signed-in Cognito user, and a GET /progress
+// answering `cloud` — the smallest stand-in for cloud-sync.test.mjs's fixture that runs the real onSignedIn.
+function bootWith(stored, cloud = null) {
+  const f = loadGame({ fresh: true, setup: w => {
+    if (stored) w.localStorage.setItem("mg_progress", JSON.stringify(stored));
+    if (!cloud) return;
+    const user = { getUsername: () => "ann", signOut() {}, getSession: cb => cb(null, { isValid: () => true,
+      getIdToken: () => ({ payload: { "cognito:username": "ann", sub: "sub-ann" }, getJwtToken: () => "token-ann" }) }) };
+    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return user; } } };
+    w.fetch = async (url, opts = {}) => {
+      if (!/\/progress$/.test(String(url)) || (opts.method || "GET") !== "GET") throw new Error("unexpected " + url);
+      return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(cloud)) };
+    };
+  } });
+  return { f, el: f.__document.getElementById("click") };
+}
+
+test("a reload after pulling an unknown click value still reads off", async () => {
+  // MUTATION: leave boot.js's old read — the stored "bogus" comes back on the next page load.
+  // GPT's PR review, round 2: the pull stores the profile as it came, so the page load must check it too.
+  const { f } = bootWith(null, { v: 1, current: "intro", updatedAt: 2, packages: {}, settings: { click: "bogus" } });
+  const r = await f.onSignedIn(false);
+  assert.ok(r.signedIn && r.saved, "precondition: the pull loaded the cloud profile");
+  assert.strictEqual(f.clickMode, "off", "the pull itself reads off");
+  const kept = f.__window.localStorage.getItem("mg_progress");
+  assert.strictEqual(JSON.parse(kept).settings.click, "bogus", "precondition: the stored copy keeps the row's value");
+  const { f: next, el } = bootWith(JSON.parse(kept));   // the next page load, signed out
+  assert.strictEqual(next.clickMode, "off", "the page load reads off too");
+  assert.strictEqual(el.value, "off", "…and the control shows one of its own options");
+  assert.strictEqual(studioClicks(next), false, "…so the metered Studio does not count in");
+});
+
+test("a page load still restores a stored click the player chose", () => {
+  // MUTATION: make the page load always "off" — the player's own count in + tick is lost on reload.
+  const { f, el } = bootWith({ v: 1, current: "intro", updatedAt: 1, packages: {}, settings: { click: "both" } });
+  assert.strictEqual(f.clickMode, "both");
+  assert.strictEqual(studioClicks(f) && f.metronomeOn(), true, "count in, and tick over the music");
+  assert.strictEqual(el.value, "both", "…and the control says so once the Studio is drawn");
+});
+
 test("a cloud profile WITH a click still wins over the live one", () => {
   // MUTATION: reset to "off" unconditionally — the profile's own "in" is lost.
   const { f, el } = liveBoth();

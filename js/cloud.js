@@ -117,8 +117,7 @@ function applyProgress(){   // re-apply the progress object to the running game
     speakOn=progress.settings.speak!==false; renderSpeak(); }   // read-aloud ON by default (unless turned off)
   // A profile saved before the count-in has no click: that means the default, "off", as on a fresh page —
   // never the live mode a previous profile left behind (TUN-12). renderLevel's syncMeterUI shows it in #click.
-  // Only the select's own modes count: an old row the API never validated must not switch a count-in on.
-  const click=progress.settings && progress.settings.click; clickMode=(click==="in" || click==="both") ? click : "off";
+  clickMode=clickModeFrom(progress.settings);
   toolbox.length=0; toolboxOwner=null;   // force a per-scope toolbox reload on the renderLevel below
   restoreLastPackage();
   renderBag(); renderLevel(); updateTitle();     // renderLevel now syncs the region companion
