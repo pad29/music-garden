@@ -63,8 +63,11 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
 // ---------- dev-only jump (enable by adding ?dev or #dev to the URL) ----------
 if(/(?:[?&]|#)dev/i.test(location.search+location.hash)){
   document.getElementById("devbar").style.display="";
-  // package selector jumps to any package's first level (ignores lock state — dev only)
-  document.getElementById("devpkg").onchange=e=>{ if(e.target.value!==scopeCatalogId()) openPkg(e.target.value,0); };
+  // package selector jumps to any package's first level (ignores lock state — dev only). Its list is every
+  // key of PACKAGES, so it holds the hidden `studio` node too, which is not a package: open it the way the
+  // map's ▶ Open Studio does (TUN-69).
+  document.getElementById("devpkg").onchange=e=>{ const id=e.target.value; if(id===scopeCatalogId()) return;
+    if(id==="studio") openStudio(); else openPkg(id,0); };
   document.getElementById("devjump").onchange=e=>{ levelIdx=+e.target.value; renderLevel(); };
   // Quest testing needs a profile that has EARNED the prerequisites, which is otherwise several
   // packages of real play. Dev-only, behind the same ?dev flag as the jump above, and it writes the
