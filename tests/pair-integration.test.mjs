@@ -173,6 +173,89 @@ test("TUN-15: a stamp that would land on a sleeping color refuses, as cellClick 
   assert.strictEqual(g.ev.stampedTool, true);
 });
 
+test("TUN-15: a refused stamp through cellClick leaves notes, cursor pin, journal, goals and sound alone", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 0, c: 0 }, { r: 9, c: 0 }]);   // offsets [0, 9]
+  const tall = g.toolbox[0];
+  clearMelody(g);
+  put(g, 5, 3);                    // a seed already in the destination column
+  g.pinCursor(6);                  // a deliberate pin: ▶ starts here
+  g.ev.stampedTool = false;
+  g.ev.played = true;              // a prior goal flag a stamp would reset
+  g.activeTool = tall;
+  const { said, txs } = stampProbe(g);
+  const sounds = [], blooms = [], saves = [];
+  g.playRow = (r) => sounds.push(r);
+  g.bloom = (...a) => blooms.push(a);
+  g.noteEdit = (label) => saves.push(label);   // the autosave hook every journalled player edit calls
+
+  g.cellClick(1, 3, {});
+
+  assert.deepEqual(column(g, 3), [5], "the existing seed stays and nothing is added");
+  assert.strictEqual(g.cursorPinned, true, "a refusal must not unpin the cursor");
+  assert.strictEqual(g.cursorCol, 6, "a refusal must not move the cursor");
+  assert.deepEqual(txs, []);
+  assert.deepEqual(saves, [], "no autosave");
+  assert.deepEqual(sounds, [], "no stamp sound");
+  assert.deepEqual(blooms, [], "no bloom");
+  assert.strictEqual(g.ev.stampedTool, false);
+  assert.strictEqual(g.ev.played, true);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room);
+
+  g.cellClick(9, 3, {});   // fits: both rows land, and now the cursor follows the hand
+
+  assert.deepEqual(column(g, 3), [0, 5, 9]);
+  assert.strictEqual(g.cursorPinned, false);
+  assert.strictEqual(g.cursorCol, 3);
+  assert.deepEqual(txs, ["stamp"]);
+  assert.deepEqual(saves, ["stamp"]);
+  assert.strictEqual(sounds.length, 2);
+  assert.strictEqual(g.ev.stampedTool, true);
+  assert.strictEqual(g.ev.played, false);
+});
+
+test("TUN-15: a damaged saved tool refuses without planting or throwing; a valid unsorted one stamps whole", () => {
+  const g = readyGame();
+  clearMelody(g);
+  g.ev.stampedTool = false;
+  const { said, txs } = stampProbe(g);
+
+  for (const offs of [[], [0, "bad"], [0, 0], ["x", 2], [0, 1.5]]) {
+    g.activeTool = { offs, midis: [] };
+    assert.doesNotThrow(() => g.stampTool(9, 3), `offs ${JSON.stringify(offs)}`);
+    assert.deepEqual(column(g, 3), [], `offs ${JSON.stringify(offs)} planted something`);
+    assert.strictEqual(said.at(-1), g.STAMP_COPY.broken, `offs ${JSON.stringify(offs)}`);
+  }
+  g.activeTool = { offs: [], midis: [] };
+  assert.doesNotThrow(() => g.cellClick(4, 3, {}), "the same through cellClick");
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false);
+
+  g.activeTool = { offs: [9, 0], midis: [81, 60] };   // a persisted tool, unsorted
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [0, 9]);
+  assert.strictEqual(g.ev.stampedTool, true);
+});
+
+test("TUN-15: a shape taller than the whole field refuses at both edges, without edge advice", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");                                   // 14 rows
+  g.craftFromCells([{ r: 13, c: 0 }, { r: 0, c: 0 }]);        // C4–B5, offsets [0, 13]
+  const huge = g.toolbox.find((t) => Math.max(...t.offs) === 13);
+  g.setPalette("pentatonic");                                 // the Studio can switch palettes under a kept toolbox
+  g.ev.stampedTool = false;
+  g.activeTool = huge;
+  const { said, txs } = stampProbe(g);
+
+  for (const r of [0, 9, 4]) {
+    g.stampTool(r, 3);
+    assert.deepEqual(column(g, 3), [], `row ${r} planted something`);
+    assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall, `row ${r} gave edge advice`);
+  }
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false);
+});
+
 test("placed columns count raw-width bands and ignore non-pairs", () => {
   const g = readyGame();
   // C4–D4 = close; C4–E4 = bright; C4–A5 = compound open; C4–C5 = octave/open.

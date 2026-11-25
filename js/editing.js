@@ -147,8 +147,8 @@ function cellClick(r,c,el){
   if(zoomBlocksEdit()) return;   // …and at 60% the tap is aimed at the ZOOM, not at a square: it must not leave a seed behind on the way in
   initAudio(); actx.resume(); hideNoteTip();
   if(isLockedRow(r)){ setStatus("That color isn't awake yet 🔒 — this level uses the colors you've discovered so far."); return; }
-  followCursor(c);   // …and covers the stamp path below, which is only ever reached from here
-  if(activeTool){ stampTool(r,c); return; }
+  if(activeTool){ stampTool(r,c); return; }   // stampTool follows the cursor itself, and only when the stamp lands (TUN-15)
+  followCursor(c);
   setCell(r,c,!grid[r][c]);
   if(grid[r][c]){ playRow(r,actx.currentTime); flash(el,r); bloom(el, noteFlower(r)); compReact(); }
   ev.played=false;                 // editing means "Play" must be pressed again to count
@@ -197,15 +197,20 @@ function fuseField(){                              // Fuse pressed with no pick:
 // whatever rows were left — one seed, still "Stamped!", still a stamp goal. Each refusal names its wall
 // and, like 🌿 Grow's, plants nothing and writes no journal entry; the tool stays armed to try elsewhere.
 const STAMP_COPY = {
-  room:  "📐 Not enough room for the whole shape here — tap nearer the <b>bottom</b> or the <b>top</b> of the field so every seed lands 🌱.",
-  sleep: "That color isn't awake yet 🔒 — part of this shape would land on it. Stamp it somewhere else."
+  room:    "📐 Not enough room for the whole shape here — tap nearer the <b>bottom</b> or the <b>top</b> of the field so every seed lands 🌱.",
+  tooTall: "📐 This shape is taller than this whole field — there's nowhere here it can land in one piece.",   // a tool crafted on a taller palette (the Studio can switch)
+  sleep:   "That color isn't awake yet 🔒 — part of this shape would land on it. Stamp it somewhere else.",
+  broken:  "🎒 This tool has lost its shape — craft it again with 🔨 Fuse."   // a damaged saved tool: never plant part of it, never throw halfway
 };
 function stampTool(r,c){
-  const offs=activeTool.offs;
+  const offs=activeTool.offs||[];
   let rows=offs.map(o=>r-o);                        // stack upward from clicked cell
   if(rows.some(x=>x<0)) rows=offs.map(o=>r+o);      // flip downward if it runs off the top
-  if(rows.some(x=>x<0||x>=ROWS)){ setStatus(STAMP_COPY.room); return; }   // too tall for this spot either way
+  if(rows.length<2 || !rows.every(Number.isInteger) || new Set(rows).size!==rows.length){ setStatus(STAMP_COPY.broken); return; }
+  if(rows.some(x=>x<0||x>=ROWS)){                   // too tall for this spot either way — or for any spot on this field
+    setStatus(Math.max(...offs)-Math.min(...offs)>=ROWS ? STAMP_COPY.tooTall : STAMP_COPY.room); return; }
   if(rows.some(isLockedRow)){ setStatus(STAMP_COPY.sleep); return; }      // cellClick refuses a sleeping tapped row; this is the rest of the shape
+  followCursor(c);                                  // only a stamp that lands moves the cursor (and unpins it), as a plant does
   tx("stamp",()=>rows.forEach(rr=>setCell(rr,c,true)));   // ONE journal entry — undo removes the whole stamped chord, not one seed of it
   rows.forEach((rr,i)=>playRow(rr,actx.currentTime+i*0.05));
   const stable=stableMidis(rows.map(r2=>MIDI[r2]).sort((a,b)=>a-b));
