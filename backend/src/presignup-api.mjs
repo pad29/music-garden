@@ -1,5 +1,8 @@
 // Cognito's Pre sign-up trigger (template.yaml: PreSignUpFn): auto-confirm each new account — no email step —
-// and, since TUN-88, refuse sign-ups past DAILY_SIGNUP_LIMIT a UTC day. The logic, without the AWS SDK:
+// and, since TUN-88, refuse sign-ups past DAILY_SIGNUP_LIMIT a UTC day. Since TUN-93 an account holds nothing
+// personal: its username must be a generated garden name, and a sign-up carrying an email, a phone number or a
+// free-text profile attribute is refused — the game's own sign-up and the owner's AdminCreateUser alike, both
+// before anything is counted. The logic, without the AWS SDK:
 // presignup.mjs passes in `counter` ({ add(params, signal) } over a plain DocumentClient UpdateItem parameter
 // object), so tests/backend-presignup.test.mjs can drive it. backend/README.md § The daily sign-up limit is
 // the runbook; reviews/TUN-88-daily-signup-limit.md the design and the arithmetic.
@@ -7,10 +10,18 @@
 // Cognito hands a thrown error's message to the browser as "PreSignUp failed with error <message>.", so a
 // refusal's message is always one of the fixed tokens below, never an AWS error (those go to CloudWatch).
 // js/cloud.js shows FULL as "the garden is full today"; every other refusal as "not taking new accounts".
+import { isGardenName } from "./garden-words.mjs";
 
 export const FULL = "daily-signup-limit";
 export const UNAVAILABLE = "signup-counter-unavailable";
 export const UNSUPPORTED = "signup-source-unsupported";
+export const NOT_GARDEN_NAME = "signup-not-garden-name";
+export const HAS_ATTRIBUTES = "signup-has-attributes";
+// Cognito's standard attributes that hold something a person could type, or that identify them. Named, rather
+// than "any key at all", so an attribute Cognito itself puts in the event can never refuse every sign-up.
+export const REFUSED_ATTRIBUTES = Object.freeze(["email", "phone_number", "name", "given_name", "family_name",
+  "middle_name", "nickname", "preferred_username", "profile", "picture", "website", "gender", "birthdate",
+  "address", "zoneinfo", "locale"]);
 
 const DAY_MS = 86_400_000;
 export const KEEP_DAYS = 3;          // a day's counter row expires (DynamoDB TTL) 3 days after the day starts
@@ -63,9 +74,19 @@ function withDeadline(fn, ms) {
 function confirm(event) {
   event.response = event.response || {};
   event.response.autoConfirmUser = true;
-  // A player who chose to add an email (for password recovery) gets it verified, so forgot-password can use it.
-  if (event.request && event.request.userAttributes && event.request.userAttributes.email) event.response.autoVerifyEmail = true;
   return event;
+}
+
+// The account rules (TUN-93): the refusal's token, or null. The username is lower-cased first — Cognito hands a
+// case-insensitive pool's triggers the lower-case form, and this check must not depend on that. Only attribute
+// NAMES are logged, never their values.
+function accountRuleBroken(event, log) {
+  const name = typeof event.userName === "string" ? event.userName.toLowerCase() : "";
+  if (!isGardenName(name)) return NOT_GARDEN_NAME;
+  const attrs = event.request && event.request.userAttributes;
+  const given = attrs && typeof attrs === "object" ? REFUSED_ATTRIBUTES.filter(k => Object.hasOwn(attrs, k)) : [];
+  if (given.length) { log.log("presignup: refused attributes", given.join(",")); return HAS_ATTRIBUTES; }
+  return null;
 }
 
 export function makePreSignUpHandler(counter, { config, now = Date.now, deadlineMs = DEADLINE_MS, log = console } = {}) {
@@ -73,14 +94,17 @@ export function makePreSignUpHandler(counter, { config, now = Date.now, deadline
   return async (event) => {
     const ms = now();   // one clock read: the day counted, its expiry and the day marked full all come from it
     const source = event && event.triggerSource;
-    // The owner's own AdminCreateUser (it needs IAM credentials) is not counted. Cognito ignores the confirm
-    // flags for it, as it always did.
-    if (source === "PreSignUp_AdminCreateUser") return confirm(event);
-    // The game's sign-up is the only other source this pool should send; the backend refuses what it doesn't know.
-    if (source !== "PreSignUp_SignUp") {
+    // The game's sign-up and the owner's own AdminCreateUser are the only sources this pool should send; the
+    // backend refuses what it doesn't know.
+    if (source !== "PreSignUp_SignUp" && source !== "PreSignUp_AdminCreateUser") {
       log.error("presignup: refused trigger source", String(source).slice(0, 64));
       throw refusal(UNSUPPORTED);
     }
+    const broken = accountRuleBroken(event, log);
+    if (broken) throw refusal(broken);
+    // AdminCreateUser (it needs IAM credentials) is not counted. Cognito ignores the confirm flags for it, as it
+    // always did.
+    if (source === "PreSignUp_AdminCreateUser") return confirm(event);
     if (!config || !config.ok) {
       log.error("presignup: DAILY_SIGNUP_LIMIT or SIGNUP_COUNT_TABLE is not set right; refusing every sign-up");
       throw refusal(UNAVAILABLE);

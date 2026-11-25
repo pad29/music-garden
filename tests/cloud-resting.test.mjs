@@ -87,7 +87,7 @@ Object.defineProperty(g.__document, "createElement", { value: tag => el(String(t
 g.toast = t => toasts.push(String(t));
 g.copyLink = () => {};
 g.userPool = { getCurrentUser: () => ({ getUsername: () => "ann",
-  getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "t" }) }) }) };
+  getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": "ann" }, getJwtToken: () => "t" }) }) }) };
 const answerWith = fn => { g.__window.__answer = fn; };
 const texts = () => { const out = []; const walk = e => { out.push(e.textContent); e.children.forEach(walk); }; walk(mlist); return out.join(" | "); };
 const button = (label) => { const out = []; const walk = e => { if (e.tag === "button" && e.textContent === label) out.push(e); e.children.forEach(walk); }; walk(mlist); return out[0]; };
@@ -140,34 +140,39 @@ test("sharing a big song the cloud cannot take says it is resting", async () => 
 });
 
 // ---------- making an account while sign-ups are switched off ----------
-test("a sign-up the trigger refuses says the garden isn't taking new accounts, calmly; other errors are unchanged", async () => {
+// Since TUN-93 an account is made from the garden card (js/garden-card.js createGarden), never from a typed form.
+const card = () => g.gardenAttempt("brave-otter-42", ["acorn", "map", "tulip", "wren"]);
+test("a sign-up the trigger refuses says the garden isn't taking new accounts, calmly, and withdraws the card; other errors never show Cognito's words", async () => {
   const CLOSED = "🌱 The garden isn't taking new accounts just now. Keep playing as a guest — your garden is saved on this device — and try again another day.";
+  const OTHER = "🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment.";
   const refusals = [
     { code: "UnexpectedLambdaException", name: "UnexpectedLambdaException", message: "PreSignUp invocation failed due to error TooManyRequestsException." },
     { code: "UserLambdaValidationException", message: "PreSignUp failed with error Rate exceeded." },
     { name: "InvalidLambdaResponseException", message: "Invalid lambda response" },
     { message: "PreSignUp invocation failed due to error AccessDeniedException." },
+    { code: "UserLambdaValidationException", message: "PreSignUp failed with error signup-not-garden-name." },
+    { code: "UserLambdaValidationException", message: "PreSignUp failed with error signup-has-attributes." },
   ];
-  const signUp = g.cogSignUp, signIn = g.cogSignIn;
+  const signUp = g.cogSignUp, signIn = g.cogSignIn, warn = console.warn;
   try {
+    console.warn = () => {};
     for (const err of refusals) {
       let signedIn = 0;
       g.cogSignUp = async () => { throw err; };
       g.cogSignIn = async () => { signedIn++; };
-      const msg = { textContent: "" };
-      await g.submitAuth("up", "kid", "password1", "", msg);
-      assert.equal(msg.textContent, CLOSED, JSON.stringify(err));
+      const a = card(), r = await g.createGarden(a);
+      assert.deepEqual({ ...r }, { ok: false, stop: true, msg: CLOSED }, JSON.stringify(err));
       assert.equal(signedIn, 0, "no sign-in, no upload, after a refused sign-up");
+      assert.equal(a.made, false);
     }
-    g.cogSignUp = async () => { throw { code: "UsernameExistsException", message: "User already exists" }; };
-    const msg = { textContent: "" };
-    await g.submitAuth("up", "kid", "password1", "", msg);
-    assert.equal(msg.textContent, "⚠️ User already exists");
+    // Not the trigger: the account was not made, and the same card may try again — in the garden's words.
+    g.cogSignUp = async () => { throw { code: "InvalidParameterException", message: "1 validation error detected: Value at 'username' failed" }; };
+    const r = await g.createGarden(card());
+    assert.deepEqual({ ...r }, { ok: false, msg: OTHER });
     g.cogSignIn = async () => { throw { code: "UnexpectedLambdaException", message: "PreAuthentication failed" }; };
-    const inMsg = { textContent: "" };
-    await g.submitAuth("in", "kid", "password1", "", inMsg);
-    assert.equal(inMsg.textContent, "⚠️ PreAuthentication failed", "the mapping is for sign-up only");
-  } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; }
+    const inR = await g.signInWith("brave-otter-42", "acorn map tulip wren");
+    assert.deepEqual({ ...inR }, { ok: false, msg: OTHER }, "a sign-in never shows Cognito's text either");
+  } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; console.warn = warn; }
 });
 
 // ---------- making an account once the day's limit is reached (TUN-88) ----------
@@ -191,18 +196,21 @@ test("a sign-up past the day's limit says the garden is full today; the trigger'
         let signedIn = 0;
         g.cogSignUp = async () => { throw err; };
         g.cogSignIn = async () => { signedIn++; };
-        const before = JSON.stringify(g.progress), msg = { textContent: "" };
-        await g.submitAuth("up", "kid", "password1", "", msg);
-        assert.equal(msg.textContent, want, JSON.stringify(err));
+        const before = JSON.stringify(g.progress);
+        const r = await g.createGarden(card());
+        assert.deepEqual({ ...r }, { ok: false, stop: true, msg: want }, JSON.stringify(err));
         assert.equal(signedIn, 0, "no sign-in, no upload, after a refused sign-up");
         assert.equal(JSON.stringify(g.progress), before, "the guest's garden is untouched");
         assert.equal(g.cloudSync, "off", "still a guest");
       }
     }
     g.cogSignUp = async () => { throw { code: "InvalidParameterException", message: "daily-signup-limit" }; };
-    const msg = { textContent: "" };
-    await g.submitAuth("up", "kid", "password1", "", msg);
-    assert.equal(msg.textContent, "⚠️ daily-signup-limit", "only a trigger failure carrying the token is the daily limit");
+    const warn = console.warn; console.warn = () => {};
+    try {
+      const r = await g.createGarden(card());
+      assert.equal(r.stop, undefined, "only a trigger failure carrying the token is the daily limit");
+      assert.doesNotMatch(r.msg, /daily-signup-limit|full/);
+    } finally { console.warn = warn; }
   } finally { g.cogSignUp = signUp; g.cogSignIn = signIn; }
 });
 
@@ -211,14 +219,14 @@ test("a sign-up past the day's limit says the garden is full today; the trigger'
 // one the library meets; it turns each into the error object the game sees. The library gets the game's own
 // localStorage — as in the browser, where both share the page's — so anything it did to storage would show.
 function realCognito(answer, localStorage) {
-  const calls = [];
+  const calls = [], bodies = [];
   const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, crypto: globalThis.crypto,
     navigator: { userAgent: "node" }, localStorage,
-    fetch: async (url, opts) => { calls.push(opts.headers["X-Amz-Target"]); return answer(); } };
+    fetch: async (url, opts) => { calls.push(opts.headers["X-Amz-Target"]); bodies.push(JSON.parse(opts.body)); return answer(); } };
   ctx.window = ctx; ctx.self = ctx; ctx.globalThis = ctx;
   vm.createContext(ctx);
   vm.runInContext(readFileSync(join(ROOT, "vendor", "cognito", "amazon-cognito-identity.min.js"), "utf8"), ctx);
-  return { lib: ctx.AmazonCognitoIdentity, calls };
+  return { lib: ctx.AmazonCognitoIdentity, calls, bodies };
 }
 const cognitoSays = (body, errorType = null) => () => ({ ok: false, status: 400,
   headers: { get: (h) => (/x-amzn-errortype/i.test(h) ? errorType : null) },
@@ -247,10 +255,12 @@ test("through the real Cognito library: the day's limit says the garden is full;
       assert.equal(g.userPool.storage, w.localStorage, "the library and the game share one storage");
       answerWith((url) => { api.push(url); throw new Error("no API call expected"); });
       const progress = JSON.stringify(g.progress), stored = saved(), guest = w.localStorage.getItem("mg_progress");
-      const msg = { textContent: "" };
-      await g.submitAuth("up", "kid", "password1", "parent@example.com", msg);
-      assert.equal(msg.textContent, want, what);
+      const r = await g.createGarden(card());
+      assert.deepEqual({ ...r }, { ok: false, stop: true, msg: want }, what);
       assert.deepEqual(real.calls, ["AWSCognitoIdentityProviderService.SignUp"], `${what}: Cognito saw the sign-up and nothing else — no sign-in`);
+      const sent = real.bodies[0];
+      assert.deepEqual([sent.Username, sent.Password, sent.UserAttributes, sent.ValidationData ?? null],
+        ["brave-otter-42", "acorn-map-tulip-wren", [], null], `${what}: the card's name and words, and nothing else (TUN-93)`);
       assert.deepEqual(api, [], `${what}: no upload`);
       assert.equal(JSON.stringify(g.progress), progress, `${what}: the guest's garden is untouched`);
       assert.equal(w.localStorage.getItem("mg_progress"), guest, `${what}: the guest's saved progress is still there, unchanged`);

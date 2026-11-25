@@ -13,6 +13,10 @@ const CLOUD = { v: 1, name: "Cloud Ann", current: "intro", updatedAt: 2,
   packages: { intro: { level: 3, maxLevel: 3, completed: false } }, settings: {} };
 // TUN-87 reworded it in the garden's voice; the facts are TUN-106's: nothing goes up, play stays on this device, and
 // a load once the cloud answers again replaces it.
+// Which copy was applied is told by the intro package's level (this device's 1, the cloud's 3): not by the name,
+// which since TUN-93 stays on this device whichever copy is applied.
+const lvl = p => p.packages.intro.level;
+const withLevel = (p, level) => ({ ...p, packages: { ...p.packages, intro: { ...p.packages.intro, level } } });
 const UNREACHABLE = /the cloud is resting just now\. Your cloud garden is safe there, and what you play now is kept on this device\. When the cloud wakes, reloading brings your cloud garden back in its place\./;
 
 const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
@@ -55,7 +59,11 @@ function recording(stub) {
  * them, with the token each was sent with. `signIn(name)` switches the stored user; `holdTokens(name)` makes
  * that user's sessions asked for from then on wait until the function it returns is called.
  */
-function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {} } = {}) {
+// claimOf(name): the account a session's ID token names (TUN-93's token check); extraSetup(window): more page set-up.
+// subOf(name): the account's permanent id in its tokens; setSubOf changes it mid-test (a deleted name reused).
+function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {}, claimOf = n => n, extraSetup = null,
+  subOf = n => "sub-" + n } = {}) {
+  let subNow = subOf;
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
   let current = bootUser; const holds = new Map();
@@ -65,11 +73,12 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
     get textContent() { return this.kids.map(k => k.textContent ?? "").join(""); } };
   const userNamed = name => ({ getUsername: () => name, signOut() { if (current === name) current = null; },
     getSession(cb) {
-      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "token-" + name }) });
+      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name), sub: subNow(name) }, getJwtToken: () => "token-" + name + ":" + subNow(name) }) });
       const h = holds.get(name); if (h) h.then(give); else give();
     } });
   const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
     w.localStorage.setItem("mg_progress", JSON.stringify(local));
+    if (extraSetup) extraSetup(w);
     w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return current ? userNamed(current) : null; } } };
     w.fetch = async (url, opts = {}) => {
       const req = { url: String(url), method: opts.method || "GET", body: opts.body,
@@ -88,7 +97,7 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   const runSaves = async () => { const fns = [...saves.values()]; saves.clear(); for (const f of fns) await f(); };
   const holdTokens = name => { let release; holds.set(name, new Promise(r => { release = r; })); return () => { holds.delete(name); release(); }; };
   return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent, authbox,
-    signIn: name => { current = name; }, holdTokens };
+    signIn: name => { current = name; }, holdTokens, setSubOf: f => { subNow = f; } };
 }
 
 // GET /progress answers `get`; PUT /progress answers `put` (default 200).
@@ -104,14 +113,15 @@ test("a pull that returns progress loads it, says so, and later saves push the l
   net.answer = answers(() => reply(200, clone(CLOUD)));
   await g.onSignedIn(false);
   assert.deepEqual(methods(net), ["GET"], "the sign-in itself only reads");
-  assert.equal(g.progress.name, "Cloud Ann");
+  assert.equal(lvl(g.progress), 3);
   assert.equal(g.cloudSync, "ready");
   assert.match(panel(), /Signed in as ann — progress syncs across your devices\. — loaded from cloud/);
-  g.progress.name = "Cloud Ann, later";
+  g.progress.packages.intro.level = 4;
   g.commitProgress(); await runSaves();
   const put = net.requests.at(-1);
   assert.equal(put.method, "PUT");
-  assert.deepEqual(JSON.parse(put.body), clone(g.progress), "the save sends the whole progress");
+  assert.deepEqual(JSON.parse(put.body), clone(g.cloudCopy(g.progress)), "the save sends the whole progress but the name");
+  assert.ok(!("name" in JSON.parse(put.body)), "the name stays on this device (TUN-93)");
 });
 
 test("a pull that returns 200 null (nothing saved yet) pushes this device's progress", async () => {
@@ -119,7 +129,8 @@ test("a pull that returns 200 null (nothing saved yet) pushes this device's prog
   net.answer = answers(() => reply(200, null));
   await g.onSignedIn(false);
   assert.deepEqual(methods(net), ["GET", "PUT"]);
-  assert.equal(JSON.parse(net.requests[1].body).name, "Ann");
+  assert.equal(lvl(JSON.parse(net.requests[1].body)), 1);
+  assert.ok(!("name" in JSON.parse(net.requests[1].body)), "the name stays on this device (TUN-93)");
   assert.equal(g.cloudSync, "ready");
   assert.match(panel(), /progress syncs across your devices\. — saved to cloud/);
 });
@@ -130,17 +141,17 @@ for (const [name, fail] of Object.entries(FAILURES)) {
     net.answer = answers(fail, () => assert.fail("a PUT after a failed pull"));
     await g.onSignedIn(false);
     assert.deepEqual(methods(net), ["GET"], "no PUT after the failed pull");
-    assert.equal(g.progress.name, "Ann", "the player keeps this device's progress");
+    assert.equal(lvl(g.progress), 1, "the player keeps this device's progress");
     assert.equal(g.cloudSync, "unreachable");
     assert.match(panel(), /Signed in as ann — /);
     assert.match(panel(), UNREACHABLE);
     assert.doesNotMatch(panel(), /syncs across|saved to cloud/);
 
-    g.progress.name = "Ann, offline";
+    g.progress.packages.intro.level = 6;
     g.commitProgress();
     assert.equal(queuedSaves(), 0, "scheduleCloud queues no push");
     await runSaves();
-    assert.equal(g.Store.get("progress").name, "Ann, offline", "the save still lands on this device");
+    assert.equal(lvl(g.Store.get("progress")), 6, "the save still lands on this device");
     assert.equal(await g.cloudPush(), false);
     assert.deepEqual(methods(net), ["GET"], "neither a save nor a direct cloudPush sends anything");
     g.renderAuth();   // openHome re-renders the panel with no status
@@ -168,7 +179,8 @@ test("signing up pushes the guest's progress without reading the cloud first", a
   net.answer = answers(() => assert.fail("sign-up must not pull"));
   await g.onSignedIn(true);
   assert.deepEqual(methods(net), ["PUT"]);
-  assert.equal(JSON.parse(net.requests[0].body).name, "Ann");
+  assert.equal(lvl(JSON.parse(net.requests[0].body)), 1);
+  assert.ok(!("name" in JSON.parse(net.requests[0].body)), "the name stays on this device (TUN-93)");
   assert.equal(g.cloudSync, "ready");
   assert.match(panel(), /progress syncs across your devices\. — saved to cloud/);
 });
@@ -181,7 +193,7 @@ test("the next sign-in after a failed pull tries again, and a success turns savi
   net.answer = answers(() => reply(200, clone(CLOUD)));
   await g.onSignedIn(false);   // what the next page load (boot's resume path) or sign-in does
   assert.deepEqual(methods(net), ["GET", "GET"]);
-  assert.equal(g.progress.name, "Cloud Ann");
+  assert.equal(lvl(g.progress), 3);
   assert.match(panel(), /progress syncs across your devices/);
   g.commitProgress(); await runSaves();
   assert.equal(net.requests.at(-1).method, "PUT");
@@ -209,7 +221,7 @@ test("a save answered 429 is not retried, and the next save sends the whole prog
   const before = net.requests.length;
 
   putStatus = 429;
-  g.progress.name = "Bea";
+  g.progress.packages.intro.maxLevel = 7;
   g.commitProgress(); await runSaves();
   assert.deepEqual(methods(net).slice(before), ["PUT"], "one PUT, answered 429");
   await runSaves();
@@ -220,8 +232,8 @@ test("a save answered 429 is not retried, and the next save sends the whole prog
   g.commitProgress(); await runSaves();
   const put = net.requests.at(-1);
   assert.equal(net.requests.length, before + 2);
-  assert.deepEqual(JSON.parse(put.body), clone(g.progress), "the whole progress, the 429'd change included");
-  assert.equal(JSON.parse(put.body).name, "Bea");
+  assert.deepEqual(JSON.parse(put.body), clone(g.cloudCopy(g.progress)), "the whole progress, the 429'd change included");
+  assert.equal(JSON.parse(put.body).packages.intro.maxLevel, 7);
 });
 
 // ---- Runs: a load or push begun for one sign-in must not act after sign-out or another sign-in (GPT, PR review) ----
@@ -230,7 +242,7 @@ for (const late of ["null", "progress"]) {
   test(`ann's load answering ${late} after she signed out and bea's load failed changes nothing`, async () => {
     const { g, net, runSaves, signIn, panel } = cloudGame();
     const annGet = deferred();
-    net.answer = answers(req => req.token === "token-ann" ? annGet.promise : reply(429, {}),
+    net.answer = answers(req => req.token === "token-ann:sub-ann" ? annGet.promise : reply(429, {}),
       () => assert.fail("no PUT may be sent"));
     const annSignIn = g.onSignedIn(false);
     await tick();
@@ -240,7 +252,7 @@ for (const late of ["null", "progress"]) {
 
     annGet.resolve(reply(200, late === "null" ? null : clone(CLOUD)));
     await annSignIn;
-    assert.equal(g.progress.name, "Ann", "ann's cloud progress is not applied to bea's visit");
+    assert.equal(lvl(g.progress), 1, "ann's cloud progress is not applied to bea's visit");
     assert.equal(g.cloudSync, "unreachable", "bea stays blocked");
     assert.match(panel(), /Signed in as bea — /);
     assert.match(panel(), UNREACHABLE);
@@ -258,7 +270,7 @@ test("a load that comes back after the player signed out applies nothing", async
   g.doSignOut();
   get.resolve(reply(200, clone(CLOUD)));
   await signingIn;
-  assert.equal(g.progress.name, "Ann", "the signed-out visit keeps this device's progress");
+  assert.equal(lvl(g.progress), 1, "the signed-out visit keeps this device's progress");
   assert.equal(g.cloudSync, "off");
   g.commitProgress(); await runSaves();
   assert.deepEqual(puts(net), []);
@@ -294,7 +306,7 @@ test("a save waiting for its token when the player signs out sends nothing", asy
 
 test("a save waiting for ann's token sends nothing once bea has signed in and loaded", async () => {
   const { g, net, runSaves, holdTokens, signIn } = cloudGame();
-  net.answer = answers(req => reply(200, { ...clone(CLOUD), name: req.token === "token-bea" ? "Cloud Bea" : "Cloud Ann" }));
+  net.answer = answers(req => reply(200, withLevel(clone(CLOUD), req.token === "token-bea:sub-bea" ? 5 : 3)));
   await g.onSignedIn(false); await runSaves();
   const before = net.requests.length;
   g.commitProgress();
@@ -302,11 +314,11 @@ test("a save waiting for ann's token sends nothing once bea has signed in and lo
   const saving = runSaves();   // the push has asked for ann's token
   g.doSignOut(); signIn("bea");
   await g.onSignedIn(false);   // bea is signed in, loaded and "ready" before ann's token comes back
-  assert.equal(g.progress.name, "Cloud Bea");
+  assert.equal(lvl(g.progress), 5);
   assert.equal(g.cloudSync, "ready");
   release(); await saving;
   const sent = net.requests.slice(before);
-  assert.deepEqual(sent.map(r => [r.method, r.token]), [["GET", "token-bea"]],
+  assert.deepEqual(sent.map(r => [r.method, r.token]), [["GET", "token-bea:sub-bea"]],
     "only bea's load — no PUT with ann's token, and none of bea's progress into ann's account");
 });
 
@@ -322,7 +334,7 @@ test("ann's sign-up whose token comes back after bea's failed load changes nothi
   release(); await annSignUp;
   assert.equal(g.cloudSync, "unreachable", "the stale sign-up does not turn saving on for bea");
   assert.equal(panel(), shown);
-  assert.equal(g.progress.name, "Ann");
+  assert.equal(lvl(g.progress), 1);
   g.commitProgress(); await runSaves();
   assert.deepEqual(puts(net), []);
 });
@@ -503,7 +515,7 @@ test("TUN-87: a cloud result never redraws over a sign-in form", async () => {
   await g.onSignedIn(false);
   const pending = g.cloudSongList(); await tick();
   signIn(null);   // the stored session is gone (signed out in another tab); cloudOn is still true
-  g.renderAuth(); g.showAuthForm("in");
+  g.renderAuth(); g.showSignInForm();
   const form = authbox.kids[0], shown = authbox.textContent;
   assert.equal(authbox.kids.length, 1);
   list.resolve(reply(503, {})); await pending;
@@ -529,14 +541,14 @@ test("TUN-87: a stored session resumed at page load against a resting cloud keep
   await tick(); await tick();
   assert.deepEqual(methods(net), ["GET"], "boot's resume read, and nothing else");
   assert.equal(g.cloudSync, "unreachable");
-  assert.equal(g.progress.name, "Ann", "this device's progress stays");
+  assert.equal(lvl(g.progress), 1, "this device's progress stays");
   assert.match(panel(), UNREACHABLE);
   g.commitProgress(); await runSaves();
   assert.deepEqual(puts(net), []);
 });
 
 test("TUN-87: signing in from the landing screen against a resting cloud keeps this device's progress and pushes nothing", async () => {
-  const field = value => ({ value, focus() {}, addEventListener() {} });
+  const field = value => ({ value, focus() {}, addEventListener() {}, setAttribute() {} });
   const msg = { textContent: "" };
   const { g, net, runSaves, panel } = cloudGame({ elements: { landingUser: field("ann"), landingPass: field("password1"), landingMsg: msg } });
   net.answer = routes({ get: () => { throw new TypeError("Failed to fetch"); }, put: () => assert.fail("no PUT") });
@@ -544,9 +556,9 @@ test("TUN-87: signing in from the landing screen against a resting cloud keeps t
   await g.doLandingSignIn();
   assert.deepEqual(methods(net), ["GET"]);
   assert.equal(g.cloudSync, "unreachable");
-  assert.equal(g.progress.name, "Ann");
+  assert.equal(lvl(g.progress), 1);
   assert.match(panel(), UNREACHABLE);
-  assert.doesNotMatch(msg.textContent, /⚠️/, "no error on the landing screen");
+  assert.equal(msg.textContent, "", "no error on the landing screen");
   g.commitProgress(); await runSaves();
   assert.deepEqual(puts(net), []);
 });
@@ -557,9 +569,10 @@ test("TUN-87: a sign-up's first save never says 'saved to cloud' once a newer sa
   const first = deferred(); let n = 0;
   net.answer = routes({ put: () => (++n === 1 ? first.promise : reply(503, {})), songs: () => reply(200, { songs: [] }) });
   const signUp = g.onSignedIn(true); await tick();
-  g.progress.name = "Ann, changed"; g.commitProgress(); await runSaves();   // B: the changed progress, refused
+  g.progress.packages.intro.level = 8; g.commitProgress(); await runSaves();   // B: the changed progress, refused
   assert.deepEqual(await g.cloudSongList(), []);                           // the cloud answers again
-  first.resolve(reply(200, { ok: true })); await signUp;                   // A: the old progress, stored
+  first.resolve(reply(200, { ok: true }));
+  assert.equal((await signUp).saved, false, "nor does it tell the garden card it was (TUN-93)");    // A: the old progress, stored
   assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress was never saved");
   // and the plain case still says it
   const fresh = cloudGame();
@@ -574,9 +587,10 @@ test("TUN-87: a save queued while the sign-up's first save is out stops it sayin
   const first = deferred(), second = deferred(); let n = 0;
   net.answer = routes({ put: () => (++n === 1 ? first.promise : second.promise) });
   const signUp = g.onSignedIn(true); await tick();
-  g.progress.name = "Ann, changed"; g.commitProgress();
+  g.progress.packages.intro.level = 8; g.commitProgress();
   assert.equal(queuedSaves(), 1, "the changed progress waits on the debounce");
-  first.resolve(reply(200, { ok: true })); await signUp;
+  first.resolve(reply(200, { ok: true }));
+  assert.equal((await signUp).saved, false, "the garden card is told the same (TUN-93)");
   assert.doesNotMatch(panel(), /saved to cloud/, "the changed progress is not in the cloud yet");
   const queued = runSaves(); await tick();
   assert.equal(n, 2, "the queued save is out, and hangs");
@@ -592,7 +606,7 @@ test("TUN-87: a 'saved to cloud' already shown goes away once newer progress is 
     net.answer = routes({ get, put: () => (++n === 1 ? reply(200, { ok: true }) : pending.promise) });
     await g.onSignedIn(signUp);
     assert.match(panel(), /saved to cloud/, what);
-    g.progress.name = "Ann, changed"; g.commitProgress();
+    g.progress.packages.intro.level = 8; g.commitProgress();
     assert.doesNotMatch(panel(), /saved to cloud/, `${what}: gone before the debounce fires`);
     assert.match(panel(), SYNCS, `${what}: the sync line stays`);
     const queued = runSaves(); await tick();
@@ -606,8 +620,221 @@ test("TUN-87: queuing a save never redraws over a sign-in form", async () => {
   net.answer = routes({ get: () => reply(200, null) });
   await g.onSignedIn(false);
   assert.match(authbox.textContent, /saved to cloud/);
-  signIn(null); g.renderAuth(); g.showAuthForm("in");
+  signIn(null); g.renderAuth(); g.showSignInForm();
   const form = authbox.kids[0];
   g.commitProgress();
   assert.equal(authbox.kids[0], form, "the form is the same element");
+});
+
+// ---------- TUN-93: the player's name stays on this device ----------
+test("a pull keeps this device's name, ignores a name the cloud copy still holds, and the title still reads it", async () => {
+  const title = { textContent: "" };
+  const { g, net } = cloudGame({ elements: { title } });
+  net.answer = answers(() => reply(200, clone(CLOUD)));   // CLOUD holds "Cloud Ann", as a copy saved before TUN-93 may
+  await g.onSignedIn(false);
+  assert.equal(lvl(g.progress), 3, "the cloud copy was applied");
+  assert.equal(g.progress.name, "Ann", "…with this device's name");
+  assert.equal(g.Store.get("progress").name, "Ann", "…and so it is stored");
+  assert.equal(title.textContent, "🌱 Ann's Tune Garden");
+});
+
+test("an empty name on this device stays empty after a pull; a cloud copy with no name keeps this device's", async () => {
+  const { g, net } = cloudGame({ local: { ...clone(LOCAL), name: "" } });
+  net.answer = answers(() => reply(200, clone(CLOUD)));
+  await g.onSignedIn(false);
+  assert.equal(g.progress.name, "");
+  const second = cloudGame();
+  const { name, ...nameless } = clone(CLOUD);
+  second.net.answer = answers(() => reply(200, nameless));
+  await second.g.onSignedIn(false);
+  assert.equal(second.g.progress.name, "Ann");
+});
+
+test("a name typed while the pull is out is the one kept when it lands", async () => {
+  const { g, net } = cloudGame();
+  const get = deferred();
+  net.answer = answers(() => get.promise);
+  const signingIn = g.onSignedIn(false); await tick();
+  g.savePlayerName("Annie");
+  get.resolve(reply(200, clone(CLOUD))); await signingIn;
+  assert.equal(lvl(g.progress), 3);
+  assert.equal(g.progress.name, "Annie");
+});
+
+test("saving the name keeps it on this device and schedules no cloud save", async () => {
+  const { g, net, queuedSaves, runSaves } = cloudGame();
+  net.answer = answers(() => reply(200, clone(CLOUD)));
+  await g.onSignedIn(false); await runSaves();
+  const before = net.requests.length, stamp = g.progress.updatedAt;
+  g.savePlayerName("Pasha");
+  assert.equal(g.Store.get("progress").name, "Pasha", "saved on this device");
+  assert.equal(queuedSaves(), 0, "no cloud save queued");
+  await runSaves();
+  assert.equal(net.requests.length, before, "nothing sent");
+  assert.equal(g.progress.updatedAt, stamp, "the progress is not marked newer");
+  g.commitProgress(); await runSaves();   // the next real save goes up without it
+  assert.ok(!("name" in JSON.parse(net.requests.at(-1).body)));
+});
+
+test("signing out, and another account signing in, keep this device's name", async () => {
+  const { g, net, signIn } = cloudGame();
+  net.answer = answers(req => reply(200, withLevel(clone(CLOUD), req.token === "token-bea:sub-bea" ? 5 : 3)));
+  await g.onSignedIn(false);
+  g.doSignOut();
+  assert.equal(g.progress.name, "Ann");
+  signIn("bea"); await g.onSignedIn(false);
+  assert.equal(lvl(g.progress), 5);
+  assert.equal(g.progress.name, "Ann");
+});
+
+test("a sign-up uploads this device's garden without its name, and says whether it went up", async () => {
+  const { g, net } = cloudGame();
+  net.answer = answers(() => assert.fail("no pull"), () => reply(200, { ok: true }));
+  assert.deepEqual({ ...await g.onSignedIn(true) }, { signedIn: true, saved: true });
+  assert.ok(!("name" in JSON.parse(puts(net)[0].body)));
+  const failed = cloudGame();
+  failed.net.answer = answers(() => assert.fail("no pull"), () => reply(503, {}));
+  assert.deepEqual({ ...await failed.g.onSignedIn(true) }, { signedIn: true, saved: false }, "a failed upload is reported, for the garden card — and is still a sign-in");
+});
+
+test("the garden card's upload (onlyFor) never reaches another account: not after another sign-in, not over its failed load", async () => {
+  // ann's card: her first upload fails.
+  const { g, net, signIn, holdTokens } = cloudGame();
+  let putOk = false;
+  net.answer = answers(() => reply(503, {}), () => reply(putOk ? 200 : 503, {}));
+  assert.deepEqual({ ...await g.onSignedIn(true, "ann") }, { signedIn: true, saved: false });
+  // Another tab signs bea in; bea's load fails, so bea's cloud copy must not be written.
+  g.doSignOut(); signIn("bea"); await g.onSignedIn(false);
+  assert.equal(g.cloudSync, "unreachable");
+  const before = net.requests.length;
+  putOk = true;
+  assert.equal((await g.onSignedIn(true, "ann")).signedIn, false, "ann's card's Try again does nothing while bea is signed in");
+  assert.equal(net.requests.length, before, "no request at all, with anyone's token");
+  assert.equal(g.cloudSync, "unreachable", "bea stays blocked");
+  // Signed in as ann again (the card signs in with its words), the retry uploads with ann's token only.
+  g.doSignOut(); signIn("ann");
+  assert.deepEqual({ ...await g.onSignedIn(true, "ann") }, { signedIn: true, saved: true });
+  assert.deepEqual(puts(net).slice(-1).map(r => r.token), ["token-ann:sub-ann"]);
+  // A switch while ann's token is being fetched: the push asks for ann's token and gets none once bea is in.
+  const h = cloudGame();
+  h.net.answer = answers(() => reply(200, null), () => reply(200, { ok: true }));
+  const release = h.holdTokens("ann");
+  const pending = h.g.onSignedIn(true, "ann"); await tick();
+  h.g.doSignOut(); h.signIn("bea"); release();
+  assert.equal((await pending).signedIn, false);
+  assert.deepEqual(puts(h.net), [], "nothing pushed with anyone's token");
+});
+
+test("the name through Home's box, a reload and a nameless pull: the box, the title and the stored name agree", async () => {
+  const title = { textContent: "" }, pname = { value: "", focus() {}, addEventListener() {} };
+  const first = cloudGame({ elements: { title, pname } });
+  pname.value = " Pasha "; pname.oninput();   // home.js wired Home's box at load
+  assert.equal(first.g.Store.get("progress").name, "Pasha");
+  assert.equal(title.textContent, "🌱 Pasha's Tune Garden");
+  // A reload: the same storage, then the cloud answers a copy with no name (since TUN-93, every copy).
+  const stored = first.g.Store.get("progress");
+  const title2 = { textContent: "" }, pname2 = { value: "", focus() {}, addEventListener() {} };
+  const second = cloudGame({ local: stored, elements: { title: title2, pname: pname2 } });
+  const { name, ...nameless } = clone(CLOUD);
+  second.net.answer = answers(() => reply(200, nameless));
+  await second.g.onSignedIn(false);
+  second.g.openHome();
+  assert.deepEqual([pname2.value, title2.textContent, second.g.Store.get("progress").name, lvl(second.g.progress)],
+    ["Pasha", "🌱 Pasha's Tune Garden", "Pasha", 3]);
+});
+
+test("another tab signing someone else in leaves this tab's saves unsent, the debounced ones included, until it signs in and loads", async () => {
+  const { g, net, runSaves, signIn, panel } = cloudGame();
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(200, { ok: true }));
+  await g.onSignedIn(false); await runSaves();
+  const before = net.requests.length;
+  signIn("bea");   // only the storage every tab shares changes — no doSignOut in this tab
+  g.progress.packages.intro.level = 9; g.commitProgress(); await runSaves();
+  assert.equal(await g.cloudPush(), false);
+  assert.equal(net.requests.length, before, "no PUT: not with bea's token, not at all");
+  assert.doesNotMatch(panel(), /saved to cloud/);
+  // This tab's own sign-in as bea reads bea's copy first, and only then saves to it.
+  await g.onSignedIn(false); await runSaves();
+  g.commitProgress(); await runSaves();
+  const after = net.requests.slice(before);
+  assert.deepEqual(after[0] && [after[0].method, after[0].token], ["GET", "token-bea:sub-bea"], "bea's copy is read first");
+  assert.ok(after.length > 1 && after.every(r => r.token === "token-bea:sub-bea"), "then saves go to bea, and only with bea's token");
+});
+
+test("a session whose token names another account is no session: nothing is read or written with it", async () => {
+  const { g, net } = cloudGame({ claimOf: n => (n === "ann" ? "bea" : n) });
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(200, { ok: true }));
+  assert.equal((await g.onSignedIn(false)).signedIn, false);
+  assert.equal((await g.onSignedIn(true, "ann")).signedIn, false);
+  assert.equal(await g.cloudPush(), false);
+  assert.deepEqual(net.requests, [], "no request carried the mismatched token");
+  assert.equal(g.cloudOn, false);
+});
+
+for (const accept of [true, false]) {
+  test(`the name after ?reset ${accept ? "accepted" : "declined"}, a nameless pull and Home: the box, the title and the stored name agree`, async () => {
+    const title = { textContent: "" }, pname = { value: "", focus() {}, addEventListener() {} };
+    const { g, net } = cloudGame({ elements: { title, pname }, extraSetup: w => { w.location.search = "?reset"; w.confirm = () => accept; } });
+    const want = accept ? "" : "Ann";
+    assert.equal(g.progress.name, want);
+    const { name, ...nameless } = clone(CLOUD);
+    net.answer = answers(() => reply(200, nameless));
+    await g.onSignedIn(false);
+    g.openHome();
+    assert.deepEqual([pname.value, title.textContent, g.Store.get("progress").name],
+      [want, accept ? "🌱 Tune Garden" : "🌱 Ann's Tune Garden", want]);
+  });
+}
+
+// ---------- PR review round 3 (TUN-93): one account by name and by sub, read and write ----------
+test("an account switched while this run's session or load is out: the other copy never lands, nothing becomes writable", async () => {
+  const BEA = withLevel(clone(CLOUD), 5);
+  // 1) While ann's session is being fetched.
+  const a = cloudGame();
+  a.net.answer = answers(req => reply(200, req.token.startsWith("token-bea") ? clone(BEA) : clone(CLOUD)), () => reply(200, { ok: true }));
+  const release = a.holdTokens("ann");
+  const signing = a.g.onSignedIn(false); await tick();
+  a.signIn("bea");   // another tab, mid-sign-in
+  release();
+  const r = await signing;
+  assert.equal(r.signedIn, false);
+  assert.notEqual(lvl(a.g.progress), 5, "bea's garden never lands in ann's run");
+  assert.notEqual(lvl(a.g.Store.get("progress")), 5);
+  assert.deepEqual(puts(a.net), []);
+  a.g.commitProgress(); await a.runSaves();
+  assert.deepEqual(puts(a.net), [], "and nothing is writable");
+  // 2) While ann's GET is out: ann's own copy may land (it was read with ann's token), but nothing is written to bea.
+  const b = cloudGame();
+  const get = deferred();
+  b.net.answer = answers(() => get.promise, () => reply(200, { ok: true }));
+  const signing2 = b.g.onSignedIn(false); await tick();
+  b.signIn("bea");
+  get.resolve(reply(200, clone(CLOUD))); await signing2;
+  b.g.commitProgress(); await b.runSaves();
+  assert.ok(puts(b.net).every(p => !p.token.startsWith("token-bea")), "no PUT with bea's token");
+  assert.equal(b.g.cloudSync, "off", "the first save that meets bea ends this run's right to write");
+});
+
+test("the same name with a different sub (a deleted name reused) is another account: no write, and writing needs a fresh load", async () => {
+  const { g, net, runSaves, setSubOf, panel } = cloudGame();
+  net.answer = answers(() => reply(200, clone(CLOUD)), () => reply(200, { ok: true }));
+  await g.onSignedIn(false); await runSaves();
+  const before = puts(net).length;
+  setSubOf(n => "sub-" + n + "-new");
+  g.progress.packages.intro.level = 7; g.commitProgress(); await runSaves();
+  assert.equal(puts(net).length, before, "no PUT to the new account's row");
+  assert.equal(g.cloudSync, "off", "readiness revoked");
+  assert.doesNotMatch(panel(), /saved to cloud|syncs across/);
+  setSubOf(n => "sub-" + n);   // the old account back in the store: still no write without a load
+  g.commitProgress(); await runSaves(); assert.equal(await g.cloudPush(), false);
+  assert.equal(puts(net).length, before);
+  await g.onSignedIn(false);
+  assert.equal(net.requests.at(-1).method, "GET", "a sign-in reads first");
+  g.commitProgress(); await runSaves();
+  assert.equal(puts(net).length, before + 1);
+  // The garden card's own check: an id from sign-up that the session does not carry is no session.
+  const c = cloudGame();
+  c.net.answer = answers(() => assert.fail("no pull"), () => reply(200, { ok: true }));
+  assert.equal((await c.g.onSignedIn(true, "ann", "sub-someone-else")).signedIn, false);
+  assert.deepEqual(puts(c.net), []);
 });

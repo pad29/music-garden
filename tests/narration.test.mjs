@@ -147,7 +147,7 @@ function signInGame({ narrateReady, cloud = CLOUD, pickerUp = false }) {
     w.setTimeout = (fn, ms, ...a) => ms === 1400 ? (timers.push(fn), 0) : real(fn, ms, ...a);
   } });
   const log = voices(g.__window), pull = deferred();
-  g.freshToken = async () => "token-ann";
+  g.freshId = async () => ({ token: "token-ann", sub: "sub-ann" });   // signed in (TUN-93: onSignedIn asks freshId)
   g.cloudPull = async () => ({ ok: true, progress: clone(await pull.promise) });
   g.renderAuth = () => {};
   g.speakOn = true; g.narrateReady = narrateReady;
@@ -247,7 +247,7 @@ test("a signed-in reload: silent until the cloud answers, then the cloud level's
   // from before boot; the cloud's answer is held until the test releases it.
   const answer = deferred(); let log;
   const user = { getUsername: () => "ann", signOut() {},
-    getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => "token-ann" }) }) };
+    getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": "ann", sub: "sub-ann" }, getJwtToken: () => "token-ann" }) }) };   // the claims TUN-93 checks
   const g = loadGame({ fresh: true, setup: w => {
     log = voices(w);
     w.localStorage.setItem("mg_progress", JSON.stringify(LOCAL));

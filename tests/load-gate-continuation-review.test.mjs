@@ -118,7 +118,7 @@ function simulate(options = {}) {
         const username = s.localStorage.getItem(this.key);
         return username ? { getUsername: () => username, getSession(cb) {
           sessions.push(active);
-          cb(null, { isValid: () => true, getIdToken: () => ({ getJwtToken: () => 'fixture-token' }) });
+          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { 'cognito:username': username }, getJwtToken: () => 'fixture-token' }) });
         } } : null;
       }
     } };

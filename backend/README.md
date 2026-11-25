@@ -1,13 +1,15 @@
 # Tune Garden — backend
 
-**Status: DEPLOYED** (stack `music-garden`, us-east-1). Cognito (username + password, email optional) + an HTTP API backed by DynamoDB. Two APIs: **progress** (`GET`/`PUT /progress`, one row per user) and **songs** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage per `SAVE-SHARE.md` §6; `GET /songs/{id}` is deliberately unauthenticated so share links open without an account). Deployed with **AWS SAM**; Lambdas run on nodejs24.x. All serverless, pay-per-use — at hobby traffic this is effectively free / pennies.
+**Status: DEPLOYED** (stack `music-garden`, us-east-1). Cognito (a generated garden name + a four-word passphrase; nothing personal, no email — TUN-93, [What an account may hold](#what-an-account-may-hold)) + an HTTP API backed by DynamoDB. Two APIs: **progress** (`GET`/`PUT /progress`, one row per user) and **songs** (`POST/GET/PUT/DELETE /songs`, `GET /songs?mine` — cloud song storage per `SAVE-SHARE.md` §6; `GET /songs/{id}` is deliberately unauthenticated so share links open without an account). Deployed with **AWS SAM**; Lambdas run on nodejs24.x. All serverless, pay-per-use — at hobby traffic this is effectively free / pennies.
 
 ```
 backend/
   template.yaml        # all the AWS resources (Cognito, DynamoDB ×3, API, Lambdas, the $30 budget, the cost switch)
   src/
     presignup.mjs      # the sign-up trigger Lambda: AWS SDK wiring only
-    presignup-api.mjs  # auto-confirms new accounts (no email step); at most 100 sign-ups counted a UTC day (TUN-88; no SDK)
+    presignup-api.mjs  # refuses a name that isn't a garden name, or any personal attribute (TUN-93); auto-confirms (no email
+                       #   step); at most 100 sign-ups counted a UTC day (TUN-88); no SDK
+    garden-words.mjs   # the garden-name lists the trigger checks: a copy of js/garden-words.js's (TUN-93)
     progress.mjs       # the progress Lambda: AWS SDK wiring only
     progress-api.mjs   # GET/PUT the caller's own progress (no SDK, so it is testable)
     songs.mjs          # the songs Lambda: AWS SDK wiring only
@@ -334,9 +336,11 @@ aws lambda invoke --function-name music-garden-cloud-switch --payload fileb://ev
 ```
 The last line asks again after the deploy: it should still say `"cloud": "on"`.
 `--confirm-changeset` shows the change set and waits for `y`. **Read its `Replacement` column first:** a
-`True` on `UserPool`, `ProgressTable` or `SongsTable` means CloudFormation wants a new one. Their
-`UpdateReplacePolicy: Retain` keeps the old one and its data, but the app would then point at an empty
-new one — answer `n` and fix the template instead.
+`True` on `UserPool`, `UserPoolClient`, `ProgressTable` or `SongsTable` means CloudFormation wants a new
+one. The pool's and tables' `UpdateReplacePolicy: Retain` keeps the old one and its data, but the app
+would then point at an empty new one; a new client would have a new client id, which `js/cloud.js` does
+not know, so every page's sign-in would break — answer `n` and fix the template instead. A `Conditional`
+on any of the four that the table below does not explain is a stop too.
 
 **Rows that are normal even when `src/` is unchanged** (seen at TUN-76's and TUN-83's deploys,
 2026-11-14; the reasons are CloudFormation's own, from `aws cloudformation describe-change-set`):
@@ -356,8 +360,79 @@ To see why any row is there, read the pending change set before answering:
 Each row's `Details` name the property and what caused it. `aws cloudformation list-change-sets
 --stack-name music-garden` gives the name.
 
-The stop rule does not change: `True` in the `Replacement` column on `UserPool`, `ProgressTable` or
-`SongsTable` means answer `n`.
+The stop rule: `True` in the `Replacement` column on `UserPool`, `UserPoolClient`, `ProgressTable` or
+`SongsTable`; a **Remove** or an **Add** of any of the four (a resource renamed in the template is removed
+and added, which `Replacement` does not show); or a `Conditional` on one of them that this section does not
+explain — any of these means answer `n`. Read every other `Conditional` row's `Details` too: the table
+above says why the usual ones are there, and anything else is a question before a `y`. The table is what
+past deploys showed, not a promise: a row it does not list is read, not waved through.
+
+**Before and after any deploy that touches the pool, the client or a table**, list the four protected
+resources' physical ids, and compare:
+`aws cloudformation describe-stack-resources --stack-name music-garden --query "StackResources[?contains(['UserPool','UserPoolClient','ProgressTable','SongsTable'], LogicalResourceId)].[LogicalResourceId,PhysicalResourceId,ResourceStatus]"`.
+After the deploy the four ids must be the ones you noted before (the pool is `us-east-1_Ikzq1qoTI`; the
+client id is the one in `js/cloud.js`'s `AUTH`), and `aws cloudformation describe-stacks --stack-name
+music-garden --query "Stacks[0].StackStatus"` should say `UPDATE_COMPLETE`. A changed id is a stop: the
+game points at the old resource. **An `UPDATE_ROLLBACK_COMPLETE` does not by itself prove nothing changed**
+(a rollback can skip resources): read the stack's events (`aws cloudformation describe-stack-events
+--stack-name music-garden --max-items 40`), check the four ids again, and read back the settings the deploy
+was changing (for TUN-93, step 1 below) before deciding anything.
+
+**The first deploy after TUN-93** ([What an account may hold](#what-an-account-may-hold)). Expect, besides
+the usual rows above: `UserPool` Modify / `False` (its `AccountRecoverySetting`, now `admin_only`), and
+**`UserPoolClient` Modify / `False`** (its new `ReadAttributes` and `WriteAttributes`) — a row not seen at
+earlier deploys. Nothing should be added, removed or replaced; the stop rule above holds as written.
+
+**Before deploying, close every tunegarden.game tab signed in to one of your accounts, and don't open the
+live site signed in until the merge's Cloudflare build is live.** Until then the live site is the old page,
+and against the new backend an old signed-in page goes wrong two ways: its saves are refused (it still sends
+the player's name), and its next pull — at a sign-in or a reload — gets a copy with no name and stores it,
+**erasing that device's name**. Only your own test accounts exist, so closing their tabs is the whole
+transition. A guest's page never pulls or saves, so the gap does not touch guests. The old page's sign-up
+form is refused for a typed name that is not a garden name (it says the garden isn't taking new accounts)
+and for an email (it may show Cognito's own text); a typed name that happens to be a valid garden name,
+with no email, is accepted — the trigger checks the name, not which page sent it.
+
+**Deploy the backend before merging the client**, then check it, in this order:
+1. Read the client back: `aws cognito-idp describe-user-pool-client --user-pool-id us-east-1_Ikzq1qoTI
+   --client-id <UserPoolClientId>` shows `"ReadAttributes": ["updated_at"]` and `"WriteAttributes":
+   ["updated_at"]`; `aws cognito-idp describe-user-pool --user-pool-id us-east-1_Ikzq1qoTI` shows
+   `AccountRecoverySetting` with `admin_only` alone; and the four protected ids are the ones you noted (above).
+   If Cognito refused the lists, the deploy rolled back: check as above that it left the old settings and the
+   same four ids, and the change goes back to the ticket.
+2. On the PR's **branch preview**: Home → *Create account* → roll a name → *Make my garden* → tick *I've
+   kept my card* → *Go to my garden*. The account is made and signed in; the card then says "Your account
+   is made, but your garden isn't in the cloud yet" — **expected on a preview**, whose origin the API's
+   CORS refuses. Sign out, and sign in with the card's name and words typed in capitals with extra
+   spaces: it signs in (and then says the cloud is resting, for the same reason). The preview proves
+   Cognito, never the API.
+3. The API and the attribute permissions, from your own terminal (keep the words and the tokens out of
+   anything you share or paste; record only the outcomes). `aws cognito-idp initiate-auth --no-sign-request
+   --auth-flow USER_PASSWORD_AUTH --client-id <UserPoolClientId> --auth-parameters
+   USERNAME=<name>,PASSWORD=<password>` gives an `IdToken` and an `AccessToken`. Do it for **one of your
+   old test accounts** (its old name and password) **and** for the new test account (its garden name and
+   `word-word-word-word`):
+   - The old account's fresh `IdToken`, decoded privately (its middle part is base64 JSON): no `email`,
+     `phone_number`, `name` or any other personal attribute — `updated_at` may be there, the one attribute
+     the client may read — and `sub`, `iss` and `aud` still there.
+   - With each account's `IdToken`: `curl.exe -s -i https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/progress
+     -H "Authorization: Bearer <IdToken>"` answers `200` (no `Origin`, so CORS is not involved): the
+     authorizer accepts tokens from the client as it now is.
+   - With the new account's `AccessToken`: `aws cognito-idp update-user-attributes --no-sign-request
+     --access-token <AccessToken> --user-attributes Name=email,Value=test@example.com` is refused
+     (`NotAuthorizedException`), and the same for `phone_number` (`+15555550100`), `name` (`Test`) and
+     `preferred_username` (`test`) — valid values, so only the permission refuses them.
+4. Optionally, whether a taken name counts against the day: at a quiet moment (no one else signing up),
+   note today's row in `music-garden-signup-count` with an identity that can read the table — the DynamoDB
+   console, as in TUN-88's check below; `mg-deploy` cannot read items — then `aws cognito-idp sign-up
+   --no-sign-request --client-id <UserPoolClientId> --username <the test account's name> --password
+   anything-at-all-here`. It answers `UsernameExistsException`; if `signups` rose by one, Cognito runs
+   the trigger before it checks the name, and every taken name a child meets uses one of the day's 100.
+5. The refusals, from the CLI the same way: `--username kid-test` → `PreSignUp failed with error
+   signup-not-garden-name.`; a garden name with `--user-attributes Name=email,Value=test@example.com` →
+   refused, by the trigger (`signup-has-attributes`) or by the client's attribute permissions
+   (`NotAuthorizedException`). Neither makes a user.
+Then merge, and once the merge's Cloudflare build is live, reload any tunegarden.game tab before signing in.
 
 **The first deploy after TUN-82** adds the `BudgetEmail` parameter, which has no default, so pass it once
 on the command line — never in `samconfig.toml`, which is public:
@@ -640,6 +715,34 @@ resource deleted outside CloudFormation" has the procedure). Deleting today's ro
 through — yet a warm function that has already seen the day full keeps refusing from memory, without
 looking at the table, until the next UTC day. To let more through today, raise the limit instead.
 
+## What an account may hold
+
+Since TUN-93 an account holds **nothing personal** (`DESIGN.md` §11b has the full inventory, written for
+a reader checking what the game collects; the design record is `reviews/TUN-93-garden-name-accounts.md`).
+
+- **The username is a generated garden name**, lower case (`brave-otter-42`): an adjective and an animal or
+  plant from the game's lists, and a number 10–99 from its list, never one of five banned pairs. The game
+  shows it in title case. The sign-up trigger refuses any other username, from the game's sign-up and from
+  `AdminCreateUser` alike, with `signup-not-garden-name`. Its copy of the lists, `src/garden-words.mjs`,
+  must stay identical to `js/garden-words.js` (`tests/garden-words.test.mjs` fails otherwise); **deploy a
+  list change before the client that rolls the new words**, or the new names are refused.
+- **No attributes.** A sign-up carrying `email`, `phone_number` or any of Cognito's free-text standard
+  attributes (`REFUSED_ATTRIBUTES` in `src/presignup-api.mjs`) is refused with `signup-has-attributes`,
+  before the day's counter is touched. Only attribute names are logged. Nothing is auto-verified.
+- **The browser client reads and writes one attribute, `updated_at`** (`template.yaml`), which holds no
+  text a person typed. Left out, those lists would mean every standard attribute — a signed-in page could
+  add an email or a name to its account after sign-up. AWS does not document an empty list as "none".
+- **No self-service recovery** (`admin_only`): there is no email or phone to send a reset to. The garden
+  card is the recovery; a lost card loses the account.
+- **To make an account yourself** (`AdminCreateUser`, the console's *Create user*): a garden name the lists
+  allow, lower case, and no email or phone — anything else is refused, as from the game. Give it a
+  password of four lower-case words from `PASSPHRASE_WORDS` joined by hyphens, which is what the game's
+  sign-in sends for a card, and make it permanent (`aws cognito-idp admin-set-user-password … --permanent`):
+  the game cannot answer Cognito's "choose a new password" step.
+- **Accounts made before TUN-93** (the owner's few test accounts) keep their free-text usernames and any
+  email until TUN-101 removes them. The game's sign-in sends a name that is not shaped like a garden name
+  exactly as typed, so they still sign in.
+
 ## What the API accepts
 
 Since TUN-83 the server stores only songs and progress the game really writes. `src/validate.mjs` is
@@ -658,8 +761,10 @@ it on every write. The rules, field by field, are in `validate.mjs` itself and i
   as set members, so `"constructor"` is no package. Anything else is refused.
 - **No free text but the title.** A song's `meta` (quest ids, `author`, `cloudId`…) is checked for
   known keys and then dropped. The stored `meta` is `{ title, created, updated }`, and `meta.title`
-  is always the stored title (`sanitizeTitle`, unchanged). Progress `name` is still accepted
-  (removing it is a later ticket). It is cut to 20 characters and stripped of control characters.
+  is always the stored title (`sanitizeTitle`, unchanged). Progress has **no free text at all** since
+  TUN-93: a progress record carrying the player's `name` is refused (400 `bad progress`), because the
+  name stays on the device, and `GET /progress` leaves out a `name` stored before TUN-93 (in either stored
+  shape), returning everything else as it was.
 - **Writes are rebuilt.** What is stored is rebuilt from the checked fields, never the request as it
   came. It is stored as JSON text (`payload`, `data`), so the stored size is the size the cap
   measured. Reads are never checked: a row written before TUN-83 loads as it did, and an old map and
@@ -715,5 +820,5 @@ string, which the game cannot open. Fix forward instead.
   ```powershell
   curl.exe -s -i -X OPTIONS https://xush1pnxc7.execute-api.us-east-1.amazonaws.com/songs/x -H "Origin: https://tunegarden.game" -H "Access-Control-Request-Method: GET"
   ```
-- **Recovery:** accounts are username+password with no email by default (no password reset). A user can optionally add an email at sign-up to enable forgot-password; a custom "recovery code" flow can be added later.
+- **Recovery:** none by the player: accounts hold no email or phone (TUN-93, [What an account may hold](#what-an-account-may-hold)). The printed or saved garden card is the recovery.
 - **Cost:** Cognito has a large free tier; DynamoDB on-demand + Lambda + HTTP API are pay-per-request and negligible at hobby scale. The throttle, the reserved concurrency and the $30 budget alert are in [Limits and budget](#limits-and-budget).

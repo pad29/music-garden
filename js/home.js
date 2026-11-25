@@ -5,8 +5,13 @@ const homeBtn=document.getElementById("home"), homeoverlay=document.getElementBy
 // has to do what that button did. openHome() alone left the playback running, left the completion
 // session open, and left a half-pressed confirmation behind for the next visit.
 homeBtn.onclick=()=>{ if(isQuestScope()) leaveQuest(); else openHome(); };
-document.getElementById("homeclose").onclick=()=>homeoverlay.style.display="none";
-homeoverlay.onclick=e=>{ if(e.target===homeoverlay) homeoverlay.style.display="none"; };
+// Every way out of Home — Close, the backdrop, a package, the Studio, a quest — waits for a sign-in that is out
+// (TUN-93: one the child thinks they left must not land in what they opened next), and redraws the account
+// panel, so a sign-in form's passphrase never stays in a hidden box. false: not now.
+function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth(); return true; }
+function closeHome(){ leaveHome(); }
+document.getElementById("homeclose").onclick=closeHome;
+homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
 pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
@@ -30,7 +35,7 @@ function renderQuestHome(){
     line("qname", (card.icon?card.icon+" ":"")+card.title);
     line("qsub", card.subtitle);
     line("qmeta", card.meta);
-    act(card.label, ()=>{ homeoverlay.style.display="none";
+    act(card.label, ()=>{ if(!leaveHome()) return;
       if(card.kind==="begin") startQuestRun(card.questId);
       else { enterQuestRun(card.runId); if(card.kind==="retry") performQuestAction("retry-offer"); } });
   }
@@ -46,7 +51,7 @@ function renderQuestHome(){
       : "No quests are open yet — they arrive as the garden grows.");
     if(questTrailOpen) for(const row of others){
       line("qname", (row.icon?row.icon+" ":"")+row.title);
-      act(row.label, ()=>{ if(!row.enabled) return; homeoverlay.style.display="none";
+      act(row.label, ()=>{ if(!row.enabled || !leaveHome()) return;
         if(row.action==="continue") enterQuestRun(questEligibility(QUEST_DEFINITIONS, progress, QUEST_RUNS, QUEST_HISTORY)
           .find(x=>x.questId===row.questId).liveRunId);
         else startQuestRun(row.questId);       // begin AND replay: a new run, and a new artifact id
@@ -54,16 +59,17 @@ function renderQuestHome(){
     }
   }
 }
-function openPkg(id,lvl){ setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
+function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull would land in this level (TUN-93)
+  setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
-  homeoverlay.style.display="none";
+  leaveHome();
   applyRegionInstrument(regionOf(id));   // region default voice + first-visit discovery card (before renderLevel so the card's narration wins)
   renderLevel(); }
 // Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
-function openStudio(){
+function openStudio(){ if(authBusy) return;   // as openPkg
   setPlayScope({kind:"studio"});
   narrateReady=true;   // deliberate entry into the studio
-  homeoverlay.style.display="none";
+  leaveHome();
   applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }

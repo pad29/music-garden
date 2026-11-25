@@ -202,9 +202,11 @@ Resources:
                 - ssm:PutParameter
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/music-garden/cloud-switch/on-at"
 
-  # --- Auth: a Cognito User Pool. Username + password sign-in; email is OPTIONAL (recovery only). ---
+  # --- Auth: a Cognito User Pool. A generated garden name + a four-word passphrase; nothing personal (TUN-93). ---
   # Every account lives here: never deleted with the stack, never silently replaced, and protected from
   # deletion by AWS itself (switch DeletionProtection off by hand to really remove it).
+  # NEVER change UsernameConfiguration, UsernameAttributes, AliasAttributes or Schema: Cognito fixes them when
+  # the pool is made, so a change fails or needs a new, empty pool (tests/backend-template.test.mjs pins them).
   UserPool:
     Type: AWS::Cognito::UserPool
     DeletionPolicy: Retain
@@ -221,14 +223,15 @@ Resources:
           RequireLowercase: false
           RequireNumbers: false
           RequireSymbols: false
-      # Forgot-password works only for users who chose to add a (verified) email.
+      # No self-service recovery: an account has no email or phone to recover with. The garden card is the
+      # recovery (DESIGN.md §11b).
       AccountRecoverySetting:
         RecoveryMechanisms:
-          - Name: verified_email
+          - Name: admin_only
             Priority: 1
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: false
-      # Auto-confirm accounts so there's no email step for the common (no-email) case.
+      # PreSignUpFn auto-confirms each account (there is no email step) and refuses what an account may not hold.
       LambdaConfig:
         PreSignUp: !GetAtt PreSignUpFn.Arn
 
@@ -239,6 +242,13 @@ Resources:
       UserPoolId: !Ref UserPool
       ClientName: music-garden-web
       GenerateSecret: false
+      # Left out, these lists mean EVERY standard attribute, so a signed-in page could add an email or a name
+      # to its account after sign-up. AWS does not document an empty list as "none", so each names one
+      # attribute that holds no text a person typed: a number Cognito never sets for this game (TUN-93).
+      ReadAttributes:
+        - updated_at
+      WriteAttributes:
+        - updated_at
       PreventUserExistenceErrors: ENABLED
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
@@ -252,7 +262,8 @@ Resources:
         IdToken: hours
         RefreshToken: days
 
-  # Pre-sign-up trigger: auto-confirm the user (and auto-verify email if one was supplied) — at most
+  # Pre-sign-up trigger: refuse a username that is not a generated garden name, or a sign-up carrying an email,
+  # a phone number or a free-text attribute (TUN-93); auto-confirm the user — at most
   # DAILY_SIGNUP_LIMIT public sign-ups counted against each UTC day (TUN-88); past it, and whenever the counter cannot be reached,
   # sign-ups are refused and the game plays on as a guest. backend/README.md § "The daily sign-up limit".
   PreSignUpFn:

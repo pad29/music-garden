@@ -110,15 +110,22 @@ function hideLanding(){ landingoverlay.style.display="none"; }
 document.getElementById("landingStart").onclick=()=>{ hideLanding(); showCompPicker(); };
 document.getElementById("landingSignin").onclick=()=>{ landingMain.style.display="none"; landingAuth.style.display="";
   document.getElementById("landingUser").focus(); };
-document.getElementById("landingBack").onclick=()=>{ landingAuth.style.display="none"; landingMain.style.display=""; };
-async function doLandingSignIn(){
-  const u=document.getElementById("landingUser").value.trim(), p=document.getElementById("landingPass").value;
+// The same two boxes as Home's form (TUN-93): a garden name and four secret words, forgiven as signInPair says.
+const landingUser=document.getElementById("landingUser"), landingPass=document.getElementById("landingPass");
+const landingShow=document.getElementById("landingShow"), landingBackBtn=document.getElementById("landingBack");
+setUpSignInBoxes(landingUser, landingPass, landingShow);
+document.getElementById("landingLost").appendChild(lostCardLink());
+let landingBusy=false;
+// Back is off while a sign-in is out; leaving empties and hides the passphrase box for whoever comes next.
+landingBackBtn.onclick=()=>{ if(landingBusy) return; clearPassBox(landingPass, landingShow);
+  document.getElementById("landingMsg").textContent=""; landingAuth.style.display="none"; landingMain.style.display=""; };
+async function doLandingSignIn(){ if(landingBusy) return;
   const msg=document.getElementById("landingMsg");
-  if(!u||!p){ msg.textContent="Enter your username and password."; return; }
-  msg.textContent="Signing in…";
-  try{ await cogSignIn(u,p); await onSignedIn(false);            // pulls cloud progress → applyProgress resumes the game
-    pname.value=progress.name||""; renderPkgs(); hideLanding(); }
-  catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
+  landingBusy=true; landingBackBtn.disabled=true; msg.textContent="Signing in…";
+  let r; try{ r=await signInWith(landingUser.value, landingPass.value); }   // pulls cloud progress → applyProgress resumes the game
+  finally{ landingBusy=false; landingBackBtn.disabled=false; }
+  if(!r.ok){ msg.textContent=r.msg; return; }
+  clearPassBox(landingPass, landingShow); msg.textContent=""; renderPkgs(); hideLanding(); }
 document.getElementById("landingDo").onclick=doLandingSignIn;
 document.getElementById("landingPass").addEventListener("keydown",e=>{ if(e.key==="Enter") doLandingSignIn(); });
 

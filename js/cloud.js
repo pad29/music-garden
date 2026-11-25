@@ -33,28 +33,54 @@ const CLOUD_RESTING={
 };
 // What a load may apply: an object with a packages object. Anything else but an explicit null is a failed load.
 const loadableProgress=p=> !!p && typeof p==="object" && !Array.isArray(p) && !!p.packages && typeof p.packages==="object" && !Array.isArray(p.packages);
-function cogSignUp(username,password,email){ return new Promise((res,rej)=>{
-  const attrs=[]; if(email) attrs.push(new AmazonCognitoIdentity.CognitoUserAttribute({Name:"email",Value:email}));
-  userPool.signUp(username,password,attrs,null,(err,r)=>err?rej(err):res(r)); }); }
+// An account is a garden name and a passphrase, nothing else (TUN-93): no attributes, no validation data. The
+// library's signUp takes them by position: (username, password, attributes, validationData, callback).
+function cogSignUp(username,password){ return new Promise((res,rej)=>{
+  userPool.signUp(username,password,[],null,(err,r)=>err?rej(err):res(r)); }); }
 function cogSignIn(username,password){ return new Promise((res,rej)=>{
   const u=new AmazonCognitoIdentity.CognitoUser({Username:username,Pool:userPool});
   const d=new AmazonCognitoIdentity.AuthenticationDetails({Username:username,Password:password});
   u.authenticateUser(d,{ onSuccess:s=>res(s), onFailure:e=>rej(e) }); }); }
-function doSignOut(){ const u=userPool&&userPool.getCurrentUser(); if(u) u.signOut(); _cloudRun++; cloudOn=false; cloudSync="off"; cloudResting=false; clearTimeout(_pushT); renderAuth(); }
-function freshToken(){ return new Promise(res=>{ const u=userPool&&userPool.getCurrentUser(); if(!u) return res(null);
-  u.getSession((err,sess)=>res((err||!sess||!sess.isValid())?null:sess.getIdToken().getJwtToken())); }); }
+function doSignOut(){ const u=userPool&&userPool.getCurrentUser(); if(u) u.signOut(); _cloudRun++; cloudOn=false; cloudSync="off"; _syncUser=_syncSub=null; cloudResting=false; clearTimeout(_pushT); renderAuth(); }
+// Whose garden this is (TUN-93). The session lives in storage the browser's tabs share, so another tab can sign
+// someone else in at any time — and once an account is deleted, its name can come back as a different account.
+// So a sync run belongs to one account by name AND by `sub` (Cognito's permanent id, which keys the cloud rows):
+// its read and every write check both on the very token they send, and an observed change ends the run's right
+// to write — the next sign-in reads the cloud copy before it saves.
+const currentUserName=()=>{ const u=userPool&&userPool.getCurrentUser(); return u ? String(u.getUsername()).toLowerCase() : null; };
+const currentUserIs=name=>currentUserName()===name;
+// { token, sub }; { mismatch:true } when the stored user or the token's own claims are not `name` / `sub`; {} when
+// there is no usable session. Without name or sub, that part is not checked (the song calls).
+function freshId(name,sub){ return new Promise(res=>{ const u=userPool&&userPool.getCurrentUser(); if(!u) return res({});
+  if(name && String(u.getUsername()).toLowerCase()!==name) return res({ mismatch:true });
+  u.getSession((err,sess)=>{ if(err||!sess||!sess.isValid()) return res({});
+    const id=sess.getIdToken(), p=(id&&id.payload)||{};
+    if(name && String(p["cognito:username"]||"").toLowerCase()!==name) return res({ mismatch:true });
+    if(sub && p.sub!==sub) return res({ mismatch:true });
+    res({ token:id.getJwtToken(), sub:p.sub||null }); }); }); }
+function freshToken(name,sub){ return freshId(name,sub).then(r=>r.token||null); }
+let _syncUser=null, _syncSub=null;   // the account this tab's sync belongs to; null when it belongs to none
+// The account changed under this run: no more writes, and the panel stops saying it syncs, until a sign-in reads again.
+function loseSync(){ cloudSync="off"; cloudOn=false; _syncUser=_syncSub=null; clearTimeout(_pushT); if(_authShowsSignedIn) renderAuth(); }
 // { ok:true, progress } — progress is null when nothing is saved yet; { ok:false } when it could not be read
 // (no token, 429, 5xx, a network error, a body that is not JSON). Never confuse the two: see onSignedIn, which also
 // treats a 200 that is neither null nor loadable progress as a failed load.
-async function cloudPull(){ const done=cloudCall(); const t=await freshToken(); if(!t){ done(false); return { ok:false }; }
+async function cloudPull(name,sub){ const done=cloudCall(); const id=await freshId(name,sub);
+  if(id.mismatch) return { ok:false, mismatch:true };   // not this run's account: no cloud failure to report
+  const t=id.token; if(!t){ done(false); return { ok:false }; }
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{headers:{Authorization:"Bearer "+t}}); if(!r.ok){ done(false); return { ok:false }; }
     const progress=await r.json(); done(true); return { ok:true, progress }; }catch(e){ done(false); return { ok:false }; } }
+// The player's name stays on this device (TUN-93): what goes up is progress without it, and what comes down
+// keeps this device's name — a copy saved before TUN-93 may still hold one, and it is never applied.
+function cloudCopy(p){ const c=Object.assign({},p); delete c.name; return c; }
+function keepLocalName(cloud){ const c=cloudCopy(cloud); c.name=progress.name||""; return c; }
 let _pushSeq=0;   // counts progress saves queued or begun: a save's success says "saved" only if no newer one came since
-async function cloudPush(){ if(cloudSync!=="ready") return false;   // never over a cloud copy we haven't read
-  _pushSeq++; const run=_cloudRun; const done=cloudCall(); const t=await freshToken();
+async function cloudPush(onlyFor){ if(cloudSync!=="ready") return false;   // never over a cloud copy we haven't read
+  _pushSeq++; const run=_cloudRun; const done=cloudCall(); const id=await freshId(onlyFor||_syncUser,_syncSub);
   if(run!==_cloudRun || cloudSync!=="ready") return false;   // signed out, or someone else signed in, while the token came
-  if(!t){ done(false); return false; }
-  try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(progress)});
+  if(id.mismatch){ loseSync(); return false; }   // another account in this one's place: this run may not write again
+  const t=id.token; if(!t){ done(false); return false; }
+  try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(cloudCopy(progress))});
     done(r.ok); return r.ok; }catch(e){ done(false); return false; } }
 let _pushT; function scheduleCloud(){ if(!cloudOn||cloudSync!=="ready") return; _pushSeq++; clearTimeout(_pushT); _pushT=setTimeout(()=>cloudPush(),900);
   if(_authSaysSaved && _authShowsSignedIn) renderAuth(); }   // newer progress is pending: "saved to cloud" no longer holds (TUN-87)
@@ -98,34 +124,47 @@ function applyProgress(){   // re-apply the progress object to the running game
 // A failed load (TUN-106) pushes nothing — not now, not on a later save — and the player plays on this device's
 // progress; the next onSignedIn (the next page load or sign-in) tries the load again. Each call is a new run
 // (_cloudRun): when an await returns into a run that sign-out or another sign-in has replaced, it does nothing.
-async function onSignedIn(uploadLocal){ const run=++_cloudRun; cloudSync="off"; cloudResting=false; clearTimeout(_pushT);   // drop a save queued for whoever was here before
-  const t=await freshToken(); if(run!==_cloudRun) return;
-  if(!t){ cloudOn=false; renderAuth(); return; } cloudOn=true;
+// onlyFor / onlySub (the garden card, TUN-93): run only for that account, and push only with its token.
+// Returns { signedIn, saved }. signedIn: this run had a usable session for its account and was not replaced (a
+// failed load or save is still a sign-in; the panel says the cloud is resting). saved: the CURRENT progress is in
+// the cloud — loaded from it, or pushed with no newer save since (the same test as "saved to cloud").
+async function onSignedIn(uploadLocal,onlyFor,onlySub){ const NO={ signedIn:false, saved:false };
+  if(onlyFor && !currentUserIs(onlyFor)) return NO;
+  const who=currentUserName();   // this run's account: its pull, its pushes
+  const run=++_cloudRun; cloudSync="off"; _syncUser=who; _syncSub=null; cloudResting=false; clearTimeout(_pushT);   // drop a save queued for whoever was here before
+  const id=await freshId(who,onlySub); if(run!==_cloudRun) return NO;
+  // No session: a sign-in form that asked stays as it is, its words in it, to say so and try again.
+  if(!id.token){ cloudOn=false; if(_authShowsSignedIn) renderAuth(); return NO; }
+  cloudOn=true; _syncSub=id.sub;
   if(!uploadLocal){ cloudSync="loading"; renderAuth();
-    const pull=await cloudPull(); if(run!==_cloudRun) return;
+    const pull=await cloudPull(who,_syncSub); if(run!==_cloudRun) return NO;
+    if(pull.mismatch){ loseSync(); renderAuth(); return NO; }   // another account took this one's place mid-load
     const cloud=pull.ok ? pull.progress : undefined;
-    if(cloud!==null && !loadableProgress(cloud)){ cloudSync="unreachable"; renderAuth(); return; }   // only an explicit null means "nothing saved yet"
+    if(cloud!==null && !loadableProgress(cloud)){ cloudSync="unreachable"; renderAuth(); return { signedIn:true, saved:false }; }   // only an explicit null means "nothing saved yet"
     cloudSync="ready";
     // the loaded level is where play resumes: its render reads the story, once, and waits for an instrument card that
     // is up (TUN-112: a further enterPlay() read it a second time, under the first, and over the card). Not while the
     // buddy picker is up: then picking a buddy (enterPlay) reads it — or, when the loaded save already has one and its
-    // render closed the picker, play resumes here and enterPlay reads it now.
-    if(cloud){ progress=cloud; Store.set("progress",progress);
+    // render closed the picker, play resumes here and enterPlay reads it now. The name is this device's (TUN-93).
+    if(cloud){ progress=keepLocalName(cloud); Store.set("progress",progress);
       const pickerUp=()=>compoverlay.style.display==="flex";
       narrateReady=!pickerUp(); applyProgress(); if(!narrateReady && !pickerUp()) enterPlay();
-      renderAuth("loaded from cloud"); return; } }
+      renderAuth("loaded from cloud"); return { signedIn:true, saved:true }; } }
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
-  const push=_pushSeq+1; const ok=await cloudPush(); if(run!==_cloudRun) return;
+  const push=_pushSeq+1; const ok=await cloudPush(who); if(run!==_cloudRun) return NO;
   // "saved to cloud" only for the newest progress save: once a newer one is queued or begun, this success no longer says
   // the current progress is in the cloud. A failure needs no word here: cloudResting already says so, calmly.
-  renderAuth(ok && _pushSeq===push ? "saved to cloud" : undefined); }
+  if(cloudSync!=="ready") return NO;   // the push found another account in this one's place (loseSync)
+  const saved=ok && _pushSeq===push;
+  renderAuth(saved ? "saved to cloud" : undefined);
+  return { signedIn:true, saved }; }
 const authbox=document.getElementById("authbox");
 function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false; _authSaysSaved=false;
   if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";
     d.textContent="Cloud sign-in unavailable right now — your progress is still saved on this device."; authbox.appendChild(d); return; }
   const u=userPool.getCurrentUser();
   if(u && cloudOn){ _authShowsSignedIn=true; _authSaysSaved=status==="saved to cloud"; const row=document.createElement("div"); row.className="authrow";
-    row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=u.getUsername();
+    row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=gardenDisplayName(u.getUsername());
     row.appendChild(b); row.appendChild(document.createTextNode(
       cloudSync==="ready" ? (cloudResting ? CLOUD_RESTING.save : " — progress syncs across your devices.")
       : cloudSync==="unreachable" ? CLOUD_RESTING.load
@@ -135,34 +174,88 @@ function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authSho
   const hint=document.createElement("div"); hint.className="hint";
   hint.textContent="Playing as a guest (saved on this device). Make an account to sync across devices."; authbox.appendChild(hint);
   const row=document.createElement("div"); row.className="pkgactions";
-  row.append(mkBtn("Create account",()=>showAuthForm("up")), mkBtn("Sign in",()=>showAuthForm("in")));
+  row.append(mkBtn("Create account",showGardenRoller), mkBtn("Sign in",showSignInForm));
   authbox.appendChild(row); }
-function showAuthForm(mode){ authbox.innerHTML=""; _authShowsSignedIn=false;
-  const form=document.createElement("div"); form.className="authform";
-  const user=document.createElement("input"); user.placeholder="Username"; user.maxLength=24;
-  const pass=document.createElement("input"); pass.placeholder="Password (8+ characters)"; pass.type="password";
-  form.append(user,pass);
-  let email=null; if(mode==="up"){ email=document.createElement("input"); email.placeholder="Email (optional — for password recovery)"; email.type="email"; form.append(email); }
-  const msg=document.createElement("div"); msg.className="authmsg hint";
-  const go=mkBtn(mode==="up"?"Create account":"Sign in",()=>submitAuth(mode,user.value.trim(),pass.value,email?email.value.trim():"",msg));
-  const cancel=mkBtn("Cancel",renderAuth);
-  const actions=document.createElement("div"); actions.className="pkgactions"; actions.append(go,cancel);
-  form.append(msg,actions); authbox.appendChild(form); user.focus(); }
-// Cognito could not run the sign-up trigger: the cost switch has stopped it (TUN-87), or it failed. Cognito wraps
-// a trigger's failure in its own words, never fit for a child, and the account was not made. The trigger's own
-// refusal past the day's limit (TUN-88) carries the token "daily-signup-limit" — Cognito's text is "PreSignUp
-// failed with error daily-signup-limit." — and gets a message of its own; every other one says the garden
-// isn't taking new accounts just now.
+// What a child is told when signing in, or making a garden, goes wrong (TUN-93): never Cognito's own words, which
+// are not written for a child. The code goes to the console for whoever is helping.
+const AUTH_SAYS={
+  noMatch:"🌱 That garden name and those secret words don't match. Check your card: capitals and spaces don't matter.",
+  tooMany:"🌱 Too many tries. Wait a few minutes, then try again.",
+  offline:"☁️ Can't reach the garden just now. Your garden is still saved on this device.",
+  other:"🌱 Something went wrong just now. Your garden is still saved on this device: try again in a moment.",
+  empty:"Type your garden name and the four secret words from your card.",
+};
+const LOST_CARD="Without the card, that account can't be opened. On the device where you played, your garden may still be there: "+
+  "open the game there and make a new account, and your progress goes up to the cloud again. Songs saved to the old account stay with it.";
+const authCode=e=> String((e&&(e.code||e.name))||"");
+// The library marks only some network failures NetworkError; others arrive as the browser's own fetch error.
+const authOffline=e=> authCode(e)==="NetworkError" ||
+  (!(e&&e.code) && /network|failed to fetch|load failed/i.test(String((e&&e.message)||"")));
+// Cognito could not run the sign-up trigger: the cost switch has stopped it (TUN-87), or it failed, or it refused
+// the sign-up. Cognito wraps a trigger's failure in its own words, never fit for a child, and the account was not
+// made. The trigger's refusal past the day's limit (TUN-88) carries the token "daily-signup-limit" — Cognito's
+// text is "PreSignUp failed with error daily-signup-limit." — and gets a message of its own; every other one says
+// the garden isn't taking new accounts just now.
 const SIGNUP_TRIGGER_CODES=["UnexpectedLambdaException","UserLambdaValidationException","InvalidLambdaResponseException"];
 const signUpTriggerFailed=e=> !!e && (SIGNUP_TRIGGER_CODES.includes(e.code) || SIGNUP_TRIGGER_CODES.includes(e.name) || /PreSignUp/i.test(String(e.message||"")));
 const signUpFullToday=e=> signUpTriggerFailed(e) && /\bdaily-signup-limit\b/.test(String(e.message||""));
 const SIGNUP_FULL_TODAY="🌱 So many new gardeners joined today that the garden is full! Keep playing as a guest — your garden is saved on this device — and make your account tomorrow.";
-async function submitAuth(mode,username,password,email,msg){
-  if(!username||!password){ msg.textContent="Enter a username and password."; return; }
-  msg.textContent="Working…";
-  try{ if(mode==="up"){ try{ await cogSignUp(username,password,email); }
-      catch(e){ if(signUpFullToday(e)){ msg.textContent=SIGNUP_FULL_TODAY; return; }
-        if(signUpTriggerFailed(e)){ msg.textContent=CLOUD_RESTING.signUp; return; } throw e; } }
-    await cogSignIn(username,password); await onSignedIn(mode==="up"); pname.value=progress.name||""; renderPkgs(); }
-  catch(e){ msg.textContent="⚠️ "+((e&&e.message)||e); } }
+// mode "up": making an account; "in": signing in.
+function friendlyAuthError(e,mode){ const code=authCode(e);
+  if(mode==="up" && signUpFullToday(e)) return SIGNUP_FULL_TODAY;
+  if(mode==="up" && signUpTriggerFailed(e)) return CLOUD_RESTING.signUp;
+  if(authOffline(e)) return AUTH_SAYS.offline;
+  if(/^(LimitExceededException|TooManyRequestsException|TooManyFailedAttemptsException)$/.test(code) ||
+     /attempts exceeded/i.test(String((e&&e.message)||""))) return AUTH_SAYS.tooMany;
+  if(code==="NotAuthorizedException" || code==="UserNotFoundException") return AUTH_SAYS.noMatch;
+  console.warn("Tune Garden: the sign-in service answered", code||"with no code");
+  return AUTH_SAYS.other; }
+// Signing in, from Home's form or the landing screen's: { ok:true } once signed in and the cloud copy is loaded,
+// or { ok:false, msg } with words for a child. The boxes are forgiven as signInPair says.
+// authBusy: how many sign-ins are out. While any is, its form can't be dismissed and Home can't be left (Close,
+// the backdrop, a package, the Studio, a quest), so a sign-in the child thinks they left can never land in what
+// they opened next. A count, so an older sign-in finishing can't unlock Home while a newer one is still out.
+let authBusy=0;
+async function signInWith(nameText,passText){
+  const { username, password }=signInPair(nameText,passText);
+  if(!username || !password) return { ok:false, msg:AUTH_SAYS.empty };
+  authBusy++;
+  try{
+    try{ await cogSignIn(username,password); }catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; }
+    // Not signed in: the session was gone or replaced before it could be used, so the form stays. A failed
+    // progress load or save is still a sign-in (the panel says the cloud is resting), and the form goes.
+    if(!(await onSignedIn(false)).signedIn) return { ok:false, msg:AUTH_SAYS.other };
+    return { ok:true }; }
+  catch(e){ console.warn("Tune Garden: signing in failed", e); return { ok:false, msg:AUTH_SAYS.other }; }
+  finally{ authBusy--; } }
+// The passphrase box, emptied and hidden again: on every way out of a sign-in form.
+function clearPassBox(pass,showBtn){ pass.value=""; pass.type="password"; if(showBtn) showBtn.textContent="👁️ Show"; }
+// The two boxes' settings, shared by Home's form and the landing screen's (index.html): no length limit (a pasted
+// name with spaces must not be cut before it is forgiven), no capitals or spelling help, and a browser may offer
+// to remember the passphrase (a choice the owner may overrule: reviews/TUN-93-garden-name-accounts.md).
+function setUpSignInBoxes(user,pass,showBtn){
+  for(const el of [user,pass]){ el.setAttribute("autocapitalize","none"); el.setAttribute("autocorrect","off"); el.spellcheck=false; }
+  user.type="text"; user.autocomplete="username"; user.placeholder="Garden name, like Brave-Otter-42";
+  pass.type="password"; pass.autocomplete="current-password"; pass.placeholder="Your four secret words";
+  showBtn.textContent="👁️ Show"; showBtn.type="button";
+  showBtn.onclick=()=>{ const shown=pass.type==="text"; pass.type=shown?"password":"text"; showBtn.textContent=shown?"👁️ Show":"🙈 Hide"; }; }
+function lostCardLink(){ const wrap=document.createElement("div"); wrap.className="lostcard";
+  const note=document.createElement("div"); note.className="hint"; note.style.display="none"; note.textContent=LOST_CARD;
+  const btn=mkBtn("Lost your card?",()=>{ note.style.display=note.style.display==="none"?"":"none"; });
+  wrap.append(btn,note); return wrap; }
+function showSignInForm(){ authbox.innerHTML=""; _authShowsSignedIn=false;
+  const form=document.createElement("div"); form.className="authform";
+  const user=document.createElement("input"), pass=document.createElement("input"), show=document.createElement("button");
+  show.className="secondary"; setUpSignInBoxes(user,pass,show);
+  const passRow=document.createElement("div"); passRow.className="passrow"; passRow.append(pass,show);
+  const msg=document.createElement("div"); msg.className="authmsg hint";
+  let busy=false;
+  const go=mkBtn("Sign in",async()=>{ if(busy) return; busy=true; go.disabled=cancel.disabled=true; msg.textContent="Signing in…";
+    let r; try{ r=await signInWith(user.value,pass.value); } finally{ busy=false; go.disabled=cancel.disabled=false; }
+    if(!r.ok){ msg.textContent=r.msg; return; }
+    clearPassBox(pass,show); renderPkgs(); });
+  pass.addEventListener("keydown",e=>{ if(e.key==="Enter") go.onclick(); });
+  const cancel=mkBtn("Cancel",()=>{ if(busy) return; clearPassBox(pass,show); renderAuth(); });
+  const actions=document.createElement("div"); actions.className="pkgactions"; actions.append(go,cancel);
+  form.append(user,passRow,msg,actions,lostCardLink()); authbox.appendChild(form); user.focus(); }
 
