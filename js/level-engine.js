@@ -2,25 +2,27 @@
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
 // ---- A stage's opening melody (an echo level's phrase, a Question & Answer call), heard ONCE per entry (TUN-125) ----
-// One slot: a new draw, a step/level/package change (resetTransient) or 🔊 Listen drops the one before, so two
-// draws in a row — the boot's and a cloud load's — or a quick Next never book two copies. And never onto a frozen
-// clock: before the page's first gesture the AudioContext is suspended at time 0, and notes booked then are not
-// lost — they all sound together the moment it runs, over whatever is booked at that moment. So a melody whose
-// timer finds the clock suspended books nothing and waits; the context's own "running" plays it, once.
-let openingTimer=null, openingWaits=null, openingHooked=null;
-function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }
-function scheduleOpening(notes){ cancelOpening(); if(!notes || !notes.length) return;
-  openingTimer=setTimeout(()=>{ openingTimer=null; playOpening(notes); }, 350); }
-function playOpening(notes){ if(playing) return;   // ▶ Play got there first: the sweep plays the stage's own notes
-  initAudio();
-  if(actx.state!=="suspended"){ playPhrase(notes); return; }
+// An ENTRY, not a draw: openingStage is the stage whose entry has used its melody — pending, waiting or played. A
+// redraw of that same stage (a sign-in's cloud load landing on the level the player is on, early or late) keeps it
+// as it is; only drawing another stage, or Home, frees it. 🔊 Listen and ▶ Play spend it. And never onto a frozen
+// clock: until the page's first gesture the AudioContext is suspended at time 0 (iOS can also interrupt it later),
+// and notes booked then are not lost — they all sound together the moment it runs, over whatever is booked then.
+// So a melody whose timer finds the clock not running books nothing and waits; the context's own "running" plays
+// it, once. (Notes already booked on a RUNNING clock are left to finish: nothing can take them back.)
+let openingTimer=null, openingWaits=null, openingHooked=null, openingStage=null;
+function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }   // spent: Listen, ▶ Play
+function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: Home, where every package and quest is entered — the next entry plays again
+function openingFor(st,notes){ if(st===openingStage) return;     // a redraw of the entered stage: as it was
+  leaveOpening(); if(!notes || !notes.length) return;
+  openingStage=st; openingTimer=setTimeout(()=>{ openingTimer=null; playOpening(notes); }, 350); }
+function playOpening(notes){ initAudio();
+  if(actx.state===undefined || actx.state==="running"){ playPhrase(notes); return; }   // (an old context with no state: play)
   openingWaits=notes;
   if(openingHooked!==actx){ openingHooked=actx;
     actx.addEventListener("statechange",()=>{ if(actx.state!=="running" || !openingWaits) return;
-      const n=openingWaits; openingWaits=null; if(!playing) playPhrase(n); }); }
-  actx.resume(); }   // starts the clock if the page has had a gesture; otherwise the first gesture's resume() will
+      const n=openingWaits; openingWaits=null; playPhrase(n); }); }
+  actx.resume(); }   // starts the clock if the page has had a gesture; otherwise a gesture's resume() will
 function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
-  cancelOpening();                                             // …and an opening melody not yet heard (TUN-125)
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
   clearFamousTimers(); pendingFamous=null;   // cancel any in-flight famous-tune flashes / pending reveal (the grid is about to be rebuilt)
@@ -100,7 +102,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
   hintBtn.style.display = st.hint?"":"none";
   listenBtn.style.display = (st.echo||st.call)?"":"none";
-  if(st.echo) scheduleOpening(st.echo);                  // play the phrase once on entry
+  openingFor(st, st.echo || st.call);                    // play the phrase / the call once per entry (TUN-125)
   if(drumsOn && st.carryDrums && carriedDrums){ placeDrums(carriedDrums); carriedDrums=null; }   // reuse the player's beat from the previous step
   else if(drumsOn && st.drumSetup) st.drumSetup();                                                // otherwise the fixed starting pattern
   if(st.setup) st.setup();
@@ -115,7 +117,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
   setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
   setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
-  if(st.call){ placeCall(st.call); scheduleOpening(st.call); }           // pre-place the call (every draw) & play it once on entry
+  if(st.call) placeCall(st.call);                                        // pre-place the call — every draw, a redraw too
   setStatus( choiceStatus ? choiceStatus                                 // a picker's own prompt survives — setup() runs BEFORE this line
     : L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."

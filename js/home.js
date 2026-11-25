@@ -15,7 +15,8 @@ homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
 pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };
 function updateTitle(){ const n=(progress.name||"").trim();
   document.getElementById("title").textContent = "🌱 " + (n ? n+"'s Tune Garden" : "Tune Garden"); }
-function openHome(){ pname.value=progress.name||""; renderAuth(); renderPkgs(); renderQuestHome();
+function openHome(){ leaveOpening();   // a level's opening melody not yet heard stays there; coming back plays it anew (TUN-125)
+  pname.value=progress.name||""; renderAuth(); renderPkgs(); renderQuestHome();
   homeoverlay.style.display="flex"; }
 let questTrailOpen=false;
 // textContent throughout — a quest title is authored text, and this is the second place it could have
