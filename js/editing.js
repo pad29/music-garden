@@ -239,7 +239,7 @@ function toggleStamp(tool){
   activeTool = (activeTool&&sig(activeTool.offs)===sig(tool.offs)) ? null : tool;
   exitTray(); renderBag();
   if(activeTool){ const m=toolMeta(tool.offs, tool.midis);
-    setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the field to stamp it, again and again wherever the whole shape fits. Click it again (or press Esc) to stop.`);
+    setStatus(`Picked <b>${m.em} ${m.name}</b> (${toolRealName(tool)}) — click the field to stamp it, again and again wherever the whole shape fits. To stop, click it again in your 🎒 Toolbox (or press Esc).`);
   } else setStatus("Plant seeds 🌱, or 🔨 Fuse to craft.");
 }
 

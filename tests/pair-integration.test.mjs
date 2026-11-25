@@ -245,6 +245,32 @@ test("TUN-15: restoring a toolbox drops damaged shapes and keeps valid ones, uns
   assert.deepEqual(column(g, 5), [0, 9]);
 });
 
+test("TUN-15: restore keeps a tool with fewer pitches than rungs, drops one with under two, and the kept one survives save + reload", () => {
+  const g = readyGame();
+  const id = g.activePackageId();
+  g.pkgProg(id).toolbox = [
+    { offs: [0, 2, 4], midis: [60, 64] },   // accepted: pitches are only checked loosely (never tie them to offs.length)
+    { offs: [0, 2, 4], midis: [60] },       // under two pitches
+    { offs: [0, 2, 4], midis: [] },
+  ];
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+  g.savePackageProgress();                  // entering a package saves the filtered bag straight away
+
+  const kept = [{ offs: [0, 2, 4], midis: [60, 64] }];
+  assert.deepEqual(JSON.parse(JSON.stringify(g.pkgProg(id).toolbox)), kept, "what was saved");
+
+  g.toolbox.length = 0;                     // "reload": restore again from what was saved
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+  assert.deepEqual(JSON.parse(JSON.stringify(g.toolbox)), kept, "what came back");
+
+  clearMelody(g);
+  g.activeTool = g.toolbox[0];
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [5, 7, 9]);
+});
+
 test("TUN-15: a damaged shape that reaches the stamp anyway refuses at every row, before any arithmetic", () => {
   const g = readyGame();
   clearMelody(g);

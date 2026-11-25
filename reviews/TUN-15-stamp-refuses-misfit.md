@@ -72,6 +72,9 @@ No question at the design checkpoint — the ticket has no open questions and th
    validation as a Backlog ticket, or validate restored shapes in `loadScopeToolbox` in this PR?* —
    **Validate restored shapes in `loadScopeToolbox` in this PR, as GPT asked, with GPT's restore-path
    test; no Backlog ticket**: the owner, relayed by the coordinator, 2026-11-25.
+3. *Round 3 asked for one Low copy fix and one missing test; both are done on the head after `588d16d`,
+   and the three review rounds are used up. Accept that fix without a fourth GPT review, or allow a
+   fourth round?* — put to the owner through the coordinator, 2026-11-25 — **open**.
 
 ## PR review — round 1 (`gpt-6.2-astra`, through `ask.sh`, head `09e8618`)
 
@@ -207,3 +210,41 @@ the broken line every time, nothing planted, no transaction, no credit. (b) The 
 diatonic `[0,10]` on the 10-row field gets the too-tall line at both edges, while `[0,9]` gets the edge
 advice and stamps at row 9. **Mutation check:** the old restore check, dropping the stamp-side
 validation, `>=` → `>`, and a validator without the zero rule each fail their own test(s).
+
+## PR review — round 3 (`gpt-6.2-astra`, through `ask.sh`, head `588d16d`)
+
+**Verdict: Changes requested.** In 400k (351k cached) / out 1.7k.
+
+<details><summary>GPT's review, verbatim (local file links shortened to repo paths)</summary>
+
+## Changes required
+
+1. **Low** — “Click it again … to stop” can read as an instruction to click the field again. That click stamps another copy. Name the control explicitly: “Click the field wherever the whole shape fits. To stop, click the same tool in your Toolbox or press Esc.” [js/editing.js:242](js/editing.js:242)
+
+I found no tool that current or historical Fuse could craft that `isToolShape` rejects. Package entry immediately saves the filtered bag. A quest writes its filtered tray on the next inventory save. The Studio keeps its bag in memory. Syntax and all 39 targeted tests passed.
+
+## Missing tests
+
+- Save three tools with `offs: [0,2,4]` and respective `midis` values `[60,64]`, `[60]`, and `[]` → enter the package, let it save, then reload → only the two-pitch entry survives, its stored arrays are intact, and stamping at row 9 plants rows 5, 7, and 9. This catches both an accidental equal-length rule that would erase an accepted tool and removal of the two-pitch minimum. [tests/pair-integration.test.mjs:221](tests/pair-integration.test.mjs:221)
+
+## Verdict
+
+**Changes requested**
+
+</details>
+
+### My answers
+
+1. **Low — "Click it again … to stop" could mean the field. Agreed, fixed.** The armed-tool prompt now
+   reads "…click the field to stamp it, again and again wherever the whole shape fits. To stop, click it
+   again in your 🎒 Toolbox (or press Esc)." That's GPT's point in the game's own phrasing.
+2. **Missing test: added.** A saved `[0,2,4]` with pitches `[60,64]`, `[60]` and `[]` goes through
+   `loadScopeToolbox`, `savePackageProgress` and a second `loadScopeToolbox`. Only the two-pitch entry
+   survives, with its arrays intact, and it stamps rows 5, 7 and 9 from row 9. **Mutation check:** an
+   equal-length pitch rule and dropping the two-pitch minimum each fail it. Suite: 1114/1114.
+
+GPT also reported that no tool current or past Fuse could craft fails `isToolShape`. A package saves its
+filtered bag on entry, a quest on its next inventory save, and the Studio keeps its bag in memory.
+
+**Review budget:** three rounds used. Per `work-ticket` § 8 this stops at Needs Input without a fourth
+review (*Owner's decisions* 3).
