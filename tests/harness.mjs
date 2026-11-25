@@ -357,3 +357,15 @@ export function plant(g, rows) {
   });
   return g.contourSeq();
 }
+
+// ---- A fake Cognito session (TUN-93, TUN-128) ----
+// The game reads who is signed in two ways: getSession's ID token (freshId), and — for every decision made after an
+// await — the library's own cached ID token, read without the network (cachedAccount: the user object's `storage`,
+// decoded by AmazonCognitoIdentity.CognitoIdToken). A fake user carries `storage: cachedIdToken(claims)`; a fake
+// library carries `CognitoIdToken: FakeIdToken`. claims: { "cognito:username", sub }, or a function returning them,
+// read at each call, so a test can change them as another tab would.
+export class FakeIdToken { constructor({ IdToken }) { this.payload = JSON.parse(IdToken); } }
+export const cachedIdToken = claims => ({
+  getItem: k => (/\.idToken$/.test(String(k)) ? JSON.stringify(typeof claims === "function" ? claims() : claims) : null) });
+// A session as cogSignIn resolves with it: only its ID token's claims are read.
+export const signedInSession = claims => ({ getIdToken: () => ({ payload: claims }) });

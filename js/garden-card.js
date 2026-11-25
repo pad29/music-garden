@@ -48,9 +48,13 @@ const wordsDontOpenIt=e=> authCode(e)==="NotAuthorizedException" && /^Incorrect 
 async function createGarden(a,say=()=>{},pick=gardenPick){
   const password=a.words.join("-");
   if(!a.made && a.uncertain){ say("🌱 Checking your garden…");
-    try{ await cogSignIn(a.name,password); a.made=a.signedIn=true; a.uncertain=false; }
+    let acct=null;
+    try{ acct=sessionAccount(await cogSignIn(a.name,password)); }
     catch(e){ if(!wordsDontOpenIt(e)) return { ok:false, msg:authOffline(e) ? GARDEN_SAYS.offline : GARDEN_SAYS.cantCheck };   // never "they don't match": the card is still good
-      a.uncertain=false; } }   // not this card's: it was never made, or the name is someone else's — sign-up says which
+      a.uncertain=false; }   // not this card's: it was never made, or the name is someone else's — sign-up says which
+    if(a.uncertain){   // the words opened an account: made, if the session says which (TUN-128) — its sub is the card's from now on
+      if(!acct || acct.name!==a.name) return { ok:false, msg:GARDEN_SAYS.cantCheck };   // it doesn't: still unsettled, the same card
+      a.made=a.signedIn=true; a.uncertain=false; a.sub=acct.sub; } }
   if(!a.made){ say("🌱 Making your garden…");
     try{ const r=await cogSignUp(a.name,password); a.made=true; a.sub=(r&&r.userSub)||null; }   // the account's permanent id
     catch(e){
@@ -58,17 +62,22 @@ async function createGarden(a,say=()=>{},pick=gardenPick){
       if(signUpTriggerFailed(e)) return { ok:false, stop:true, msg:friendlyAuthError(e,"up") };   // refused: nothing was made
       a.uncertain=true;   // a lost answer or a service failure: the account may exist
       return { ok:false, msg:authOffline(e) ? GARDEN_SAYS.offline : friendlyAuthError(e,"up") }; } }
-  if(a.signedIn && !currentUserIs(a.name)) a.signedIn=false;   // another tab signed someone else in, or out
+  if(a.signedIn && !accountIs(a.name,a.sub)) a.signedIn=false;   // another tab signed someone else in, or out
   if(!a.signedIn){ say("🌱 Opening your garden…");
-    try{ await cogSignIn(a.name,password); a.signedIn=true; }
-    catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; } }
+    let acct; try{ acct=sessionAccount(await cogSignIn(a.name,password)); }
+    catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; }
+    // The card's account is the one sign-up (or the recovery above) named, and stays so on every try (TUN-128): a
+    // session for another, or one that says no account, uploads nothing. Sign-up gave no id: this session's is it.
+    if(!acct || acct.name!==a.name || (a.sub && acct.sub!==a.sub)) return { ok:false, msg:GARDEN_SAYS.cantCheck };
+    if(!a.sub) a.sub=acct.sub;
+    a.signedIn=true; }
   say("☁️ Saving your garden to the cloud…");
   const r=await onSignedIn(true,a.name,a.sub);   // only this card's account, by name and id, with its own token
   const saved=r.signedIn && r.saved;
   if(!saved) a.signedIn=false;   // the next try signs in with the card again: its session may be gone or replaced
   return { ok:true, saved }; }
 
-function showGardenRoller(){ authbox.innerHTML=""; _authShowsSignedIn=false;
+function showGardenRoller(){ authbox.innerHTML=""; _authShowsSignedIn=false; _authForm=null;
   let id; try{ id=rollGardenName(); }catch(e){ authbox.textContent=GARDEN_SAYS.noRandom; return; }
   const wrap=document.createElement("div"); wrap.className="authform gardenroll";
   const lead=document.createElement("div"); lead.className="hint";

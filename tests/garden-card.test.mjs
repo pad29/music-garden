@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
-import { loadGame } from "./harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken, signedInSession } from "./harness.mjs";
 
 // An element that keeps what is set on it, its children, and its place in the tree.
 function el(tag = "div") {
@@ -38,16 +38,18 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
   const elements = { authbox, cardoverlay, gardencard, homeoverlay };
   if (landing) for (const id of ["landingUser", "landingPass", "landingShow", "landingMsg", "landingLost", "landingBack"]) elements[id] = el(["landingShow", "landingBack"].includes(id) ? "button" : id.includes("Msg") || id.includes("Lost") ? "div" : "input");
   // Who the pool says is signed in: the session in the storage every tab shares. A sign-in sets it; a test may
-  // change it, as another tab would.
-  const session = { user: null, broken: false, requests: [],
+  // change it, as another tab would. subOf(name): that account's permanent id, in its tokens and its sign-in session.
+  const session = { user: null, broken: false, requests: [], subOf: n => "sub-" + n,
     api: method => ({ ok: true, status: 200, json: async () => (method === "GET" ? null : { ok: true }) }) };
   const g = loadGame({ fresh: true, elements, setup: w => {
     w.crypto = webcrypto; w.Uint32Array = Uint32Array;
-    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() {
-      return session.user ? { getUsername: () => session.user, signOut() { session.user = null; },
-        getSession(cb) { const name = session.user;
+    w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() {
+      const name = session.user;
+      return name ? { getUsername: () => name, signOut() { session.user = null; },
+        storage: cachedIdToken(() => ({ "cognito:username": name, sub: session.subOf(name) })),
+        getSession(cb) {
           if (session.broken) return cb(new Error("the session could not be refreshed"));
-          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": name, sub: "sub-" + name }, getJwtToken: () => "token-" + name }) }); } } : null; } } };
+          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": name, sub: session.subOf(name) }, getJwtToken: () => "token-" + name + ":" + session.subOf(name) }) }); } } : null; } } };
     w.fetch = async (url, opts = {}) => { session.requests.push({ url: String(url), method: opts.method || "GET", token: String(opts.headers?.Authorization || "") });
       return session.api(opts.method || "GET"); };
   } });
@@ -56,7 +58,8 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
   Object.defineProperty(doc, "createTextNode", { value: t => ({ textContent: String(t) }), configurable: true });
   const cognito = { signUps: [], signIns: [], uploads: 0 };
   g.cogSignUp = async (u, p) => { cognito.signUps.push([u, p]); return signUp(u, p); };
-  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; session.broken = false; };
+  g.cogSignIn = async (u, p) => { cognito.signIns.push([u, p]); await signIn(u, p); session.user = u; session.broken = false;
+    return signedInSession({ "cognito:username": u, sub: session.subOf(u) }); };   // the session Cognito answers with
   const realOnSignedIn = g.onSignedIn;
   g.onSignedIn = async (up, onlyFor) => {
     assert.equal(up, true, "a new garden uploads this device's");
@@ -531,7 +534,7 @@ test("through the real sync path: a session that can't be used makes the card si
   openCard(t); keep(t);
   // Signed in, but the session breaks before the upload asks for it.
   const signIn = t.g.cogSignIn;
-  t.g.cogSignIn = async (u, p) => { await signIn(u, p); t.session.broken = true; };
+  t.g.cogSignIn = async (u, p) => { const s = await signIn(u, p); t.session.broken = true; return s; };
   await go(t);
   assert.match(said(t), /isn't in the cloud yet/);
   assert.equal(t.session.requests.length, 0, "nothing was sent without a usable session");
@@ -539,7 +542,7 @@ test("through the real sync path: a session that can't be used makes the card si
   await go(t);
   assert.equal(t.cognito.signUps.length, 1);
   assert.equal(t.cognito.signIns.length, 2, "signed in again with the card's words");
-  assert.deepEqual(t.session.requests.map(r => [r.method, r.token]), [["PUT", "Bearer token-" + t.cognito.signUps[0][0]]], "one PUT, to the card's own account");
+  assert.deepEqual(t.session.requests.map(r => [r.method, r.token]), [["PUT", "Bearer token-" + t.cognito.signUps[0][0] + ":sub-" + t.cognito.signUps[0][0]]], "one PUT, to the card's own account");
   assert.equal(said(t), "☁️ Your garden is saved in the cloud ✓");
 });
 
@@ -548,7 +551,7 @@ test("the forms tell three outcomes apart: no session keeps Home's form and its 
   const t = cardGame();
   t.g.onSignedIn = t.realOnSignedIn;
   const signIn = t.g.cogSignIn;
-  t.g.cogSignIn = async (u, p) => { await signIn(u, p); t.session.broken = true; };
+  t.g.cogSignIn = async (u, p) => { const s = await signIn(u, p); t.session.broken = true; return s; };
   t.g.showSignInForm();
   const [user, pass] = all(t.authbox).filter(e => e.tagName === "INPUT");
   user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";

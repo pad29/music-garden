@@ -4,7 +4,7 @@
 // waited on, and run by runSaves().
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadGame } from "./harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken, signedInSession } from "./harness.mjs";
 
 const clone = x => JSON.parse(JSON.stringify(x));
 const LOCAL = { v: 1, name: "Ann", current: "intro", updatedAt: 1,
@@ -66,20 +66,22 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   let subNow = subOf;
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
-  let current = bootUser; const holds = new Map();
+  let current = bootUser; const holds = new Map(), offline = new Set();
   const saves = new Map(); let serial = 1e6;
   const authbox = { kids: [], set innerHTML(v) { this.kids = []; }, get innerHTML() { return ""; },
     appendChild(c) { this.kids.push(c); return c; },
     get textContent() { return this.kids.map(k => k.textContent ?? "").join(""); } };
   const userNamed = name => ({ getUsername: () => name, signOut() { if (current === name) current = null; },
+    storage: cachedIdToken(() => ({ "cognito:username": claimOf(name), sub: subNow(name) })),
     getSession(cb) {
       const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name), sub: subNow(name) }, getJwtToken: () => "token-" + name + ":" + subNow(name) }) });
-      const h = holds.get(name); if (h) h.then(give); else give();
+      const go = () => (offline.has(name) ? cb(new Error("Network error")) : give());   // offline: can't refresh, still signed in
+      const h = holds.get(name); if (h) h.then(go); else go();
     } });
   const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
     w.localStorage.setItem("mg_progress", JSON.stringify(local));
     if (extraSetup) extraSetup(w);
-    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return current ? userNamed(current) : null; } } };
+    w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() { return current ? userNamed(current) : null; } } };
     w.fetch = async (url, opts = {}) => {
       const req = { url: String(url), method: opts.method || "GET", body: opts.body,
         token: String(opts.headers?.Authorization || "").replace("Bearer ", "") };
@@ -97,7 +99,8 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   const runSaves = async () => { const fns = [...saves.values()]; saves.clear(); for (const f of fns) await f(); };
   const holdTokens = name => { let release; holds.set(name, new Promise(r => { release = r; })); return () => { holds.delete(name); release(); }; };
   return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent, authbox,
-    signIn: name => { current = name; }, holdTokens, setSubOf: f => { subNow = f; } };
+    signIn: name => { current = name; }, holdTokens, setSubOf: f => { subNow = f; },
+    offline: (name, on = true) => { if (on) offline.add(name); else offline.delete(name); } };
 }
 
 // GET /progress answers `get`; PUT /progress answers `put` (default 200).
@@ -431,14 +434,39 @@ test("TUN-87: a save from before a sign-out cannot change what the next player's
   }
 });
 
-test("TUN-87: a save that finds no session counts as the cloud not answering", async () => {
-  const { g, net, runSaves, signIn } = cloudGame();
+test("TUN-87: a save whose session can't be refreshed counts as the cloud not answering, and the next one goes", async () => {
+  const { g, net, runSaves, offline, panel } = cloudGame();
   net.answer = routes();
   await g.onSignedIn(false);
-  signIn(null);   // the stored session is gone (expired, or cleared) without a sign-out
+  offline("ann");   // ann is still signed in; her session just can't be refreshed now
   g.commitProgress(); await runSaves();
   assert.equal(g.cloudResting, true);
+  assert.equal(g.cloudSync, "ready", "not a lost account: still allowed to write");
+  assert.match(panel(), /cloud is resting/);
   assert.deepEqual(puts(net), [], "and nothing is sent");
+  offline("ann", false);
+  g.commitProgress(); await runSaves();
+  assert.equal(puts(net).length, 1, "the next save goes up");
+  assert.equal(g.cloudResting, false);
+});
+
+test("TUN-128: a save that finds nobody signed in ends this tab's sync; writing again needs a fresh load", async () => {
+  const { g, net, runSaves, signIn, panel } = cloudGame();
+  net.answer = routes();
+  await g.onSignedIn(false);
+  signIn(null);   // another tab signed out
+  g.commitProgress(); await runSaves();
+  assert.deepEqual(puts(net), [], "nothing is sent");
+  assert.equal(g.cloudSync, "off", "the run's right to write is gone");
+  assert.equal(g.cloudResting, false, "nobody signed in is not the cloud resting");
+  assert.doesNotMatch(panel(), /Signed in as|syncs across/);
+  signIn("ann");   // ann signs back in, in the other tab
+  g.commitProgress(); await runSaves(); assert.equal(await g.cloudPush(), false);
+  assert.deepEqual(puts(net), [], "not without reading the cloud copy first");
+  await g.onSignedIn(false);
+  assert.equal(net.requests.at(-1).method, "GET", "a sign-in reads first");
+  g.commitProgress(); await runSaves();
+  assert.equal(puts(net).length, 1);
 });
 
 test("TUN-87: a failed song call also stops the sync claim, and a good one brings it back; the failed-load state is untouched", async () => {
@@ -552,7 +580,7 @@ test("TUN-87: signing in from the landing screen against a resting cloud keeps t
   const msg = { textContent: "" };
   const { g, net, runSaves, panel } = cloudGame({ elements: { landingUser: field("ann"), landingPass: field("password1"), landingMsg: msg } });
   net.answer = routes({ get: () => { throw new TypeError("Failed to fetch"); }, put: () => assert.fail("no PUT") });
-  g.cogSignIn = async () => {};
+  g.cogSignIn = async () => signedInSession({ "cognito:username": "ann", sub: "sub-ann" });   // ann's own session
   await g.doLandingSignIn();
   assert.deepEqual(methods(net), ["GET"]);
   assert.equal(g.cloudSync, "unreachable");
@@ -710,7 +738,7 @@ test("the garden card's upload (onlyFor) never reaches another account: not afte
   putOk = true;
   assert.equal((await g.onSignedIn(true, "ann")).signedIn, false, "ann's card's Try again does nothing while bea is signed in");
   assert.equal(net.requests.length, before, "no request at all, with anyone's token");
-  assert.equal(g.cloudSync, "unreachable", "bea stays blocked");
+  assert.notEqual(g.cloudSync, "ready", "bea stays blocked (TUN-128: the card's attempt ended bea's run before it found bea)");
   // Signed in as ann again (the card signs in with its words), the retry uploads with ann's token only.
   g.doSignOut(); signIn("ann");
   assert.deepEqual({ ...await g.onSignedIn(true, "ann") }, { signedIn: true, saved: true });
