@@ -674,8 +674,23 @@ token to its API stub.
    the panel (`onPanel`); the held-GET, superseded-result and `finish()` cases assert both boxes are the very objects the
    panel holds (`sameForm`).
 
-**Verified:** suite on the merged head (below). **Mutation audit of this round's tests** (`js/cloud.js`, restored from a
+**Mutation audit of this round's tests** (`js/cloud.js`, restored from a
 copy after each): *boot's resume not fenced* (round-3 code) — killed by round 4 (1) alone; *a failed sign-in redraws
 over its form* — killed by round 4 (2) and two older tests; *`finish()` puts no form back* — killed, but also by the
 4f57237 tests (round 2 (4) fails on its other assertions), so on this code the stricter panel checks close a gap
 without killing a mutation the old ones missed.
+
+### After round 4 — not reviewed by GPT
+
+Both of these came after GPT's round 4, and **no GPT round has reviewed them**:
+
+- **`main` merged** at `8ae4216` (TUN-12, PR #174: `clickModeFrom` in `js/playback.js`, `applyProgress` in `js/cloud.js`,
+  one line of `js/boot.js`). No conflict.
+- **One TUN-12 test's fixture, fixed with the coordinator's OK** (2026-11-25): after the merge, `tests/click.test.mjs`'s
+  *"a reload after pulling an unknown click value still reads off"* failed its precondition (*the pull loaded the cloud
+  profile*). Its `bootWith()` stubbed a signed-in user without the cached ID token, and TUN-128's account checks read
+  that token, so the stub counted as nobody signed in (this ticket's own trap: stubs need the token's claims). Three
+  edits, in the fixture only: `FakeIdToken` and `cachedIdToken` imported from the harness, `storage` on the stub user,
+  `CognitoIdToken` on `AmazonCognitoIdentity`. The test's own assertions are unchanged. No game code changed.
+
+**Verified on the pushed head:** syntax check OK; suite 1158/1158.
