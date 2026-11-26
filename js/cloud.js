@@ -221,6 +221,10 @@ let authBusy=0;
 async function signInWith(nameText,passText){
   const { username, password }=signInPair(nameText,passText);
   if(!username || !password) return { ok:false, msg:AUTH_SAYS.empty };
+  // The Sign in click (or Enter) is the player's gesture, and the account's level plays its opening once (TUN-125).
+  // Start the clock NOW, before the first await: a slow sign-in can outlast the click's activation, and a browser
+  // that needs a recent one (WebKit) would then keep the clock frozen and the opening would be dropped.
+  initAudio(); actx.resume();
   authBusy++;
   try{
     try{ await cogSignIn(username,password); }catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; }

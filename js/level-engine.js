@@ -1,6 +1,49 @@
 // ---------- The level engine: a level's layout and stages, its goals, rewards, the world strip and companions ----------
 const pitchArea=document.getElementById("pitchArea"), drumArea=document.getElementById("drumArea"),
   toolboxCard=document.getElementById("toolboxCard");
+// ---- A stage's opening melody (an echo level's phrase, a Question & Answer call), heard ONCE per entry (TUN-125) ----
+// An ENTRY, not a draw: openingStage is the stage whose entry has used its melody — pending, held, played or
+// silenced. A redraw of that same stage (a sign-in's cloud load landing on the level the player is on, early or
+// late) keeps it as it is; drawing another stage frees it. 🔊 Listen (from the press: pointer or key) and the ▶ Play
+// button spend it (a scripted start() — a reveal, Jam — does not).
+// The page's OWN draws never play it: the boot's, and a signed-in reload's cloud load, wherever it lands. Until the
+// player navigates — a package or the Studio from Home, Next, a quest — or signs in themselves (authBusy: the
+// sign-in form's load, which also gives a stage the reload silenced its entry back), every entry is silent, and
+// 🔊 Listen is how it is heard. The owner, 2026-11-25, after playtesting a build that played a reload's melody at the
+// first tap: "it feels strange that it plays together with me planting a seed"; then "let's just say always
+// silence. Otherwise the behavior may be different depending on the browser."
+// Notes are booked only on a RUNNING clock: notes booked on a frozen one are not lost, they wait and sound together
+// later, over whatever is booked then. So when its 350 ms are up and the clock is not running, nothing is booked and
+// the melody WAITS: a suspended clock gets resume() and half a second — after that it would arrive with some
+// unrelated later tap, so it is dropped and Listen is how it is heard; an interrupted clock (iOS) waits for the
+// system to give it back. Behind 🏠 Home it is held, and leaving Home (any way) starts the 350 ms pause afresh,
+// which a Listen press cancels. (Notes already booked on a running clock are left to finish.)
+let openingTimer=null, openingNotes=null, openingWaits=null, openingUntil=0, openingHooked=null,
+  openingStage=null, openingSilenced=false, openingQuiet=true;
+function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingNotes=null; openingWaits=null; }   // spent: Listen, ▶ Play
+function leaveOpening(){ cancelOpening(); openingStage=null; openingSilenced=false; }   // left: the next entry plays anew
+function playerEnters(){ openingQuiet=false; leaveOpening(); }   // the player's own navigation: a package, the Studio, Next, a quest
+function openingSoon(notes){ clearTimeout(openingTimer); openingNotes=notes;
+  openingTimer=setTimeout(()=>{ openingTimer=null; openingNotes=null; openingDue(notes); }, 350); }
+function openingFor(st,notes){
+  if(st===openingStage && !(openingSilenced && authBusy)) return;   // a redraw of the entered stage: as it was
+  leaveOpening(); if(!notes || !notes.length) return;
+  openingStage=st;
+  if(openingQuiet && !authBusy){ openingSilenced=true; return; }   // the page's own draw: silent until Listen
+  openingSoon(notes); }
+const homeUp=()=>homeoverlay.style.display==="flex";
+function openingDue(notes){ initAudio();
+  if(actx.state==="closed") return;
+  if(homeUp()){ openingWaits=notes; openingUntil=Infinity; return; }   // behind Home: held until it is left
+  if(actx.state===undefined || actx.state==="running"){ playPhrase(notes); return; }   // (an old context with no state: it runs)
+  openingWaits=notes; openingUntil = actx.state==="suspended" ? performance.now()+500 : Infinity;
+  if(openingHooked!==actx){ openingHooked=actx; actx.addEventListener("statechange",clockStarted); }
+  if(actx.state==="suspended") actx.resume(); }   // the page has had a click (a navigation, a sign-in): this starts it
+function clockStarted(){ if(!openingWaits || actx.state!=="running" || homeUp()) return;
+  const n=openingWaits; openingWaits=null;
+  if(performance.now()<=openingUntil) playPhrase(n); }   // too late: it would come with an unrelated tap — dropped
+function releaseOpening(){ const n=openingWaits || openingNotes; if(!n) return;   // every way off Home: the pause starts now
+  openingWaits=null; openingSoon(n); }
 function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
@@ -61,7 +104,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   // which a quest has no goals, hint or "Next level" for.
   // The status line is written by renderQuestShell, which questPaintField ends by calling: it says what
   // this phase is for and that leaving is free, instead of "press Play" and a Hint that does not exist.
-  if(isQuestScope()){ questPaintField(activeScope.runId); renderVines(); populateDevJump();
+  if(isQuestScope()){ playerEnters(); questPaintField(activeScope.runId); renderVines(); populateDevJump();
     if(speakOn && narrateReady && !instrCardUp()) narrate(curStage().intro||""); else stopSpeech();
     return; }
   const L=currentLevel(), st=curStage(), U=scopeFeatures();
@@ -81,7 +124,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   goalHint.innerHTML = goals.length ? "" : "Sandbox mode — no goals, just create. 🎶";
   hintBtn.style.display = st.hint?"":"none";
   listenBtn.style.display = (st.echo||st.call)?"":"none";
-  if(st.echo) setTimeout(()=>playPhrase(st.echo),350);   // play the phrase once on entry
+  openingFor(st, st.echo || st.call);                    // play the phrase / the call once per entry (TUN-125)
   if(drumsOn && st.carryDrums && carriedDrums){ placeDrums(carriedDrums); carriedDrums=null; }   // reuse the player's beat from the previous step
   else if(drumsOn && st.drumSetup) st.drumSetup();                                                // otherwise the fixed starting pattern
   if(st.setup) st.setup();
@@ -96,7 +139,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   setMotifGuide(!!(st.motif || L.motif));                                // tint alternating 4-col windows (Tiny Motifs)
   setFeelRow(!!(st.feel || L.feel));                                     // straight ↔ swing switch (Off the Path)
   setWobbleMeter(!!(st.wobble || L.wobble));                             // the weather glass — graded-tension gauge (Soft Wobble)
-  if(st.call){ placeCall(st.call); setTimeout(playCall, 350); }          // pre-place the call & play it once on entry
+  if(st.call) placeCall(st.call);                                        // pre-place the call — every draw, a redraw too
   setStatus( choiceStatus ? choiceStatus                                 // a picker's own prompt survives — setup() runs BEFORE this line
     : L.rhythm ? "Tap the 🥁 pads below to build a beat, then press <b>▶ Play</b>."
     : U.has("fuse") ? "Plant seeds 🌱 &nbsp;·&nbsp; craft a tool: stack <b>2–3 seeds in one column</b>, then press <b>🔨 Fuse</b>."
@@ -160,7 +203,7 @@ function showPower(p){ document.getElementById("powem").textContent=p.em;
   powoverlay.style.display="flex"; }
 function closePow(){ powoverlay.style.display="none";
   if(pendingEvolve){ pendingEvolve=false; playEvolve(); }                  // companion grows after the card is claimed
-  if(pendingReveal){ const r=pendingReveal; pendingReveal=null; setTimeout(r,350); }
+  if(pendingReveal){ const r=pendingReveal, at=curStage(); pendingReveal=null; setTimeout(()=>{ if(curStage()===at) r(); },350); }   // not on a stage drawn since (a cloud load): it would play that field over its opening melody (TUN-125)
   if(pendingFamous){ const id=pendingFamous; pendingFamous=null; setTimeout(()=>revealFamous(id),450); } }   // famous example plays as the reward, after the card
 document.getElementById("powclose").onclick=closePow;
 powoverlay.onclick=e=>{ if(e.target===powoverlay) closePow(); };
@@ -287,6 +330,6 @@ nextBtn.onclick=()=>{ const L=currentLevel();
   if(isQuestScope()) return;   // a quest phase advances through its run, never through the lesson engine
   if(!levelDone && L.steps && lessonStepIdx<L.steps.length-1){
     carriedDrums = L.steps[lessonStepIdx+1].carryDrums ? snapshotDrums() : null;
-    lessonStepIdx++; renderStage(); }
-  else if(levelIdx<activeStages().length-1){ levelIdx++; lessonStepIdx=0; renderLevel(); } };
+    lessonStepIdx++; playerEnters(); renderStage(); }
+  else if(levelIdx<activeStages().length-1){ levelIdx++; lessonStepIdx=0; playerEnters(); renderLevel(); } };
 

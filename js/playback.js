@@ -337,7 +337,7 @@ function stop(){ cancelCompletionSession("stop"); playing=false; Transport.end()
   document.querySelectorAll(".col-playing").forEach(e=>e.classList.remove("col-playing"));
   if(revealRestore) revealRestore();                  // a reveal just finished (or was interrupted) — restore state
 }
-playBtn.onclick=()=> playing?stop():start({countIn:true});
+playBtn.onclick=()=>{ if(playing) stop(); else { cancelOpening(); start({countIn:true}); } };   // ▶ plays the field, call and all: the opening melody not yet heard is spent (TUN-125)
 document.getElementById("undoBtn").onclick=undoEdit;
 document.getElementById("redoBtn").onclick=redoEdit;
 loopBtn.onclick=()=>{ looping=!looping; loopBtn.classList.toggle("on",looping); };
@@ -346,7 +346,9 @@ drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   if(drumsOn) syncCursor();          // the lane was display:none, so its pads had no geometry — re-measure the cursor rail now that they do
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
-listenBtn.onclick=()=>playPhrase(curStage().call ? curCall() : echoTarget());
+listenBtn.onclick=()=>{ cancelOpening(); playPhrase(curStage().call ? curCall() : echoTarget()); };   // heard every press — and the opening melody not yet heard is this one (TUN-125)
+listenBtn.addEventListener("pointerdown",e=>{ if(e.button===0) cancelOpening(); });   // …from the press itself (a primary press; a right-click is no Listen): one that spans the opening's deadline must not get both
+listenBtn.addEventListener("keydown",e=>{ if(e.key===" " || e.key==="Enter") cancelOpening(); });   // …and a key press: Space clicks only on release
 function applyGrooveTempo(){ tempoOnLoan=null;   // picking a groove is a choice too
   tempoEl.value=GROOVES[grooveIdx].bpm;
   Transport.retime(); }

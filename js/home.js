@@ -8,7 +8,9 @@ homeBtn.onclick=()=>{ if(isQuestScope()) leaveQuest(); else openHome(); };
 // Every way out of Home — Close, the backdrop, a package, the Studio, a quest — waits for a sign-in that is out
 // (TUN-93: one the child thinks they left must not land in what they opened next), and redraws the account
 // panel, so a sign-in form's passphrase never stays in a hidden box. false: not now.
-function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth(); return true; }
+function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth();
+  releaseOpening();   // an opening melody held behind Home plays — unless what was chosen draws another stage first (TUN-125)
+  return true; }
 function closeHome(){ leaveHome(); }
 document.getElementById("homeclose").onclick=closeHome;
 homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
@@ -60,6 +62,7 @@ function renderQuestHome(){
   }
 }
 function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull would land in this level (TUN-93)
+  playerEnters();   // a fresh entry: a melody held behind Home stays unheard, and this level's plays (TUN-125)
   setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
   leaveHome();
