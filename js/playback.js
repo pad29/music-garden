@@ -343,6 +343,7 @@ drumBtn.onclick=()=>{ drumsOn=!drumsOn; drumBtn.classList.toggle("on",drumsOn);
   setStatus(drumsOn?"🥁 Beat lane on — tap the pads to add a beat under your melody.":"Beat lane off 🌱."); };
 const listenBtn=document.getElementById("listen");
 listenBtn.onclick=()=>{ cancelOpening(); playPhrase(curStage().call ? curCall() : echoTarget()); };   // heard every press — and the opening melody not yet heard is this one (TUN-125)
+listenBtn.addEventListener("pointerdown",cancelOpening);   // …from the press itself: a press that spans the opening's deadline must not get both
 function applyGrooveTempo(){ tempoOnLoan=null;   // picking a groove is a choice too
   tempoEl.value=GROOVES[grooveIdx].bpm;
   Transport.retime(); }

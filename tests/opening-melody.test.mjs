@@ -33,7 +33,8 @@ function browserAudio(w, { pendingResume }) {
     constructor() { this.state = page.activated ? "running" : "suspended"; this.currentTime = 0; this.ls = []; this.wants = false; page.contexts.push(this); }
     run() { this.state = "running"; this.wants = false;
       Promise.resolve().then(() => { for (const fn of this.ls) fn({ type: "statechange" }); }); }
-    resume() { if (this.state === "running" || this.state === "interrupted") return Promise.resolve();   // iOS: only the system ends an interruption
+    resume() { if (!("state" in this)) return Promise.resolve();   // a context too old to have a state has no statechange either
+      if (this.state === "running" || this.state === "interrupted") return Promise.resolve();   // iOS: only the system ends an interruption
       if (page.activated) this.run(); else if (pendingResume) this.wants = true;
       return Promise.resolve(); }
     addEventListener(type, fn) { if (type === "statechange") this.ls.push(fn); }
@@ -42,7 +43,7 @@ function browserAudio(w, { pendingResume }) {
     recover() { this.run(); }
   }
   w.AudioContext = new Proxy(FakeAudioContext, { construct: (T, a) => new Proxy(new T(...a), {
-    get: (o, p) => (p in o ? o[p] : any()), set: (o, p, v) => { o[p] = v; return true; } }) });
+    get: (o, p) => (p in o || p === "state" ? o[p] : any()), set: (o, p, v) => { o[p] = v; return true; } }) });
   w.webkitAudioContext = w.AudioContext;
   page.gesture = () => { page.activated = true; for (const c of page.contexts) if (c.wants) c.run(); };
   return page;
@@ -66,7 +67,9 @@ function openingTimers(w) {
 
 const progressOn = (pkg, level, extra = {}) => ({ v: 1, name: "Ann", current: pkg, updatedAt: 1, companion: { type: "sprout" },
   packages: { [pkg]: { level, maxLevel: level, completed: false } }, settings: { speak: false }, ...extra });
-const button = () => ({ onclick: null, style: {}, textContent: "", classList: { toggle() {}, add() {}, remove() {} } });
+const button = () => { const ls = {};
+  return { onclick: null, style: {}, textContent: "", classList: { toggle() {}, add() {}, remove() {} },
+    addEventListener(type, fn) { (ls[type] ||= []).push(fn); }, fire(type) { for (const fn of ls[type] || []) fn({ type }); } }; };
 
 /**
  * A page load. `progress` is the save on this device (none: a fresh visitor). `session` stands in a signed-in
@@ -114,9 +117,9 @@ function onceRunning(g, notes, phrase) {
 const callOnField = (g, call) => call.every(([r, c]) => g.grid[r][c]);
 async function settle() { for (let i = 0; i < 6; i++) await tick(); }
 const openOn = (g, pkg, level, step = 0) => { g.setPlayScope({ kind: "package", packageId: pkg }, { levelIdx: level }); g.lessonStepIdx = step; };
-/** Finish the current Question & Answer step the way a player does: its worked answer (Hint), then ▶ Play. */
-function finishStep(g, next, notes) {
-  g.curStage().hint(); g.start(); g.stop(); g.checkLevel();
+/** Finish the current Question & Answer step the way a player does: its worked answer (Hint), then ▶ Play and ■ Stop. */
+function finishStep(g, next, notes, play) {
+  g.curStage().hint(); play.onclick(); assert.equal(g.playing, true, "▶ started the field"); play.onclick(); g.checkLevel();
   assert.equal(next.style.display, "", "Next is showing");
   notes.length = 0;   // the sweep's own notes
 }
@@ -145,7 +148,7 @@ test("a signed-in reload, a tap before the cloud answers: the call already playe
   // answer lands later on the same stage. Its redraw places the call again and plays nothing; step 2 — the same notes,
   // another stage — still plays its own.
   const save = progressOn(QA, CALM_BOLD);
-  const { g, timers, notes, cloud, tap, next } = pageLoad({ progress: save, session: true });
+  const { g, timers, notes, cloud, tap, next, play } = pageLoad({ progress: save, session: true });
   await settle(); tap(); timers.fire(); await settle();
   onceRunning(g, notes, g.curCall());
   cloud.resolve({ ...save, updatedAt: 2 }); await settle();
@@ -153,7 +156,7 @@ test("a signed-in reload, a tap before the cloud answers: the call already playe
   timers.fire(); await settle();
   onceRunning(g, notes, g.curCall());
   assert.ok(callOnField(g, g.curCall()), "the redraw placed the call again");
-  finishStep(g, next, notes); next.onclick(); timers.fire(); await settle();
+  finishStep(g, next, notes, play); next.onclick(); timers.fire(); await settle();
   assert.equal(g.lessonStepIdx, 1);
   onceRunning(g, notes, g.curCall());
 });
@@ -340,14 +343,14 @@ test("an interrupted clock (iOS): nothing is booked during the interruption, eve
 // ---- Moving on, the way a player does — and forced transitions ---------------------------------------------------
 
 test("a player's Next: 6/9 step 1 → step 2 (the same notes) → Next level onto 7/9, each opening once", async () => {
-  const { g, timers, notes, next, unlock } = pageLoad({ progress: progressOn("intro", 0) });
+  const { g, timers, notes, next, play, unlock } = pageLoad({ progress: progressOn("intro", 0) });
   await unlock(); notes.length = 0;
   g.openPkg(QA, CALM_BOLD); timers.fire(); await settle();
   onceRunning(g, notes, g.curCall());
-  finishStep(g, next, notes); next.onclick(); timers.fire(); await settle();
+  finishStep(g, next, notes, play); next.onclick(); timers.fire(); await settle();
   assert.equal(g.lessonStepIdx, 1);
   onceRunning(g, notes, g.curCall());
-  finishStep(g, next, notes); next.onclick(); timers.fire(); await settle();
+  finishStep(g, next, notes, play); next.onclick(); timers.fire(); await settle();
   assert.equal(g.levelIdx, CALM_BOLD + 1, "7/9, Fix the Mismatch");
   onceRunning(g, notes, g.curCall());
 });
@@ -444,4 +447,95 @@ test("openingFor: the same stage twice keeps one melody; another stage replaces 
   notes.length = 0;
   g.openingFor(b, [[5, 0]]); g.openingFor(a, [[6, 0]]); timers.fire();
   assert.deepEqual(notes.map(n => n.freq), [g.midiToFreq(g.MIDI[6])], "another stage drops the pending one");
+});
+
+// ---- Round 3 of GPT's PR review ------------------------------------------------------------------------------------
+
+test("one Listen press that spans the opening's deadline books one call — a running clock, and a held call with pending resume", async () => {
+  {   // down at 340 ms, the click at 370 ms
+    const { g, timers, notes, listen, unlock } = pageLoad({ progress: progressOn("intro", 0) });
+    await unlock(); notes.length = 0;
+    openOn(g, QA, CALM_BOLD); g.renderLevel();
+    timers.advance(340); listen.fire("pointerdown"); timers.advance(30); listen.onclick(); timers.fire(); await settle();
+    assert.equal(copies(g, notes, g.curCall()), 1, "running clock");
+  }
+  {   // a reload: down is the first gesture, the clock starts, the press is held 400 ms
+    const { g, page, timers, notes, listen } = pageLoad({ progress: progressOn(QA, CALM_BOLD), pendingResume: true });
+    timers.fire(); await settle();
+    listen.fire("pointerdown"); page.gesture(); await settle();
+    timers.advance(400); listen.onclick(); timers.fire(); await settle();
+    assert.equal(copies(g, notes, g.curCall()), 1, "held through the unlock");
+  }
+});
+
+test("a quest that fails to start from Home (storage full) leaves the player on 6/9: the held call plays there, once", async () => {
+  const { g, timers, notes, home, unlock, page } = pageLoad({ progress: progressOn("intro", 0) });
+  await unlock(); notes.length = 0;
+  g.openPkg(QA, CALM_BOLD); home.onclick(); timers.fire(); await settle();
+  assert.deepEqual(notes, [], "held behind Home");
+  g.saveQuestRuns = () => false;                      // the store refuses the run
+  const rng = g.questRng; g.questRng = () => rng("fixture-4");
+  g.leaveHome();                                      // what Home's quest row does first…
+  assert.equal(g.startQuestRun("firefly-crossing").code, "store-failed");   // …then the run fails to start
+  assert.equal(g.levelIdx, CALM_BOLD); void page;
+  timers.fire(); await settle();
+  onceRunning(g, notes, g.curCall());
+});
+
+test("Close on a clock still suspended (an early resume() dropped): the Close click starts it, and the call plays once", async () => {
+  const { g, page, timers, notes, home, homeclose } = pageLoad({ progress: progressOn(QA, CALM_BOLD) });
+  timers.fire(); await settle();                      // held: no gesture yet
+  home.onclick();                                     // the menu (its click resumes nothing)
+  page.gesture(); homeclose.onclick(); await settle(); timers.fire(); await settle();
+  onceRunning(g, notes, g.curCall());
+});
+
+test("the clock starts behind Home: the pause runs from Close, so a Listen 50 ms after Close is the only copy", async () => {
+  const { g, timers, notes, home, homeclose, listen, tap } = pageLoad({ progress: progressOn(QA, CALM_BOLD) });
+  timers.fire(); await settle();
+  home.onclick(); tap(); await settle();              // running, but Home is up
+  timers.advance(340); assert.deepEqual(notes, []);
+  homeclose.onclick(); timers.advance(50);
+  assert.deepEqual(notes, [], "nothing 50 ms after Close");
+  listen.onclick(); timers.fire(); await settle();
+  assert.equal(copies(g, notes, g.curCall()), 1, "Listen's copy only");
+});
+
+test("a power card's reveal (Call the Band's) left over when a cloud load draws 6/9: no transport on the new field, the call once", async () => {
+  const { g, timers, notes, unlock } = pageLoad({ progress: progressOn("intro", 0) });
+  await unlock(); notes.length = 0;
+  openOn(g, "intro", 2); g.renderLevel();
+  g.pendingReveal = g.currentLevel().reveal; assert.equal(typeof g.pendingReveal, "function", "Call the Band has a reveal");
+  g.closePow();                                       // its 350 ms reveal is queued…
+  openOn(g, QA, CALM_BOLD); g.renderLevel();          // …and the cloud draws 6/9, the call on its field
+  let started = 0; const real = g.start; g.start = o => { started++; real(o); };
+  timers.fire(); await settle(); g.stop();
+  assert.equal(started, 0, "the old level's reveal does not start the transport here");
+  onceRunning(g, notes, g.curCall());
+});
+
+test("a context too old to report a state: a call held behind Home plays once when Home closes", async () => {
+  const { g, page, timers, notes, home, homeclose, unlock } = pageLoad({ progress: progressOn("intro", 0) });
+  await unlock(); notes.length = 0;
+  delete page.contexts[0].state;
+  g.openPkg(QA, CALM_BOLD); home.onclick(); timers.fire(); await settle();
+  assert.deepEqual(notes, []);
+  homeclose.onclick(); timers.fire(); await settle();
+  assert.equal(copies(g, notes, g.curCall()), 1);
+});
+
+test("the pause after an unlock, 200 ms in: a redraw keeps its deadline; a Next moves it to the new step's; the Studio drops it", async () => {
+  for (const then of ["redraw", "next", "studio"]) {
+    const { g, timers, notes, next, tap } = pageLoad({ progress: progressOn(QA, CALM_BOLD) });
+    timers.fire(); await settle();
+    tap(); await settle();                            // the clock runs: the held call's 350 ms pause starts
+    timers.advance(200);
+    if (then === "redraw") g.renderLevel(); else if (then === "next") next.onclick(); else g.openStudio();
+    timers.advance(150); await settle();
+    if (then === "redraw") { onceRunning(g, notes, g.curCall()); continue; }
+    assert.deepEqual(notes, [], `${then}: nothing at the first deadline`);
+    timers.advance(200); await settle();
+    if (then === "next") { assert.equal(g.lessonStepIdx, 1); onceRunning(g, notes, g.curCall()); }
+    else assert.deepEqual(notes, [], "the Studio: nothing");
+  }
 });

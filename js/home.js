@@ -8,8 +8,10 @@ homeBtn.onclick=()=>{ if(isQuestScope()) leaveQuest(); else openHome(); };
 // Every way out of Home — Close, the backdrop, a package, the Studio, a quest — waits for a sign-in that is out
 // (TUN-93: one the child thinks they left must not land in what they opened next), and redraws the account
 // panel, so a sign-in form's passphrase never stays in a hidden box. false: not now.
-function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth(); return true; }
-function closeHome(){ if(leaveHome()) releaseOpening(); }   // back to the level as it was: an opening melody held behind Home plays now (TUN-125)
+function leaveHome(){ if(authBusy) return false; homeoverlay.style.display="none"; renderAuth();
+  releaseOpening();   // an opening melody held behind Home plays — unless what was chosen draws another stage first (TUN-125)
+  return true; }
+function closeHome(){ leaveHome(); }
 document.getElementById("homeclose").onclick=closeHome;
 homeoverlay.onclick=e=>{ if(e.target===homeoverlay) closeHome(); };
 pname.oninput=()=>{ savePlayerName(pname.value.trim()); updateTitle(); };

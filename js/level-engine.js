@@ -10,7 +10,8 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
 // later), and notes booked then are not lost, they all sound together the moment it runs, over whatever is booked
 // then — and never behind 🏠 Home. Either way it is HELD (booked nothing), and plays 350 ms after the clock runs and
 // Home is closed, the same pause as on entry, which a Listen press inside it cancels. (Notes already booked on a
-// running clock are left to finish: nothing can take them back.)
+// running clock are left to finish: nothing can take them back.) Every way off Home releases it (a quest that
+// fails to start leaves the player on the level), and a click that does — Close, the backdrop — starts the clock.
 let openingTimer=null, openingWaits=null, openingHooked=null, openingStage=null;
 function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }   // spent: Listen, ▶ Play
 function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: a package, the Studio or a quest is entered — it plays anew
@@ -18,14 +19,15 @@ function openingSoon(notes){ openingTimer=setTimeout(()=>{ openingTimer=null; op
 function openingFor(st,notes){ if(st===openingStage) return;     // a redraw of the entered stage: as it was
   leaveOpening(); if(!notes || !notes.length) return;
   openingStage=st; openingSoon(notes); }
+const clockRuns=()=>actx.state===undefined || actx.state==="running";   // (a context too old to report a state: it runs)
 function openingDue(notes){ initAudio();
-  const runs = actx.state===undefined || actx.state==="running";   // (a context too old to report a state: it runs)
-  if(runs && homeoverlay.style.display!=="flex"){ playPhrase(notes); return; }
+  if(clockRuns() && homeoverlay.style.display!=="flex"){ playPhrase(notes); return; }
   openingWaits=notes;
   if(openingHooked!==actx){ openingHooked=actx; actx.addEventListener("statechange",releaseOpening); }
-  if(!runs) actx.resume(); }   // starts the clock if the page has had a gesture; otherwise a gesture's resume() will
-function releaseOpening(){ if(!openingWaits || !actx || actx.state!=="running") return;
-  const n=openingWaits; openingWaits=null; openingSoon(n); }   // statechange to running, or Home closed: openingDue looks again
+  if(!clockRuns()) actx.resume(); }   // starts the clock if the page has had a gesture; otherwise a gesture's resume() will
+function releaseOpening(){ if(!openingWaits || homeoverlay.style.display==="flex") return;   // behind Home: the pause starts when it closes
+  if(!clockRuns()){ actx.resume(); return; }   // Home closed by a click: that gesture may start the clock (its statechange comes back here)
+  const n=openingWaits; openingWaits=null; openingSoon(n); }   // statechange to running, or Home left
 function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/modes/grids/flags so a level or step starts clean
   pendingReveal=null; revealRestore=null; revealHarm=revealSync=false;   // drop any reveal in flight
   clearContourGhost(); hideChoices(); setBeatGuide(false); setPhraseGuide(false); setDensityMeter(false); setColorReveal(null); setMood(null); setMotifGuide(false); setFeelRow(false); setWobbleMeter(false);   // drop any contour/pulse/phrase/density/color-reveal/mood/motif/feel/wobble UI
@@ -185,7 +187,7 @@ function showPower(p){ document.getElementById("powem").textContent=p.em;
   powoverlay.style.display="flex"; }
 function closePow(){ powoverlay.style.display="none";
   if(pendingEvolve){ pendingEvolve=false; playEvolve(); }                  // companion grows after the card is claimed
-  if(pendingReveal){ const r=pendingReveal; pendingReveal=null; setTimeout(r,350); }
+  if(pendingReveal){ const r=pendingReveal, at=curStage(); pendingReveal=null; setTimeout(()=>{ if(curStage()===at) r(); },350); }   // not on a stage drawn since (a cloud load): it would play that field over its opening melody (TUN-125)
   if(pendingFamous){ const id=pendingFamous; pendingFamous=null; setTimeout(()=>revealFamous(id),450); } }   // famous example plays as the reward, after the card
 document.getElementById("powclose").onclick=closePow;
 powoverlay.onclick=e=>{ if(e.target===powoverlay) closePow(); };

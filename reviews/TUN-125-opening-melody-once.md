@@ -226,6 +226,81 @@ mutation check run by hand on each line of the round-3 code fails at least one t
 - Close's release, and `openPkg`'s fresh entry;
 - the Play button's and Listen's cancel.
 
+## PR review — round 3 (gpt-6.2-astra, through `ask.sh`), on 3ca520d — the last round the skill allows
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested on PR #178, head `3ca520d`.** The round‑2 high finding is resolved. A cloud redraw can no longer book the opening on the map or carry it through a successful quest entry. The remaining issues include a duplicate from a single Listen press and a held opening that can be stranded when quest entry fails.
+
+### Round‑2 rulings
+
+| Finding | Ruling |
+|---|---|
+| 1. Cloud redraw behind Home or into a quest | **Resolved.** `openingDue` checks Home at booking time. Successful quest entry clears both held notes and the timer. Studio draws a different, melody-free stage. Package Play, Continue, and Replay start a fresh entry. `placeCall` still runs on every Q&A draw. `js/level-engine.js:18`, `:23`, `:89`, `:124`, `js/home.js:62`, `:70` |
+| 2. Close or backdrop loses an unheard opening | **Resolved on a running clock.** Both exits preserve the field and release the held call. An already-heard call stays spent. **Still incomplete on a suspended clock** under one of the PR’s two resume models, as detailed below. `js/home.js:11–14`, `js/level-engine.js:27` |
+| 3. Listen as the first gesture doubles the call | **Not resolved.** The delay protects clicks that finish before the deadline. A press that starts before booking and finishes after it still produces two copies. `js/level-engine.js:17`, `:28`, `js/playback.js:345` |
+| 4. A reveal or Jam spends the next echo | **Resolved for the reported missing echo.** Neither scripted `start()` nor Jam on/off consumes it. The same change exposes a duplicate when the destination has a **pre-placed call**. `js/playback.js:302`, `:336`, `:351`, `js/level-engine.js:124` |
+| 5. Forced step change could pass with the old timer | **Resolved.** The test advances 200 ms before changing steps and requires silence at step one’s deadline. Keeping step one’s timer now fails even though both steps use identical notes. `tests/opening-melody.test.mjs:357–366` |
+
+### Must change before merge
+
+| Severity | Concrete failure and regression case |
+|---|---|
+| **Medium** | **One Listen press can still book two calls.** On a guest Q&A reload with a held call and pending resume, press Listen, deliver the running `statechange`, hold for 400 ms, then release. The timer books the automatic call at 350 ms. The click books the manual copy. Even a short press can cross the **original** entry deadline on a running clock, for example down at 340 ms and click at 370 ms. Expect one booking for either press. The existing test yields between down and click but advances its virtual clock by **zero**. The press begins while cancellation is still possible, so handling press intent before `click` can fix this within the ticket’s booking boundary. `js/level-engine.js:17`, `:23`, `:28`, `js/playback.js:345`, `tests/opening-melody.test.mjs:179–187` |
+| **Medium** | **A failed quest entry strands the held call on the level the player returns to.** With audio running, open Home on Q&A, let the timer expire, then choose an eligible quest with storage full. The card or trail row hides Home first. `startQuestRun()` returns `store-failed` before changing scope. The original field is visible, `openingWaits` still holds its call, and nothing schedules it. Exercise the actual row with a failed quest write and expect one call on the retained level, zero while Home is visible. The current test calls `leaveHome()` and `startQuestRun()` directly, supplies no completed quest prerequisites, and exercises only success. `js/home.js:38–40`, `:54–57`, `js/quest-shell.js:435–438`, `tests/opening-melody.test.mjs:262–275` |
+| **Medium** | **Close can leave the call waiting for another gesture.** In the suite’s `pendingResume: false` model, reload Q&A and let the opening timer expire before any gesture. Use the menu to open Home, then dismiss via Close or backdrop. None of those controls calls `resume()`. `releaseOpening()` sees `suspended` and returns, so waiting on the visible level produces silence until some later audio action. Repeat the test using just the real controls and expect one running-clock booking after dismissal. The current Home test calls `unlock()`, which explicitly resumes the context on the player’s behalf. `js/home.js:7–19`, `js/level-engine.js:26–28`, `tests/opening-melody.test.mjs:93–95`, `:252–258` |
+| **Medium** | **A stale reveal now plays a Q&A call twice.** Claim “Call the Band,” then let a pending cloud pull restore Q&A 6/9 before the reveal’s 350 ms callback. The redraw places the call in the grid. The old reveal starts the transport on that grid, and the destination timer independently books the same call through `playPhrase`. The stale reveal predates this PR. The **second booking** is the difference from round 2. Test with the actual reveal and a pre-placed call, let the transport reach the call columns, and expect one rendition. The current test substitutes an immediate `start(); stop()` on an empty echo field. Guarding the old reveal before it starts would also preserve the empty-echo fix. `js/level-engine.js:109`, `:124`, `:188`, `js/packages.js:18`, `js/playback.js:182`, `:302`, `tests/opening-melody.test.mjs:317–324` |
+| **Medium** | **Unlock behind Home can consume nearly the entire advertised post-Close pause.** With a call held behind Home, deliver the running `statechange` at time 0. It clears `openingWaits` and starts a timer while Home is still visible. Close at 340 ms. Close finds nothing to release, and the call books at 350 ms, **10 ms after dismissal**. A Listen click 50 ms after dismissal then books a second copy despite falling inside the documented pause. Test those deadlines and expect silence until 350 ms after Close, with an intervening Listen replacing the opening. The present test drains the timer while Home is still up, which hides this ordering. `js/level-engine.js:23–28`, `js/home.js:12`, `README.md:150`, `tests/opening-melody.test.mjs:252–258` |
+
+### Lower-severity coverage and compatibility
+
+- **Low — inconsistent legacy fallback.** `openingDue` treats `actx.state === undefined` as running, but `releaseOpening` requires the literal `"running"`. On a context using that fallback, let a call become held behind Home and close it. The call stays held. The same running predicate should govern booking and release. `js/level-engine.js:22–27`
+- **Re-armed timer coverage.** Hold a call, unlock, advance 200 ms, then separately redraw the same stage, advance to the next step, or enter Studio. Expect the original deadline to survive the redraw, silence at that deadline after Next followed by one new-step call, and silence in Studio. The current forced-transition tests exercise entry timers or held notes before recovery. `tests/opening-melody.test.mjs:357–388`
+- **Player-path test.** `finishStep()` calls `g.start()` directly. Since the Play button now owns distinct behavior, the “player’s Next” test can still pass if that button fails to start playback. Use its actual Play and Stop clicks before asserting that Next appears. `tests/opening-melody.test.mjs:118–121`, `:342–352`
+
+This was a read-only source review of `c4f85c6` and `3ca520d`. I excluded the TUN‑69 merge and did not execute the PR, its tests, or browser audio.
+
+</details>
+
+### My answers — all agreed; the fixes are in the commit after 3ca520d, **not reviewed by GPT** (three rounds used)
+
+1. **Medium — one Listen press can still book two calls. Agreed.** Listen now cancels the opening from the press
+   itself (`pointerdown`), as well as on click, so a press that spans the deadline (down at 340 ms, click at 370
+   ms; or held 400 ms through an unlock) books Listen's copy only. Test added for both cases.
+2. **Medium — a failed quest entry strands the held call. Agreed.** Every way off Home now releases it:
+   `leaveHome()` calls `releaseOpening()`, not only `closeHome()`. A choice that draws another stage (a package,
+   the Studio, a quest that starts) drops it in the same turn. A quest that fails to start leaves the call to play
+   once on the level the player is left on. Test added: `store-failed`, through `leaveHome` then `startQuestRun`, as
+   Home's row does. It does not click the row itself, which the harness cannot build.
+3. **Medium — Close can leave the call waiting for another gesture. Agreed.** `releaseOpening()` on a clock that is
+   not running now calls `resume()`. From Close or the backdrop that is a click, so the clock starts, and its
+   `statechange` releases the call. Test added with no `unlock()`: the real Home and Close only.
+4. **Medium — a stale reveal now plays a Q&A call twice. Agreed.** `closePow()` remembers the stage its reveal
+   belongs to and skips it if a different stage has been drawn by then (a cloud load). This touches the reveal's
+   behaviour, which is older than this PR. It is the guard GPT suggested, and nothing else about reveals changes.
+   Test added with Call the Band's real reveal and 6/9's pre-placed call: no transport start, the call once.
+5. **Medium — an unlock behind Home eats the post-Close pause. Agreed.** `releaseOpening()` keeps the call held
+   while Home is up, so the 350 ms pause starts when Home is left. Test added with GPT's deadlines: running at 0,
+   Close at 340, nothing 50 ms later, Listen's copy the only one.
+6. **Low — inconsistent fallback for a context with no state. Agreed.** One predicate, `clockRuns()`, for booking
+   and release. Test added. It needed the fake fixed twice: its proxy hid a deleted `state`, and its `resume()`
+   gave a stateless context a state machine it would not have.
+7. **Tests — re-armed timer coverage. Added**: hold, unlock, 200 ms, then a redraw (the deadline survives), a Next
+   (nothing at the old deadline, the new step's call at its own) or the Studio (nothing).
+8. **Tests — the player's path pressed `start()` directly. Fixed**: it presses the real ▶ and ■ (Play button),
+   and asserts the field started.
+
+### Round-4 verification (mine; no GPT round)
+
+`tests/opening-melody.test.mjs`, 42 tests, all pass; on 3ca520d's code the five covering findings 1–5 fail. Each
+new line was mutation-checked by hand: the `pointerdown` cancel, `leaveHome`'s release, the release's `resume()`,
+the release's Home check, the reveal guard, the no-state fallback. Removing any one fails at least one test. Full
+suite 1149/1149.
+
 ## Owner's decisions
 
-None asked.
+1. **open — the reload choice.** After a reload on a level with an opening melody, it plays once at the first tap,
+   press or click (today's behaviour, kept), or stays silent until 🔊 Listen. The owner (2026-11-25, 3:57 PM PT,
+   through the coordinator) will playtest it and decide. The current behaviour stays until then.
+2. **open — the round-3 fixes are unreviewed.** The skill allows three PR review rounds; all are used. Either a
+   fourth GPT round on the round-3 delta, or a hand-off for playtest on my verification alone.
