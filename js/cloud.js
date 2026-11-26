@@ -177,12 +177,13 @@ function applyProgress(){   // re-apply the progress object to the running game
 // Returns { signedIn, saved }. signedIn: this run had a usable session for its account and was not replaced (a
 // failed load or save is still a sign-in; the panel says the cloud is resting). saved: the CURRENT progress is in
 // the cloud — loaded from it, or pushed with no newer save since (the same test as "saved to cloud").
-let _formRunOut=0;   // the run of a form's sign-in while it is still loading or saving (TUN-128); 0 when none is
+// The run still looking up, loading or saving (TUN-128) — a form's sign-in, boot's resume or the card's upload; 0 when
+// none is. A sign-in that begins ends it there and then, so nothing it loads afterwards lands under the new sign-in.
+let _syncRunOut=0;
 async function onSignedIn(uploadLocal,onlyFor,onlySub,opts={}){
-  if(!opts.form) return signedInRun(uploadLocal,onlyFor,onlySub,opts);
   const out=signedInRun(uploadLocal,onlyFor,onlySub,opts), run=_cloudRun;   // the run starts before its first await
-  _formRunOut=run;
-  try{ return await out; } finally{ if(_formRunOut===run) _formRunOut=0; } }
+  _syncRunOut=run;
+  try{ return await out; } finally{ if(_syncRunOut===run) _syncRunOut=0; } }
 async function signedInRun(uploadLocal,onlyFor,onlySub,opts){ const NO={ signedIn:false, saved:false };
   // A new run, before anything is checked: whatever this tab synced before stops here — its queued save dropped,
   // its right to write gone — so a sign-in that turns out not to work never leaves an older writer behind.
@@ -298,7 +299,7 @@ async function signInWith(nameText,passText,form){
   const { username, password }=signInPair(nameText,passText);
   if(!username || !password) return { ok:false, msg:AUTH_SAYS.empty };
   authBusy++; const mine=++_signInSeq;
-  if(_formRunOut && _formRunOut===_cloudRun) dropSync();   // an older sign-in still loading or saving: this one replaces it now
+  if(_syncRunOut && _syncRunOut===_cloudRun) dropSync();   // an older sign-in, or boot's resume, still out: this one replaces it now
   const replaced=()=> mine!==_signInSeq;   // a newer sign-in began meanwhile: it decides the tab's account
   try{
     let acct; try{ acct=sessionAccount(await cogSignIn(username,password)); }
@@ -307,9 +308,11 @@ async function signInWith(nameText,passText,form){
     // Not signed in: the session named no account, or it was gone or replaced before it could be used, so the form
     // stays. A failed progress load or save is still a sign-in (the panel says the cloud is resting), and the form goes.
     if(!acct) return { ok:false, msg:AUTH_SAYS.other };
-    if(!(await onSignedIn(false,acct.name,acct.sub,{ form:form||true })).signedIn) return { ok:false, msg:replaced() ? AUTH_SAYS.replaced : AUTH_SAYS.other };
+    const r=await onSignedIn(false,acct.name,acct.sub,{ form:form||true });
+    if(replaced()) return { ok:false, msg:AUTH_SAYS.replaced };   // whatever this sign-in's sync did, the newer one decides
+    if(!r.signedIn) return { ok:false, msg:AUTH_SAYS.other };
     return { ok:true }; }
-  catch(e){ console.warn("Tune Garden: signing in failed", e); return { ok:false, msg:AUTH_SAYS.other }; }
+  catch(e){ console.warn("Tune Garden: signing in failed", e); return { ok:false, msg:replaced() ? AUTH_SAYS.replaced : AUTH_SAYS.other }; }
   finally{ authBusy--; } }
 // The passphrase box, emptied and hidden again: on every way out of a sign-in form.
 function clearPassBox(pass,showBtn){ pass.value=""; pass.type="password"; if(showBtn) showBtn.textContent="👁️ Show"; }

@@ -1006,3 +1006,90 @@ test("TUN-128 round 2 (4): a loss only the final redraw finds puts Home's form b
   openCard(u); keep(u); await go(u);
   assert.match(said(u), /isn't in the cloud yet/, "no credit for a run the game ended");
 });
+
+// ---------- TUN-128, PR review round 3 ----------
+test("TUN-128 round 3: the landing's sign-in at its load, Home's newer form already up: A's load, progress or none, leaves B's form, words and lock alone", async () => {
+  for (const answer of ["progress", "null"]) {
+    const t = cardGame({ landing: true });
+    t.g.onSignedIn = t.realOnSignedIn;
+    let releaseGet; const heldGet = new Promise(r => { releaseGet = r; });
+    t.session.api = method => (method === "GET" ? heldGet : { ok: true, status: 200, json: async () => ({ ok: true }) });
+    let releaseB; const heldB = new Promise(r => { releaseB = r; });
+    const stub = t.g.cogSignIn;
+    t.g.cogSignIn = async (u, p) => { if (u === "calm-wren-10") await heldB; return stub(u, p); };
+    const before = JSON.stringify(t.g.progress);
+    let applied = 0, narrated = 0;
+    const apply = t.g.applyProgress; t.g.applyProgress = () => { applied++; apply(); };
+    const narrate = t.g.narrate; t.g.narrate = (...a) => { narrated++; return narrate(...a); };
+    // B's Home form is up first; then A signs in from the landing and waits for its load; then B is submitted.
+    t.g.renderAuth(); button(t.authbox, "Sign in").onclick();
+    t.elements.landingUser.value = "brave-otter-42"; t.elements.landingPass.value = "acorn map tulip wren";
+    const a = t.g.doLandingSignIn(); for (let i = 0; i < 3; i++) await tick();
+    const [user, pass] = inputs(t.authbox); user.value = "calm-wren-10"; pass.value = "fig map oak ivy";
+    const b = button(t.authbox, "Sign in").onclick(); await tick();
+    releaseGet({ ok: true, status: 200, json: async () => (answer === "null" ? null : { v: 1, packages: { intro: { level: 9 } } }) });
+    await a; await tick();
+    assert.equal(JSON.stringify(t.g.progress), before, `${answer}: A's load not applied`);
+    assert.equal(applied, 0, answer); assert.equal(narrated, 0, `${answer}: nothing read aloud`);
+    assert.equal(t.session.requests.filter(r => r.method === "PUT").length, 0, `${answer}: no first save for A`);
+    assert.equal(t.elements.landingMsg.textContent, REPLACED, answer);
+    assert.ok(pass.parent, `${answer}: B's form is the one on the page`);
+    assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"], answer);
+    assert.equal(byClass(t.authbox, "authmsg").textContent, "Signing in…", answer);
+    assert.deepEqual([button(t.authbox, "Sign in").disabled, button(t.authbox, "Cancel").disabled], [true, true], answer);
+    t.elements.homeoverlay.style.display = "flex";
+    assert.equal(t.g.leaveHome(), false, `${answer}: Home stays locked`);
+    releaseB(); await b;
+    assert.equal(t.session.user, "calm-wren-10", answer);
+  }
+});
+
+test("TUN-128 round 3 (2): a sign-in whose sync answers after a newer sign-in began says the newer one took over, whether the sync succeeded or failed", async () => {
+  // A: the landing's sign-in; its sync finishes, but its answer waits. B: Home's form, already up, submitted meanwhile.
+  for (const outcome of ["succeeded", "failed"]) {
+    const t = cardGame({ landing: true });
+    let gate; const held = new Promise(r => { gate = r; });
+    let first = true;
+    t.g.onSignedIn = async (...args) => { const r = await t.realOnSignedIn(...args);
+      if (first) { first = false; await held; if (outcome === "failed") throw new Error("the sync failed"); }
+      return r; };
+    let releaseB; const heldB = new Promise(r => { releaseB = r; });
+    const stub = t.g.cogSignIn;
+    t.g.cogSignIn = async (u, p) => { if (u === "calm-wren-10") await heldB; return stub(u, p); };
+    let hidden = 0; t.g.hideLanding = () => { hidden++; };
+    t.g.renderAuth(); button(t.authbox, "Sign in").onclick();
+    const { landingUser, landingPass, landingMsg } = t.elements;
+    landingUser.value = "brave-otter-42"; landingPass.value = "acorn map tulip wren";
+    const a = t.g.doLandingSignIn(); for (let i = 0; i < 4; i++) await tick();
+    const [user, pass] = inputs(t.authbox); user.value = "calm-wren-10"; pass.value = "fig map oak ivy";
+    const b = button(t.authbox, "Sign in").onclick(); await tick();
+    const warn = console.warn; console.warn = () => {};
+    try { gate(); await a; } finally { console.warn = warn; }
+    assert.equal(hidden, 0, `${outcome}: the landing does not close`);
+    assert.equal(landingMsg.textContent, REPLACED, outcome);
+    assert.deepEqual([landingUser.value, landingPass.value], ["brave-otter-42", "acorn map tulip wren"], `${outcome}: its words kept`);
+    assert.ok(pass.parent, `${outcome}: B's form is on the page`);
+    assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"], outcome);
+    t.elements.homeoverlay.style.display = "flex";
+    assert.equal(t.g.leaveHome(), false, `${outcome}: B's sign-in still holds Home`);
+    releaseB(); await b;
+  }
+});
+
+test("TUN-128 round 3: an accepted load whose account changes before its outcome is checked is no sign-in, with another Home form on the page", async () => {
+  const t = cardGame({ landing: true });
+  t.g.onSignedIn = t.realOnSignedIn;
+  t.session.api = method => (method === "GET" ? { ok: true, status: 200, json: async () => ({ v: 1, packages: { intro: { level: 4 } } }) }
+    : { ok: true, status: 200, json: async () => ({ ok: true }) });
+  let hidden = 0; t.g.hideLanding = () => { hidden++; };
+  t.g.renderAuth(); button(t.authbox, "Sign in").onclick();   // another form owns Home's panel
+  const [user] = inputs(t.authbox); user.value = "calm-wren-10";
+  const apply = t.g.applyProgress; t.g.applyProgress = () => { apply(); t.session.user = "calm-wren-10"; };   // the switch lands just after
+  t.elements.landingUser.value = "brave-otter-42"; t.elements.landingPass.value = "acorn map tulip wren";
+  await t.g.doLandingSignIn();
+  assert.equal(hidden, 0, "not a sign-in: the landing stays");
+  assert.equal(t.elements.landingPass.value, "acorn map tulip wren");
+  assert.match(t.elements.landingMsg.textContent, SOMETHING);
+  assert.equal(t.g.cloudSync, "off");
+  assert.ok(user.parent, "the other form is untouched"); assert.equal(user.value, "calm-wren-10");
+});

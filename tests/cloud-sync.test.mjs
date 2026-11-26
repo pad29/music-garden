@@ -66,7 +66,7 @@ function recording(stub) {
 // claimOf(name): the account a session's ID token names (TUN-93's token check); extraSetup(window): more page set-up.
 // subOf(name): the account's permanent id in its tokens; setSubOf changes it mid-test (a deleted name reused).
 function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {}, claimOf = n => n, extraSetup = null,
-  subOf = n => "sub-" + n } = {}) {
+  subOf = n => "sub-" + n, holdBoot = false } = {}) {
   let subNow = subOf;
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
@@ -74,6 +74,8 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   // cacheOf(name): the cached ID token's claims, when a test makes them differ from the session's (null: none cached);
   // sessionSubOf(name): the sub a fresh session hands out, when it differs from the cache's; holdOnce: the next lookup waits.
   let cacheOf = null, sessionSubOf = null, holdOnce = null;
+  // holdBoot: the first lookup — boot's own resume, with a bootUser — waits until releaseBoot() is called.
+  let releaseBoot = () => {}; if (holdBoot) holdOnce = new Promise(r => { releaseBoot = r; });
   let afterLookup = null;   // runs once, right after the next lookup has answered (another tab acting in between)
   const saves = new Map(); let serial = 1e6;
   const authbox = { kids: [], set innerHTML(v) { this.kids = []; }, get innerHTML() { return ""; },
@@ -117,7 +119,7 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
     revoke: name => { revoked.add(name); },
     setCache: f => { cacheOf = f; }, setSessionSubOf: f => { sessionSubOf = f; },
     holdNextLookup: () => { let release; holdOnce = new Promise(r => { release = r; }); return () => release(); },
-    afterNextLookup: f => { afterLookup = f; } };
+    afterNextLookup: f => { afterLookup = f; }, releaseBoot: () => releaseBoot() };
 }
 
 // GET /progress answers `get`; PUT /progress answers `put` (default 200).
@@ -1299,7 +1301,9 @@ test("TUN-128 round 2: a load whose body finishes under another account is lost,
   const pull = g.cloudPull; g.cloudPull = async a => { const r = await pull(a); t.signIn("ann"); return r; };
   const before = JSON.stringify(g.progress), stored = g.__window.localStorage.getItem("mg_progress"), narrate = g.narrateReady;
   let applied = 0; const apply = g.applyProgress; g.applyProgress = () => { applied++; apply(); };
+  let narrated = 0; const realNarrate = g.narrate; g.narrate = (...a) => { narrated++; return realNarrate(...a); };
   assert.deepEqual({ ...await g.onSignedIn(false) }, { signedIn: false, saved: false });
+  assert.equal(narrated, 0, "nothing read aloud");
   assert.equal(JSON.stringify(g.progress), before);
   assert.equal(g.__window.localStorage.getItem("mg_progress"), stored);
   assert.equal(applied, 0); assert.equal(g.narrateReady, narrate);
@@ -1345,4 +1349,64 @@ test("TUN-128 round 2: opening Home after another tab switched the account ends 
   const check = t.g.accountIs; t.g.accountIs = (n, s) => { const ok = check(n, s); t.signIn("bea"); return ok; };
   t.g.renderAuth(); t.g.accountIs = check;
   assert.doesNotMatch(t.panel(), /\bbea\b/i);
+});
+
+// ---------- TUN-128, PR review round 3 ----------
+test("TUN-128 round 3: boot's own resume, its first lookup held: a new sub under the name in the meantime loads nothing", async () => {
+  const t = cloudGame({ bootUser: "ann", holdBoot: true, answer: routes() });
+  await tick();
+  t.setSubOf(n => "sub-" + n + "-2");   // the cache and the session both name ann with another sub now
+  t.releaseBoot(); for (let i = 0; i < 4; i++) await tick();
+  assert.deepEqual(t.net.requests, [], "no GET");
+  assert.equal(t.g.cloudSync, "off");
+});
+
+test("TUN-128 round 3 (1): a sign-in begun while boot's resume is still out ends that resume: nothing of ann's lands, and bea's first save is this device's own garden", async () => {
+  const ANNS = withLevel(clone(CLOUD), 6);
+  const t = cloudGame({ bootUser: "ann", holdBoot: true,
+    answer: answers(req => reply(200, req.token.startsWith("token-bea") ? null : clone(ANNS)), () => reply(200, { ok: true })) });
+  const { g, net } = t;
+  await tick();
+  const device = JSON.stringify(g.progress), local = lvl(g.progress);
+  let applied = 0, narrated = 0;
+  const apply = g.applyProgress; g.applyProgress = () => { applied++; apply(); };
+  const narrate = g.narrate; g.narrate = (...a) => { narrated++; return narrate(...a); };
+  const heldB = deferred();
+  g.cogSignIn = async () => { await heldB.promise; t.signIn("bea"); return signedInSession({ "cognito:username": "bea", sub: "sub-bea" }); };
+  const b = g.signInWith("bea", "fig map oak ivy"); await tick();
+  t.releaseBoot(); for (let i = 0; i < 6; i++) await tick();   // ann's resume goes on while bea authenticates
+  assert.equal(applied, 0, "ann's garden not applied"); assert.equal(narrated, 0, "nor read aloud");
+  assert.equal(JSON.stringify(g.progress), device);
+  assert.equal(puts(net).length, 0, "no first save for ann");
+  heldB.resolve(); assert.equal((await b).ok, true);
+  const sent = puts(net);
+  assert.equal(sent.length, 1, "bea's cloud copy was empty: her first save");
+  assert.equal(sent[0].token, "token-bea:sub-bea");
+  assert.equal(lvl(JSON.parse(sent[0].body)), local, "this device's own garden, not ann's");
+});
+
+test("TUN-128 round 3: a lookup that saw nobody, or another sub, stays lost even if ann is back before its caller goes on", async () => {
+  for (const [what, before, after] of [
+    ["nobody", t => t.signIn(null), t => t.signIn("ann")],
+    ["another sub cached, offline", t => { t.offline("ann"); t.setCache(() => ({ "cognito:username": "ann", sub: "sub-ann-reused" })); },
+      t => { t.setCache(null); t.offline("ann", false); }],
+  ]) {
+    // A ready save.
+    const t = cloudGame(); const { g, net } = t; net.answer = routes();
+    await g.onSignedIn(false); const sent = puts(net).length;
+    const real = g.freshId; g.freshId = (n, s) => real(n, s).then(r => { after(t); return r; });
+    before(t); g.commitProgress(); await t.runSaves();
+    g.freshId = real;
+    assert.equal(g.cloudSync, "off", `${what}: revoked`);
+    assert.equal(g.cloudResting, false, `${what}: not the cloud resting`);
+    g.commitProgress(); await t.runSaves();
+    assert.equal(puts(net).length, sent, `${what}: nothing until a fresh load`);
+    // The form's load lookup.
+    const u = cloudGame(); u.net.answer = routes();
+    u.g.cogSignIn = async () => signedInSession(ANN);
+    const realU = u.g.freshId; let n = 0;
+    u.g.freshId = (a, b) => (++n === 2 ? (before(u), realU(a, b).then(r => { after(u); return r; })) : realU(a, b));
+    assert.equal((await u.g.signInWith("ann", "acorn map tulip wren")).ok, false, `${what}: the form keeps its retry`);
+    assert.deepEqual(u.net.requests, [], what);
+  }
 });
