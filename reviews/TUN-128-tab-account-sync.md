@@ -486,6 +486,12 @@ switch, and the B-first ordering with the library's write modelled, wait on ques
    relayed by the coordinator (`music-garden-5`), 2026-11-25 9:32 PM PT. Round 4 reviews only `5889f72..4f57237` against
    round 3's findings; TUN-131 still holds the deferred cases (D9). If round 4 requests changes, they are fixed and the
    ticket stops at Needs Input — no fifth round without the owner. Taken over by session `music-garden-54`.
+3. **open** — *GPT's round 4 found the round-3 code sound ("The production delta resolves both sign-in ordering
+   defects") and asked only for stronger tests; they are added (`f701d17`), with `main` merged and one TUN-12 fixture
+   fixed after it, none GPT-reviewed. A fifth round, or not?* Options: **A)** no fifth round: the owner reads the
+   test-only delta (`git diff 4f57237 HEAD -- tests`) and the PR goes to In Review for the playtest; **B)** a fifth GPT
+   round on `4f57237..HEAD`; **C)** something else. Recommended: **A** — no game code changed since GPT's round 4, and
+   every change it asked for is a test, each mutation-checked.
 
 ### Round-2 fixes, verified (`a251db6` and the commit recording this)
 
