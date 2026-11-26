@@ -334,7 +334,7 @@ contour. Use it instead of poking `g.grid` directly.
 - **Detector signatures are inconsistent by design.** Contour detectors take a `seq`
   (`isRising(seq)`); motion detectors read the grid themselves (`isStepwise()`). Check the
   source before assuming.
-- **The DOM stub swallows `value` writes** and always reads back `""`. Two controls have real stubs
+- **The DOM stub swallows `value` writes** and always reads back `""`. Three controls have real stubs
   because their behaviour is data-model behaviour: `#tempo` models a range input's clamping, and
   `#click` models a `<select>` that remembers what it was set to. Without the second, a control's own
   change handler cannot be exercised at all — and a test that pokes the module variable instead is a
@@ -342,7 +342,9 @@ contour. Use it instead of poking `g.grid` directly.
   Studio, where the old `saveProgress()` returned immediately, so only driving the real handler and then
   reading `Store` can tell you whether it works. (The quest branch split that function by owner; the
   handler now calls `saveUserSettings()`, the only settings sink, and the test still drives the handler.) Wire another control in `makeSelect` when you need to test ITS
-  handler, not by default.
+  handler, not by default. The third is `#devpkg`, the `?dev` bar's package jump: the stub swallows
+  the `onchange` the boot assigns, so `dev-jump.test.mjs` (TUN-69) boots with `?dev` and drives the
+  handler kept on its `makeSelect`.
 - **To see a write the stub swallows** — an `innerHTML` on `#status`, the rows `openMelodies` builds —
   pass your own recording element: `loadGame({ fresh: true, elements: { status: el } })` hands it to
   `getElementById("status")` (never cached). `hostile-links.test.mjs` does this, and defines
