@@ -324,10 +324,13 @@ suite 1149/1149.
    wrong time to start." 43e0943 already does this (`playerEnters()` clears `openingQuiet`).
 7. **D11: one more GPT review, the fifth, on `1dae9d4..43e0943`.** The owner, 9:32 PM PT, relayed by the coordinator,
    with a stated bar: "block only on High or Blocker and ticket the rest." No sixth round without the owner.
-8. **open — M2, a field tap inside the half-second wait brings the opening with the seed** (round 5; the facts are
-   under round 5's answers, 3). Ticket it as a follow-up, fix it in this PR, or leave it.
-9. **open — round 5's High fix is unreviewed.** It is in the commit after 43e0943, with the D12 test. Playtest it on my
-   verification, or allow a sixth GPT round on `43e0943..` the new head.
+8. **D14: M2 is a separate ticket.** M2 is the field tap inside the half-second wait that brings the opening with the
+   seed (round 5; the facts are under round 5's answers, 3). The owner, 2026-11-25, about 10:00 PM PT, relayed by the
+   coordinator: "A, separate ticket." It is not fixed in this PR. Filed as TUN-133 (S, `needs-owner`: dropping the
+   500 ms wait changes the pacing of every level entry), not inside TUN-132.
+9. **D13: round 5's High fix is accepted unreviewed.** The owner, 2026-11-25, about 10:00 PM PT, relayed by the
+   coordinator: "A, accept and playtest." No sixth GPT round. The fix (7b8f242) and the D12 test go to the owner's
+   playtest on my verification.
 
 ## The owner's reload decision, built (Claude)
 
@@ -521,7 +524,7 @@ GPT's round-4 rulings: every finding but the High is "Resolved".
    fix is small (S): start the clock on the navigation click itself, as the sign-in now does, and drop the half-second
    wait, so an opening that finds the clock not running is left to Listen.
 4. **M1, M3, M4, L1, L2, and the Low test gaps (a Listen during a live suspended wait; Enter activation): not fixed
-   here, by the owner's bar.** Filed as one Backlog ticket, TUN-132 (M; blocked by TUN-125). M2 is not in it.
+   here, by the owner's bar.** Filed as one Backlog ticket, TUN-132 (M; blocked by TUN-125). M2 is not in it: it is TUN-133 (D14).
 
 ### Verification (mine)
 
