@@ -114,8 +114,8 @@ one (another name, or the same name with another `sub`), a load or save that ret
 sign-out (never applied, stored, read aloud, shown or credited — every panel drawn is recorded), nobody signed
 in at the load's own lookup, a refresh refused (signed out) against one that is only offline (resting), and a
 stale call that must not revoke a newer run; a token that returns after the cache switched, a loss between a
-helper's answer and its use, an older sign-in answering after a newer one, and a panel redraw that finds another
-account. The fake session carries the cached ID token the game reads after each await (`cachedIdToken`,
+helper's answer and its use, an older sign-in answering after a newer one, a panel redraw that finds another
+account, an offline lookup whose account then changes, and a loss only the final redraw finds (the form put back). The fake session carries the cached ID token the game reads after each await (`cachedIdToken`,
 `FakeIdToken` and `signedInSession` in `harness.mjs`); one test reads it through the vendored library itself, in
 storage of its own — the key, the decoding, an expired token, an offline refresh and a refused one that clears it.
 
