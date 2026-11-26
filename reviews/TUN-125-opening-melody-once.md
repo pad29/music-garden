@@ -311,8 +311,19 @@ suite 1149/1149.
    rather than guess.
 3. **A fourth GPT round — yes.** Also relayed at 5:08 PM PT: run it after this change is pushed, on `3ca520d..` the
    new head. No fifth round. Do not merge.
-4. **open — round 4's fixes are unreviewed.** The owner allowed no fifth round. Either hand off for playtest on my
-   verification, or allow one more review of `1dae9d4..` the new head.
+4. **Answered in 7 below: round 4's fixes are unreviewed.** The owner allowed no fifth round. Either hand off for
+   playtest on my verification, or allow one more review of `1dae9d4..` the new head.
+5. **D7: the scope of "always silence" is confirmed.** The owner, 2026-11-25, 9:32 PM PT, relayed by the coordinator:
+   "always silence" covers the reload draw only. Entering a level by the player's own navigation still plays the
+   opening once.
+6. **D12: a late cloud load after the player has navigated plays.** This was the second question in the round-4
+   hand-off, GPT's boundary note. The case: a signed-in reload, the player opens a level from Home before the
+   account's progress arrives, and the progress lands them on a different level. The owner chose option A, play
+   that level's opening once (9:32 PM PT, relayed by the coordinator). In the owner's words: "I think it should
+   play. What I objected is not that it starts without an action, but that if it starts on tap it felt like the
+   wrong time to start." 43e0943 already does this (`playerEnters()` clears `openingQuiet`).
+7. **D11: one more GPT review, the fifth, on `1dae9d4..43e0943`.** The owner, 9:32 PM PT, relayed by the coordinator,
+   with a stated bar: "block only on High or Blocker and ticket the rest." No sixth round without the owner.
 
 ## The owner's reload decision, built (Claude)
 
@@ -431,3 +442,83 @@ The statechange listener is back, only for waiting on a clock that is not runnin
 `tests/opening-melody.test.mjs`, 55 tests, all pass; on 1dae9d4's code the six covering findings 1–6 fail. The test
 fakes' clocks are virtual: the 350 ms timers, and `performance.now()` for the half-second window. Every line of the
 fix was mutation-checked by hand, 30 mutations in all, and each fails at least one test.
+
+## PR review — round 5 (gpt-6.2-astra, through `ask.sh`), on 43e0943 — the owner's last round (D11)
+
+The owner's bar, given to GPT in the prompt: "block only on High or Blocker and ticket the rest." GPT was asked for
+honest severities, with the verdict "changes requested" only on a High or Blocker.
+
+<details><summary>GPT's review, verbatim</summary>
+
+**One High remains.** The delta prevents the frozen-clock double booking, but a slow sign-in from a fresh window can still produce **zero automatic openings** on Q&A 6/9. D7 requires one. The new regression test accepts silence on that path.
+
+### Round-4 rulings
+
+| Round-4 finding | Ruling at `43e0943` |
+|---|---|
+| **High — slow form sign-in** | **Still open against the round-4 acceptance test.** The running-state check fixes the duplicate. The landing handler passes the submit gesture into `signInWith()`, which awaits authentication without starting audio. If activation expires during the pull, the first audio request comes 350 ms after the cloud draw. The clock can stay suspended and the opening expires. The new test explicitly expects zero notes before a later Listen or tap. **Regression to add:** submit the actual landing form with audio untouched, delay the pull past activation, return Q&A 6/9, and make no further gesture. Require one complete call booked while running and zero notes booked while suspended. The submit gesture is available to start the clock before the first `await`. [js/boot.js:125](https://github.com/pad29/music-garden/blob/43e0943/js/boot.js#L125-L133) · [js/cloud.js:219](https://github.com/pad29/music-garden/blob/43e0943/js/cloud.js#L219-L229) · [js/level-engine.js:35](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L35-L44) · [tests/opening-melody.test.mjs:638](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L638-L658) |
+| **Medium — sign-in to the same silently restored stage** | **Resolved for the reported sequence.** With Listen untouched, `openingSilenced && authBusy` lets the same-stage cloud draw schedule the opening. Home holds it until Close. The tests also cover an opening already heard through Continue. [js/level-engine.js:29](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L28-L37) · [tests/opening-melody.test.mjs:661](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L661-L682) · [tests/opening-melody.test.mjs:711](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L711-L720) |
+| **Medium — interruption drops a chosen opening** | **Resolved for the reported sequence.** An interruption already in effect at the 350 ms deadline gets an unlimited wait. Recovery consumes it once. Leaving first clears it. Both paths have tests. [js/level-engine.js:23](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L23-L25) · [js/level-engine.js:39](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L39-L44) · [tests/opening-melody.test.mjs:367](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L367-L390) |
+| **Medium — keyboard Listen spans the deadline** | **Resolved.** Space keydown at 340 ms cancels the pending opening before the click at 370 ms. The test exercises that ordering. Enter is also handled. [js/playback.js:345](https://github.com/pad29/music-garden/blob/43e0943/js/playback.js#L345-L347) · [tests/opening-melody.test.mjs:684](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L684-L690) |
+| **Medium — early Home Close shortens the pause** | **Resolved.** `releaseOpening()` now finds the still-pending notes, and `openingSoon()` clears the original timer. The new test closes at 340 ms, verifies silence 50 ms later, then presses Listen and counts one copy. [js/level-engine.js:26](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L26-L27) · [js/level-engine.js:45](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L45-L46) · [tests/opening-melody.test.mjs:700](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L700-L709) |
+| **Low — right-click spends the opening** | **Resolved.** A secondary-button `pointerdown` leaves the pending opening intact. The regression sends `button: 2` and requires one automatic call. [js/playback.js:346](https://github.com/pad29/music-garden/blob/43e0943/js/playback.js#L346) · [tests/opening-melody.test.mjs:692](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L692-L698) |
+| **Low — stale reload-test comment** | **Resolved.** The comment now says reload stays silent even on a running clock. [tests/opening-melody.test.mjs:185](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L183-L186) |
+| **Test finding — helper sets `authBusy`** | **Resolved.** `playerSignIn()` now calls production `signInWith()`. Production owns the increment and decrement through the cloud draw. The separate gap in the landing-form audio test is covered in the High above. [tests/opening-melody.test.mjs:129](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L129-L137) · [js/cloud.js:222](https://github.com/pad29/music-garden/blob/43e0943/js/cloud.js#L222-L230) |
+
+### New findings and regression cases
+
+| Severity | Failure, expected behavior, and test to add |
+|---|---|
+| **Medium** | **Listen after a quiet reload leaves the stage eligible to replay on sign-in.** Reload on Q&A 6/9, press Listen and hear the call, then sign in through Home to an account on the same stage and close Home. Listen calls `cancelOpening()`, which leaves `openingSilenced` true. The cloud redraw consequently schedules a second call. Add this exact sequence and require the total to stay at one after Close. The current “already heard” cases both use package navigation, which clears the flag before playback. [js/playback.js:345](https://github.com/pad29/music-garden/blob/43e0943/js/playback.js#L345) · [js/level-engine.js:23](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L23-L32) |
+| **Medium** | **An unrelated field tap can still start the opening inside the 500 ms window.** Let the opening request a blocked resume at 350 ms, then plant a seed at 450 ms. If that gesture starts the clock, `clockStarted()` accepts it and books the call alongside the seed. The current test waits a full second, outside the window. Add the 450 ms case and require the field gesture to produce only its own feedback. Separately verify that a resume started by the entry itself can play the opening once without a second gesture. [js/level-engine.js:39](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L39-L44) · [tests/opening-melody.test.mjs:649](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L649-L656) |
+| **Medium** | **Home can revive an expired opening.** Let the suspended wait exceed 500 ms without a running notification. Open Home, deliver the running notification while Home is visible, then close it. The listener returns before clearing the expired notes, and `releaseOpening()` gives them a new 350 ms timer. Add that sequence and require silence after Close. A phrase held because Home was already open at its original deadline should retain its existing post-Close behavior. [js/level-engine.js:42](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L42-L46) |
+| **Medium** | **An interruption beginning during a suspended wait inherits the wrong deadline.** Start the 500 ms wait on a suspended clock, transition to `interrupted` before it expires, then recover on the same stage after it expires. `clockStarted()` ignores the interruption and applies the original cutoff on recovery. Add that sequence and require zero bookings during interruption and one on recovery. The existing recovery test starts with a clock that is already interrupted. [js/level-engine.js:39](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L39-L44) · [tests/opening-melody.test.mjs:367](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L367-L378) |
+| **Low** | **An abandoned keyboard Listen press spends the opening.** Focus Listen, press Space at 340 ms, move focus away with Tab, then release Space. Keydown has permanently canceled the opening and Listen receives no click. Add an aborted-press case requiring one automatic call on the same entry. Keep the completed-press case at one manual call. [js/playback.js:347](https://github.com/pad29/music-garden/blob/43e0943/js/playback.js#L347) · [tests/opening-melody.test.mjs:684](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L684-L690) |
+| **Low** | **An overlapping failed form sign-in can make an automatic same-stage restore audible.** Delay the boot session lookup long enough to open Home’s guest sign-in form. Submit it, hold authentication pending, let the boot restore draw the same Q&A stage, then fail authentication and close Home. The new same-stage exception sees the form’s global `authBusy` and grants the boot draw an opening. Add this ordering with independently deferred session and authentication responses. Expect the reload to remain silent after Close. [js/cloud.js:131](https://github.com/pad29/music-garden/blob/43e0943/js/cloud.js#L131-L151) · [js/cloud.js:222](https://github.com/pad29/music-garden/blob/43e0943/js/cloud.js#L222-L229) · [js/level-engine.js:29](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L28-L33) |
+
+### Additional missing tests
+
+- **Medium — D12, navigation before automatic restore.** Hold the signed-in boot pull, open a melody level through Home, then resolve the pull onto a different melody stage before the first stage’s 350 ms deadline. Require exactly the destination phrase once and zero notes from the departed stage. `playerEnters()` implements the owner’s decision. The existing delayed-pull test performs only a field tap and correctly expects silence. [js/level-engine.js:25](https://github.com/pad29/music-garden/blob/43e0943/js/level-engine.js#L25-L33) · [tests/opening-melody.test.mjs:242](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L242-L253)
+- **Low — Listen while a real suspended wait is live.** Let a deliberate entry reach `openingDue()` on a suspended clock. Press Listen during its 500 ms window, deliver `running` between pointerdown and click, then release. Require one manual phrase. The existing press-through-unlock case starts from a quiet reload, which creates no waiting phrase. [tests/opening-melody.test.mjs:505](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L505-L521)
+- **Low — Enter activation.** Focus Listen, press Enter just before 350 ms, dispatch its native click on keydown, and advance past the deadline. Require one complete phrase. The new keyboard regression covers Space’s release-time click. [js/playback.js:347](https://github.com/pad29/music-garden/blob/43e0943/js/playback.js#L345-L347) · [tests/opening-melody.test.mjs:684](https://github.com/pad29/music-garden/blob/43e0943/tests/opening-melody.test.mjs#L684-L690)
+
+Read-only source review of `1dae9d4..43e0943`. No files changed. I did not execute the PR tests or verify browser audio.
+
+Changes requested at 43e0943f07c1fb0e8ee66b55458a5dbb6b16e094
+
+</details>
+
+GPT's round-4 rulings: every finding but the High is "Resolved".
+
+### My answers — the High fixed in the commit after 43e0943, **not reviewed by GPT** (no sixth round, D11)
+
+1. **High — a slow form sign-in plays nothing. Agreed.** Nothing on the sign-in path started the audio clock: the
+   only page-wide unlock is a tap on the field (`grid.js`). So the clock was first asked to start 350 ms after the
+   cloud draw, long after the click. A browser that needs a recent activation (WebKit) keeps it suspended, and the
+   half-second wait then dropped the call. `signInWith()` now starts the clock (`initAudio(); actx.resume()`)
+   synchronously on the Sign in click or Enter, before its first `await`. That covers the landing form and Home's
+   form. GPT's regression is added: the real landing form handler, audio untouched, the activation gone by the first
+   `await`, the cloud slow, no further gesture. It expects one whole call booked on a running clock, under both resume
+   behaviours. Round 4's guard is kept as its own test: a sign-in whose click could not start the clock books
+   nothing on the frozen clock, Listen gives one copy, and a later tap gives nothing. Mutations: no unlock, and the
+   unlock moved after the first `await`, each fail the new test.
+2. **Missing test, Medium — D12. Agreed; added after GPT's review** (the coordinator agreed: test only, no source
+   change; GPT has not seen it). A signed-in reload on 6/9 is silent; the player opens 6/9 from Home; the account's
+   progress lands on the echo level inside the 350 ms. It expects the echo once and not a note of 6/9's call. It
+   fails if `playerEnters()` stops clearing `openingQuiet`.
+3. **M2 — a field tap inside the 500 ms window brings the opening with the seed. Not fixed; it goes to the owner**
+   (the coordinator: the owner's reload objection was exactly an opening that starts together with planting a seed).
+   It needs a player-chosen entry (Next, or a package from Home; not a reload, which never schedules it) whose own
+   `resume()` at the 350 ms deadline is refused. A sign-in no longer gets there, because its click now starts the
+   clock. In Chrome the deadline's `resume()` succeeds after any earlier click, so I do not expect it there. The tap
+   must land within 500 ms after the deadline, about 0.35–0.85 s after the level appears or Home closes. Checked by
+   hand: a tap 100 ms after the deadline books the whole call at the tap, and a tap 600 ms after books nothing. What
+   the player hears is the whole call or phrase starting about 0.1 s after the tap, over the seed's own note. The
+   fix is small (S): start the clock on the navigation click itself, as the sign-in now does, and drop the half-second
+   wait, so an opening that finds the clock not running is left to Listen.
+4. **M1, M3, M4, L1, L2, and the Low test gaps (a Listen during a live suspended wait; Enter activation): not fixed
+   here, by the owner's bar.** Filed as one Backlog ticket, TUN-132 (M; blocked by TUN-125). M2 is not in it.
+
+### Verification (mine)
+
+`tests/opening-melody.test.mjs`, 57 tests, all pass. The full suite is in the PR hand-off.

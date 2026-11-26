@@ -84,8 +84,11 @@ const button = () => { const ls = {};
 function pageLoad({ progress = null, session = false, pendingResume = false, noUserActivation = false } = {}) {
   const listen = button(), next = button(), home = button(), loop = button(), play = button(), jam = button(), homeclose = button();
   const homeoverlay = { style: { display: "none" }, onclick: null };
+  const box = () => ({ value: "", style: {}, setAttribute() {}, focus() {}, addEventListener() {} });   // the landing form's two boxes
+  const landingUser = box(), landingPass = box(), landingDo = button();
   const cloud = deferred(); let page, timers;
-  const g = loadGame({ fresh: true, elements: { listen, nextBtn: next, home, loop, play, jam, homeclose, homeoverlay }, setup: w => {
+  const g = loadGame({ fresh: true, elements: { listen, nextBtn: next, home, loop, play, jam, homeclose, homeoverlay,
+    landingUser, landingPass, landingDo }, setup: w => {
     page = browserAudio(w, { pendingResume, noUserActivation }); timers = openingTimers(w);
     if (progress) w.localStorage.setItem("mg_progress", JSON.stringify(progress));
     w.localStorage.setItem("mg_settings", JSON.stringify({ speak: false }));
@@ -103,7 +106,11 @@ function pageLoad({ progress = null, session = false, pendingResume = false, noU
   const unlock = async () => { tap(); await settle(); timers.fire(); await settle(); };
   /** A player who has played: the first tap, then Garden Basics opened from Home — past the page's own, silent draws. */
   const played = async () => { await unlock(); g.openPkg("intro", 0); timers.fire(); await settle(); notes.length = 0; };
-  return { g, page, timers, listen, next, home, loop, play, jam, homeclose, homeoverlay, notes, cloud, tap, unlock, played };
+  /** The landing screen's Sign in, typed and clicked: the real form handler (boot.js's doLandingSignIn). */
+  const landingSignIn = () => { landingUser.value = "brave-otter-42"; landingPass.value = "acorn map tulip wren";
+    page.gesture(); landingDo.onclick(); };
+  return { g, page, timers, listen, next, home, loop, play, jam, homeclose, homeoverlay, notes, cloud, tap, unlock, played,
+    landingSignIn };
 }
 /** How many whole copies of `phrase` the booked notes hold (and that they hold nothing else). */
 function copies(g, notes, phrase) {
@@ -126,11 +133,15 @@ async function settle() { for (let i = 0; i < 6; i++) await tick(); }
 const openOn = (g, pkg, level, step = 0) => { g.setPlayScope({ kind: "package", packageId: pkg }, { levelIdx: level }); g.lessonStepIdx = step; };
 /** The player signs in through the form: the real signInWith, which holds authBusy while the account's progress loads
  *  and is applied. With `pull` (a promise), the cloud answers when it settles, and the sign-in's promise is returned. */
-async function playerSignIn(g, progress, { pull = null } = {}) {
+/** The account behind the form: authentication succeeds, and the cloud answers with `progress`, or when `pull` settles. */
+function accountAnswers(g, progress, pull = null) {
   g.cogSignIn = async () => {};
   g.freshId = async () => ({ token: "token-ann", sub: "sub-ann" });
   g.cloudPull = async () => ({ ok: true, progress: clone(pull ? await pull : progress) });
   g.renderAuth = () => {};
+}
+async function playerSignIn(g, progress, { pull = null } = {}) {
+  accountAnswers(g, progress, pull);
   const r = g.signInWith("brave-otter-42", "acorn map tulip wren");   // the form's own path: it holds authBusy
   if (pull) return r;
   assert.equal((await r).ok, true); await settle();
@@ -635,14 +646,30 @@ test("a reload on Question & Answer 3/9 (silent), then Next level onto 4/9: its 
 
 // ---- Round 4 of GPT's PR review ------------------------------------------------------------------------------------
 
-test("a slow sign-in from the landing screen, in a browser whose activation has expired: nothing on the frozen clock; Listen once, a later tap nothing", async () => {
+test("a slow sign-in from the landing screen's form, its activation expired before the cloud answers, no further gesture: the call once, on a running clock", async () => {
+  for (const pendingResume of [false, true]) {
+    const { g, page, timers, notes, landingSignIn } = pageLoad({ pendingResume });
+    timers.fire(); await settle();                        // the landing screen: audio untouched
+    assert.ok(!g.actx, "no audio before the sign-in");
+    const pull = deferred(); accountAnswers(g, null, pull.promise);
+    landingSignIn();                                      // the Sign in click...
+    page.expire(); await settle();                        // ...whose activation has run out by the first await (WebKit; a slow sign-in)
+    pull.resolve(progressOn(QA, CALM_BOLD, { updatedAt: 2 })); await settle();
+    assert.equal(g.levelIdx, CALM_BOLD, "the account's level");
+    timers.fire(); await settle();
+    onceRunning(g, notes, g.curCall());                   // one whole call, every note booked while running
+    timers.advance(1000); timers.fire(); await settle();
+    onceRunning(g, notes, g.curCall());
+  }
+});
+
+test("a sign-in whose own click could not start the clock: nothing on the frozen clock; Listen once, a later tap nothing", async () => {
   for (const later of ["Listen", "a tap"]) {
     const { g, page, timers, notes, listen, tap } = pageLoad({ pendingResume: true });
     timers.fire(); await settle();                        // the landing screen: no audio yet
     const pull = deferred();
-    page.gesture();                                       // the Sign in click...
-    const done = playerSignIn(g, null, { pull: pull.promise });
-    await settle(); page.expire();                        // ...and the cloud is slow: the click's activation has run out
+    const done = playerSignIn(g, null, { pull: pull.promise });   // a submit with no activation behind it
+    await settle();
     pull.resolve(progressOn(QA, CALM_BOLD, { updatedAt: 2 })); assert.equal((await done).ok, true); await settle();
     assert.equal(g.levelIdx, CALM_BOLD);
     timers.fire(); await settle();
@@ -656,6 +683,20 @@ test("a slow sign-in from the landing screen, in a browser whose activation has 
       assert.deepEqual(notes, [], "a tap a second later does not bring the call");
     }
   }
+});
+
+test("D12: a signed-in reload, the player opens a melody level from Home, and the account's progress lands on another melody stage before its deadline: only the new stage's opening, once", async () => {
+  const { g, timers, notes, cloud, tap, home } = pageLoad({ progress: progressOn(QA, CALM_BOLD), session: true });
+  await settle(); timers.fire();
+  tap(); await settle(); timers.fire(); await settle();
+  assert.deepEqual(notes, [], "the reload: silent");
+  home.onclick(); g.openPkg(QA, CALM_BOLD); await settle();   // the player's own navigation: 6/9's call is pending
+  cloud.resolve(progressOn(ECHO_PKG, ECHO_LVL, { updatedAt: 2 })); await settle();   // the account lands, inside the 350 ms
+  assert.equal(g.levelIdx, ECHO_LVL, "the account's level");
+  timers.fire(); await settle();
+  onceRunning(g, notes, g.curStage().echo);               // the echo once, and not a note of 6/9's call
+  timers.advance(1000); timers.fire(); await settle();
+  onceRunning(g, notes, g.curStage().echo);
 });
 
 test("a sign-in through Home onto the stage a reload silenced: the call once after Close; already heard: still once", async () => {
