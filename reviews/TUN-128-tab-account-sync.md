@@ -469,9 +469,42 @@ switch, and the B-first ordering with the library's write modelled, wait on ques
 
 ## Owner's decisions
 
-1. **open** — *GPT's round-2 findings 1 and half of 2: the Cognito library itself rewrites which account is selected
-   when a token refresh, or an older sign-in in the same tab, finishes after another tab switched accounts. Fix that
-   here, or in a follow-up ticket?* Options: **A)** follow-up ticket — this PR fixes everything else from round 2, and
-   round 3 (the last) reviews that; **B)** fix it here — the game guards the library's storage writes, tested through
-   the real library, all in round 3; larger than M (about 2–3 more hours), and if round 3 still finds something it
-   comes back to you; **C)** stop — hand off what is there with no third round. Recommended: **A**.
+1. *GPT's round-2 findings 1 and half of 2: the Cognito library itself rewrites which account is selected when a
+   token refresh, or an older sign-in in the same tab, finishes after another tab switched accounts. Fix that here, or
+   in a follow-up ticket?* — **A, a follow-up ticket (D9)**: the owner, relayed by the coordinator, 2026-11-25
+   5:08 PM PT. This PR keeps the round-2 fixes; GPT's round-2 **finding 1 (High, required)** and the library half of
+   **finding 2 (High, required)** go to **TUN-131**, *Keep a tab's chosen account when the sign-in library rewrites
+   the shared session* (Backlog, blocked by this ticket). These are GPT's severities as it gave them, and **GPT did
+   not agree to defer them**: its round-2 review requires both before approval. Round 3 is told so plainly, and asked
+   whether anything in this PR makes those cases worse. The other options were B (fix here, larger than M) and C
+   (stop with no third review); I recommended A.
+
+### Round-2 fixes, verified (`a251db6` and the commit recording this)
+
+- **3 fixed:** after every lookup — an offline one included — `cloudPull` and `cloudPush` check the cache names the
+  run's account before anything is sent or reported; a switch after an offline answer is a lost account, not the cloud
+  resting.
+- **4 fixed:** `onSignedIn`'s outcome goes through `finish()`: the run's account is checked, then drawn; if the redraw
+  itself finds the account lost, the outcome is no sign-in and the form that asked is put back, words and all — so the
+  landing keeps its words and the card credits no save.
+- **2, the game's half, fixed:** a form sign-in's run is known while it is out (`_formRunOut`); a newer sign-in ends it
+  the moment it begins. A superseded form says *"🌱 A newer sign-in took over. To open this garden instead, press Sign
+  in again."* on every path — refused, accepted, or ended mid-load. One requested ordering (B's exact **Home** form while
+  A's load is out) cannot happen: while A loads, Home shows A's loading row and no Sign in, so B comes from the
+  landing; the test covers that ordering, with A's Home form and B's landing form.
+- **5 fixed:** round 1's verification paragraph overstated. Corrected here: of round 1's five survivors, the body check
+  and the initial and resume checks now each have a test that kills them alone (round-2 tests); the row's name is the
+  run's, read with the check (tested); the retry's `a.sub` is the one truly equivalent.
+- **Missing tests:** all added except the two that depend on the deferred library writes (TUN-131): the first lookup's
+  token checked before the load is begun; boot's resume by the cached `sub`; an offline lookup whose account then
+  changes, on a save and on Home's mounted form; a body that ends under another account with ann back before use; a
+  loss only the final redraw finds (a failed load, a first save, Home's form put back, the card's credit withheld); the
+  two orderings with the superseded form's message, refused and accepted; Home opened through the game's own entry with
+  a queued save; the map's click resolving its cell through the selector the game asks for, from the generated markup.
+
+**Suite:** 1142/1142. **Mutation audit:** 44 mutations of the guards (`cloud-sync`, `garden-card`, `narration`), 39
+killed. Survivors: *nobody signed in treated as offline* and *a failed refresh compared by name only* (both now land on
+the callers' cache check, which reaches the same outcome); *the outcome drawn without checking the account* and *the
+first save not rechecked* (both land on `finish()`'s redraw check or its own); *the retry's `a.sub`* (equivalent). The
+first run was stopped by its time limit mid-mutation and left one guard removed; it was found by checking every guard's
+text, restored before any commit, and the run resumed from there.

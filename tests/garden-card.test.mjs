@@ -974,6 +974,7 @@ test("TUN-128 round 2 (3): Home's form, offline at its load's lookup and then an
   const { user, pass, done } = submitHome(t, "brave-otter-42", "acorn map tulip wren");
   await done;
   assert.ok(t.session.brokenHits > 0, "the load's lookup was the offline one");
+  assert.equal(t.g.cloudResting, false, "a lost account, not the cloud resting");
   assert.ok(pass.parent);
   assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING);
