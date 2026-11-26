@@ -703,3 +703,32 @@ Both of these came after GPT's round 4, and **no GPT round has reviewed them**:
   `CognitoIdToken` on `AmazonCognitoIdentity`. The test's own assertions are unchanged. No game code changed.
 
 **Verified on the pushed head:** syntax check OK; suite 1158/1158.
+
+### Merging `main` at `8f76076` (TUN-125) — not reviewed by GPT
+
+With the coordinator's OK (2026-11-25/26), after D15; **neither the resolution nor the fixture change below is
+GPT-reviewed.**
+
+- **The conflict:** one hunk at the top of `signInWith()` in `js/cloud.js`. Both sides added lines before its first
+  `await`: TUN-125 starts the audio clock on the Sign in click (`initAudio(); actx.resume();`, with its comment);
+  TUN-128 numbers the sign-in, ends an older sign-in or boot's resume still out, and defines `replaced()`. Resolved by
+  keeping both — TUN-125's lines first, then TUN-128's three unchanged, with one `authBusy++`. No other edit.
+- **TUN-125's tests, fixtures only** (`tests/opening-melody.test.mjs`, +11/−6): 15 of them failed after the merge because
+  their Cognito stand-ins predate TUN-128 — the signed-in reload's stored user had no cached ID token, and
+  `accountAnswers()` faked a sign-in that returned no session. Now every page load has a Cognito pool stand-in naming
+  `ann` on a signed-in load and nobody otherwise, with a cached ID token that agrees; `accountAnswers()`'s sign-in
+  returns a session for its account and makes it the shared one. No assertion changed; no test removed or skipped; no
+  game code or shared helper changed (the harness's existing `cachedIdToken`, `signedInSession` and `FakeIdToken`).
+- **Not weakened:** with `initAudio(); actx.resume();` removed from `signInWith`, TUN-125's *"a slow sign-in from the
+  landing screen's form, its activation expired before the cloud answers, no further gesture: the call once, on a running
+  clock"* fails (1 of 57); restored, `js/` is unchanged.
+- **How the two tickets meet** (read on the merged tree, nothing changed): a sign-in reaches an opening melody only by
+  drawing a stage (`signedInRun` → `applyProgress` → `renderLevel` → `openingFor`). A replaced or ended run returns before
+  `applyProgress`, so it neither draws the wrong account's level nor books its opening; a second draw of the entered
+  stage keeps its opening as it was, and another stage's draw cancels a pending one first (`leaveOpening`), so never
+  twice. Two narrow cases come after `applyProgress` has drawn: `finish()` finding the account gone (its `owns()` or
+  the redraw), and `signInWith`'s `replaced()` after `onSignedIn` returns — the level and its opening stay booked, as
+  nothing in `cloud.js` calls `cancelOpening`. Both need the session to change inside synchronous code; reported to the
+  coordinator for TUN-132, not fixed here.
+
+**Verified on the merged tree:** syntax check OK; suite 1224/1224.
