@@ -324,6 +324,10 @@ suite 1149/1149.
    wrong time to start." 43e0943 already does this (`playerEnters()` clears `openingQuiet`).
 7. **D11: one more GPT review, the fifth, on `1dae9d4..43e0943`.** The owner, 9:32 PM PT, relayed by the coordinator,
    with a stated bar: "block only on High or Blocker and ticket the rest." No sixth round without the owner.
+8. **open — M2, a field tap inside the half-second wait brings the opening with the seed** (round 5; the facts are
+   under round 5's answers, 3). Ticket it as a follow-up, fix it in this PR, or leave it.
+9. **open — round 5's High fix is unreviewed.** It is in the commit after 43e0943, with the D12 test. Playtest it on my
+   verification, or allow a sixth GPT round on `43e0943..` the new head.
 
 ## The owner's reload decision, built (Claude)
 
@@ -521,4 +525,4 @@ GPT's round-4 rulings: every finding but the High is "Resolved".
 
 ### Verification (mine)
 
-`tests/opening-melody.test.mjs`, 57 tests, all pass. The full suite is in the PR hand-off.
+`tests/opening-melody.test.mjs`, 57 tests, all pass. Full suite 1172/1172 and the syntax check, on the merge with `origin/main` (aa3616c). Nothing heard: AO's browser has no sound, and sign-in works only on production.
