@@ -149,6 +149,7 @@ function signInGame({ narrateReady, cloud = CLOUD, pickerUp = false }) {
   const log = voices(g.__window), pull = deferred();
   g.freshId = async () => ({ token: "token-ann", sub: "sub-ann" });   // signed in (TUN-93: onSignedIn asks freshId)
   g.userPool = { getCurrentUser: () => ({ getUsername: () => "ann", storage: cachedIdToken({ "cognito:username": "ann", sub: "sub-ann" }) }) };   // …as ann (TUN-128)
+  g.__window.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken };   // …read the library's way
   g.cloudPull = async () => ({ ok: true, progress: clone(await pull.promise) });
   g.renderAuth = () => {};
   g.speakOn = true; g.narrateReady = narrateReady;

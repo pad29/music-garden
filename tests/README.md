@@ -113,8 +113,11 @@ another tab can change the shared session at any await: the sign-in's own accoun
 one (another name, or the same name with another `sub`), a load or save that returns after a switch or a
 sign-out (never applied, stored, read aloud, shown or credited — every panel drawn is recorded), nobody signed
 in at the load's own lookup, a refresh refused (signed out) against one that is only offline (resting), and a
-stale call that must not revoke a newer run. The fake session carries the cached ID token the game reads after
-each await (`cachedIdToken`, `FakeIdToken` and `signedInSession` in `harness.mjs`).
+stale call that must not revoke a newer run; a token that returns after the cache switched, a loss between a
+helper's answer and its use, an older sign-in answering after a newer one, and a panel redraw that finds another
+account. The fake session carries the cached ID token the game reads after each await (`cachedIdToken`,
+`FakeIdToken` and `signedInSession` in `harness.mjs`); one test reads it through the vendored library itself, in
+storage of its own — the key, the decoding, an expired token, an offline refresh and a refused one that clears it.
 
 **Garden names and the garden card (TUN-93).** `garden-words.test.mjs` enumerates every one of the 323,189
 garden names (in the game's and the backend's copies of the rule, which must hold identical lists), checks

@@ -20,6 +20,9 @@ let cloudResting=false, _callSeq=0, _seenSeq=0;
 // signed-in row: never over a sign-in form the player may be typing into.
 let _authShowsSignedIn=false, _authSaysSaved=false;   // the panel shows the signed-in row; …and "saved to cloud" in it
 let _authForm=null;   // the sign-in form the panel shows, if it shows one (TUN-128): only its own sign-in may redraw over it
+let _authFormBusy=null;   // …and the form whose sign-in is out, while it is
+// A sign-in form waiting for its answer holds the panel: reopening Home leaves it, its words and its message alone.
+const signInFormBusy=()=> !!_authForm && _authForm===_authFormBusy;
 function cloudCall(){ const run=_cloudRun, seq=++_callSeq;
   return ok=>{ if(run!==_cloudRun || seq<=_seenSeq) return; _seenSeq=seq;
     if(cloudResting===!ok) return; cloudResting=!ok; if(_authShowsSignedIn) renderAuth(); }; }
@@ -69,7 +72,10 @@ function sessionAccount(s){ let p={}; try{ p=s.getIdToken().payload||{}; }catch(
 function freshId(name,sub){ return new Promise(res=>{ const u=userPool&&userPool.getCurrentUser(); if(!u) return res({ gone:true });
   if(name && String(u.getUsername()).toLowerCase()!==name) return res({ mismatch:true });
   u.getSession((err,sess)=>{ if(err||!sess||!sess.isValid()){ const c=cachedAccount();
-      return res(!c ? { gone:true } : name && c.name!==name ? { mismatch:true } : {}); }
+      // Can't refresh. Offline only while the cache still names this very account (an expired token names it as well as
+      // a fresh one); nobody at all is gone; anything else — another sub, a token naming someone else or no one — is
+      // not this account.
+      return res(!c ? { gone:true } : !name || (c.name===name && c.tokenName===name && (!sub || c.sub===sub)) ? {} : { mismatch:true }); }
     const id=sess.getIdToken(), p=(id&&id.payload)||{};
     if(name && String(p["cognito:username"]||"").toLowerCase()!==name) return res({ mismatch:true });
     if(sub && p.sub!==sub) return res({ mismatch:true });
@@ -79,20 +85,25 @@ let _syncUser=null, _syncSub=null;   // the account this tab's sync belongs to; 
 const lostId=id=> !!(id.gone||id.mismatch);
 // The account changed under this run, or left: no more writes, and the panel stops saying it syncs, until a sign-in
 // reads again. It ends the run too, so every call of it still out does nothing when it returns (TUN-128).
-function loseSync(){ _cloudRun++; cloudSync="off"; cloudOn=false; _syncUser=_syncSub=null; clearTimeout(_pushT); if(_authShowsSignedIn) renderAuth(); }
+function dropSync(){ _cloudRun++; cloudSync="off"; cloudOn=false; _syncUser=_syncSub=null; clearTimeout(_pushT); }
+function loseSync(){ dropSync(); if(_authShowsSignedIn) renderAuth(); }
 // { ok:true, progress } — progress is null when nothing is saved yet; { ok:false } when it could not be read
 // (no token, 429, 5xx, a network error, a body that is not JSON). Never confuse the two: see onSignedIn, which also
 // treats a 200 that is neither null nor loadable progress as a failed load. acct: the run's { run, name, sub }.
 // { lost:true } when the account left or changed — at the lookup, or by the time the answer came (TUN-128): then
-// nothing is reported, not even to the panel, which names whoever is stored now. { stale:true }: a newer run.
+// nothing is reported, not even to the panel. { stale:true }: a newer run. After every await: the run, then the account.
 async function cloudPull(acct){ const done=cloudCall(); const id=await freshId(acct.name,acct.sub);
   if(acct.run!==_cloudRun) return { stale:true };
-  if(lostId(id)) return { lost:true };   // not this run's account: no cloud failure to report
-  const t=id.token; if(!t){ done(false); return { ok:false }; }
-  let ok=false, progress;
-  try{ const r=await fetch(AUTH.apiUrl+"/progress",{headers:{Authorization:"Bearer "+t}}); if(r.ok){ progress=await r.json(); ok=true; } }catch(e){}
+  // Not this run's account — the token may still be its own while the cache now names another: nothing is sent.
+  if(lostId(id) || (id.token && !accountIs(acct.name,acct.sub))) return { lost:true };
+  const t=id.token; if(!t){ done(false); return { ok:false }; }   // signed in, but offline: the cloud is resting
+  let r=null, ok=false, progress;
+  try{ r=await fetch(AUTH.apiUrl+"/progress",{headers:{Authorization:"Bearer "+t}}); }catch(e){}
   if(acct.run!==_cloudRun) return { stale:true };
-  if(!accountIs(acct.name,acct.sub)) return { lost:true };
+  if(!accountIs(acct.name,acct.sub)) return { lost:true };   // when the answer starts…
+  if(r && r.ok){ try{ progress=await r.json(); ok=true; }catch(e){}
+    if(acct.run!==_cloudRun) return { stale:true };
+    if(!accountIs(acct.name,acct.sub)) return { lost:true }; }   // …and once its body is in
   done(ok); return ok ? { ok:true, progress } : { ok:false }; }
 // The player's name stays on this device (TUN-93): what goes up is progress without it, and what comes down
 // keeps this device's name — a copy saved before TUN-93 may still hold one, and it is never applied.
@@ -104,7 +115,9 @@ let _pushSeq=0;   // counts progress saves queued or begun: a save's success say
 async function cloudPush(){ if(cloudSync!=="ready") return false;   // never over a cloud copy we haven't read
   _pushSeq++; const acct={ run:_cloudRun, name:_syncUser, sub:_syncSub }; const done=cloudCall(); const id=await freshId(acct.name,acct.sub);
   if(acct.run!==_cloudRun || cloudSync!=="ready") return false;   // signed out, or someone else signed in, in this tab
-  if(lostId(id)){ loseSync(); return false; }   // another account in this one's place, or nobody: this run may not write again
+  // Another account in this one's place, or nobody — the token may still be this run's while the cache names
+  // another: nothing is sent, and this run may not write again.
+  if(lostId(id) || (id.token && !accountIs(acct.name,acct.sub))){ loseSync(); return false; }
   const t=id.token; if(!t){ done(false); return false; }   // signed in, but offline: the cloud is resting
   let ok=false;
   try{ const r=await fetch(AUTH.apiUrl+"/progress",{method:"PUT",headers:{Authorization:"Bearer "+t,"content-type":"application/json"},body:JSON.stringify(cloudCopy(progress))});
@@ -170,15 +183,18 @@ async function onSignedIn(uploadLocal,onlyFor,onlySub,opts={}){ const NO={ signe
   const mayDraw=()=> !_authForm || _authForm===opts.form;
   // Not signed in: a sign-in form that asked stays as it is, its words in it, to say so and try again.
   const notIn=()=>{ if(_authShowsSignedIn && mayDraw()) renderAuth(); return NO; };
-  const who=onlyFor || currentUserName(); if(!who) return notIn();
-  const id=await freshId(who,onlySub); if(run!==_cloudRun) return NO;
-  if(!id.token || !id.sub) return notIn();
-  _syncUser=who; _syncSub=id.sub; cloudOn=true;
+  // The run's account: the one the sign-in authenticated, or — boot's resume — the one the cache names, by name and sub.
+  let who=onlyFor, sub=onlySub;
+  if(!who){ const c=cachedAccount(); if(!c || !c.sub || c.tokenName!==c.name) return notIn(); who=c.name; sub=c.sub; }
+  const id=await freshId(who,sub); if(run!==_cloudRun) return NO;
+  if(!id.token || !id.sub || !accountIs(who,id.sub)) return notIn();
+  sub=id.sub; _syncUser=who; _syncSub=sub; cloudOn=true;
+  const owns=()=> run===_cloudRun && accountIs(who,sub);   // checked where a result is used, not only where it came
   if(!uploadLocal){ cloudSync="loading"; if(!opts.form && mayDraw()) renderAuth();
-    const pull=await cloudPull({ run, name:who, sub:id.sub }); if(run!==_cloudRun) return NO;
-    // The account left or changed, before the GET or while it was out: its answer is not applied, stored, shown or
-    // read aloud, and this run may not write (TUN-128) — all decided before TUN-112's block below.
-    if(pull.lost){ loseSync(); return NO; }
+    const pull=await cloudPull({ run, name:who, sub }); if(run!==_cloudRun) return NO;
+    // The account left or changed, before the GET, while it was out, or since: its answer is not applied, stored, shown
+    // or read aloud, and this run may not write (TUN-128) — all decided before TUN-112's block below.
+    if(pull.lost || !owns()){ loseSync(); return NO; }
     const cloud=pull.ok ? pull.progress : undefined;
     if(cloud!==null && !loadableProgress(cloud)){ cloudSync="unreachable"; if(mayDraw()) renderAuth(); return { signedIn:true, saved:false }; }   // only an explicit null means "nothing saved yet"
     cloudSync="ready";
@@ -193,6 +209,7 @@ async function onSignedIn(uploadLocal,onlyFor,onlySub,opts={}){ const NO={ signe
   cloudSync="ready";   // a new account, or one with nothing saved yet: this device's progress becomes the cloud copy
   const push=_pushSeq+1; const ok=await cloudPush();
   if(run!==_cloudRun) return NO;   // replaced, or the push found another account, or nobody, in this one's place (loseSync)
+  if(!owns()){ loseSync(); return NO; }
   // "saved to cloud" only for the newest progress save: once a newer one is queued or begun, this success no longer says
   // the current progress is in the cloud. A failure needs no word here: cloudResting already says so, calmly.
   const saved=ok && _pushSeq===push;
@@ -202,9 +219,11 @@ const authbox=document.getElementById("authbox");
 function renderAuth(status){ if(!authbox) return; authbox.innerHTML=""; _authShowsSignedIn=false; _authSaysSaved=false; _authForm=null;
   if(!cognitoReady()){ const d=document.createElement("div"); d.className="hint";
     d.textContent="Cloud sign-in unavailable right now — your progress is still saved on this device."; authbox.appendChild(d); return; }
-  const u=userPool.getCurrentUser();
-  if(u && cloudOn){ _authShowsSignedIn=true; _authSaysSaved=status==="saved to cloud"; const row=document.createElement("div"); row.className="authrow";
-    row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=gardenDisplayName(u.getUsername());
+  // This tab's sync is shown only while the shared session still names its account (TUN-128). One found gone or
+  // replaced here ends, as a save would find it: the row never names another account, and nothing stays writable.
+  if(cloudOn && !accountIs(_syncUser,_syncSub)) dropSync();
+  if(cloudOn){ _authShowsSignedIn=true; _authSaysSaved=status==="saved to cloud"; const row=document.createElement("div"); row.className="authrow";
+    row.appendChild(document.createTextNode("☁️ Signed in as ")); const b=document.createElement("b"); b.textContent=gardenDisplayName(_syncUser);
     row.appendChild(b); row.appendChild(document.createTextNode(
       cloudSync==="ready" ? (cloudResting ? CLOUD_RESTING.save : " — progress syncs across your devices.")
       : cloudSync==="unreachable" ? CLOUD_RESTING.load
@@ -258,15 +277,19 @@ function friendlyAuthError(e,mode){ const code=authCode(e);
 // the backdrop, a package, the Studio, a quest), so a sign-in the child thinks they left can never land in what
 // they opened next. A count, so an older sign-in finishing can't unlock Home while a newer one is still out.
 let authBusy=0;
+// Sign-ins begun, in order (TUN-128): one that a newer one has followed never claims the tab, whichever finishes first.
+let _signInSeq=0;
 async function signInWith(nameText,passText,form){
   const { username, password }=signInPair(nameText,passText);
   if(!username || !password) return { ok:false, msg:AUTH_SAYS.empty };
-  authBusy++;
+  authBusy++; const mine=++_signInSeq;
   try{
     let acct; try{ acct=sessionAccount(await cogSignIn(username,password)); }catch(e){ return { ok:false, msg:friendlyAuthError(e,"in") }; }
+    if(mine!==_signInSeq) return { ok:false, msg:"" };   // a newer sign-in began meanwhile: it decides the tab's account
     // Not signed in: the session named no account, or it was gone or replaced before it could be used, so the form
     // stays. A failed progress load or save is still a sign-in (the panel says the cloud is resting), and the form goes.
-    if(!acct || !(await onSignedIn(false,acct.name,acct.sub,{ form:form||true })).signedIn) return { ok:false, msg:AUTH_SAYS.other };
+    if(!acct) return { ok:false, msg:AUTH_SAYS.other };
+    if(!(await onSignedIn(false,acct.name,acct.sub,{ form:form||true })).signedIn) return { ok:false, msg:mine===_signInSeq ? AUTH_SAYS.other : "" };
     return { ok:true }; }
   catch(e){ console.warn("Tune Garden: signing in failed", e); return { ok:false, msg:AUTH_SAYS.other }; }
   finally{ authBusy--; } }
@@ -292,8 +315,8 @@ function showSignInForm(){ authbox.innerHTML=""; _authShowsSignedIn=false;
   const passRow=document.createElement("div"); passRow.className="passrow"; passRow.append(pass,show);
   const msg=document.createElement("div"); msg.className="authmsg hint";
   let busy=false;
-  const go=mkBtn("Sign in",async()=>{ if(busy) return; busy=true; go.disabled=cancel.disabled=true; msg.textContent="Signing in…";
-    let r; try{ r=await signInWith(user.value,pass.value,form); } finally{ busy=false; go.disabled=cancel.disabled=false; }
+  const go=mkBtn("Sign in",async()=>{ if(busy) return; busy=true; _authFormBusy=form; go.disabled=cancel.disabled=true; msg.textContent="Signing in…";
+    let r; try{ r=await signInWith(user.value,pass.value,form); } finally{ busy=false; if(_authFormBusy===form) _authFormBusy=null; go.disabled=cancel.disabled=false; }
     if(!r.ok){ msg.textContent=r.msg; return; }
     clearPassBox(pass,show); renderPkgs(); });
   pass.addEventListener("keydown",e=>{ if(e.key==="Enter") go.onclick(); });

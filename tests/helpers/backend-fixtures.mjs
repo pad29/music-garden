@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadGame } from "../harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken } from "../harness.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const INDEX_HTML = readFileSync(join(ROOT, "index.html"), "utf8");
@@ -59,6 +59,10 @@ export function clientGame({ local, saves } = {}) {
     };
   } });
   g.freshId = async () => ({ token: "test-token", sub: "sub-test" });      // signed in, as far as the cloud calls can tell
+  // …as the account this tab's sync belongs to, which the cached session still names (TUN-128 checks it around each request)
+  g.__window.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken };
+  g.userPool = { getCurrentUser: () => ({ getUsername: () => "test", storage: cachedIdToken({ "cognito:username": "test", sub: "sub-test" }) }) };
+  g._syncUser = "test"; g._syncSub = "sub-test";
   g.cloudSync = "ready";                         // …with the cloud copy read, so cloudPush may send (TUN-106)
   g.initAudio();                                 // the Craft button does this before craftFromCells
   return { g, requests, copied };

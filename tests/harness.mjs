@@ -363,9 +363,10 @@ export function plant(g, rows) {
 // await — the library's own cached ID token, read without the network (cachedAccount: the user object's `storage`,
 // decoded by AmazonCognitoIdentity.CognitoIdToken). A fake user carries `storage: cachedIdToken(claims)`; a fake
 // library carries `CognitoIdToken: FakeIdToken`. claims: { "cognito:username", sub }, or a function returning them,
-// read at each call, so a test can change them as another tab would.
+// read at each call, so a test can change them as another tab would; null or undefined: no cached ID token at all.
 export class FakeIdToken { constructor({ IdToken }) { this.payload = JSON.parse(IdToken); } }
 export const cachedIdToken = claims => ({
-  getItem: k => (/\.idToken$/.test(String(k)) ? JSON.stringify(typeof claims === "function" ? claims() : claims) : null) });
+  getItem: k => { if (!/\.idToken$/.test(String(k))) return null;
+    const c = typeof claims === "function" ? claims() : claims; return c == null ? null : JSON.stringify(c); } });
 // A session as cogSignIn resolves with it: only its ID token's claims are read.
 export const signedInSession = claims => ({ getIdToken: () => ({ payload: claims }) });

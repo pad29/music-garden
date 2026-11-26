@@ -112,13 +112,16 @@ function simulate(options = {}) {
     if (options.speech === false) delete s.speechSynthesis;
     else s.speechSynthesis = { getVoices: () => [{ name: 'English', lang: 'en-US' }], cancel() {}, speak() {} };
     // Deliberately a protocol stub, not the Cognito SDK. Exercise the GAME's stored-user branches.
-    if (options.cognito) s.AmazonCognitoIdentity = { CognitoUserPool: class {
+    // The cached ID token is read the library's way (TUN-128: CognitoIdToken over the user's storage).
+    if (options.cognito) s.AmazonCognitoIdentity = { CognitoIdToken: class { constructor({ IdToken }) { this.payload = JSON.parse(IdToken); } }, CognitoUserPool: class {
       constructor({ ClientId }) { this.key = `CognitoIdentityServiceProvider.${ClientId}.LastAuthUser`; }
       getCurrentUser() {
         const username = s.localStorage.getItem(this.key);
-        return username ? { getUsername: () => username, getSession(cb) {
+        return username ? { getUsername: () => username,
+          storage: { getItem: k => (/\.idToken$/.test(k) ? JSON.stringify({ 'cognito:username': username, sub: 'sub-' + username }) : null) },
+          getSession(cb) {
           sessions.push(active);
-          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { 'cognito:username': username }, getJwtToken: () => 'fixture-token' }) });
+          cb(null, { isValid: () => true, getIdToken: () => ({ payload: { 'cognito:username': username, sub: 'sub-' + username }, getJwtToken: () => 'fixture-token' }) });
         } } : null;
       }
     } };

@@ -5,6 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadGame, FakeIdToken, cachedIdToken, signedInSession } from "./harness.mjs";
+import vm from "node:vm";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ROOT } from "./helpers/game-scripts.mjs";
 
 const clone = x => JSON.parse(JSON.stringify(x));
 const LOCAL = { v: 1, name: "Ann", current: "intro", updatedAt: 1,
@@ -67,17 +71,22 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   // bootUser: a session already stored when the page loads, so boot resumes it (answer: the network from the start).
   const net = { requests: [], answer: answer || (() => { throw new Error("no answer set for this request"); }) };
   let current = bootUser; const holds = new Map(), offline = new Set(), revoked = new Set();
+  // cacheOf(name): the cached ID token's claims, when a test makes them differ from the session's (null: none cached);
+  // sessionSubOf(name): the sub a fresh session hands out, when it differs from the cache's; holdOnce: the next lookup waits.
+  let cacheOf = null, sessionSubOf = null, holdOnce = null;
   const saves = new Map(); let serial = 1e6;
   const authbox = { kids: [], set innerHTML(v) { this.kids = []; }, get innerHTML() { return ""; },
     appendChild(c) { this.kids.push(c); return c; },
     get textContent() { return this.kids.map(k => k.textContent ?? "").join(""); } };
   const userNamed = name => ({ getUsername: () => name, signOut() { if (current === name) current = null; },
-    storage: cachedIdToken(() => ({ "cognito:username": claimOf(name), sub: subNow(name) })),
+    storage: cachedIdToken(() => (cacheOf ? cacheOf(name) : { "cognito:username": claimOf(name), sub: subNow(name) })),
     getSession(cb) {
-      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name), sub: subNow(name) }, getJwtToken: () => "token-" + name + ":" + subNow(name) }) });
+      const sub = () => (sessionSubOf ? sessionSubOf(name) : subNow(name));
+      const give = () => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": claimOf(name), sub: sub() }, getJwtToken: () => "token-" + name + ":" + sub() }) });
       // offline: can't refresh, still signed in; revoked: the service refuses the refresh, and the library clears the session
       const go = () => (offline.has(name) ? cb(new Error("Network error"))
         : revoked.has(name) ? (current === name && (current = null), cb({ code: "NotAuthorizedException" })) : give());
+      if (holdOnce) { const h = holdOnce; holdOnce = null; h.then(go); return; }
       const h = holds.get(name); if (h) h.then(go); else go();
     } });
   const g = loadGame({ fresh: true, elements: { authbox, ...elements }, setup: w => {
@@ -103,7 +112,9 @@ function cloudGame({ local = LOCAL, bootUser = null, answer = null, elements = {
   return { g, net, runSaves, queuedSaves: () => saves.size, panel: () => authbox.textContent, authbox,
     signIn: name => { current = name; }, holdTokens, setSubOf: f => { subNow = f; },
     offline: (name, on = true) => { if (on) offline.add(name); else offline.delete(name); },
-    revoke: name => { revoked.add(name); } };
+    revoke: name => { revoked.add(name); },
+    setCache: f => { cacheOf = f; }, setSessionSubOf: f => { sessionSubOf = f; },
+    holdNextLookup: () => { let release; holdOnce = new Promise(r => { release = r; }); return () => release(); } };
 }
 
 // GET /progress answers `get`; PUT /progress answers `put` (default 200).
@@ -550,7 +561,9 @@ test("TUN-87: a cloud result never redraws over a sign-in form", async () => {
   const form = authbox.kids[0], shown = authbox.textContent;
   assert.equal(authbox.kids.length, 1);
   list.resolve(reply(503, {})); await pending;
-  assert.equal(g.cloudResting, true, "the result still counts");
+  // TUN-128: the redraw found nobody signed in and ended that run, so the result of a call it began no longer counts.
+  assert.equal(g.cloudSync, "off");
+  assert.equal(g.cloudResting, false, "an ended run's result changes nothing");
   assert.equal(authbox.kids[0], form, "the form the player is typing into is the same element");
   assert.equal(authbox.textContent, shown);
 });
@@ -1053,4 +1066,187 @@ test("TUN-128 (50): once a save finds the account lost, the run's other calls st
   assert.deepEqual({ ...await signingUp }, { signedIn: false, saved: false }, "the ended run's first save is not a sign-in");
   assert.equal(g.cloudSync, "off");
   assert.equal(puts(net).length, 1);
+});
+
+// ---------- TUN-128, PR review round 1 ----------
+test("TUN-128 round 1 (1): a token that comes back after the cache switched sends nothing and draws no loading row", async () => {
+  for (const what of ["the sign-in's first lookup", "the load's own lookup", "a save's lookup"]) {
+    const t = cloudGame(); const { g, net } = t; net.answer = routes();
+    if (what === "a save's lookup") await g.onSignedIn(false);
+    const sent = net.requests.length, shown = panelHistory(t);
+    let release, done;
+    if (what === "the sign-in's first lookup") { release = t.holdNextLookup(); done = g.onSignedIn(false); }
+    else if (what === "the load's own lookup") { done = g.onSignedIn(false); release = t.holdNextLookup(); }
+    else { release = t.holdNextLookup(); g.commitProgress(); done = t.runSaves(); }
+    await tick();
+    t.signIn("bea"); release();   // ann's own valid token, after the cache names bea
+    await done; await tick();
+    assert.equal(net.requests.length, sent, `${what}: nothing sent with ann's late token`);
+    assert.equal(g.cloudSync, "off", what);
+    // Before its first lookup passed, a run draws no loading row; no row ever names bea.
+    const forbid = what === "the sign-in's first lookup" ? /\bbea\b|loading your progress/i : /\bbea\b/i;
+    for (const p of shown) assert.doesNotMatch(p, forbid, `${what}: no row for bea`);
+    assert.doesNotMatch(t.panel(), /Signed in as/, `${what}: the run is over`);
+  }
+  // Boot's resume: the cache names ann's sub; the session the library hands back carries another under her name.
+  const t = cloudGame(); t.net.answer = routes();
+  t.setSessionSubOf(n => "sub-" + n + "-reused");
+  assert.deepEqual({ ...await t.g.onSignedIn(false) }, { signedIn: false, saved: false });
+  assert.deepEqual(t.net.requests, [], "the resumed run is the cached account's, by name and sub");
+});
+
+test("TUN-128 round 1 (2): a refresh that fails while the cache names someone else is a lost account, not the cloud resting", async () => {
+  const variants = [
+    ["another sub cached", { "cognito:username": "ann", sub: "sub-ann-reused" }],
+    ["a cached token naming someone else", { "cognito:username": "bea", sub: "sub-ann" }],
+    ["no cached token", null],
+  ];
+  for (const [what, cached] of variants) {
+    // A ready save.
+    const t = cloudGame(); const { g, net } = t; net.answer = routes();
+    await g.onSignedIn(false); const before = puts(net).length;
+    t.offline("ann"); t.setCache(() => cached);
+    g.commitProgress(); await t.runSaves();
+    assert.equal(g.cloudSync, "off", `${what}: revoked`);
+    assert.equal(g.cloudResting, false, `${what}: not the cloud resting`);
+    t.offline("ann", false); t.setCache(null);   // ann back as she was
+    g.commitProgress(); await t.runSaves();
+    assert.equal(puts(net).length, before, `${what}: no PUT before a fresh load`);
+    // The form's GET lookup: the sign-in is not a sign-in, and nothing is read.
+    const u = cloudGame(); u.net.answer = routes();
+    u.g.cogSignIn = async () => signedInSession(ANN);
+    const pull = u.g.cloudPull; u.g.cloudPull = a => { u.offline("ann"); u.setCache(() => cached); return pull(a); };
+    assert.equal((await u.g.signInWith("ann", "acorn map tulip wren")).ok, false, `${what}: the form stays`);
+    assert.deepEqual(u.net.requests, [], what);
+    assert.equal(u.g.cloudSync, "off");
+  }
+  // The control: offline with the cache still naming ann (an expired token names her as well) — resting, still ready.
+  const t = cloudGame(); const { g, net } = t; net.answer = routes();
+  await g.onSignedIn(false);
+  t.offline("ann"); g.commitProgress(); await t.runSaves();
+  assert.equal(g.cloudSync, "ready"); assert.equal(g.cloudResting, true);
+  const u = cloudGame(); u.net.answer = routes();
+  u.g.cogSignIn = async () => signedInSession(ANN);
+  const pull = u.g.cloudPull; u.g.cloudPull = a => { u.offline("ann"); return pull(a); };
+  assert.equal((await u.g.signInWith("ann", "acorn map tulip wren")).ok, true, "offline is still a sign-in");
+  assert.equal(u.g.cloudSync, "unreachable");
+});
+
+test("TUN-128 round 1 (3): an account lost between a helper's answer and its use is still lost", async () => {
+  const BEA = withLevel(clone(CLOUD), 5);
+  for (const [what, get, wrap] of [
+    ["a load with progress, then bea", () => reply(200, clone(BEA)), t => { const f = t.g.cloudPull; t.g.cloudPull = async a => { const r = await f(a); t.signIn("bea"); return r; }; }],
+    ["a failed load, then bea", () => reply(503, {}), t => { const f = t.g.cloudPull; t.g.cloudPull = async a => { const r = await f(a); t.signIn("bea"); return r; }; }],
+    ["nobody at the load, ann back before its use", () => reply(200, clone(BEA)), t => { const f = t.g.cloudPull; t.g.cloudPull = async a => { t.signIn(null); const r = await f(a); t.signIn("ann"); return r; }; }],
+    ["the answer starts under ann, its body ends under bea", null, t => { t.net.answer = answers(() => ({ ok: true, status: 200, json: async () => { t.signIn("bea"); return clone(BEA); } })); }],
+    ["the answer starts under bea, its body ends under ann", null, t => { t.net.answer = answers(() => { t.signIn("bea"); return { ok: true, status: 200, json: async () => { t.signIn("ann"); return clone(BEA); } }; }); }],
+  ]) {
+    const t = cloudGame(); const { g, net } = t;
+    if (get) net.answer = answers(get);
+    wrap(t);
+    const before = JSON.stringify(g.progress), stored = g.__window.localStorage.getItem("mg_progress"), narrate = g.narrateReady;
+    let applied = 0; const apply = g.applyProgress; g.applyProgress = () => { applied++; apply(); };
+    const r = await g.onSignedIn(false);
+    assert.deepEqual({ ...r }, { signedIn: false, saved: false }, what);
+    assert.equal(JSON.stringify(g.progress), before, what);
+    assert.equal(g.__window.localStorage.getItem("mg_progress"), stored, what);
+    assert.equal(applied, 0, what); assert.equal(g.narrateReady, narrate, what);
+    assert.equal(g.cloudSync, "off", what);
+  }
+  // A sign-up's first save, answered, then bea before onSignedIn uses it.
+  const t = cloudGame(); t.net.answer = answers(() => assert.fail("no read"));
+  const f = t.g.cloudPush; t.g.cloudPush = async () => { const r = await f(); t.signIn("bea"); return r; };
+  const shown = panelHistory(t);
+  assert.deepEqual({ ...await t.g.onSignedIn(true, "ann", "sub-ann") }, { signedIn: false, saved: false });
+  for (const p of [...shown, t.panel()]) assert.doesNotMatch(p, /saved to cloud|\bbea\b/i);
+});
+
+test("TUN-128 round 1 (4): an older sign-in answering after a newer one finished claims nothing", async () => {
+  const BEA = withLevel(clone(CLOUD), 5);
+  const t = cloudGame(); const { g, net } = t;
+  net.answer = answers(req => reply(200, req.token.startsWith("token-bea") ? clone(BEA) : clone(CLOUD)));
+  t.signIn(null);
+  const heldA = deferred();
+  g.cogSignIn = async u => { if (u === "ann") { await heldA.promise; return signedInSession(ANN); }
+    t.signIn("bea"); return signedInSession({ "cognito:username": "bea", sub: "sub-bea" }); };
+  const a = g.signInWith("ann", "acorn map tulip wren"); await tick();
+  assert.equal((await g.signInWith("bea", "fig map oak ivy")).ok, true);
+  g.commitProgress();
+  assert.equal(t.queuedSaves(), 1);
+  const progress = JSON.stringify(g.progress), panel = t.panel(), sent = net.requests.length;
+  heldA.resolve(); const r = await a; await tick();   // ann's answer, with bea still the stored account
+  assert.equal(r.ok, false);
+  assert.equal(g.cloudSync, "ready", "bea's sync stands");
+  assert.equal(t.queuedSaves(), 1, "and her queued save");
+  assert.equal(JSON.stringify(g.progress), progress);
+  assert.equal(t.panel(), panel);
+  assert.equal(net.requests.length, sent, "nothing for ann");
+  await t.runSaves();
+  assert.equal(puts(net).at(-1).token, "token-bea:sub-bea");
+});
+
+test("TUN-128 round 1 (5): a panel redraw that finds another account, or nobody, ends the run instead of crediting it", async () => {
+  for (const [what, change] of [["bea", t => t.signIn("bea")], ["nobody", t => t.signIn(null)], ["ann with another sub", t => t.setSubOf(n => "sub-" + n + "-new")]]) {
+    const t = cloudGame(); const { g, net } = t; net.answer = routes();
+    await g.onSignedIn(false); const before = puts(net).length;
+    change(t);
+    g.renderAuth();   // what opening Home does
+    assert.doesNotMatch(t.panel(), /Signed in as|syncs across|\bbea\b/i, `${what}: no row for this run`);
+    assert.equal(g.cloudSync, "off", `${what}: and nothing writable`);
+    t.signIn("ann"); t.setSubOf(n => "sub-" + n);
+    g.commitProgress(); await t.runSaves();
+    assert.equal(puts(net).length, before, `${what}: no PUT before a fresh load`);
+  }
+  // A redraw while the cache still names this run's account shows it, by the run's own name.
+  const t = cloudGame(); t.net.answer = routes();
+  await t.g.onSignedIn(false); t.g.renderAuth();
+  assert.match(t.panel(), /Signed in as ann/); assert.equal(t.g.cloudSync, "ready");
+});
+
+// ---- the cache contract, through the vendored Cognito library itself ----
+function realLibrary(answer) {
+  const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, crypto: globalThis.crypto,
+    navigator: { userAgent: "node" }, fetch: async () => answer() };
+  ctx.window = ctx; ctx.self = ctx; ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(readFileSync(join(ROOT, "vendor", "cognito", "amazon-cognito-identity.min.js"), "utf8"), ctx);
+  return ctx.AmazonCognitoIdentity;
+}
+const b64url = o => Buffer.from(JSON.stringify(o)).toString("base64url");
+const jwtOf = claims => b64url({ alg: "RS256", kid: "test" }) + "." + b64url(claims) + ".signature";
+const memoryStorage = () => { const m = new Map();
+  return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); }, clear: () => m.clear() }; };
+
+test("TUN-128 round 1: the game reads who is signed in where, and as, the vendored Cognito library stores it", async () => {
+  let answer = async () => { throw new TypeError("Failed to fetch"); };
+  const lib = realLibrary(() => answer());
+  const { g } = cloudGame();
+  const st = memoryStorage(), client = g.AUTH.clientId, prefix = "CognitoIdentityServiceProvider." + client;
+  g.userPool = new lib.CognitoUserPool({ UserPoolId: g.AUTH.userPoolId, ClientId: client, Storage: st });
+  g.__window.AmazonCognitoIdentity = lib;
+  const past = Math.floor(Date.now() / 1000) - 3600;
+  const store = (name, claims, at = prefix + "." + name) => {
+    st.setItem(prefix + ".LastAuthUser", name);
+    if (claims) { st.setItem(at + ".idToken", jwtOf(claims)); st.setItem(at + ".accessToken", jwtOf({ username: name, exp: past }));
+      st.setItem(at + ".refreshToken", "opaque"); st.setItem(at + ".clockDrift", "0"); } };
+  // An expired token still names its account; the sub and the name must both match.
+  store("ann", { "cognito:username": "ann", sub: "sub-ann", exp: past });
+  assert.deepEqual({ ...g.cachedAccount() }, { name: "ann", tokenName: "ann", sub: "sub-ann" });
+  assert.equal(g.accountIs("ann", "sub-ann"), true);
+  assert.equal(g.accountIs("ann", "sub-other"), false);
+  assert.equal(g.accountIs("bea", "sub-ann"), false);
+  // Under another client's key, or with no token at all: no account named.
+  st.clear(); store("ann", { "cognito:username": "ann", sub: "sub-ann" }, "CognitoIdentityServiceProvider.another-client.ann");
+  assert.equal(g.cachedAccount().tokenName, ""); assert.equal(g.accountIs("ann", "sub-ann"), false);
+  st.clear(); store("ann", null);
+  assert.equal(g.accountIs("ann", "sub-ann"), false);
+  st.clear(); assert.equal(g.cachedAccount(), null, "nobody stored");
+  // The expired session can't be refreshed offline: still ann, so the cloud is resting ({}).
+  store("ann", { "cognito:username": "ann", sub: "sub-ann", exp: past });
+  assert.deepEqual({ ...await g.freshId("ann", "sub-ann") }, {});
+  // The service refuses the refresh: the library clears the session, so nobody is signed in.
+  answer = async () => ({ ok: false, status: 400, headers: { get: () => null },
+    json: async () => ({ __type: "NotAuthorizedException", message: "Refresh Token has been revoked" }), text: async () => "" });
+  assert.deepEqual({ ...await g.freshId("ann", "sub-ann") }, { gone: true });
+  assert.equal(st.getItem(prefix + ".LastAuthUser"), null, "the library cleared it");
 });
