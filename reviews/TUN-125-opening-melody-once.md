@@ -299,8 +299,37 @@ suite 1149/1149.
 
 ## Owner's decisions
 
-1. **open — the reload choice.** After a reload on a level with an opening melody, it plays once at the first tap,
-   press or click (today's behaviour, kept), or stays silent until 🔊 Listen. The owner (2026-11-25, 3:57 PM PT,
-   through the coordinator) will playtest it and decide. The current behaviour stays until then.
-2. **open — the round-3 fixes are unreviewed.** The skill allows three PR review rounds; all are used. Either a
-   fourth GPT round on the round-3 delta, or a hand-off for playtest on my verification alone.
+1. **The reload choice — silence, not the first tap.** The owner playtested 8d4b4cf and answered on 2026-11-25 at
+   5:08 PM PT, relayed by the coordinator. In the owner's words: "it feels strange that it plays together with me
+   planting a seed... I think it should either play once on refresh, or not play at all." The coordinator's
+   instruction: after a reload the opening must never be started by the player's first tap on the field, or by any
+   other unrelated gesture. If the clock already runs when the level is drawn, it plays once then. If the clock is
+   suspended, it stays silent until 🔊 Listen.
+2. **A fourth GPT round — yes.** Same answer, same relay: run it after the change above is pushed, on
+   `3ca520d..` the new head. No fifth round.
+
+## The owner's reload decision, built (Claude)
+
+The rule is "suspended → silent", read literally, needed one refinement. After a reload, the audio context exists
+(the boot's draw made it), suspended. It stays suspended even after the player has clicked around, until something
+calls `resume()`. So with the literal rule, a level opened deliberately afterwards — Home → a package — would be
+silent too. That would be a regression no one asked for. The browser says whether the page has had a click
+(`navigator.userActivation.hasBeenActive`, sticky activation). The opening therefore plays when its 350 ms are up
+if the clock runs, or if it is suspended on a page that has had a click, since `playPhrase`'s `resume()` will then
+start it. It is dropped otherwise: a reload before any gesture, an interrupted clock, or a browser without that
+API. Dropped means silent: no waiting, no `statechange` listener, and nothing a later tap can start.
+
+"Play once on refresh without a tap" is not reliably possible: the browsers' autoplay rules keep a page's audio
+off until a gesture, except where the browser grants autoplay (media engagement, a site setting). Where it does,
+the clock already runs, and the call plays once with no tap, as the owner described.
+
+Changes: `canSound()` replaces `clockRuns()`; `openingDue` drops or holds and never resumes; `releaseOpening`
+only re-arms after Home; the `statechange` listener and `openingHooked` are gone, and so is `load-gate`'s
+`statechange` entry. Behind Home, held, and released by every way off Home, as before.
+
+Tests (`tests/opening-melody.test.mjs`, 42): the reload tests now expect silence through the first tap, Loop,
+Home and Close, under both resume behaviours, and one copy from Listen. A clock the browser runs at once plays
+the call with no tap. A clicked page with a suspended clock plays a deliberately opened level's echo, and without
+`userActivation` stays silent until Listen. The interrupted clock drops it, and recovery does not bring it back.
+On 8d4b4cf, 7 of these fail; all pass now. Mutation checks, run by hand on each part of the rule, each fail at least
+one test: the sticky-activation clause, dropping, the interrupted state, holding behind Home, and the release.

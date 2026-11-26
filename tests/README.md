@@ -343,8 +343,8 @@ contour. Use it instead of poking `g.grid` directly.
   else it is asked for must still fail, per the next point.
 - **The harness's `AudioContext` is a bare stub: it has no state and no clock.** A test about what is
   *heard*, and when, installs its own in `setup`. `opening-melody.test.mjs` (TUN-125) has one that follows
-  the autoplay rule. It is suspended with its clock frozen until the page's first gesture, and can be
-  interrupted as iOS does. It records each note `voice()` books, with the clock's state at the moment of
+  the autoplay rule. It is suspended with its clock frozen until the page's first gesture, reports that
+  gesture through `navigator.userActivation`, and can be interrupted as iOS does. It records each note `voice()` books, with the clock's state at the moment of
   booking.
 - **`fetch`/`XMLHttpRequest` are deliberately absent from the harness.** `index.html` must never
   use them for local assets (AGENTS.md hard invariant). If a test dies on a missing `fetch`,
