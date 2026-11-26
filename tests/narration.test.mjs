@@ -5,7 +5,7 @@
 // records what it is asked to say instead of saying it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadGame } from "./harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken } from "./harness.mjs";
 
 const tick = () => new Promise(r => setImmediate(r));
 const named = (name, msg = name) => Object.assign(new Error(msg), { name });
@@ -148,6 +148,8 @@ function signInGame({ narrateReady, cloud = CLOUD, pickerUp = false }) {
   } });
   const log = voices(g.__window), pull = deferred();
   g.freshId = async () => ({ token: "token-ann", sub: "sub-ann" });   // signed in (TUN-93: onSignedIn asks freshId)
+  g.userPool = { getCurrentUser: () => ({ getUsername: () => "ann", storage: cachedIdToken({ "cognito:username": "ann", sub: "sub-ann" }) }) };   // …as ann (TUN-128)
+  g.__window.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken };   // …read the library's way
   g.cloudPull = async () => ({ ok: true, progress: clone(await pull.promise) });
   g.renderAuth = () => {};
   g.speakOn = true; g.narrateReady = narrateReady;
@@ -246,13 +248,13 @@ test("a signed-in reload: silent until the cloud answers, then the cloud level's
   // The real boot gate: a stored session at load, so boot.js calls onSignedIn(false) itself. Voices are recorded
   // from before boot; the cloud's answer is held until the test releases it.
   const answer = deferred(); let log;
-  const user = { getUsername: () => "ann", signOut() {},
+  const user = { getUsername: () => "ann", signOut() {}, storage: cachedIdToken({ "cognito:username": "ann", sub: "sub-ann" }),
     getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": "ann", sub: "sub-ann" }, getJwtToken: () => "token-ann" }) }) };   // the claims TUN-93 checks
   const g = loadGame({ fresh: true, setup: w => {
     log = voices(w);
     w.localStorage.setItem("mg_progress", JSON.stringify(LOCAL));
     w.localStorage.setItem("mg_settings", JSON.stringify({ speak: true }));
-    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return user; } } };
+    w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() { return user; } } };
     w.fetch = async () => answer.promise;
   } });
   await tick();

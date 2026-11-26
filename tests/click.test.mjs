@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert";
-import { loadGame } from "./harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken } from "./harness.mjs";
 
 const g = loadGame();
 const TPC = g.TICKS_PER_COL;
@@ -247,9 +247,9 @@ function bootWith(stored, cloud = null) {
   const f = loadGame({ fresh: true, setup: w => {
     if (stored) w.localStorage.setItem("mg_progress", JSON.stringify(stored));
     if (!cloud) return;
-    const user = { getUsername: () => "ann", signOut() {}, getSession: cb => cb(null, { isValid: () => true,
+    const user = { getUsername: () => "ann", signOut() {}, storage: cachedIdToken(() => ({ "cognito:username": "ann", sub: "sub-ann" })), getSession: cb => cb(null, { isValid: () => true,
       getIdToken: () => ({ payload: { "cognito:username": "ann", sub: "sub-ann" }, getJwtToken: () => "token-ann" }) }) };
-    w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return user; } } };
+    w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() { return user; } } };
     w.fetch = async (url, opts = {}) => {
       if (!/\/progress$/.test(String(url)) || (opts.method || "GET") !== "GET") throw new Error("unexpected " + url);
       return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(cloud)) };

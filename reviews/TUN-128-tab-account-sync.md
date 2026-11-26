@@ -1,0 +1,734 @@
+# TUN-128 — Keep a tab's cloud sync on the account that signed in, when another tab changes who is signed in
+
+Branch `ao/tab-cloud-sync/root` · Size **M** (label and `## Size` agree) · Findings 48–51 and tests 53–59 are GPT's
+round-4 review of TUN-93 (`reviews/TUN-93-garden-name-accounts.md` § *PR review, round 4*); the numbers are that
+review's.
+
+## Plan (Claude)
+
+### What changes for the player
+
+Nothing they can see in ordinary play. In the rare case where a second tab of the same browser signs someone else
+in, or signs out, while this tab is signing in, loading or saving: this tab no longer loads, shows or saves a garden
+for an account other than the one its child signed in to, and Home's sign-in form stays up, with its words and a
+message, when the sign-in turns out not to have worked.
+
+### Approach, file by file
+
+**`js/cloud.js`**
+
+1. **`freshId(name,sub)` tells "nobody signed in" from "can't refresh now"** (50, and the ticket's trap). No current
+   user in the shared storage → `{ gone:true }`. A current user whose `getSession` fails or is invalid → `{}` as today
+   (an outage: the calm "cloud is resting" path). `{ mismatch:true }` and `{ token, sub }` unchanged. `freshToken`
+   (the song calls) is unchanged in effect: both still give no token. A helper `lostAccount(id) = id.mismatch || id.gone`
+   is what every sync caller tests.
+2. **`sessionAccount(s)`** (new, 48): from the session `cogSignIn` resolves with, `{ name, sub }` — the ID token's
+   `cognito:username`, lower-cased, and `sub` — or `null` when either is missing.
+3. **`signInWith`** (48, 51): keeps `cogSignIn`'s session; no `name`/`sub` in it → `{ ok:false, msg:AUTH_SAYS.other }`.
+   Otherwise `onSignedIn(false, acct.name, acct.sub, { form:true })`. So the run is bound to the account that
+   authenticated: if the shared storage already names another account (or the same name with another `sub`),
+   `onSignedIn`'s existing `onlyFor` check and `freshId`'s claims check return `signedIn:false` before any request,
+   and the form stays.
+4. **`onSignedIn(uploadLocal, onlyFor, onlySub, opts)`** — positional arguments kept (about 40 test calls use them);
+   a fourth, `opts.form`: a sign-in form is waiting for the outcome.
+   - **51:** with `opts.form`, the "loading your progress…" redraw (`cloudSync="loading"; renderAuth()`) is skipped,
+     so Home's submitting form stays attached ("Signing in…", its words, Sign in and Cancel disabled by its own
+     `busy`) until the outcome is known. Success redraws the panel at the end, as today; every failure path redraws
+     only when the panel shows the signed-in row (`loseSync`'s existing rule), so a failure leaves the form for its
+     handler to write the message into. The unconditional `renderAuth()` after `loseSync()` on `pull.mismatch`
+     goes (loseSync already redraws when it should). Boot's resume (no `opts`) keeps the loading row.
+   - **50 at the GET lookup:** `cloudPull` returns `{ ok:false, lost:true }` for `gone` as it does for `mismatch`;
+     `onSignedIn` handles both alike: `loseSync()`, `NO` — never `{ signedIn:true }` with an unreachable cloud.
+   - **49, after the GET returns:** a fresh `freshId(who,_syncSub)` and the run check, **before** `cloudSync="ready"`,
+     `Store.set`, `applyProgress`, any render, and before TUN-112's narration block (whose order is untouched).
+     Lost (mismatch or gone) → `loseSync()`, `NO`. A session that exists but can't refresh → treated as a failed
+     load (`cloudSync="unreachable"`, `{ signedIn:true, saved:false }`): nothing applied, nothing writable (TUN-106).
+     The check runs whatever the GET answered, so a failed load under a changed account is `NO` too, not a
+     "signed in, cloud resting".
+5. **`cloudPush`** (50, 49's save half):
+   - At the token lookup: `gone` → `loseSync()`, `false`, no cloud failure reported (`done` not called: nobody is
+     signed in, the cloud did nothing wrong). `{}` (can't refresh) → `done(false)` as today — calm "resting".
+     A 503 with a valid session → `done(false)` as today.
+   - **After a successful PUT** returns: the run check, then `freshId(_syncUser,_syncSub)` again; lost →
+     `loseSync()`, return `false` (so neither `onSignedIn`'s "saved to cloud" nor the card's "saved ✓" credits it);
+     can't refresh → return `false` without `done` or `loseSync` (unknown: not credited, nothing revoked).
+     Only then `done(true)`. The PUT itself went out with a token checked for this run's account, so the bytes are in
+     that account's row; what is withheld is only the claim.
+
+**`js/garden-card.js` — `createGarden`** (48)
+
+6. The recovery sign-in after a lost sign-up answer keeps `cogSignIn`'s session: `a.sub = sessionAccount(s).sub`
+   (a session without a name equal to `a.name`, or without a `sub` → `cantCheck`, card kept, `a.made` set so the
+   card says the account is made). Every later retry passes that same `a.sub` to `onSignedIn(true, a.name, a.sub)`.
+7. The ordinary sign-in (and every retry's) keeps its session too: when `a.sub` is set (sign-up's `userSub`, or the
+   recovery's), a session whose `sub` differs → `{ ok:false, msg:GARDEN_SAYS.cantCheck }` and no upload; when
+   `a.sub` is not set (a sign-up answer without `userSub`), the session's `sub` becomes `a.sub`.
+
+**Not touched:** `js/boot.js` (`doLandingSignIn` already writes into the landing's own message, which is never
+detached; TUN-69's worker is in boot.js today), `js/home.js` (the guards are right — GPT 53 asks only for tests),
+the backend.
+
+### Tests that would prove it
+
+In `tests/cloud-sync.test.mjs` (`cloudGame`), `tests/garden-card.test.mjs` (`cardGame`):
+
+- **Fixture changes:** `cloudGame` gains a way to call the real `signInWith` with a stubbed `cogSignIn` that returns a
+  chosen session (name, `sub`) and, optionally, changes the shared storage before resolving; `cardGame`'s
+  `cogSignIn` stub returns a session (`cognito:username`, `sub`) with **distinguishable `sub`s under one name**
+  (56), and its `getSession` stub gains a "gone" vs "broken" distinction. `tests/cloud-resting.test.mjs`'s two
+  `cogSignIn` stubs return a session.
+- **54 (identity and late GET):** `cogSignIn` returns A's session while the storage selects B → no request with B's
+  token, `signedIn:false`, the form's `{ ok:false }`. Hold A's GET, change only the storage, release — three cases:
+  B; A's name with another `sub`; nobody. Each: `progress` and `mg_progress` unchanged, no `applyProgress`
+  (level unchanged, no narration recorded), `cloudSync` not `"ready"`, `signedIn:false`. **The second half of the
+  existing test at line 790 is replaced** by the "nobody / B" cases asserting the copy never lands.
+- **55 (write revocation):** a sign-up whose first PUT fails; queue an ordinary save; a replacement `sub` at that
+  save's lookup → zero PUTs with it, `cloudSync` `"off"`, no "saved". The same with no current user; then restore A
+  in the storage → another save sends nothing until `onSignedIn` has done a fresh GET. A 503 with a valid session
+  still says the cloud is resting and keeps `"ready"`. A successful PUT held while the storage switches to B → the
+  panel never shows "saved to cloud", `onSignedIn` returns `saved:false`.
+- **56 (card):** Retry after a stale session: both sign-in argument pairs equal the card's name and words; one
+  sign-up; one PUT, with the card account's `sub`. Lost sign-up answer: recovery `cogSignIn` returns A's session,
+  the storage then shows A's name with another `sub` before upload → card survives, no PUT, success withheld; a
+  retry signs in again and passes A's `sub`.
+- **57 (form outcomes):** Home's form, identity lost after the first lookup (at the GET lookup, and after the GET
+  returns) → the form is still in `authbox`, its words in it, the message shown, Sign in enabled. Landing seed-503
+  case → the signed-in panel visibly shows the "cloud is resting" save line. **Superseded submission:** see
+  question 1 below.
+- **58 (navigation controls):** `homeclose`, `landingSignin`, `landingmain`, `landingauth` supplied as elements before
+  boot; press the handlers boot and `home.js` install (Close, backdrop, a package, the Studio) while busy and idle;
+  assert scope, form cleanup, and the passphrase box empty and masked on reopen (Home and landing, after Show and
+  Back).
+- **53 (quest buttons):** the profile with `intro`, `footsteps`, `follow-the-fireflies` completed and no quest runs;
+  press the rendered **Firefly Crossing** card, and separately the enabled **Waking Woods** trail row: during a
+  held sign-in Home stays open, scope unchanged, no quest run; idle, the quest opens, and Home's sign-in form
+  reopens empty and masked.
+- **59:** the keep-this-card-and-retry message asserted in the existing recovery table for `""` (and the other rows).
+- **Mutation checks I will run myself:** drop each new check (post-GET recheck, post-PUT recheck, `gone` → loseSync in
+  push, `gone` at the GET lookup, `opts.form`'s skipped redraw, the card's `a.sub` from recovery) and confirm a test
+  fails for each.
+
+### Risks
+
+- **Offline vs signed out.** `gone` is only "no current user in storage". A refresh that fails for any reason
+  (offline, or a revoked refresh token) stays `{}` — calm, no write, no revocation. A revoked refresh token therefore
+  keeps the tab "ready" but every push fails calmly; that is today's behaviour and never writes.
+- **One more `getSession` per load and per save.** It reads storage and calls back at once while the tokens are
+  valid; it refreshes only when they are not, which the call before it would have done anyway.
+- **A false "not saved" on the card** if the storage switches between a successful PUT and its recheck: the child
+  presses Try again and the same progress goes up again. Chosen over crediting a save while another account is
+  signed in.
+- **TUN-112's narration order** is untouched; the extra `await` sits before the block, and the narration tests'
+  stubs already carry the claims.
+- **`file://`**: no Cognito, `userPool` null — `freshId` returns `{ gone:true }` where it returned `{}`; every caller
+  that can run without Cognito (`freshToken`, the song calls) only reads `token`. To be checked by the suite and by
+  opening the game from `file://`.
+
+### Questions
+
+For the owner: **none** — the ticket says none, and nothing here has more than one defensible answer for a player.
+
+For GPT's review, one design point:
+
+1. **Test 57's "superseded Home submission".** GPT's round-4 case was: A's Home form held at the GET, a newer Home
+   submission, A finishes first, the newer form survives. That newer submission was possible only because the
+   loading redraw removed A's form (the guest panel's "Sign in" came back). With item 4's `opts.form`, A's form
+   stays up and busy until its outcome, so **no newer Home submission can start while A's is out**. I plan to test
+   that (the form stays, busy, Home locked), plus a newer sign-in through `onSignedIn` directly (boot's or the
+   landing's path) superseding A's held GET: A's handler writes only into its own form, and the newer run's panel
+   is what remains. Is that the right reading of 51's last sentence, or is there a path to a newer Home form I have
+   missed?
+
+## Design review (`gpt-6.2-astra`)
+
+`ask.sh fresh read-only`, 2026-11-25, on the plan at `bf29cfb`. Usage: in 1,297,681 (cached 1,203,456), out 6,215.
+**Verdict: CHANGES REQUESTED** — five High (1–5), five Medium (6–10), one Low (11). No question for the owner.
+
+<details><summary>GPT's design review, verbatim</summary>
+
+1. **High — The final identity check can itself return stale information.** `getCurrentUser()` reads `LastAuthUser` and constructs a user object. `getSession()` can then refresh asynchronously. Its callback describes that session, while the shared account may have changed since the lookup began. The vendored SDK also clears cached identity on a `NotAuthorizedException` and writes tokens and `LastAuthUser` on successful refresh. The plan’s claim that a revoked refresh leaves the tab ready and merely offline is therefore incorrect. Require the final decision to check the currently selected name and subject against the run’s captured identity. Prefer a read-only check of cached identity at completion so reporting a GET or PUT does not itself initiate a refresh. Test a switch *during the final lookup*, including a callback for A after the cache selects B, and distinguish a network error with A still present from an error that leaves nobody signed in. [Plan, item 4](reviews/TUN-128-tab-account-sync.md#L42) · [freshId](js/cloud.js#L54) · [Vendored Cognito SDK](vendor/cognito/amazon-cognito-identity.min.js)
+
+2. **High — A stale completion can revoke a newer run.** Item 5 checks `_cloudRun` **before** awaiting the final `freshId`. If B starts a run during that await, A can return and call `loseSync()` on B. `cloudCall` guards its own callback, but cannot protect that state change. Also, `loseSync()` clears `_syncUser` and `_syncSub` without advancing `_cloudRun`, so another outstanding push can pass the run check and use those cleared values as wildcard expectations. Capture the run, name and subject together, invalidate the run on observed loss, and check ownership after every await before changing state or publishing an outcome. Hold the final lookup, complete B’s load, then release A. Removing the guard **after** that lookup must fail a test that checks B’s readiness, panel and ability to save. [Plan, item 5](reviews/TUN-128-tab-account-sync.md#L48) · [loseSync and cloudPush](js/cloud.js#L64) · [TUN-106’s run rule](reviews/TUN-106-keep-cloud-progress-on-failed-load.md#L56)
+
+3. **High — The GET can redraw the panel before the proposed check.** `cloudPull` calls `done(false)` on an HTTP or parse failure and `done(true)` after parsing a successful response. `done` can immediately call `renderAuth()`, which reads the username from shared storage. On boot resume, A’s loading row can therefore be redrawn under B’s name before control returns to `onSignedIn`. Keep the cloud-call sequence assigned at request start, but defer publishing its result until ownership is established. Give an observed `pull.lost` precedence even if A has reappeared by the final lookup. Test the render history with the signed-in loading row visible and a held GET returning 503 after a switch. Checking only the final panel misses the premature redraw. Keep this decision ahead of readiness, `Store.set`, and the entire TUN-112 narration block. [cloudCall](js/cloud.js#L22) · [cloudPull](js/cloud.js#L68) · [Application and narration](js/cloud.js#L140) · [Panel account lookup](js/cloud.js#L165)
+
+4. **High — The initial name guard can observe a sign-out and leave an old writer ready.** `onSignedIn` returns at `onlyFor && !currentUserIs(onlyFor)` before it advances `_cloudRun`, cancels a queued save, or revokes the existing writer. If this tab already had write permission for A and that check observes nobody, A reappearing in storage can let an ordinary save through without a fresh GET. The plan also retains a second storage read to choose `who` after checking `onlyFor`. Use the authenticated name and subject as the run’s identity throughout. When the current writer’s identity is observed gone or replaced, revoke that writer while preserving any newer run that owns the tab. Start the regression test with a ready writer and a queued save. A test starting from `off` cannot expose this failure. [Plan, item 3](reviews/TUN-128-tab-account-sync.md#L27) · [Initial guard and run allocation](js/cloud.js#L131) · [Queued saves](js/cloud.js#L85)
+
+5. **High — A failed seed PUT can still dismiss the form after sign-out.** The plan rechecks only successful PUTs. If the empty-copy seed PUT returns 503 or rejects after the shared account disappears, `done(false)` runs, `cloudSync` can remain `ready`, and `onSignedIn` returns `signedIn:true, saved:false`. Landing then clears the words and closes. Finalize failed PUTs against the same ownership rules. A valid session plus 503 must still produce the signed-in save-failure line. Observed loss must end the run and preserve the submitting form. A refresh failure with the account still present must have the calm resting outcome, including at the final lookup where item 5 currently proposes silence. Test all three outcomes through the seed path. This can be handled in `cloud.js` with the existing landing handler. [Plan, item 5](reviews/TUN-128-tab-account-sync.md#L49) · [Seed result](js/cloud.js#L153) · [Landing handler](js/boot.js#L122)
+
+6. **Medium — Answer to Question 1: keep the newer Home submission test.** `busy` belongs to one form. Home’s entry handler can call `openHome()` again, which unconditionally redraws `authbox`. Home has no background focus containment like the garden card’s. Also, the existing loading redraw normally shows the **signed-in loading row** when the user is present. The premise that it necessarily restores the guest Sign in button is wrong. A direct `onSignedIn` call creates neither a second form nor a second `authBusy` claim, and boot resume runs only at first load. Exercise two real Home submit handlers, mounting the second form explicitly in the fixture if necessary. Finish A while B is pending and assert B’s exact form, words, message, button state and navigation lock survive. Include B pending in `cogSignIn`, before it has acquired a new `_cloudRun`. Protect the form that actually owns the panel, including from a boot-resume redraw while someone is typing. Keep `cloudSync="loading"` independent of whether the panel redraws. [Plan question](reviews/TUN-128-tab-account-sync.md#L133) · [Home entry](js/home.js#L18) · [Form handler](js/cloud.js#L246) · [Boot gate](js/boot.js#L132)
+
+7. **Medium — The card’s recovery state claims more than the session proves.** Item 6 sets `a.made` even when recovery returns a different name or no usable subject. `showGardenCard` then tells the child the account exists, removes Cancel and offers Done. With a lost sign-up answer, that identity has not established which account was created. Keep the same card and the uncertain recovery state until its account is identified. After a confirmed sign-up, keep `made`, preserve the original `userSub`, and require the returned name and a nonempty matching subject on every ordinary sign-in and retry. Test missing claims, a contradictory sign-up `userSub`, and a retry whose returned session **and cache agree on the same replacement subject**. The latter kills the mutation that overwrites the original `a.sub` on every retry. [Plan, items 6–7](reviews/TUN-128-tab-account-sync.md#L60) · [Recovery state](js/garden-card.js#L48) · [Visible card outcomes](js/garden-card.js#L132)
+
+8. **Medium — Two existing tests contradict the fixture plan.** The test at line 434 explicitly requires `cloudResting === true` after `signIn(null)`. Split it into observed sign-out and a still-present user whose refresh fails. Assert revocation and a required fresh GET for the former, and the resting line plus a successful ordinary retry for the latter. The landing outage test at line 555 replaces `cogSignIn` with a function returning `undefined`, so the proposed claim check rejects it before its GET. The wrappers at garden-card lines 534 and 551 likewise discard the wrapped session. Return the authenticated session from those fixtures and assert that each reaches its intended later failure. The two `cloud-resting` stubs named in the plan are refusal sentinels whose tests already require zero sign-ins. [Existing sign-out expectation](tests/cloud-sync.test.mjs#L434) · [Landing outage stub](tests/cloud-sync.test.mjs#L550) · [Card wrapper](tests/garden-card.test.mjs#L534) · [Home wrapper](tests/garden-card.test.mjs#L551) · [Refusal sentinel](tests/cloud-resting.test.mjs#L159)
+
+9. **Medium — Several proposed tests would pass with part of the fix removed.** For finding 48, test an ordinary sign-in whose returned session and cached account have the **same name and different subjects before sync starts**. The different-name case still passes if `signInWith` drops only `acct.sub`. For finding 50, make the GET token lookup observe nobody and restore A before the final lookup. Leaving storage empty throughout lets the final check conceal a missing `gone` branch in `cloudPull`. For finding 54, record calls to `applyProgress` and narration directly, and assert `narrateReady` stays unchanged on rejection. The generic harness swallows audio calls, and an unchanged level alone cannot prove the narration block was never entered. [Planned mutations](reviews/TUN-128-tab-account-sync.md#L107) · [Cloud fixture](tests/cloud-sync.test.mjs#L74) · [Harness audio stubs](tests/harness.mjs#L267) · [Narration fixture](tests/narration.test.mjs#L149)
+
+10. **Medium — The navigation fixture cannot currently produce the controls it promises to press.** `cardGame` replaces `renderPkgs` with a no-op. Its fake elements clear `innerHTML` without constructing the SVG that installs the package and Studio handlers. `questhome` also needs a persistent element for the tests to find the rendered card and trail buttons. Specify a recording DOM capable of exercising those handlers, or use a real browser for the map controls. For each busy and idle case, press the installed button and assert the intended quest ID or a distinguishable destination scope. For landing, assert that Back and reopen actually toggle `landingmain` and `landingauth`. An already-empty password field passes even if reopen does nothing. [Card fixture](tests/garden-card.test.mjs#L36) · [Disabled map renderer](tests/garden-card.test.mjs#L65) · [Map controls](js/home.js#L259) · [Quest controls](js/home.js#L23) · [Landing visibility](js/boot.js#L105)
+
+11. **Low — `file://` does not imply `userPool === null`.** `index.html` loads the vendored classic script locally, and `cloud.js` constructs the pool whenever the SDK global exists. An available SDK with an empty pool and an unavailable SDK are separate cases. Verify guest startup and device-only progress in both, including opening `index.html` directly. The first-load gate already handles an empty pool, so this requires no `boot.js` edit. [Local SDK script](index.html#L1023) · [Pool initialization](js/cloud.js#L4) · [First-load gate](js/boot.js#L132)
+
+CHANGES REQUESTED
+
+</details>
+
+## My answers
+
+All eleven agreed. None is a question for the owner: each has one right answer once the code is read, and none
+changes what a player is offered.
+
+1. **High, the final check can be stale — agree.** Verified in `vendor/cognito/amazon-cognito-identity.min.js`:
+   `getSession` reads the tokens for `this.username` from the shared storage, and a refresh refused with
+   `NotAuthorizedException` calls `clearCachedUser()`. My risk note ("a revoked refresh keeps the tab ready") was
+   wrong: the library signs the browser out. Revised: a synchronous, read-only `cachedAccount()` for every decision
+   made after an `await` (item R2), and `freshId` asks the cache again after a failed refresh to tell "gone" from
+   "offline" (R1).
+2. **High, a stale completion can revoke a newer run — agree.** Revised: the run, name and `sub` are captured
+   together at the start; after every `await` the run is checked first, and only then the account; `loseSync`
+   advances `_cloudRun`, so the run's other calls in flight end too (R3).
+3. **High, the GET can redraw before the check — agree.** `cloudPull`'s `done()` runs `renderAuth()`, which names the
+   stored user. Revised: the run and account are checked inside `cloudPull` before `done` (R4); a `lost` seen at
+   the GET's own lookup wins even if A is back by the end.
+4. **High, the first name guard returns before revoking — agree.** Revised: `onSignedIn` starts its run, drops the
+   queued save and revokes the old writer **before** any account check, and uses the authenticated name and `sub`
+   throughout — no second read of the storage to choose `who` (R5).
+5. **High, a failed seed PUT after sign-out still dismisses the form — agree.** Revised: every PUT outcome, success or
+   failure, is settled against the run and the cached account before `done` (R6). A 503 with A still signed in:
+   the signed-in save-failure line; A gone: the run ends and the form stays.
+6. **Medium, question 1 — agree; my premise was wrong twice.** The loading redraw shows the signed-in loading row, not
+   the guest panel; and `openHome()` redraws `authbox` unconditionally, so a second Home form can be mounted while
+   the first is out (held in `cogSignIn`). Revised: the panel remembers which form owns it, and no sign-in's
+   redraw — the loading row, the end of a load or a save, boot's resume — replaces a form it does not own (R7).
+   Tested with two real Home submit handlers, the newer one held in `cogSignIn`.
+7. **Medium, the card's recovery claims too much — agree.** Revised: a recovery session without a matching name and a
+   non-empty `sub` leaves the attempt uncertain (no `made`, so Cancel stays and the card does not say the account
+   exists); a known `a.sub` is never overwritten, and every sign-in must match it (R8).
+8. **Medium, existing tests contradict the fixture plan — agree.** The test at line 434 is split (gone vs a refresh
+   failing with A present); the landing outage stub at line 555 and the card wrappers at lines 534 and 551 return
+   the session and assert they reach their intended later failure. The `cloud-resting` stubs are left alone: they
+   are refusal sentinels, as GPT says.
+9. **Medium, tests that would survive part of the fix — agree.** Added: same name with a different `sub` at sign-in;
+   nobody at the GET lookup, A restored before the end; `applyProgress` calls recorded, and `narrateReady`
+   unchanged on rejection. *(Corrected after PR review round 1, finding 7: narration itself is not recorded — the
+   tests count `applyProgress` and check `narrateReady`, which the narration block sets first.)*
+10. **Medium, the navigation fixture can't press the real controls — agree.** `renderPkgs`' Studio and package
+    controls are ordinary `mkBtn` buttons, and the quest card and trail rows are buttons in `questhome`: the
+    fixture keeps the real `renderPkgs`, supplies `pkglist`, `questhome`, `homeclose` and the landing elements
+    before boot, and the tests press what the game rendered, asserting the quest id or the destination scope, and
+    that Back and reopen toggle `landingmain` / `landingauth`.
+11. **Low, `file://` with the SDK loaded — agree.** To be checked in both cases: the SDK present with an empty
+    pool (`index.html` opened directly), and the SDK absent. *(Corrected after PR review round 1, finding 7: this
+    said "checked" before anything was; AO's browser refuses `file://`, so opening `index.html` directly is on the
+    owner's playtest list and under Not verified. The SDK-absent case is the suite's harness.)*
+
+## Plan, revised after the design review
+
+The approach and the files of § *Plan (Claude)* stand, with these changes (R = revised):
+
+- **R1 `freshId(name,sub)`.** No current user → `{ gone:true }`. A failed or invalid `getSession` → `cachedAccount()`
+  again: nobody now (the library cleared a refused refresh) → `{ gone:true }`; still someone → `{}` (offline: calm).
+  Mismatch and token as before.
+- **R2 `cachedAccount()`** (new, synchronous, no network): the stored current user's name (lower case) and the
+  `cognito:username` and `sub` of its cached ID token, read through the library's own storage and `CognitoIdToken`;
+  `null` when nobody is signed in. `accountIs(name,sub)` compares all three. Every decision made after an `await`
+  uses it — never a `getSession` that might refresh.
+- **R3 runs.** A sync call captures `{ run, name, sub }` once. After every `await`: `run !== _cloudRun` → do nothing;
+  then `!accountIs(name,sub)` → `loseSync()`. `loseSync()` advances `_cloudRun`, so every other call of the lost
+  run ends where it next checks.
+- **R4 `cloudPull(acct)`.** Lookup `gone` or `mismatch` → `{ lost:true }` (no `done`). After the response: run check,
+  account check (→ `{ lost:true }`, no `done`), only then `done(ok)` and the result. In `onSignedIn`, `lost` →
+  `loseSync()`, `NO` — before `cloudSync="ready"`, `Store.set`, `applyProgress` and TUN-112's narration block,
+  whose order is untouched.
+- **R5 `onSignedIn(uploadLocal, onlyFor, onlySub, opts)`.** First: a new run, the queued save dropped, the old writer
+  revoked. Then the account: `onlyFor`/`onlySub` (the authenticated session's, from `signInWith` and the card) or,
+  for boot's resume, the cache's. Never a second read to choose `who`.
+- **R6 `cloudPush`.** Captures the run's account at the start (not `_syncUser` after an `await`). Lookup `gone` or
+  `mismatch` → `loseSync()`, no `done`; `{}` → `done(false)` (calm). After the response, success or failure: run
+  check, account check (→ `loseSync()`, `false`, no `done`), then `done(r.ok)`.
+- **R7 forms.** `showSignInForm` registers its form as the panel's owner; `renderAuth` clears it. `signInWith` takes
+  the form (the landing passes none) and hands it to `onSignedIn` as `opts.form`. A form sign-in skips the loading
+  redraw; `cloudSync="loading"` is set either way. Every redraw `onSignedIn` makes is skipped while a sign-in form
+  it does not own holds the panel.
+- **R8 the card.** Recovery: a session whose name is `a.name` and whose `sub` is non-empty → `made`, `a.sub` from it;
+  otherwise the attempt stays uncertain, the card kept, "keep this same card". Every later sign-in: the session's
+  name must be `a.name` and its `sub` must equal `a.sub` (set once — from sign-up's `userSub`, or the first
+  session when sign-up gave none — and never overwritten); otherwise no upload and "keep this same card".
+- **Tests:** as § *Tests that would prove it*, with answers 2, 3, 5, 6, 8, 9 and 10's cases added; each new guard gets
+  a mutation that a test must catch.
+
+## Build (session `music-garden-49`, 2026-11-25)
+
+Built as the revised plan (R1–R8). Departures, and choices the owner might overrule:
+
+- **`loseSync()` advances `_cloudRun`** (R3), so a lost run's other calls end where they next check. Every caller
+  returns at once after it.
+- **`onSignedIn` sets `cloudOn=false` at the start of every run** with the rest of the revocation (R5). A sign-in
+  that fails its checks leaves the tab signed out of sync, not still syncing an older account.
+- **A successful PUT whose account is gone by the time it returns is not credited** (R6): the card says "isn't in
+  the cloud yet" and Try again sends the same garden again, although the PUT did land in the card's account. A
+  false "not saved" was chosen over crediting a save while another account is signed in.
+- **The card's sub can't change once known:** a session for the card's name with another `sub` gets *"Keep this
+  same card, and press Try again"* — practically unreachable (the same name and the same four words for a new
+  account), so no new wording.
+- **Test 53 records `startQuestRun`'s argument** for the idle press instead of opening the quest: opening one paints
+  the grid, which the card tests' DOM does not have. The busy press is asserted by Home staying open, the scope,
+  `QUEST_RUNS` and no `startQuestRun` call.
+- **Test 58's map** is a stand-in `<svg>` (the card tests' `el()`): it keeps the listeners the real `renderPkgs`
+  installs, and the tests press a land, then the package's and the Studio's buttons the game draws in its box.
+- `currentUserIs` is gone (its last caller, the card, now uses `accountIs`).
+
+**Tests:** 1122/1122 (1105 before; 17 new or split). Narration's two fixtures, the card fixture and the
+cloud fixture now carry the cached ID token (`harness.mjs`); the card's two wrappers and the landing outage
+stub pass the session through (GPT 8). **Mutation audit** (`node`, a script outside the repo, each mutation
+against `cloud-sync`, `garden-card` and `narration`): 21 mutations of the new guards, 20 killed. The survivor —
+*every retry overwrites `a.sub`* — is equivalent: the line before it refuses any session whose `sub` differs, so
+the overwrite can only write the same value.
+
+**Browser** (AO preview of this worktree, files checked byte for byte): the landing's and Home's sign-in forms
+keep their words and show the message on an empty submit, Cancel brings the guest row back, the name roller
+opens and cancels, no page errors. A real sign-in is not reachable from the preview (CORS allows only
+tunegarden.game), nor is a second tab's session change. **Not verified here:** `file://` (AO's browser refuses
+it), the two-tab cases on a real deployment — both on the playtest list.
+
+## PR review, round 1 (`gpt-6.2-astra`, through `ask.sh`), on `e9cc8c3`
+
+`ask.sh fresh read-only`, 2026-11-25. Usage: in 2,179,634 (cached 2,066,688), out 7,615. **Verdict: REQUEST CHANGES** —
+five High (1–5), one Medium (6), one Low (7), and eight missing test cases.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+## Required changes
+
+1. **High — Recheck the cached account after token acquisition, before sending a request or drawing the loading row.** `cloudPull` and `cloudPush` check the run and the identity in the returned token. Neither checks whether the cache still selects that identity before `fetch`. A late token for A can therefore send a PUT to A after the cache has switched to B. The check after the response can withhold credit, but the write has already happened. The initial lookup in `onSignedIn` has the same gap before it draws the loading row. Boot also captures only the stored username, so a replacement subject under that name can become the owner of the resumed run. Capture the cached name and subject together on resume. At each token continuation, check the run first and the current account second. [Token lookup and GET](./js/cloud.js#L88) · [PUT](./js/cloud.js#L104) · [Resume and loading row](./js/cloud.js#L169)
+
+2. **High — A failed refresh can preserve a writer after the code has observed identity loss.** On error, `freshId` reads the cached token but compares only `c.name`. A replacement subject under the same username, a contradictory token username, and a missing ID token all fall through to `{}`. `cloudPush` then reports an outage and leaves `cloudSync` ready. If A reappears, an ordinary save can overwrite A’s cloud copy without a fresh GET. The GET version can report a successful sign-in with an unreachable cloud and dismiss the form. Reserve the outage outcome for a cache that still identifies the expected account. An expired token with matching claims suffices for that identity check. Preserve an observed mismatch through the caller even if A reappears. [Refresh error classification](./js/cloud.js#L69) · [GET failure](./js/cloud.js#L91) · [PUT failure](./js/cloud.js#L108)
+
+3. **High — Check ownership where `onSignedIn` applies the GET or credits the PUT.** After `await cloudPull(...)` and `await cloudPush()`, the caller checks only `_cloudRun`. A change in another tab leaves that counter alone. A helper can finish its check under A, then the caller can resume under B and store A’s progress, narrate it, or draw “saved to cloud” under B. Check the captured account in the consuming continuation immediately before those effects. Keep an earlier `pull.lost` decisive. `cloudPull` should also check after the response headers arrive, before waiting for the JSON body, so a loss visible at that boundary cannot be forgotten by the time the body finishes. [GET response and body](./js/cloud.js#L93) · [Progress and narration](./js/cloud.js#L178) · [Save credit](./js/cloud.js#L194)
+
+4. **High — An older authentication can still displace a newer successful sign-in.** The run number is allocated *after* `await cogSignIn`. If B’s newer Home submission finishes first, A’s older continuation can subsequently enter `onSignedIn`, increment `_cloudRun`, drop B’s queued save, and turn B’s sync off before checking A’s identity. If the SDK has reselected A, the old submission can instead start loading A over B. Track submission order before authentication and prevent a superseded completion from claiming the tab. Keep revocation when the current writer genuinely loses its identity. The existing overlap test releases A first, so it misses this ordering. [Submission](./js/cloud.js#L261) · [Unconditional run reset](./js/cloud.js#L166) · [Overlap test](./tests/garden-card.test.mjs#L695)
+
+5. **High — A routine panel redraw can label A’s sync as B’s, or observe sign-out and leave A writable.** `renderAuth` combines the current SDK username with this tab’s `cloudOn` and `cloudSync`. Opening Home after a cache switch can therefore say B’s progress syncs while the ready run belongs to A. With an empty cache, the same redraw shows the guest row but leaves A’s writer ready. Restoring A before the next save then bypasses the required GET. When an existing sync run is presented, validate its captured identity, revoke it on observed loss, and render from that validated state. This needs no storage-event listener. [Signed-in row](./js/cloud.js#L202) · [Home redraw](./js/home.js#L18) · [Queued-save redraw](./js/cloud.js#L115)
+
+6. **Medium — Re-entering Home still destroys the submitting form.** `openHome()` unconditionally calls `renderAuth()`, which clears both `authbox` and `_authForm`. During a held GET this replaces the child’s form with the loading row. If identity is then lost, the failure handler writes the retry message into the detached form. The new overlap test itself uses Home re-entry to discard the first form. Preserve the mounted form on incidental Home re-entry, while retaining the successful owner’s redraw and deliberate Cancel and exit behavior. [Home entry](./js/home.js#L7) · [Panel reset](./js/cloud.js#L202) · [Form completion](./js/cloud.js#L295)
+
+7. **Low — Correct the verification record.** Answer 11 says `index.html` was opened directly with the SDK present. The Build section says the browser refused `file://`. Answer 9 says narration calls were recorded directly, while the rejection test records `applyProgress` and checks the final `narrateReady` value. Record the actual coverage and leave the direct-file check pending until performed. [Answers 9–11](./reviews/TUN-128-tab-account-sync.md#L210) · [Browser result](./reviews/TUN-128-tab-account-sync.md#L285) · [Rejection assertions](./tests/cloud-sync.test.mjs#L921)
+
+## Missing tests
+
+| Case to add | What must fail if the guard is removed |
+|---|---|
+| **Token callback after a cache switch.** Hold A’s initial, GET, and ordinary PUT token callbacks separately. Select B, then return A’s valid token. Also start boot with A’s cached subject and return a session for the same username with a replacement subject. | Assert zero requests from the stale lookup, no loading row naming B, and sync off. This distinguishes checking the cache from merely checking the callback’s token. [Cloud fixture](./tests/cloud-sync.test.mjs#L74) |
+| **Failed refresh with the username still present.** Independently replace the cached subject, contradict the token username, and remove the ID token while retaining `LastAuthUser`. Run both a ready save and the form’s GET lookup. Restore A before attempting an ordinary save. | Assert revocation, retained retry form on GET, and no PUT until a fresh GET. Keep a matching expired-token/network-error control that still produces the resting outcome. This kills the username-only error classification. [Current offline control](./tests/cloud-sync.test.mjs#L440) |
+| **Loss between helper and caller.** Wrap each real helper so the cache changes after it settles and before `onSignedIn` resumes. Cover a GET with progress, a failed GET, and a completed seed PUT. Separately make the response headers arrive under B and the body finish after A returns. | Assert unchanged memory and `mg_progress`, zero application and narration calls, no save credit, and `signedIn:false`. For the observed-loss case, restore A **before** the caller consumes `lost`. The current test restores A after `await tick()`, when the sign-in can already have finished. [Late GET tests](./tests/cloud-sync.test.mjs#L910) · [Restore timing](./tests/cloud-sync.test.mjs#L942) |
+| **Two Home submissions, B finishes first.** Hold A in authentication. Let B authenticate, load, and queue a save. Deliver A’s old result with B still selected. Also cover the ordering requested in test 57, with A already at its GET and B pending in authentication. | In the first case B retains its progress, panel, readiness, and queued save. In the second, assert B’s exact mounted form, words, message, disabled buttons, and navigation lock. These catch late run allocation and stale form redraw independently. [Existing overlap order](./tests/garden-card.test.mjs#L695) |
+| **Real Home redraws.** With A ready, change the cache to B or nobody and open Home before any save runs. Separately re-enter Home while its submitting form is waiting for a GET, then let that GET lose identity. | In the first case no row credits B, and restoring A permits no PUT before a fresh GET. In the second, the original form remains attached to `authbox`, retains its words, and displays an enabled retry. Also check that the owning form’s successful retry draws the signed-in row. [Home entry](./js/home.js#L18) |
+| **SDK cache contract.** Use the vendored SDK and isolated storage to exercise its exact client/user key, JWT decoding, expiry, missing token, and cache clearing. Vary the cached claims independently from the session callback. | A wrong prefix, client ID, username, or decoder must fail. The current fixture returns JSON for **any** key ending in `.idToken`. The deferred narration fixture also supplies token storage without installing `CognitoIdToken`, which a correct caller-side recheck would expose. [Fake cache](./tests/harness.mjs#L367) · [Narration fixture](./tests/narration.test.mjs#L145) · [Existing real-SDK fixture](./tests/cloud-resting.test.mjs#L221) |
+| **Card and Home refusal paths.** Return a nonempty subject with the wrong token username on recovery and ordinary card sign-in. In the existing broken-session wrapper cases, record that the real `getSession` failure was reached. | Recovery stays uncertain with Cancel available. Confirmed sign-up retains its original subject and sends nothing. Dropping either name comparison, or discarding the authenticated session in a wrapper and failing earlier, must fail the corresponding test. [Card claim checks](./js/garden-card.js#L50) · [Wrapper tests](./tests/garden-card.test.mjs#L541) |
+| **Navigation tests 53 and 58.** Start the busy package case outside `intro` and assert after each individual press. Resolve the clicked `data-pkg` from the rendered map. For each idle quest press, exercise real quest entry and assert its run ID and scope. | Removing the package busy guard must fail even though `leaveHome()` independently keeps Home visible. Removing a rendered map target must fail even if its click handler remains. The quest spy proves the handler passes the intended ID, but it assigns the destination scope itself. [Map fixture](./tests/garden-card.test.mjs#L763) · [Quest fixture](./tests/garden-card.test.mjs#L805) |
+
+Finding 48’s explicit sign-in and card subject binding is present. The card retains a known subject across retries, and the empty-denial case in test 59 asserts the requested message. Findings 49–51 remain open for the paths above. For accepted loads, TUN-112’s `narrateReady` → `applyProgress()` → conditional `enterPlay()` order is intact. A failed GET still blocks writes under TUN-106, and the song callers continue to consume only `freshToken`’s token-or-null result. [Card retry](./js/garden-card.js#L65) · [Empty denial](./tests/garden-card.test.mjs#L440) · [Accepted load](./js/cloud.js#L183) · [Song token adapter](./js/cloud.js#L77)
+
+This was a read-only review of the pinned diff and five commits. The 1,122-test result, mutation counts, and preview checks are the author’s runs. Direct-file guest startup with and without the SDK, and real two-tab behavior, remain unverified here.
+
+REQUEST CHANGES on e9cc8c3f1db0675907db113a224e1aa73c71e6b0.
+
+</details>
+
+### My answers — all agreed, fixed in the commit that records this round
+
+None needs the owner: each has one right answer in the code, and none changes what a player is offered.
+
+1. **High, recheck the cache after each token lookup — agree.** `cloudPull` and `cloudPush` now check the run, then
+   `accountIs`, after the lookup and **before** the request; `onSignedIn` checks the first lookup's token against the
+   cache before it draws the loading row; boot's resume takes its account from the cache, name and `sub` together.
+2. **High, a failed refresh compared only the name — agree.** `freshId`'s error branch is `{}` (offline) only while the
+   cache still names this very account — stored name, token name and `sub`; anything else is a mismatch.
+3. **High, check where the result is used — agree.** `onSignedIn` checks `owns()` (the run, then the account) after the
+   load and after the first save, before applying, storing, narrating or crediting; `cloudPull` checks again when the
+   answer starts and once its body is in. A `lost` seen earlier stays decisive.
+4. **High, an older sign-in can displace a newer one — agree.** `signInWith` numbers its sign-ins before
+   authenticating; one a newer sign-in followed claims nothing when it answers (and says nothing on its form: the newer
+   one decides), whichever finishes first.
+5. **High, a routine redraw labels A's sync as B's — agree.** `renderAuth` shows the signed-in row only while the cache
+   still names the run's account, by the run's own name; one found gone or replaced ends the run there (`dropSync`),
+   as a save would.
+6. **Medium, reopening Home destroys the submitting form — agree.** `openHome` leaves a sign-in form whose sign-in is
+   out (`signInFormBusy`) as it is; Cancel, exits and the owner's own success still redraw. So a second Home form can no
+   longer appear while one is out: the newer-sign-in case is now Home's form against the landing's.
+7. **Low, the record overstated two checks — agree.** Answers 9 and 11 corrected in place, marked as corrections.
+
+**Missing tests — all added:** a token callback after a cache switch (first lookup, the load's, a save's) and boot's
+resume with a replacement `sub`; a failed refresh with another `sub` cached, a token naming someone else, no cached
+token — on a ready save and on the form's GET lookup — against the offline control; a loss between helper and caller
+(a load with progress, a failed load, nobody at the load with ann back before its use, headers under bea and body under
+ann, headers under ann and body under bea, a sign-up's first save); an older sign-in answering after a newer one
+finished (cloud) and after the landing's (card), with Home reopened while it waits; redraws that find bea, nobody or a
+new `sub`; the cache contract through the **vendored library** (key, decoding, an expired token, another client's key,
+no token, an offline refresh, a refused refresh clearing the session); the card's wrong token name on recovery and after
+sign-up; the wrappers' real `getSession` failure counted; the busy package press starting outside `intro`, asserted
+after each press, with each pressed land checked against the map's markup; real quest entry (only the grid painting
+stood in), asserting the run and its scope.
+
+**Round-1 fixes, verified:** suite 1130/1130. Fixtures that fake a session now give its cached ID token too
+(`tests/helpers/backend-fixtures.mjs`, the load-gate stub, narration's deferred fixture with the library's
+`CognitoIdToken`); TUN-87's never-redraws-over-a-form test now expects its redraw, which found nobody signed in, to
+end that run, so the late song result no longer counts. **Mutation audit:** 36 mutations, 31 killed. The 5 that
+survive are each caught by another guard, with no difference a player or a test can see: the cache check after the
+first lookup and boot's resume from the cache (each catches the other, and the redraw check catches both); the row
+naming the stored user (the row appears only once the stored user is the run's); the body check (`owns()` where the
+load is used catches it); and the retry's `a.sub` (equivalent, as before). Each stays as a second line.
+
+## PR review, round 2 (`gpt-6.2-astra`, through `ask.sh`), on `7463e1c`
+
+`ask.sh fresh read-only`, 2026-11-25. Usage: in 1,509,003 (cached 1,409,024), out 7,992. **Verdict: REQUEST CHANGES** —
+four High (1–4), one Low (5), and eight missing test cases. Round-1 findings 5, 6 and 7 and test row 7 resolved; the rest partly.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+Two account changes still escape the new guards. Cognito can write an old account back into shared storage **before** the game checks it. Also, a newer submission supersedes an older authentication, but does not supersede an older GET that has already started. That GET can still replace the device’s progress while the newer form says “Signing in…”.
+
+### Round-1 disposition
+
+| Round-1 item | Status | Reason |
+|---|---|---|
+| Finding 1 · Check the cache after token acquisition and bind boot to a subject | Partly | Boot now captures the name and subject. Successful token continuations check the cache before sending. A real SDK refresh can reselect A before any of those checks sees B. |
+| Finding 2 · Classify a failed refresh by the whole identity | Partly | `freshId` distinguishes a replaced subject, contradictory username, or missing ID token at callback time. The awaiting GET and PUT skip their own cache check when that callback returned `{}`. |
+| Finding 3 · Check ownership where GET and PUT results are consumed | Partly | The headers, body, and caller checks are present, and `pull.lost` wins after A returns. A final `renderAuth` can itself observe loss and end the run, yet `onSignedIn` still returns success. |
+| Finding 4 · Older authentication must not displace newer sign-in | Partly | Numbering before authentication fixes the tested ordering with B still selected. It does not fence an older GET while B authenticates or prevent an older SDK success from reselecting A. |
+| Finding 5 · Routine redraw must validate the writer | Resolved | A redraw that finds a different account drops the run and cancels its queued save. The signed-in row uses `_syncUser`. `dropSync` avoids recursive rendering here. |
+| Finding 6 · Re-entering Home destroys the submitting form | Resolved | `openHome` preserves the mounted busy form. The held-GET test also exercises loss, retry, and the owning form’s successful redraw. |
+| Finding 7 · Correct answers 9 and 11 | Resolved | The record now describes the indirect narration assertions and leaves direct-file verification pending. |
+| Test 1 · Token callback after a cache switch | Partly | All three lookup sites are exercised with a stub. The boot test changes only the returned subject, and the refresh stub omits the SDK’s cache write. |
+| Test 2 · Failed refresh with username present | Partly | The three bad-cache variants and matching offline control are present. The GET case calls `signInWith` directly and never checks a mounted retry form. The cache also stays unchanged between callback and continuation. |
+| Test 3 · Loss between helper and caller | Partly | The GET, failed GET, seed PUT, and header-loss cases are present. In the body-loss case B stays selected through the caller check, masking deletion of the body check. Narration calls are still not counted directly. |
+| Test 4 · Two submissions, B first | Partly | B’s queued save is verified with B still cached. Both new overlap cases hold A in authentication. Neither covers A already at GET while B waits in authentication. |
+| Test 5 · Real Home redraws | Partly | The busy-form half uses `openHome`. The ready-writer half calls `renderAuth()` directly, so it cannot catch Home skipping the redraw. |
+| Test 6 · Vendored SDK cache contract | Partly | The new test exercises decoding, expiry, missing tokens, another client’s key, offline failure, and cache clearing. Its only selected username is `ann`, and it never completes a successful refresh across an account switch. |
+| Test 7 · Card and Home refusal paths | Resolved | Both wrong-name cases carry a nonempty subject. The ordinary card case holds the subject constant to isolate the name check. Both broken-session wrappers now assert that `getSession` actually failed. |
+| Test 8 · Navigation 53 and 58 | Partly | Real quest entry now proves the run and scope, and each busy navigation press starts from a distinguishable scope. The map fixture checks that the attribute text exists, then invents the click target. Its `closest()` succeeds for any selector. |
+
+### Required changes
+
+1. **High — Preserve the account selection across a real SDK refresh.** The vendored `refreshSession` calls `cacheTokens()` before invoking the callback. `cacheTokens()` writes `LastAuthUser`. If A’s refresh finishes after B was selected, `accountIs(A)` can pass precisely because the refresh just selected A again. An ordinary PUT can then proceed. Make the progress lookup preserve a newer selection and refuse the stale operation. This needs protection at the SDK storage boundary. Another read after the callback sees the same overwritten value. [Token lookup and PUT][tokens] · [Vendored SDK][sdk]
+
+2. **High — Make submission order govern the whole sign-in.** `_signInSeq` is checked after `cogSignIn`, but an A that already passed that check keeps its `_cloudRun` until B finishes authenticating. A can apply and narrate its GET, or seed an empty copy, while B is pending. Conversely, if B finishes first, a late successful A authentication can write A into the SDK cache before the sequence check rejects its result. B then loses its queued save on the next ownership check. Fence the older sync work when the newer submission starts and prevent a superseded same-tab authentication from undoing the winning selection. Give a still-mounted superseded form a clear outcome. Today one path blanks its message and the authentication-error path bypasses the supersession check altogether. [Submission and form handler][submission] · [Progress application][consume] · [Overlap fixture][overlap]
+
+3. **High — Check ownership after a tokenless refresh result.** Both callers condition their post-`await` cache check on `id.token`. A matching offline result can become stale just like a successful token. For an ordinary save already showing “cloud is resting,” `done(false)` causes no redraw, so the writer can remain ready through the switch. If A returns, its next save can proceed without a fresh GET. Check the captured account before publishing the offline outcome, and preserve any earlier `gone` or `mismatch`. The unbound song adapter can continue returning token-or-null. [GET and PUT continuations][tokens]
+
+4. **High — Honor revocation discovered by the final redraw.** `renderAuth` clears `_authForm` and its DOM before validating the account. If this redraw is the first operation to see the loss, it calls `dropSync`, but the failed-load, loaded-progress, and seed-save branches still return `signedIn:true`. The landing can erase the words and close, Home can lose its retry form, and the garden card can credit a save from a run the game already ended. Preserve the owning form when this validation fails and propagate the lost-run outcome to the consumer. [Final redraw and return values][consume] · [Landing completion][landing] · [Card credit][card]
+
+5. **Low — Correct the round-1 verification conclusion.** Answers 9 and 11 are fixed. The later statement that all requested cases were added and all five survivors are equivalent overstates the evidence. The initial lookup, boot capture, and body check have distinguishable outcomes below. Naming the row from storage is equivalent only if it uses the **same validated snapshot**. A second `getCurrentUser()` can name B. The unconditional retry assignment to `a.sub` really is equivalent here because the preceding guard already rejected a different subject. [Mutation record][record] · [Card subject guard][cardguard]
+
+### Missing tests
+
+| Case to add | Setup and assertions | Regression it catches |
+|---|---|---|
+| Real SDK refresh across a switch | Use the vendored SDK with isolated storage and a deferred successful refresh. Begin an ordinary save for expired A, select B while it waits, and finish the refresh. Assert B remains selected, no progress PUT goes out, and A needs a fresh GET. Keep distinct cached subjects for two usernames under the same client and verify each lookup. | Unconditional stale SDK cache writes and a cache key hard-coded to `ann`. |
+| Initial check and boot capture, independently | For a form submission, return A’s valid initial token while B is selected and restore A at entry to `cloudPull` **if reached**. Require rejection before that entry. Separately start actual boot with A/subject 1 and let both the cache and returned session become A/subject 2 during the first lookup. Require zero GETs and sync off. | Deleting the initial cache check, and resuming by username alone. Each case defeats the downstream guard that masked its mutant. |
+| Failed-refresh continuation | Start with a ready A already showing the resting status. Let `freshId` classify a matching offline failure, then select B before `cloudPush` resumes. Assert revocation and no PUT after A returns. Exercise the corresponding GET through a mounted Home form and assert its exact fields, retry message, and enabled button. | The `id.token &&` shortcut and treating any tokenless result as an outage. |
+| Loss at body completion | Receive headers under A, finish the body under B, then restore A after the real `cloudPull` settles but before `onSignedIn` consumes it. Assert `signedIn:false`, unchanged memory and `mg_progress`, zero application and narration calls, and no save. | Deleting the post-body check. The caller’s current-account check now sees A and cannot rescue the mutant. |
+| Both submission orderings | Hold A at GET and B in authentication. Finish A first and assert unchanged progress, no seed, no narration, and B’s exact form, message, disabled controls, and navigation lock. For B-first completion, model the SDK’s actual cache write before A’s callback and verify B’s queued save retains the correct owner. Check both stale success and stale rejection on a still-mounted form. | Checking sequence only before entering `onSignedIn`, relying on a side-effect-free authentication stub, and inconsistent stale messages. |
+| Loss discovered by the final redraw | Keep A valid through the caller’s ownership check and let the final real `renderAuth` see the loss. Cover a failed GET and a successful seed PUT. Assert sync off, no successful sign-in or card credit, and retained form words with an enabled retry. | Returning the pre-redraw outcome after `dropSync()` has invalidated it. |
+| Real Home redraw and row name | Queue A’s save, select B or nobody, and open Home through its entry handler. Assert guest row, canceled save, and no PUT when A returns. Separately vary the selected name after row validation and assert no row names B. | Skipping the ready-writer redraw in `openHome`, or independently rereading the username for display. |
+| Rendered map target | Resolve the pressed package or Studio cell from the generated SVG and make the fixture honor the selector passed to `closest`. Keep the current per-press scope assertions. | A broken click selector that the unconditional `closest()` stub accepts. |
+
+The TUN-69 merge changes the `?dev` Studio dispatch and its fixture. Both destination functions retain the busy guard. I found no merge-induced change to account sync, the TUN-106 failed-load write block, TUN-122’s explicit-null seed rule, or TUN-112’s accepted-load narration order. This was a read-only source review. The 1,130-test result is the author’s pre-merge run. Direct `file://` startup and real two-tab behavior remain unverified.
+
+[tokens]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:72
+[sdk]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/vendor/cognito/amazon-cognito-identity.min.js
+[submission]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:282
+[consume]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:194
+[overlap]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/tests/garden-card.test.mjs:697
+[landing]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/boot.js:125
+[card]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/garden-card.js:75
+[cardguard]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/garden-card.js:71
+[record]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/reviews/TUN-128-tab-account-sync.md:375
+
+REQUEST CHANGES on 7463e1ca9851596f59c058c34018e572f9622e4e.
+
+</details>
+
+### My answers
+
+1. **High, a real refresh can reselect the old account — agree; open for the owner (question 1).** Verified in the
+   vendored library: `refreshSession` ends in `cacheTokens()`, which writes `LastAuthUser`. So when an expired token's
+   refresh finishes after another tab selected B, the library itself selects A again, and every check after it sees A.
+   The game's own checks cannot see past the library's write; the fix is for the game to guard the library's storage
+   (a refresh never changes which account is selected). That is a change to how the game uses the library, not a
+   check in the game's own code.
+2. **High, submission order must govern the whole sign-in — agree, in two halves.** *In the game:* a newer sign-in,
+   from the moment it begins, ends an older sign-in's sync work, and a superseded form gets one clear outcome on every
+   path — fixed now. *In the library:* an older authentication that finishes last still has the library select its
+   account — the same storage-boundary question as 1; open for the owner (question 1).
+3. **High, check ownership after a tokenless result — agree.** Fixing now.
+4. **High, honour a loss the final redraw discovers — agree.** Fixing now.
+5. **Low, the round-1 verification overstated — agree.** Corrected with the round-2 fixes.
+
+**Missing tests:** all but one are about the game's own code and are being added; the real-library refresh across a
+switch, and the B-first ordering with the library's write modelled, wait on question 1.
+
+## Owner's decisions
+
+1. *GPT's round-2 findings 1 and half of 2: the Cognito library itself rewrites which account is selected when a
+   token refresh, or an older sign-in in the same tab, finishes after another tab switched accounts. Fix that here, or
+   in a follow-up ticket?* — **A, a follow-up ticket (D9)**: the owner, relayed by the coordinator, 2026-11-25
+   5:08 PM PT. This PR keeps the round-2 fixes; GPT's round-2 **finding 1 (High, required)** and the library half of
+   **finding 2 (High, required)** go to **TUN-131**, *Keep a tab's chosen account when the sign-in library rewrites
+   the shared session* (Backlog, blocked by this ticket). These are GPT's severities as it gave them, and **GPT did
+   not agree to defer them**: its round-2 review requires both before approval. Round 3 is told so plainly, and asked
+   whether anything in this PR makes those cases worse. The other options were B (fix here, larger than M) and C
+   (stop with no third review); I recommended A.
+2. *GPT's round 3 (the last) requested changes; they are fixed, with tests, but no GPT round has reviewed
+   them. A fourth round on that delta, or not?* Options: **A)** a fourth GPT round on the round-3 delta only (a few lines in
+   `onSignedIn` and `signInWith`, and their tests); **B)** no fourth round: the owner reads the round-3 delta and the PR
+   goes to In Review for the playtest; **C)** something else. Recommended: **A** — the delta is small, cheap to review,
+   and sits in the code that decides which account a garden is written to. — **A, a fourth round (D10)**: the owner,
+   relayed by the coordinator (`music-garden-5`), 2026-11-25 9:32 PM PT. Round 4 reviews only `5889f72..4f57237` against
+   round 3's findings; TUN-131 still holds the deferred cases (D9). If round 4 requests changes, they are fixed and the
+   ticket stops at Needs Input — no fifth round without the owner. Taken over by session `music-garden-54`.
+3. *GPT's round 4 found the round-3 code sound ("The production delta resolves both sign-in ordering
+   defects") and asked only for stronger tests; they are added (`f701d17`), with `main` merged and one TUN-12 fixture
+   fixed after it, none GPT-reviewed. A fifth round, or not?* Options: **A)** no fifth round: the owner reads the
+   test-only delta (`git diff 4f57237 HEAD -- tests`) and the PR goes to In Review for the playtest; **B)** a fifth GPT
+   round on `4f57237..HEAD`; **C)** something else. Recommended: **A** — no game code changed since GPT's round 4, and
+   every change it asked for is a test, each mutation-checked. — **"A, no fifth review." (D15)**: the owner, relayed by
+   the coordinator (`music-garden-5`), 2026-11-25 about 10:00 PM PT. So round 4's test fixes (`f701d17`), the merge of
+   `main` at `8ae4216` and the TUN-12 fixture fix (`abb7ad2`) are **not GPT-reviewed, by the owner's decision**; the PR
+   goes to In Review for the owner's reading of that delta and the playtest.
+
+### Round-2 fixes, verified (`a251db6` and the commit recording this)
+
+- **3 fixed:** after every lookup — an offline one included — `cloudPull` and `cloudPush` check the cache names the
+  run's account before anything is sent or reported; a switch after an offline answer is a lost account, not the cloud
+  resting.
+- **4 fixed:** `onSignedIn`'s outcome goes through `finish()`: the run's account is checked, then drawn; if the redraw
+  itself finds the account lost, the outcome is no sign-in and the form that asked is put back, words and all — so the
+  landing keeps its words and the card credits no save.
+- **2, the game's half, fixed:** a form sign-in's run is known while it is out (`_formRunOut`); a newer sign-in ends it
+  the moment it begins. A superseded form says *"🌱 A newer sign-in took over. To open this garden instead, press Sign
+  in again."* on every path — refused, accepted, or ended mid-load. One requested ordering (B's exact **Home** form while
+  A's load is out) cannot happen: while A loads, Home shows A's loading row and no Sign in, so B comes from the
+  landing; the test covers that ordering, with A's Home form and B's landing form.
+- **5 fixed:** round 1's verification paragraph overstated. Corrected here: of round 1's five survivors, the body check
+  and the initial and resume checks now each have a test that kills them alone (round-2 tests); the row's name is the
+  run's, read with the check (tested); the retry's `a.sub` is the one truly equivalent.
+- **Missing tests:** all added except the two that depend on the deferred library writes (TUN-131): the first lookup's
+  token checked before the load is begun; boot's resume by the cached `sub`; an offline lookup whose account then
+  changes, on a save and on Home's mounted form; a body that ends under another account with ann back before use; a
+  loss only the final redraw finds (a failed load, a first save, Home's form put back, the card's credit withheld); the
+  two orderings with the superseded form's message, refused and accepted; Home opened through the game's own entry with
+  a queued save; the map's click resolving its cell through the selector the game asks for, from the generated markup.
+
+**Suite:** 1142/1142. **Mutation audit:** 44 mutations of the guards (`cloud-sync`, `garden-card`, `narration`), 39
+killed. Survivors: *nobody signed in treated as offline* and *a failed refresh compared by name only* (both now land on
+the callers' cache check, which reaches the same outcome); *the outcome drawn without checking the account* and *the
+first save not rechecked* (both land on `finish()`'s redraw check or its own); *the retry's `a.sub`* (equivalent). The
+first run was stopped by its time limit mid-mutation and left one guard removed; it was found by checking every guard's
+text, restored before any commit, and the run resumed from there.
+
+## PR review, round 3 (`gpt-6.2-astra`, through `ask.sh`), on `5889f72` — the last round of the budget
+
+`ask.sh fresh read-only`, 2026-11-25. Usage: in 1,413,316 (cached 1,307,264), out 8,086. **Verdict: REQUEST CHANGES** —
+one High (1), one Medium (2), one Low (3), five missing tests. Round-2 findings 3, 4, 5 resolved; 1 and the library half of 2
+accepted as deferred (D9). **On the owner's question, GPT: the PR does not make the deferred cases worse than `main`.**
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+A pending automatic resume can still load A’s garden after the child submits B’s Home form. This is a game-side ordering bug. It can occur while the SDK correctly keeps A selected throughout B’s pending authentication.
+
+### Round-2 disposition
+
+| Round-2 item | Status | Reason |
+|---|---|---|
+| Finding 1 · SDK refresh reselects an older account | Deferred (D9) | TUN-131 owns the SDK’s shared-storage write. |
+| Finding 2 · Submission order and superseded forms | Partly | B now fences A’s pending **form** sync. Automatic resume bypasses that fence. `signInWith` also has success and exception paths that skip its final submission-order check. The SDK half is deferred under D9. |
+| Finding 3 · Ownership after a tokenless result | Resolved | Both GET and PUT check the current account after the lookup, including an offline result. An earlier `gone` or `mismatch` remains decisive. |
+| Finding 4 · Revocation during final redraw | Resolved | `finish()` detects the run change, returns `signedIn:false`, and reattaches the owning Home form. The card withholds save credit. |
+| Finding 5 · Round-1 verification conclusion | Resolved | The correction identifies the independently distinguishable initial, resume, and body checks. It also explains why the guarded retry assignment to `a.sub` is equivalent. |
+| Test 1 · Real SDK refresh across a switch | Deferred (D9) | The requested SDK ordering belongs to TUN-131. |
+| Test 2 · Initial check and boot capture | Partly | The form test proves rejection before entering `cloudPull`. The subject-change test calls `onSignedIn(false)` manually after guest startup. The requested actual boot path is still missing. |
+| Test 3 · Failed-refresh continuation | Resolved | The tests cover an already-resting writer and a mounted Home form when the cache switches after a matching offline answer. |
+| Test 4 · Loss at body completion | Partly | The test restores A before consumption and checks memory, storage, application, and writes. It checks `narrateReady` without recording narration calls. |
+| Test 5 · Both submission orderings | Partly | The tests cover stale authentication success and refusal, and A’s held GET with B on the landing form. They omit B as the owner of the dynamic Home form. The SDK cache-write ordering is deferred under D9. |
+| Test 6 · Loss discovered by final redraw | Resolved | The failed GET and successful first PUT both exercise the real redraw. The UI cases verify Home retry and withheld card credit. |
+| Test 7 · Real Home redraw and row name | Resolved | `openHome()` cancels the queued save on loss. A separate switch immediately after validation catches an independent username read for display. |
+| Test 8 · Rendered map target | Resolved | The fixture derives package IDs from the generated SVG, honors the handler’s `closest` selector, and retains the per-press scope assertions. |
+
+### Required changes
+
+1. **High — Fence an in-flight automatic resume when a form submission starts.** Boot calls `onSignedIn(false)` without `opts.form`, so its run never enters `_formRunOut`. While its first lookup is pending, Home can show the guest controls and mount B’s form. B’s submission then leaves A’s run alive. A can store and narrate its progress while B is authenticating. If B subsequently loads an explicitly empty cloud copy, B’s first save can upload the progress A just installed. Invalidate the pending resume at submission time. Preserve TUN-122’s explicit-null rule and TUN-112’s narration order for an accepted load. [Boot entry](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/boot.js#L135-L139) · [Run tracking and application](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js#L180-L225) · [Submission fence](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js#L297-L310)
+2. **Medium — Check submission order when delivering the sync result.** After `await onSignedIn(...)`, `signInWith` checks `replaced()` only for `signedIn:false`. A superseded success returns `{ok:true}`, which tells the landing handler to clear the words and close. A rejected sync reaches the outer catch and gives a still-mounted form the generic error. Give supersession precedence on both paths. [Result handling](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js#L302-L313) · [Landing consumer](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/boot.js#L125-L131)
+3. **Low — Correct the round-2 verification record.** A form sign-in explicitly skips the loading redraw. B’s Home form can already be mounted while A authenticates from the landing. Also qualify the mutation conclusions. If A returns between a failed lookup and its caller, the caller’s cache check cannot recover an earlier loss that the lookup misclassified. And when another form owns the panel, `finish()` skips the redraw entirely, so the redraw cannot substitute for its ownership check. [Verification record](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/reviews/TUN-128-tab-account-sync.md#L490-L508) · [Redraw conditions](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js#L199-L209)
+
+### Missing tests
+
+1. Start **actual boot** with A cached and hold the first lookup. In one case, change both cache and returned session to a replacement subject under A’s name. Require zero GETs and sync off. In another, mount and submit B’s Home form during the pending resume. Give A and the device distinguishable progress. Require no application, narration, or seed from the superseded resume, then verify B’s explicit-null seed contains the device’s original progress. [Current boot-capture test](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/tests/cloud-sync.test.mjs#L1271-L1279)
+2. Start A on the landing with B’s Home form already mounted. Hold A’s GET, submit B, and finish A while B authenticates. Cover both progress and `null`. Check B’s exact form, words, message, disabled Sign in and Cancel, and navigation lock. Record zero narration calls here and in the body-completion test. [Current ordering test](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/tests/garden-card.test.mjs#L914-L945) · [Body-completion assertions](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/tests/cloud-sync.test.mjs#L1295-L1307)
+3. At the `signInWith` result boundary, hold delivery of A’s sync outcome until B starts. Return a successful sync in one case and reject it in another. Require `AUTH_SAYS.replaced`, retained words, and B’s lock in both. [Current stale-authentication cases](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/tests/garden-card.test.mjs#L947-L966)
+4. Have the real `freshId` observe nobody, or a different cached subject under A’s name, then restore A **before the awaiting caller resumes**. Require the ready writer to revoke, subsequent saves to send nothing until a fresh GET, and the form GET to retain its retry. This distinguishes the two surviving classification mutations from the implemented behavior. [Failed-refresh cases](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/tests/cloud-sync.test.mjs#L1101-L1125)
+5. Exercise `finish()` while a different Home form owns the panel. Let an accepted load complete application, then change the cached account before `finish()` checks it. Require `signedIn:false`, sync off, and the other form intact. This covers the branch with no final redraw to catch the loss. [Outcome check](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js#L199-L207)
+
+### Does the PR worsen the deferred cases?
+
+**No.** On `main`, a successful refresh that reselected A could already authorize A’s ordinary PUT. The new cache checks are read-only and retain the token’s name and subject checks. For same-tab authentication, `main` let a late A success start a fresh sync from the SDK’s selection. This head rejects A’s superseded authentication before it can start that sync. The SDK can still rewrite the shared selection in both deferred cases. I found no additional write authority from either rewrite. [Main at the PR base](https://github.com/pad29/music-garden/blob/b3085d0a06f53c431c7c8058b85922df41692f7a/js/cloud.js) · [Reviewed implementation](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/js/cloud.js) · [Vendored SDK](https://github.com/pad29/music-garden/blob/5889f722ba0b92fa1a9adb6b236dffd80310a9d5/vendor/cognito/amazon-cognito-identity.min.js)
+
+This was a read-only source review. The author reports 1,142 passing tests. I did not execute PR code or verify direct-file startup or real two-tab behavior.
+
+REQUEST CHANGES on 5889f722ba0b92fa1a9adb6b236dffd80310a9d5.
+
+</details>
+
+### My answers — all agreed, fixed in the commit that records this round, **not yet reviewed** (no fourth round without the owner)
+
+1. **High, boot's resume isn't fenced — agree.** Only a form's sign-in was tracked while out; boot's `onSignedIn(false)`
+   was not, so during its first lookup a Home sign-in could begin and leave it running. Now every run is tracked while
+   it looks up, loads or saves (`_syncRunOut`, in `onSignedIn` for all callers), and a sign-in that begins ends it. An
+   accepted load keeps TUN-112's order; TUN-122's explicit-null rule is untouched (the newer account's empty copy gets
+   this device's own garden, which the test checks).
+2. **Medium, supersession at the result — agree.** `signInWith` checks `replaced()` after the sync returns, before
+   success or failure, and in its outer `catch`: a superseded sign-in says the newer one took over on every path, and
+   the landing no longer closes on a superseded success.
+3. **Low, the round-2 record overstated — agree; corrected here.** (i) *"One requested ordering … cannot happen"* was
+   wrong: it holds only for boot's resume or a sign-in that draws the loading row; a form sign-in skips that redraw, so
+   B's Home form can be up while A signs in from the landing — now tested both ways (A from Home, B from the landing;
+   and B's Home form up before the landing's A). (ii) The round-2 survivors were not all covered by another guard:
+   *nobody treated as offline* and *a failed refresh compared by name only* escape the callers' check if the account is
+   back before the caller resumes, and *the outcome drawn without a check* escapes when another form owns the panel and
+   no redraw happens. Each now has a test that kills it (below).
+
+**Missing tests — all five added:** boot's own resume with its first lookup held (a new sub meanwhile; a sign-in begun
+meanwhile, with distinguishable progress, no application, narration or first save for the resume, and the newer
+account's first save carrying this device's garden); the landing's sign-in at its load with Home's form already up,
+for progress and for `null`, the form, words, message, disabled buttons and lock checked and narration counted (also in
+the body-completion test); a sync result delivered after a newer sign-in began, succeeded and failed; a lookup that saw
+nobody or another sub with the account back before the caller resumes, on a ready save and the form's load; an accepted
+load whose account changes before `finish()` checks it while another form owns the panel.
+
+**Verified:** suite 1148/1148; `main` unchanged since the last merge. **Mutation audit for this round** (`cloud-sync`, `garden-card`, `narration`): 6 mutations —
+the resume not fenced, a superseded success or failure, nobody as offline, name-only refresh classification, the outcome
+unchecked — 6 killed. The full audit's other 38 mutations stand as recorded for round 2; its one equivalent survivor
+(the retry's `a.sub`) remains, and *the first save not rechecked* lands on `finish()`'s own check in the same tick.
+
+## PR review, round 4 (`gpt-6.2-astra`, through `ask.sh`), on `4f57237` — granted by the owner (D10), the round-3 delta only
+
+`ask.sh fresh read-only`, 2026-11-25 (session `music-garden-54`), on `git diff 5889f72 4f57237`. Usage: in 757,448
+(cached 675,456), out 4,331. **Verdict: REQUEST CHANGES** — two Medium (1, 2), one Low (3), all to the tests. **GPT: "The
+production delta resolves both sign-in ordering defects."** Round 3's required changes 1–3 and its test 3 resolved; tests
+1, 2, 4, 5 partly. No new cancellation of a save or a card upload; the TUN-131 cases not made worse.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+The production delta resolves both sign-in ordering defects. I request changes to the regression tests. Two cases bypass the Home form, and two assertions can pass after the form has been removed from the panel.
+
+### Round-3 disposition
+
+| Round-3 item | Disposition | Reason at `4f57237` |
+|---|---|---|
+| Required 1 · Fence automatic resume | Resolved | Boot’s `onSignedIn(false)` now records its run before yielding. A valid submission invalidates that run before authentication starts. When the held lookup returns, the run check stops it before the GET, application, narration, or seed. [Run tracking and lookup][run] · [Submission fence][submit] |
+| Required 2 · Give supersession precedence | Resolved | `signInWith` checks submission order after sync returns and in the rejection path. The landing keeps its words and re-enables Back. Home re-enables only the completing form’s controls, and the newer submission still holds the navigation lock. [Result handling][submit] · [Landing handler][landing] · [Home handler][homeform] |
+| Required 3 · Correct the verification record | Resolved | The correction identifies the pre-mounted Home form, the account returning before the caller resumes, and the skipped redraw when another form owns the panel. Those qualifications match the code. [Correction][record] · [Final ownership check][finish] |
+| Test 1 · Actual boot and B’s Home submission | Partly | Both cases start actual boot. The replacement-subject case checks zero requests and sync off. The second case checks application, narration, and the device level in B’s seed, but calls `g.signInWith(...)` directly. It never mounts or submits B’s Home form. [Boot tests][boottests] |
+| Test 2 · Landing GET with B’s Home form pending | Partly | Both progress and `null` are covered. The tests check the visible message, disabled controls, navigation lock, and zero narration, including at body completion. `pass.parent` does not establish that B’s original form is still in `authbox`. [Overlap assertions][overlap] · [Body completion][body] |
+| Test 3 · Superseded success and rejection | Resolved | The test holds delivery after real sync, then returns success or throws after B submits. Both cases require the replacement message, retained landing words, zero calls to hide the landing, and B’s navigation lock. [Result-boundary test][boundary] |
+| Test 4 · Observed loss survives A’s return | Partly | The test restores A after real `freshId` classifies each loss and before its caller resumes. It verifies writer revocation and no later PUT. The GET half checks `ok:false` and zero requests through a direct call. A child’s ability to retry is unobserved. [Lookup tests][lookup] |
+| Test 5 · `finish()` while another form owns Home | Partly | The account switches after real application. The landing reports failure and sync turns off, which distinguishes removal of `finish()`’s ownership check. The final `user.parent` assertion still passes if the entire Home form was detached. [Final-outcome test][outcome] · [Fixture removal semantics][dom] |
+
+### Required changes and missing tests
+
+1. **Medium — Submit through Home in the held-boot case.** While A’s first lookup waits, open Home, mount B’s form, fill it, and invoke its installed Sign in button. Keep the existing checks while B authenticates. After B receives explicit `null`, compare its sole PUT body with the original device progress in cloud format. [Current direct call][boottests] · [Installed handler][homeform]
+2. **Medium — Verify the mounted retry after transient identity loss.** For both lookup variants, submit a real Home form. After A returns, require zero GETs, the original form and fields in `authbox`, retained words, a visible retry message, and an enabled Sign in button. The existing writer assertions can stay. [Current GET assertions][lookup]
+3. **Low — Assert form identity from the panel.** In the held-GET and `finish()` cases, capture B’s form and inputs before A proceeds. Afterwards, look them up again from `authbox` and assert object identity. The fixture clears only the immediate child’s parent when the panel is emptied. Inputs in a detached form therefore retain both their parent and their values. [Fixture][dom] · [Held GET][overlap] · [Final outcome][outcome]
+
+I found no new cancellation of an ordinary save or reachable card upload. Ordinary saves call `cloudPush` directly. The card makes the background inert and disables dismissal while its upload runs. An uninterrupted boot proceeds normally, and the old wrapper’s `finally` clears only its own run number. Failed loads still block writes, only explicit `null` seeds an existing account, and accepted loads retain TUN-112’s narration order. The delta adds no SDK cache writes or refreshes and does not worsen the cases deferred to TUN-131. [Save path][save] · [Card modal][card] · [Run cleanup][run] · [Load and narration][finish]
+
+By source inspection, each of the six named mutations would change an asserted outcome. That supports the mutation claims while leaving the form-coverage gaps above. This was a read-only review. The reported 1,148 passing tests and six mutation kills are the author’s runs. Direct-file startup and real two-tab behavior were not independently exercised.
+
+[run]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L180-L199
+[submit]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L298-L316
+[landing]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/boot.js#L125-L137
+[homeform]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L332-L346
+[record]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/reviews/TUN-128-tab-account-sync.md#L579-L585
+[finish]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L200-L232
+[boottests]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1355-L1385
+[overlap]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1024-L1043
+[body]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1297-L1311
+[boundary]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1047-L1075
+[lookup]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1388-L1410
+[outcome]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1079-L1095
+[dom]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L12-L28
+[save]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L116-L130
+[card]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/garden-card.js#L102-L150
+
+REQUEST CHANGES on 4f57237ee8075905b264340f44c02cb5cb81e798
+
+</details>
+
+### My answers — all agreed, fixed in the commit that records this round, **not reviewed** (no fifth round without the owner)
+
+All three are in `tests/garden-card.test.mjs`; no source changed. `cardGame` gained `bootUser` and `holdBoot` (a stored
+session at load, its first lookup held until `releaseBoot()`), records each request's body, and passes the request's
+token to its API stub.
+
+1. **Medium, the held-boot case bypassed Home — agree.** *Round 4 (1)*: boot resumes A with its first lookup held; Home
+   is opened, B's form filled and its installed Sign in pressed; while B authenticates, nothing is applied, read aloud,
+   requested or saved for A, B's form (by identity), words, *"Signing in…"*, disabled buttons and Home's lock hold; B's
+   empty copy then gets exactly one PUT whose body is `cloudCopy` of this device's progress from before. The direct-call
+   test in `cloud-sync.test.mjs` stays.
+2. **Medium, the retry after a transient loss was unobserved — agree.** *Round 4 (2)*, both variants (nobody; another
+   sub cached while offline), through a real Home form, with A back before the run goes on: no GET, sync off, the
+   child's form on the panel by identity, its words, *"Something went wrong just now…"*, Sign in usable. The writer half
+   stays in `cloud-sync.test.mjs`.
+3. **Low, `.parent` doesn't prove the form is on the page — agree.** It held for every such check in the file, not only
+   the two named: emptying the panel unsets only its own children's parent. All fourteen now look the element up from
+   the panel (`onPanel`); the held-GET, superseded-result and `finish()` cases assert both boxes are the very objects the
+   panel holds (`sameForm`).
+
+**Mutation audit of this round's tests** (`js/cloud.js`, restored from a
+copy after each): *boot's resume not fenced* (round-3 code) — killed by round 4 (1) alone; *a failed sign-in redraws
+over its form* — killed by round 4 (2) and two older tests; *`finish()` puts no form back* — killed, but also by the
+4f57237 tests (round 2 (4) fails on its other assertions), so on this code the stricter panel checks close a gap
+without killing a mutation the old ones missed.
+
+### After round 4 — not reviewed by GPT
+
+Both of these came after GPT's round 4, and **no GPT round has reviewed them**:
+
+- **`main` merged** at `8ae4216` (TUN-12, PR #174: `clickModeFrom` in `js/playback.js`, `applyProgress` in `js/cloud.js`,
+  one line of `js/boot.js`). No conflict.
+- **One TUN-12 test's fixture, fixed with the coordinator's OK** (2026-11-25): after the merge, `tests/click.test.mjs`'s
+  *"a reload after pulling an unknown click value still reads off"* failed its precondition (*the pull loaded the cloud
+  profile*). Its `bootWith()` stubbed a signed-in user without the cached ID token, and TUN-128's account checks read
+  that token, so the stub counted as nobody signed in (this ticket's own trap: stubs need the token's claims). Three
+  edits, in the fixture only: `FakeIdToken` and `cachedIdToken` imported from the harness, `storage` on the stub user,
+  `CognitoIdToken` on `AmazonCognitoIdentity`. The test's own assertions are unchanged. No game code changed.
+
+**Verified on the pushed head:** syntax check OK; suite 1158/1158.
+
+### Merging `main` at `8f76076` (TUN-125) — not reviewed by GPT
+
+With the coordinator's OK (2026-11-25/26), after D15; **neither the resolution nor the fixture change below is
+GPT-reviewed.**
+
+- **The conflict:** one hunk at the top of `signInWith()` in `js/cloud.js`. Both sides added lines before its first
+  `await`: TUN-125 starts the audio clock on the Sign in click (`initAudio(); actx.resume();`, with its comment);
+  TUN-128 numbers the sign-in, ends an older sign-in or boot's resume still out, and defines `replaced()`. Resolved by
+  keeping both — TUN-125's lines first, then TUN-128's three unchanged, with one `authBusy++`. No other edit.
+- **TUN-125's tests, fixtures only** (`tests/opening-melody.test.mjs`, +11/−6): 15 of them failed after the merge because
+  their Cognito stand-ins predate TUN-128 — the signed-in reload's stored user had no cached ID token, and
+  `accountAnswers()` faked a sign-in that returned no session. Now every page load has a Cognito pool stand-in naming
+  `ann` on a signed-in load and nobody otherwise, with a cached ID token that agrees; `accountAnswers()`'s sign-in
+  returns a session for its account and makes it the shared one. No assertion changed; no test removed or skipped; no
+  game code or shared helper changed (the harness's existing `cachedIdToken`, `signedInSession` and `FakeIdToken`).
+- **Not weakened:** with `initAudio(); actx.resume();` removed from `signInWith`, TUN-125's *"a slow sign-in from the
+  landing screen's form, its activation expired before the cloud answers, no further gesture: the call once, on a running
+  clock"* fails (1 of 57); restored, `js/` is unchanged.
+- **How the two tickets meet** (read on the merged tree, nothing changed): a sign-in reaches an opening melody only by
+  drawing a stage (`signedInRun` → `applyProgress` → `renderLevel` → `openingFor`). A replaced or ended run returns before
+  `applyProgress`, so it neither draws the wrong account's level nor books its opening; a second draw of the entered
+  stage keeps its opening as it was, and another stage's draw cancels a pending one first (`leaveOpening`), so never
+  twice. Two narrow cases come after `applyProgress` has drawn: `finish()` finding the account gone (its `owns()` or
+  the redraw), and `signInWith`'s `replaced()` after `onSignedIn` returns — the level and its opening stay booked, as
+  nothing in `cloud.js` calls `cancelOpening`. Both need the session to change inside synchronous code; reported to the
+  coordinator for TUN-132, not fixed here.
+
+**Verified on the merged tree:** syntax check OK; suite 1224/1224.

@@ -12,7 +12,7 @@
 // `interrupt()` / `recover()` stand in for iOS's "interrupted" state (a call, another app's audio).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadGame } from "./harness.mjs";
+import { loadGame, FakeIdToken, cachedIdToken, signedInSession } from "./harness.mjs";
 
 const tick = () => new Promise(r => setImmediate(r));
 const clone = x => JSON.parse(JSON.stringify(x));
@@ -92,10 +92,14 @@ function pageLoad({ progress = null, session = false, pendingResume = false, noU
     page = browserAudio(w, { pendingResume, noUserActivation }); timers = openingTimers(w);
     if (progress) w.localStorage.setItem("mg_progress", JSON.stringify(progress));
     w.localStorage.setItem("mg_settings", JSON.stringify({ speak: false }));
+    // Who the shared session names, with a cached ID token that agrees (TUN-128's account checks read it): `ann` on a
+    // signed-in load, nobody otherwise; accountAnswers signs the form's account in here.
+    const cog = w.__cognito = { user: session ? "ann" : null };
+    const userNamed = name => ({ getUsername: () => name, signOut() { if (cog.user === name) cog.user = null; },
+      storage: cachedIdToken(() => ({ "cognito:username": name, sub: "sub-" + name })),
+      getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": name, sub: "sub-" + name }, getJwtToken: () => "token-" + name }) }) });
+    w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() { return cog.user ? userNamed(cog.user) : null; } } };
     if (session) {
-      const user = { getUsername: () => "ann", signOut() {},
-        getSession: cb => cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": "ann", sub: "sub-ann" }, getJwtToken: () => "token-ann" }) }) };
-      w.AmazonCognitoIdentity = { CognitoUserPool: class { getCurrentUser() { return user; } } };
       w.fetch = async () => { const p = await cloud.promise; return { ok: true, status: 200, json: async () => clone(p) }; };
     }
   } });
@@ -135,8 +139,9 @@ const openOn = (g, pkg, level, step = 0) => { g.setPlayScope({ kind: "package", 
  *  and is applied. With `pull` (a promise), the cloud answers when it settles, and the sign-in's promise is returned. */
 /** The account behind the form: authentication succeeds, and the cloud answers with `progress`, or when `pull` settles. */
 function accountAnswers(g, progress, pull = null) {
-  g.cogSignIn = async () => {};
-  g.freshId = async () => ({ token: "token-ann", sub: "sub-ann" });
+  const name = "brave-otter-42";   // the account the form signs in to: the session Cognito answers with, now the shared one
+  g.cogSignIn = async () => { g.__window.__cognito.user = name; return signedInSession({ "cognito:username": name, sub: "sub-" + name }); };
+  g.freshId = async () => ({ token: "token-" + name, sub: "sub-" + name });
   g.cloudPull = async () => ({ ok: true, progress: clone(pull ? await pull : progress) });
   g.renderAuth = () => {};
 }
