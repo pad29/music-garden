@@ -377,3 +377,101 @@ survive are each caught by another guard, with no difference a player or a test 
 first lookup and boot's resume from the cache (each catches the other, and the redraw check catches both); the row
 naming the stored user (the row appears only once the stored user is the run's); the body check (`owns()` where the
 load is used catches it); and the retry's `a.sub` (equivalent, as before). Each stays as a second line.
+
+## PR review, round 2 (`gpt-6.2-astra`, through `ask.sh`), on `7463e1c`
+
+`ask.sh fresh read-only`, 2026-11-25. Usage: in 1,509,003 (cached 1,409,024), out 7,992. **Verdict: REQUEST CHANGES** —
+four High (1–4), one Low (5), and eight missing test cases. Round-1 findings 5, 6 and 7 and test row 7 resolved; the rest partly.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+Two account changes still escape the new guards. Cognito can write an old account back into shared storage **before** the game checks it. Also, a newer submission supersedes an older authentication, but does not supersede an older GET that has already started. That GET can still replace the device’s progress while the newer form says “Signing in…”.
+
+### Round-1 disposition
+
+| Round-1 item | Status | Reason |
+|---|---|---|
+| Finding 1 · Check the cache after token acquisition and bind boot to a subject | Partly | Boot now captures the name and subject. Successful token continuations check the cache before sending. A real SDK refresh can reselect A before any of those checks sees B. |
+| Finding 2 · Classify a failed refresh by the whole identity | Partly | `freshId` distinguishes a replaced subject, contradictory username, or missing ID token at callback time. The awaiting GET and PUT skip their own cache check when that callback returned `{}`. |
+| Finding 3 · Check ownership where GET and PUT results are consumed | Partly | The headers, body, and caller checks are present, and `pull.lost` wins after A returns. A final `renderAuth` can itself observe loss and end the run, yet `onSignedIn` still returns success. |
+| Finding 4 · Older authentication must not displace newer sign-in | Partly | Numbering before authentication fixes the tested ordering with B still selected. It does not fence an older GET while B authenticates or prevent an older SDK success from reselecting A. |
+| Finding 5 · Routine redraw must validate the writer | Resolved | A redraw that finds a different account drops the run and cancels its queued save. The signed-in row uses `_syncUser`. `dropSync` avoids recursive rendering here. |
+| Finding 6 · Re-entering Home destroys the submitting form | Resolved | `openHome` preserves the mounted busy form. The held-GET test also exercises loss, retry, and the owning form’s successful redraw. |
+| Finding 7 · Correct answers 9 and 11 | Resolved | The record now describes the indirect narration assertions and leaves direct-file verification pending. |
+| Test 1 · Token callback after a cache switch | Partly | All three lookup sites are exercised with a stub. The boot test changes only the returned subject, and the refresh stub omits the SDK’s cache write. |
+| Test 2 · Failed refresh with username present | Partly | The three bad-cache variants and matching offline control are present. The GET case calls `signInWith` directly and never checks a mounted retry form. The cache also stays unchanged between callback and continuation. |
+| Test 3 · Loss between helper and caller | Partly | The GET, failed GET, seed PUT, and header-loss cases are present. In the body-loss case B stays selected through the caller check, masking deletion of the body check. Narration calls are still not counted directly. |
+| Test 4 · Two submissions, B first | Partly | B’s queued save is verified with B still cached. Both new overlap cases hold A in authentication. Neither covers A already at GET while B waits in authentication. |
+| Test 5 · Real Home redraws | Partly | The busy-form half uses `openHome`. The ready-writer half calls `renderAuth()` directly, so it cannot catch Home skipping the redraw. |
+| Test 6 · Vendored SDK cache contract | Partly | The new test exercises decoding, expiry, missing tokens, another client’s key, offline failure, and cache clearing. Its only selected username is `ann`, and it never completes a successful refresh across an account switch. |
+| Test 7 · Card and Home refusal paths | Resolved | Both wrong-name cases carry a nonempty subject. The ordinary card case holds the subject constant to isolate the name check. Both broken-session wrappers now assert that `getSession` actually failed. |
+| Test 8 · Navigation 53 and 58 | Partly | Real quest entry now proves the run and scope, and each busy navigation press starts from a distinguishable scope. The map fixture checks that the attribute text exists, then invents the click target. Its `closest()` succeeds for any selector. |
+
+### Required changes
+
+1. **High — Preserve the account selection across a real SDK refresh.** The vendored `refreshSession` calls `cacheTokens()` before invoking the callback. `cacheTokens()` writes `LastAuthUser`. If A’s refresh finishes after B was selected, `accountIs(A)` can pass precisely because the refresh just selected A again. An ordinary PUT can then proceed. Make the progress lookup preserve a newer selection and refuse the stale operation. This needs protection at the SDK storage boundary. Another read after the callback sees the same overwritten value. [Token lookup and PUT][tokens] · [Vendored SDK][sdk]
+
+2. **High — Make submission order govern the whole sign-in.** `_signInSeq` is checked after `cogSignIn`, but an A that already passed that check keeps its `_cloudRun` until B finishes authenticating. A can apply and narrate its GET, or seed an empty copy, while B is pending. Conversely, if B finishes first, a late successful A authentication can write A into the SDK cache before the sequence check rejects its result. B then loses its queued save on the next ownership check. Fence the older sync work when the newer submission starts and prevent a superseded same-tab authentication from undoing the winning selection. Give a still-mounted superseded form a clear outcome. Today one path blanks its message and the authentication-error path bypasses the supersession check altogether. [Submission and form handler][submission] · [Progress application][consume] · [Overlap fixture][overlap]
+
+3. **High — Check ownership after a tokenless refresh result.** Both callers condition their post-`await` cache check on `id.token`. A matching offline result can become stale just like a successful token. For an ordinary save already showing “cloud is resting,” `done(false)` causes no redraw, so the writer can remain ready through the switch. If A returns, its next save can proceed without a fresh GET. Check the captured account before publishing the offline outcome, and preserve any earlier `gone` or `mismatch`. The unbound song adapter can continue returning token-or-null. [GET and PUT continuations][tokens]
+
+4. **High — Honor revocation discovered by the final redraw.** `renderAuth` clears `_authForm` and its DOM before validating the account. If this redraw is the first operation to see the loss, it calls `dropSync`, but the failed-load, loaded-progress, and seed-save branches still return `signedIn:true`. The landing can erase the words and close, Home can lose its retry form, and the garden card can credit a save from a run the game already ended. Preserve the owning form when this validation fails and propagate the lost-run outcome to the consumer. [Final redraw and return values][consume] · [Landing completion][landing] · [Card credit][card]
+
+5. **Low — Correct the round-1 verification conclusion.** Answers 9 and 11 are fixed. The later statement that all requested cases were added and all five survivors are equivalent overstates the evidence. The initial lookup, boot capture, and body check have distinguishable outcomes below. Naming the row from storage is equivalent only if it uses the **same validated snapshot**. A second `getCurrentUser()` can name B. The unconditional retry assignment to `a.sub` really is equivalent here because the preceding guard already rejected a different subject. [Mutation record][record] · [Card subject guard][cardguard]
+
+### Missing tests
+
+| Case to add | Setup and assertions | Regression it catches |
+|---|---|---|
+| Real SDK refresh across a switch | Use the vendored SDK with isolated storage and a deferred successful refresh. Begin an ordinary save for expired A, select B while it waits, and finish the refresh. Assert B remains selected, no progress PUT goes out, and A needs a fresh GET. Keep distinct cached subjects for two usernames under the same client and verify each lookup. | Unconditional stale SDK cache writes and a cache key hard-coded to `ann`. |
+| Initial check and boot capture, independently | For a form submission, return A’s valid initial token while B is selected and restore A at entry to `cloudPull` **if reached**. Require rejection before that entry. Separately start actual boot with A/subject 1 and let both the cache and returned session become A/subject 2 during the first lookup. Require zero GETs and sync off. | Deleting the initial cache check, and resuming by username alone. Each case defeats the downstream guard that masked its mutant. |
+| Failed-refresh continuation | Start with a ready A already showing the resting status. Let `freshId` classify a matching offline failure, then select B before `cloudPush` resumes. Assert revocation and no PUT after A returns. Exercise the corresponding GET through a mounted Home form and assert its exact fields, retry message, and enabled button. | The `id.token &&` shortcut and treating any tokenless result as an outage. |
+| Loss at body completion | Receive headers under A, finish the body under B, then restore A after the real `cloudPull` settles but before `onSignedIn` consumes it. Assert `signedIn:false`, unchanged memory and `mg_progress`, zero application and narration calls, and no save. | Deleting the post-body check. The caller’s current-account check now sees A and cannot rescue the mutant. |
+| Both submission orderings | Hold A at GET and B in authentication. Finish A first and assert unchanged progress, no seed, no narration, and B’s exact form, message, disabled controls, and navigation lock. For B-first completion, model the SDK’s actual cache write before A’s callback and verify B’s queued save retains the correct owner. Check both stale success and stale rejection on a still-mounted form. | Checking sequence only before entering `onSignedIn`, relying on a side-effect-free authentication stub, and inconsistent stale messages. |
+| Loss discovered by the final redraw | Keep A valid through the caller’s ownership check and let the final real `renderAuth` see the loss. Cover a failed GET and a successful seed PUT. Assert sync off, no successful sign-in or card credit, and retained form words with an enabled retry. | Returning the pre-redraw outcome after `dropSync()` has invalidated it. |
+| Real Home redraw and row name | Queue A’s save, select B or nobody, and open Home through its entry handler. Assert guest row, canceled save, and no PUT when A returns. Separately vary the selected name after row validation and assert no row names B. | Skipping the ready-writer redraw in `openHome`, or independently rereading the username for display. |
+| Rendered map target | Resolve the pressed package or Studio cell from the generated SVG and make the fixture honor the selector passed to `closest`. Keep the current per-press scope assertions. | A broken click selector that the unconditional `closest()` stub accepts. |
+
+The TUN-69 merge changes the `?dev` Studio dispatch and its fixture. Both destination functions retain the busy guard. I found no merge-induced change to account sync, the TUN-106 failed-load write block, TUN-122’s explicit-null seed rule, or TUN-112’s accepted-load narration order. This was a read-only source review. The 1,130-test result is the author’s pre-merge run. Direct `file://` startup and real two-tab behavior remain unverified.
+
+[tokens]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:72
+[sdk]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/vendor/cognito/amazon-cognito-identity.min.js
+[submission]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:282
+[consume]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/cloud.js:194
+[overlap]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/tests/garden-card.test.mjs:697
+[landing]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/boot.js:125
+[card]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/garden-card.js:75
+[cardguard]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/js/garden-card.js:71
+[record]: /C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-49/reviews/TUN-128-tab-account-sync.md:375
+
+REQUEST CHANGES on 7463e1ca9851596f59c058c34018e572f9622e4e.
+
+</details>
+
+### My answers
+
+1. **High, a real refresh can reselect the old account — agree; open for the owner (question 1).** Verified in the
+   vendored library: `refreshSession` ends in `cacheTokens()`, which writes `LastAuthUser`. So when an expired token's
+   refresh finishes after another tab selected B, the library itself selects A again, and every check after it sees A.
+   The game's own checks cannot see past the library's write; the fix is for the game to guard the library's storage
+   (a refresh never changes which account is selected). That is a change to how the game uses the library, not a
+   check in the game's own code.
+2. **High, submission order must govern the whole sign-in — agree, in two halves.** *In the game:* a newer sign-in,
+   from the moment it begins, ends an older sign-in's sync work, and a superseded form gets one clear outcome on every
+   path — fixed now. *In the library:* an older authentication that finishes last still has the library select its
+   account — the same storage-boundary question as 1; open for the owner (question 1).
+3. **High, check ownership after a tokenless result — agree.** Fixing now.
+4. **High, honour a loss the final redraw discovers — agree.** Fixing now.
+5. **Low, the round-1 verification overstated — agree.** Corrected with the round-2 fixes.
+
+**Missing tests:** all but one are about the game's own code and are being added; the real-library refresh across a
+switch, and the B-first ordering with the library's write modelled, wait on question 1.
+
+## Owner's decisions
+
+1. **open** — *GPT's round-2 findings 1 and half of 2: the Cognito library itself rewrites which account is selected
+   when a token refresh, or an older sign-in in the same tab, finishes after another tab switched accounts. Fix that
+   here, or in a follow-up ticket?* Options: **A)** follow-up ticket — this PR fixes everything else from round 2, and
+   round 3 (the last) reviews that; **B)** fix it here — the game guards the library's storage writes, tested through
+   the real library, all in round 3; larger than M (about 2–3 more hours), and if round 3 still finds something it
+   comes back to you; **C)** stop — hand off what is there with no third round. Recommended: **A**.
