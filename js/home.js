@@ -62,7 +62,7 @@ function renderQuestHome(){
   }
 }
 function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull would land in this level (TUN-93)
-  leaveOpening();   // a fresh entry: a melody held behind Home stays unheard, and this level's plays (TUN-125)
+  playerEnters();   // a fresh entry: a melody held behind Home stays unheard, and this level's plays (TUN-125)
   setPlayScope({kind:"package", packageId:id}, {levelIdx:lvl||0});
   narrateReady=true;   // opening a package is a deliberate entry into a level — narration is welcome
   leaveHome();

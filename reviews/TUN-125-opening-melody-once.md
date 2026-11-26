@@ -301,35 +301,46 @@ suite 1149/1149.
 
 1. **The reload choice — silence, not the first tap.** The owner playtested 8d4b4cf and answered on 2026-11-25 at
    5:08 PM PT, relayed by the coordinator. In the owner's words: "it feels strange that it plays together with me
-   planting a seed... I think it should either play once on refresh, or not play at all." The coordinator's
-   instruction: after a reload the opening must never be started by the player's first tap on the field, or by any
-   other unrelated gesture. If the clock already runs when the level is drawn, it plays once then. If the clock is
-   suspended, it stays silent until 🔊 Listen.
-2. **A fourth GPT round — yes.** Same answer, same relay: run it after the change above is pushed, on
-   `3ca520d..` the new head. No fifth round.
+   planting a seed... I think it should either play once on refresh, or not play at all."
+2. **Corrected — always silence after a reload.** The owner, 5:12 PM PT, relayed by the coordinator, replacing the
+   coordinator's first reading ("if the clock already runs, it plays once then"): "in this case let's just say always
+   silence. Otherwise the behavior may be different depending on the browser." So after a reload, the level's
+   opening never plays on its own, in any browser, whether the clock is running or suspended. It is silent until
+   🔊 Listen. Entering a level by the player's own navigation (Next, a package's Play, Continue, Replay) still plays
+   it once. The coordinator: the decision is about the reload/boot draw only, and if it should reach further, say so
+   rather than guess.
+3. **A fourth GPT round — yes.** Also relayed at 5:08 PM PT: run it after this change is pushed, on `3ca520d..` the
+   new head. No fifth round. Do not merge.
 
 ## The owner's reload decision, built (Claude)
 
-The rule is "suspended → silent", read literally, needed one refinement. After a reload, the audio context exists
-(the boot's draw made it), suspended. It stays suspended even after the player has clicked around, until something
-calls `resume()`. So with the literal rule, a level opened deliberately afterwards — Home → a package — would be
-silent too. That would be a regression no one asked for. The browser says whether the page has had a click
-(`navigator.userActivation.hasBeenActive`, sticky activation). The opening therefore plays when its 350 ms are up
-if the clock runs, or if it is suspended on a page that has had a click, since `playPhrase`'s `resume()` will then
-start it. It is dropped otherwise: a reload before any gesture, an interrupted clock, or a browser without that
-API. Dropped means silent: no waiting, no `statechange` listener, and nothing a later tap can start.
+**The page's own draws are silent until the player navigates.** `openingQuiet` is set at load. While it is set, an
+entry's opening is not scheduled at all, though the entry still counts as used, so a redraw does not bring it back.
+That covers the boot's draw, and a signed-in reload's cloud load wherever it lands (before or after the player's
+first tap). `playerEnters()` clears it, and starts a fresh entry, on the player's own navigation:
+- `openPkg()` (Play, Continue, Replay, Restart from Home);
+- Next, to a step or a level;
+- entering a quest.
 
-"Play once on refresh without a tap" is not reliably possible: the browsers' autoplay rules keep a page's audio
-off until a gesture, except where the browser grants autoplay (media engagement, a site setting). Where it does,
-the clock already runs, and the call plays once with no tap, as the owner described.
+The Studio has no melody and is reached only from Home, so it needs nothing.
 
-Changes: `canSound()` replaces `clockRuns()`; `openingDue` drops or holds and never resumes; `releaseOpening`
-only re-arms after Home; the `statechange` listener and `openingHooked` are gone, and so is `load-gate`'s
-`statechange` entry. Behind Home, held, and released by every way off Home, as before.
+**One place where the decision could reach further, flagged as the coordinator asked: a sign-in.** A sign-in the
+player makes through the form (landing screen, Home, the garden card) loads the account's progress and draws its
+level. I treat that as the player's own action, so it plays once. That is the ticket's own signed-in playtest ("sign
+in with an account whose current level is Question & Answer 6/9, and hear the call once"). `signInWith` holds
+`authBusy` while the load lands; the boot's automatic session restore does not hold it, and stays silent. If the
+owner wants a sign-in silent too, the change is one condition in `openingFor`.
 
-Tests (`tests/opening-melody.test.mjs`, 42): the reload tests now expect silence through the first tap, Loop,
-Home and Close, under both resume behaviours, and one copy from Listen. A clock the browser runs at once plays
-the call with no tap. A clicked page with a suspended clock plays a deliberately opened level's echo, and without
-`userActivation` stays silent until Listen. The interrupted clock drops it, and recovery does not bring it back.
-On 8d4b4cf, 7 of these fail; all pass now. Mutation checks, run by hand on each part of the rule, each fail at least
-one test: the sticky-activation clause, dropping, the interrupted state, holding behind Home, and the release.
+**Browser differences.** The rule no longer asks the browser anything: the round-before's `navigator.userActivation`
+clause is gone. A navigated entry always follows a click, so `playPhrase`'s `resume()` starts the clock in every
+browser. An interrupted (iOS) or closed clock still drops the melody, because notes booked then would wait and sound
+together later. Behind Home it is held, and every way off Home plays it after the 350 ms pause, as before.
+
+**Tests** (`tests/opening-melody.test.mjs`, 46): the reload tests expect silence through the first tap, Loop, Home
+and Close, under both resume behaviours, and even when the browser runs the clock at once. Listen plays it once. A
+reload then Next (to a step, or a level) plays the new stage's opening. A player's sign-in, from the landing screen
+or through Home's form, plays the account's level once (held behind Home; never in a quest). A signed-in reload whose
+cloud lands on another level stays silent. Tests that start mid-game now begin with a real navigation (`played()`:
+the first tap, then Garden Basics from Home). Mutation checks, run by hand, each fail at least one test: the quiet
+check, its `authBusy` exception, each `playerEnters()` (step Next, level Next, `openPkg`, the quest branch),
+`playerEnters` clearing the flag, the interrupted drop, and every round-3 line again. Full suite below.

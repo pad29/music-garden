@@ -3,27 +3,30 @@ const pitchArea=document.getElementById("pitchArea"), drumArea=document.getEleme
   toolboxCard=document.getElementById("toolboxCard");
 // ---- A stage's opening melody (an echo level's phrase, a Question & Answer call), heard ONCE per entry (TUN-125) ----
 // An ENTRY, not a draw: openingStage is the stage whose entry has used its melody — pending, held, played or
-// dropped. A redraw of that same stage (a sign-in's cloud load landing on the level the player is on, early or late)
-// keeps it as it is; drawing another stage, opening a package or the Studio, or a quest frees it. 🔊 Listen and the
-// ▶ Play button spend it (a scripted start() — a reveal, Jam — does not). When its 350 ms are up it plays if it can
-// be heard NOW, or never: a clock that runs, or one the page may start because the player has already clicked
-// (sticky activation). Before the page's first gesture — a reload — the clock is suspended at time 0, and notes
-// booked then are not lost: they would all sound together at the first tap, over the seed being planted. So it is
-// dropped, and 🔊 Listen is how it is heard (the owner, 2026-11-25: "it should either play once on refresh, or not
-// play at all"). An interrupted clock (iOS) drops it too. Behind 🏠 Home it is HELD, booking nothing, and every way
-// off Home releases it after the same 350 ms pause, which a Listen press cancels. (Notes already booked on a running
-// clock are left to finish: nothing can take them back.)
-let openingTimer=null, openingWaits=null, openingStage=null;
+// silenced. A redraw of that same stage (a sign-in's cloud load landing on the level the player is on, early or
+// late) keeps it as it is; drawing another stage frees it. 🔊 Listen and the ▶ Play button spend it (a scripted
+// start() — a reveal, Jam — does not).
+// The page's OWN draws never play it: the boot's, and a signed-in reload's cloud load, wherever it lands. Until the
+// player navigates — a package or the Studio from Home, Next, a quest — or signs in themselves (authBusy: the
+// sign-in form's load), every entry is silent, and 🔊 Listen is how it is heard. The owner, 2026-11-25, after
+// playtesting a build that played a reload's melody at the first tap: "it feels strange that it plays together with
+// me planting a seed"; then "let's just say always silence. Otherwise the behavior may be different depending on the
+// browser." A navigated entry follows a click, so playPhrase's resume() starts the clock in every browser. An
+// interrupted clock (iOS) drops it: notes booked then would wait and sound together later. Behind 🏠 Home it is
+// HELD, booking nothing, and every way off Home plays it after the same 350 ms pause, which a Listen press cancels.
+// (Notes already booked on a running clock are left to finish: nothing can take them back.)
+let openingTimer=null, openingWaits=null, openingStage=null, openingQuiet=true;
 function cancelOpening(){ clearTimeout(openingTimer); openingTimer=null; openingWaits=null; }   // spent: Listen, ▶ Play
-function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: a package, the Studio or a quest is entered — it plays anew
+function leaveOpening(){ cancelOpening(); openingStage=null; }   // left: the next entry plays anew
+function playerEnters(){ openingQuiet=false; leaveOpening(); }   // the player's own navigation: a package, the Studio, Next, a quest
 function openingSoon(notes){ openingTimer=setTimeout(()=>{ openingTimer=null; openingDue(notes); }, 350); }
 function openingFor(st,notes){ if(st===openingStage) return;     // a redraw of the entered stage: as it was
   leaveOpening(); if(!notes || !notes.length) return;
-  openingStage=st; openingSoon(notes); }
-const canSound=()=>actx.state===undefined || actx.state==="running"   // (a context too old to report a state: it runs)
-  || (actx.state==="suspended" && !!(navigator.userActivation && navigator.userActivation.hasBeenActive));   // playPhrase's resume() will start it
+  openingStage=st;
+  if(openingQuiet && !authBusy) return;                           // the page's own draw: silent until Listen
+  openingSoon(notes); }
 function openingDue(notes){ initAudio();
-  if(!canSound()) return;                                                 // a reload before any gesture, or interrupted: silent
+  if(actx.state==="interrupted" || actx.state==="closed") return;          // dropped: it could not be heard now
   if(homeoverlay.style.display==="flex"){ openingWaits=notes; return; }   // behind Home: held
   playPhrase(notes); }
 function releaseOpening(){ if(!openingWaits) return;   // every way off Home
@@ -88,7 +91,7 @@ function renderStage(){   // render the current step (or the whole level if it h
   // which a quest has no goals, hint or "Next level" for.
   // The status line is written by renderQuestShell, which questPaintField ends by calling: it says what
   // this phase is for and that leaving is free, instead of "press Play" and a Hint that does not exist.
-  if(isQuestScope()){ leaveOpening(); questPaintField(activeScope.runId); renderVines(); populateDevJump();
+  if(isQuestScope()){ playerEnters(); questPaintField(activeScope.runId); renderVines(); populateDevJump();
     if(speakOn && narrateReady && !instrCardUp()) narrate(curStage().intro||""); else stopSpeech();
     return; }
   const L=currentLevel(), st=curStage(), U=scopeFeatures();
@@ -314,6 +317,6 @@ nextBtn.onclick=()=>{ const L=currentLevel();
   if(isQuestScope()) return;   // a quest phase advances through its run, never through the lesson engine
   if(!levelDone && L.steps && lessonStepIdx<L.steps.length-1){
     carriedDrums = L.steps[lessonStepIdx+1].carryDrums ? snapshotDrums() : null;
-    lessonStepIdx++; renderStage(); }
-  else if(levelIdx<activeStages().length-1){ levelIdx++; lessonStepIdx=0; renderLevel(); } };
+    lessonStepIdx++; playerEnters(); renderStage(); }
+  else if(levelIdx<activeStages().length-1){ levelIdx++; lessonStepIdx=0; playerEnters(); renderLevel(); } };
 
