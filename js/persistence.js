@@ -61,6 +61,6 @@ function loadScopeToolbox(){ toolbox.length=0;
   const qrun = isQuestScope() && QUEST_RUNS[activeScope.runId];
   const saved = qrun ? (qrun.tray||[])
               : (id && progress.packages[id] && progress.packages[id].toolbox) || [];
-  if(Array.isArray(saved)) saved.forEach(t=>{ if(t&&t.offs&&t.midis) toolbox.push({offs:t.offs.slice(),midis:t.midis.slice()}); });
+  if(Array.isArray(saved)) saved.forEach(t=>{ if(isToolShape(t)) toolbox.push({offs:t.offs.slice(),midis:t.midis.slice()}); });   // a damaged saved shape is dropped, not carried into the bag (TUN-15)
   toolboxOwner=scopeToolboxOwner(); renderBag(); }
 

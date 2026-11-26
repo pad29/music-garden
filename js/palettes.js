@@ -35,6 +35,14 @@ function setPalette(id){ const p=paletteDef(id);
 // ---------- Tools: defined by ladder-step offsets from the bottom note ----------
 // pair => [0,g]; chord => [0,g1,g1+g2]. Staying on ladder keeps everything consonant.
 const sig = offs => offs.join("-");
+// A tool's shape, as crafting makes it: 2–3 distinct whole, non-negative rungs that include the bottom
+// one (0), in any order, and a pitch per note. Saved progress and a quest tray can hold anything, so a
+// shape that fails this is not a tool: the bag drops it on restore (loadScopeToolbox) and a stamp refuses
+// it before doing any arithmetic with it (stampTool) — "2" would otherwise count as 2 one way and not
+// the other (TUN-15).
+const isToolShape = t => !!t && Array.isArray(t.offs) && t.offs.length>=2 && t.offs.length<=3
+  && t.offs.every(o=>Number.isInteger(o) && o>=0) && t.offs.includes(0) && new Set(t.offs).size===t.offs.length
+  && Array.isArray(t.midis) && t.midis.length>=2 && t.midis.every(Number.isFinite);
 // "apartness" is measured in real pitch (semitones), NOT uneven ladder rungs:
 // a 3rd-or-wider (>=3) stands; a 2nd (<=2) wobbles. So both inversions of a chord agree.
 const stableMidis = midis => { for(let i=1;i<midis.length;i++) if(midis[i]-midis[i-1]<3) return false; return true; };
