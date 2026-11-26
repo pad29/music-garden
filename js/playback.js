@@ -110,6 +110,10 @@ const GC_TAIL=3;      // seconds a sampled voice can still ring PAST its own not
 // "off" | "in" (count-in only) | "both". A PLAYER PREFERENCE, not song state: it is not in snapState, not
 // in currentSong, and not in a share link — a way of listening, like the field zoom and the loop range.
 let clickMode="off";
+// The preference a saved profile restores — on a page load and on a cloud pull alike. Only the select's own
+// modes count: a missing click is the default (TUN-12), and so is a value an old row the API never
+// validated may carry, which would otherwise switch a count-in on behind a blank #click.
+function clickModeFrom(settings){ const c=settings && settings.click; return (c==="in" || c==="both") ? c : "off"; }
 // Both need a declared pulse, and unmetered there is not one: the pads tint every 4 columns while the
 // tempo box treats a column as an eighth. Picking one would answer §17 §5's still-open question audibly,
 // on every shipped level. So the click needs a meter — AND the Studio, because gating on the meter alone
