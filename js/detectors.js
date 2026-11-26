@@ -355,7 +355,6 @@ function setPhraseGuide(on){ for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){ co
 const curCall = () => curStage().call || [];
 function placeCall(notes){ tx("place",()=>notes.forEach(([r,c])=>{ if(grid[r]&&c<PHRASE_SPLIT) setCell(r,c,true); })); }   // pre-place the call in phrase A
 function placeAnswer(notes){ tx("place",()=>notes.forEach(([r,c])=>{ if(grid[r]&&c>=PHRASE_SPLIT&&c<COLS) setCell(r,c,true); })); checkLevel(); }  // worked-example answers (hints), leaves the call intact
-const playCall = () => playPhrase(curCall());
 // top-note height per occupied column, restricted to one half (like contourSeq)
 function halfSeq(lo,hi){ const seq=[]; for(let c=lo;c<hi;c++){ for(let r=0;r<ROWS;r++){ if(grid[r][c]){ seq.push((ROWS-1)-r); break; } } } return seq; }
 const answerSeq = () => halfSeq(PHRASE_SPLIT, COLS);

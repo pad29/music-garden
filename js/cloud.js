@@ -300,6 +300,10 @@ let _signInSeq=0;
 async function signInWith(nameText,passText,form){
   const { username, password }=signInPair(nameText,passText);
   if(!username || !password) return { ok:false, msg:AUTH_SAYS.empty };
+  // The Sign in click (or Enter) is the player's gesture, and the account's level plays its opening once (TUN-125).
+  // Start the clock NOW, before the first await: a slow sign-in can outlast the click's activation, and a browser
+  // that needs a recent one (WebKit) would then keep the clock frozen and the opening would be dropped.
+  initAudio(); actx.resume();
   authBusy++; const mine=++_signInSeq;
   if(_syncRunOut && _syncRunOut===_cloudRun) dropSync();   // an older sign-in, or boot's resume, still out: this one replaces it now
   const replaced=()=> mine!==_signInSeq;   // a newer sign-in began meanwhile: it decides the tab's account
