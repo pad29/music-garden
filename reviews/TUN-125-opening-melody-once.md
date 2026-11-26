@@ -311,6 +311,8 @@ suite 1149/1149.
    rather than guess.
 3. **A fourth GPT round — yes.** Also relayed at 5:08 PM PT: run it after this change is pushed, on `3ca520d..` the
    new head. No fifth round. Do not merge.
+4. **open — round 4's fixes are unreviewed.** The owner allowed no fifth round. Either hand off for playtest on my
+   verification, or allow one more review of `1dae9d4..` the new head.
 
 ## The owner's reload decision, built (Claude)
 
@@ -344,3 +346,88 @@ cloud lands on another level stays silent. Tests that start mid-game now begin w
 the first tap, then Garden Basics from Home). Mutation checks, run by hand, each fail at least one test: the quiet
 check, its `authBusy` exception, each `playerEnters()` (step Next, level Next, `openPkg`, the quest branch),
 `playerEnters` clearing the flag, the interrupted drop, and every round-3 line again. Full suite below.
+
+## PR review — round 4 (gpt-6.2-astra, through `ask.sh`), on 1dae9d4 — the owner's extra, last round
+
+(A first round-4 run on cb6abfd was stopped unfinished when the owner corrected the decision; it produced nothing.)
+
+<details><summary>GPT's review, verbatim</summary>
+
+**Changes requested on PR #178 at `1dae9d4`.** The owner’s silent-reload rule works on the ordinary guest and signed-in restore paths. The remaining failures concern deliberate entries, including the owner’s fresh-window sign-in playtest.
+
+### Must change before merge
+
+| Severity | Failure and regression test |
+|---|---|
+| **High** | **A slow form sign-in can still queue two calls on a frozen clock.** In a fresh window, submit the landing form and delay the Q&A 6/9 cloud response until transient activation expires. `openingDue()` accepts `suspended`, and `playPhrase()` requests `resume()` and immediately books every note. On a browser that still requires activation, the player hears silence. Pressing Listen then unlocks the queued call and books a second one. Test the real sign-in with a delayed response and a context whose resume stays pending. Expect one opening on a running clock and zero bookings while suspended. The current fake makes activation permanent, and the landing test explicitly starts audio before signing in. [js/level-engine.js:28](js/level-engine.js#L28) · [js/goal-helpers.js:84](js/goal-helpers.js#L84) · [tests/opening-melody.test.mjs:600](tests/opening-melody.test.mjs#L600) · [WebKit’s activation check](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/Modules/webaudio/AudioContext.cpp#L92-L100) |
+| **Medium** | **A form sign-in to the same silently restored stage produces zero calls.** Reload as a guest on Q&A 6/9, leave Listen untouched, sign in through Home to an account also on 6/9, then close Home. Boot recorded the stage as used. The cloud draw returns on stage identity before it reaches the `authBusy` exception. Nothing is held for Close. Under the PR’s explicit-sign-in interpretation, expect one call after Close. Keep the companion case where the opening already played before sign-in and the total stays at one. [js/level-engine.js:23](js/level-engine.js#L23) · [tests/opening-melody.test.mjs:158](tests/opening-melody.test.mjs#L158) |
+| **Medium** | **An interruption now permanently drops a player-chosen opening.** Enter a melody level through Continue or Next, interrupt audio before 350 ms, then recover on that same level. The timer returns, the entry remains spent, and the player hears zero. Round 3 retained the unbooked phrase until recovery. The owner changed reload behavior only. Expect zero bookings during interruption, one after recovery on the same entry, and zero stale bookings if the player left first. The revised test explicitly expects the regression. [js/level-engine.js:29](js/level-engine.js#L29) · [tests/opening-melody.test.mjs:360](tests/opening-melody.test.mjs#L360) |
+| **Medium** | **A keyboard Listen press can still span the deadline and play twice.** With a navigated opening pending and Listen focused, press Space at 340 ms and release at 370 ms. The timer books at 350 ms. The native button click on keyup books the manual copy. Expect one call for that press. The new test covers `pointerdown` only. [js/playback.js:345](js/playback.js#L345) · [tests/opening-melody.test.mjs:489](tests/opening-melody.test.mjs#L489) · [Space activation ordering](https://github.com/whatwg/html/issues/10301) |
+| **Medium** | **Closing Home before the first deadline can still erase most of the post-Close pause.** Sign in through Home to a different melody stage. Close 340 ms after the cloud draw. `openingWaits` is still empty because the original timer has yet to inspect Home. The call books 10 ms after Close, and Listen at +50 ms books another. Expect silence through +50 ms and one manual copy. The existing test fires the original timer while Home is visible, guaranteeing that it exercises only the already-held case. [js/level-engine.js:22](js/level-engine.js#L22) · [js/home.js:11](js/home.js#L11) · [tests/opening-melody.test.mjs:537](tests/opening-melody.test.mjs#L537) |
+
+### Round-3 rulings
+
+| # | Ruling |
+|---|---|
+| 1. Listen spanning the deadline | **Resolved for pointer activation. Still open for keyboard activation**, as above. |
+| 2. Failed quest entry strands a held call | **Resolved.** `leaveHome()` releases before the quest write can fail. Successful quest entry clears the release timer. The test still bypasses the actual card or trail button. |
+| 3. Close on a suspended reload | **Superseded. I agree.** A quiet reload creates nothing for Close to release. |
+| 4. Stale reveal plays the destination call | **Resolved.** The delayed callback checks its stage before starting the transport. The regression uses the real Call the Band reveal. [js/level-engine.js:193](js/level-engine.js#L193) |
+| 5. Unlock consumes the post-Close pause | **Superseded for the reported reload/unlock sequence. I agree.** An already-held call gets the full pause. The pending-timer case above still fails. |
+| 6. Stateless-context fallback | **Resolved.** Release no longer requires a literal `"running"` state. |
+| 7. Re-armed timer coverage | **Resolved.** The post-Close tests distinguish the old and new deadlines for redraw, Next, and Studio. [tests/opening-melody.test.mjs:571](tests/opening-melody.test.mjs#L571) |
+| 8. Player-path Play test | **Resolved.** `finishStep()` uses the real Play/Stop handler and verifies playback started and Next became visible. [tests/opening-melody.test.mjs:133](tests/opening-melody.test.mjs#L133) |
+
+**Reload and navigation.** With no player navigation or explicit sign-in, I found no route from boot, automatic cloud restore, redraw, a field gesture, or Home and back that schedules the opening. A saved quest is hydrated at boot, and the game restores the last package. Leaving a live quest opens Home. Both Next branches and all four Home package actions start fresh entries. `placeCall` still runs on every Q&A draw. One boundary worth making explicit is that if the player navigates *before* the boot cloud pull finishes, `openingQuiet` has already cleared, so a late restore to a different stage can play that stage’s opening. [js/boot.js:32](js/boot.js#L32) · [js/quest-shell.js:401](js/quest-shell.js#L401) · [js/home.js:290](js/home.js#L290) · [js/level-engine.js:129](js/level-engine.js#L129) · [js/level-engine.js:317](js/level-engine.js#L317)
+
+**Sign-in.** I agree that submitting the form counts as deliberate entry for the owner’s fresh-window playtest. `authBusy` is reliably positive during that draw. `signInWith()` increments it before authentication, awaits `onSignedIn(false)` through the synchronous `applyProgress()` render, and decrements it in `finally`. Automatic session restore calls `onSignedIn(false)` directly. The test helper increments `authBusy` itself, so it would pass even if the production form released the counter too early. The garden-card creation flow uploads local progress and takes a separate path. [js/cloud.js:219](js/cloud.js#L219) · [js/cloud.js:149](js/cloud.js#L149) · [js/boot.js:137](js/boot.js#L137) · [js/garden-card.js:66](js/garden-card.js#L66) · [tests/opening-melody.test.mjs:123](tests/opening-melody.test.mjs#L123)
+
+**Low severity.** A secondary-button `pointerdown` on Listen spends a pending opening even though the context-menu action produces no Listen click. Also, the reload-test comment still states the superseded rule that an already-running clock plays on reload. [js/playback.js:346](js/playback.js#L346) · [tests/opening-melody.test.mjs:177](tests/opening-melody.test.mjs#L177)
+
+This was a read-only source review of `3ca520d..1dae9d4`. I did not execute the PR or independently verify browser audio.
+
+</details>
+
+GPT on the owner's rule: "With no player navigation or explicit sign-in, I found no route from boot, automatic cloud
+restore, redraw, a field gesture, or Home and back that schedules the opening." On the sign-in reading: "I agree that
+submitting the form counts as deliberate entry for the owner's fresh-window playtest. `authBusy` is reliably positive
+during that draw."
+
+### My answers — all agreed; fixed in the commit after 1dae9d4, **not reviewed by GPT** (no fifth round)
+
+1. **High — a slow form sign-in can queue the call on a frozen clock. Agreed.** `openingDue` no longer books on a
+   clock that is not running. A suspended clock gets `resume()` and half a second: if its "running" comes inside
+   that, the call plays once (`clockStarted`). After that it is dropped, so it never arrives with an unrelated later
+   tap, and 🔊 Listen plays it. Test added with the real `signInWith`: the cloud is slow, the click's activation has
+   expired (WebKit's rule), and a resume is left pending. Nothing is booked while suspended. Listen a second later
+   gives Listen's copy only; a tap a second later gives nothing.
+2. **Medium — a form sign-in onto the stage a reload silenced plays nothing. Agreed.** An entry the page's own draw
+   silenced is marked (`openingSilenced`). A sign-in through the form onto that same stage is a new entry: held
+   behind Home, once after Close. A stage whose call was already heard stays at one. Tests added for both, and for a
+   reload, then Continue (heard), then a sign-in.
+3. **Medium — an interruption now permanently drops a player-chosen opening. Agreed.** An interrupted clock waits,
+   with no deadline, until the system gives it back. Leaving the level first drops it. Tests added for both.
+4. **Medium — a keyboard Listen spanning the deadline plays twice. Agreed.** Listen cancels on Space and Enter
+   `keydown` too. Test added.
+5. **Medium — Close just before the first deadline leaves only 10 ms of pause. Agreed.** Leaving Home restarts a
+   pending timer as well as a held melody (`releaseOpening` uses `openingNotes`), so the pause always runs from Close.
+   Test added with GPT's timings.
+6. **Low — a right-click on Listen spends the opening. Agreed:** only a primary-button `pointerdown` cancels. Test
+   added.
+7. **Low — a stale reload-test comment. Fixed.**
+8. **Test — the sign-in helper set `authBusy` itself. Agreed:** it now drives the real `signInWith` with
+   `cogSignIn` stubbed, so a form that released `authBusy` too early would fail the tests.
+
+GPT's boundary note ("if the player navigates *before* the boot cloud pull finishes ... a late restore to a different
+stage can play that stage's opening"): left as it is. The player has navigated by then, so the page is past its own
+silent draws, and the cloud moving them to a new level is a new entry. If the owner wants that silent too, the
+condition is in `openingFor`.
+
+The statechange listener is back, only for waiting on a clock that is not running, and so is `load-gate`'s
+`statechange` entry.
+
+### Final verification (mine)
+
+`tests/opening-melody.test.mjs`, 55 tests, all pass; on 1dae9d4's code the six covering findings 1–6 fail. The test
+fakes' clocks are virtual: the 350 ms timers, and `performance.now()` for the half-second window. Every line of the
+fix was mutation-checked by hand, 30 mutations in all, and each fails at least one test.
