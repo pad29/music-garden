@@ -40,15 +40,19 @@ const FULL = "🌱 So many new gardeners joined today that the garden is full! K
 
 /** A game with the card's elements real enough to press; `cognito` records the calls the card makes. */
 // extra: more elements, there before boot (so the game wires them); realMap: keep the real renderPkgs (the map).
-function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = async () => true, landing = false, extra = {}, realMap = false } = {}) {
+// bootUser: a session already stored when the page loads, so boot resumes it; holdBoot: that resume's first lookup
+// waits until releaseBoot() is called (GPT, PR review round 4).
+function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = async () => true, landing = false, extra = {}, realMap = false,
+  bootUser = null, holdBoot = false } = {}) {
   const authbox = el(), cardoverlay = el(), gardencard = el(), homeoverlay = el();
   const elements = { authbox, cardoverlay, gardencard, homeoverlay, ...extra };
   if (landing) for (const id of ["landingUser", "landingPass", "landingShow", "landingMsg", "landingLost", "landingBack"]) elements[id] = el(["landingShow", "landingBack"].includes(id) ? "button" : id.includes("Msg") || id.includes("Lost") ? "div" : "input");
   // Who the pool says is signed in: the session in the storage every tab shares. A sign-in sets it; a test may
   // change it, as another tab would. subOf(name): that account's permanent id, in its tokens and its sign-in session.
   // afterLookup: called once a session has been handed out (another tab may act between two lookups).
-  const session = { user: null, broken: false, brokenHits: 0, requests: [], subOf: n => "sub-" + n, afterLookup: null,
+  const session = { user: bootUser, broken: false, brokenHits: 0, requests: [], subOf: n => "sub-" + n, afterLookup: null,
     api: method => ({ ok: true, status: 200, json: async () => (method === "GET" ? null : { ok: true }) }) };
+  let bootHeld = null, releaseBoot = () => {}; if (holdBoot) bootHeld = new Promise(r => { releaseBoot = r; });
   const g = loadGame({ fresh: true, elements, setup: w => {
     w.crypto = webcrypto; w.Uint32Array = Uint32Array;
     w.AmazonCognitoIdentity = { CognitoIdToken: FakeIdToken, CognitoUserPool: class { getCurrentUser() {
@@ -56,11 +60,13 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
       return name ? { getUsername: () => name, signOut() { session.user = null; },
         storage: cachedIdToken(() => ({ "cognito:username": name, sub: session.subOf(name) })),
         getSession(cb) {
+          if (bootHeld) { const h = bootHeld; bootHeld = null; h.then(() => this.getSession(cb)); return; }
           if (session.broken) { session.brokenHits++; cb(new Error("the session could not be refreshed")); if (session.afterLookup) session.afterLookup(); return; }
           cb(null, { isValid: () => true, getIdToken: () => ({ payload: { "cognito:username": name, sub: session.subOf(name) }, getJwtToken: () => "token-" + name + ":" + session.subOf(name) }) });
           if (session.afterLookup) session.afterLookup(); } } : null; } } };
-    w.fetch = async (url, opts = {}) => { session.requests.push({ url: String(url), method: opts.method || "GET", token: String(opts.headers?.Authorization || "") });
-      return session.api(opts.method || "GET"); };
+    w.fetch = async (url, opts = {}) => { const token = String(opts.headers?.Authorization || "");
+      session.requests.push({ url: String(url), method: opts.method || "GET", token, body: opts.body });
+      return session.api(opts.method || "GET", token); };
   } });
   const doc = g.__window.document;
   Object.defineProperty(doc, "createElement", { value: tag => el(tag), configurable: true });
@@ -75,7 +81,7 @@ function cardGame({ signUp = async () => {}, signIn = async () => {}, upload = a
     assert.equal(onlyFor, session.user, "only to the account the card signed in to");
     cognito.uploads++; return { signedIn: true, saved: await upload() }; };
   if (!realMap) g.renderPkgs = () => {};
-  return { g, authbox, cardoverlay, gardencard, cognito, elements, session, realOnSignedIn };
+  return { g, authbox, cardoverlay, gardencard, cognito, elements, session, realOnSignedIn, releaseBoot: () => releaseBoot() };
 }
 // Home → Create account → Make my garden: the card for the name the roller showed.
 function openCard(t) {
@@ -571,7 +577,7 @@ test("the forms tell three outcomes apart: no session keeps Home's form and its 
   user.value = "brave-otter-42"; pass.value = "acorn map tulip wren";
   await button(t.authbox, "Sign in").onclick();
   assert.ok(t.session.brokenHits > 0, "it got as far as the session that couldn't be used");
-  assert.ok(pass.parent, "the form is still on the page");
+  assert.ok(onPanel(t.authbox, pass), "the form is still on the page");
   assert.equal(pass.value, "acorn map tulip wren");
   assert.match(t.authbox.textContent, /Something went wrong just now/);
   assert.equal(button(t.authbox, "Sign in").disabled, false);
@@ -619,6 +625,11 @@ test("the wired controls: Home's Close and backdrop wait for a sign-in; the land
 
 // ---------- TUN-128: a tab's sync stays on the account its sign-in authenticated ----------
 const inputs = root => all(root).filter(e => e.tagName === "INPUT");
+// On the page: found by walking down from the panel. A parent is not enough — emptying the panel unsets only its own
+// children's, so the inputs of a form taken off the page keep theirs, and their words (GPT, PR review round 4).
+const onPanel = (root, ...els) => { const here = all(root); return els.every(e => here.includes(e)); };
+// The panel's form is this one: its two boxes, looked up again from the panel, are these very objects.
+const sameForm = (root, user, pass) => { const [u, p, ...more] = inputs(root); return u === user && p === pass && !more.length; };
 // Home's panel: the guest row's Sign in opens the form; fill it and press its Sign in. { user, pass, done }.
 function submitHome(t, name, words) {
   button(t.authbox, "Sign in").onclick();
@@ -680,12 +691,12 @@ test("TUN-128 (51, 57): Home's form keeps its words, its message and Sign in whe
     const { user, pass, done } = submitHome(t, "brave-otter-42", "acorn map tulip wren");
     await tick();
     if (when === "while the load is out") {
-      assert.ok(pass.parent, "the form stays up while the load is out");
+      assert.ok(onPanel(t.authbox, pass), "the form stays up while the load is out");
       t.session.user = "calm-wren-10";   // another tab
       release({ ok: true, status: 200, json: async () => null });
     }
     await done;
-    assert.ok(pass.parent, `${when}: the form is still on the page`);
+    assert.ok(onPanel(t.authbox, pass), `${when}: the form is still on the page`);
     assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"], when);
     assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING, when);
     assert.equal(button(t.authbox, "Sign in").disabled, false, `${when}: Sign in usable`);
@@ -706,7 +717,7 @@ test("TUN-128 (51, 57; round 1, 4 and 6): reopening Home keeps a waiting form; a
   const a = submitHome(t, "brave-otter-42", "acorn map tulip wren"); await tick();
   // Home's button again, while A's sign-in waits: the same form, its words, its message, its buttons off, Home locked.
   t.g.openHome();
-  assert.ok(a.pass.parent, "the waiting form is still the one on the page");
+  assert.ok(onPanel(t.authbox, a.pass), "the waiting form is still the one on the page");
   assert.equal(inputs(t.authbox)[1], a.pass);
   assert.deepEqual([a.user.value, a.pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.equal(byClass(t.authbox, "authmsg").textContent, "Signing in…");
@@ -718,7 +729,7 @@ test("TUN-128 (51, 57; round 1, 4 and 6): reopening Home keeps a waiting form; a
   await t.g.doLandingSignIn();
   assert.equal(t.g.cloudSync, "ready");
   assert.equal(t.session.user, "calm-wren-10");
-  assert.ok(a.pass.parent, "A's form is not replaced by B's panel");
+  assert.ok(onPanel(t.authbox, a.pass), "A's form is not replaced by B's panel");
   t.g.commitProgress();
   const before = JSON.stringify(t.g.progress), requests = t.session.requests.length;
   // A's authentication comes back last (with B still the stored account): it claims nothing.
@@ -726,7 +737,7 @@ test("TUN-128 (51, 57; round 1, 4 and 6): reopening Home keeps a waiting form; a
   assert.equal(t.g.cloudSync, "ready", "B's sync stands");
   assert.equal(JSON.stringify(t.g.progress), before);
   assert.equal(t.session.requests.length, requests, "nothing loaded or sent for A");
-  assert.ok(a.pass.parent, "A's form stays, its words in it, to try again");
+  assert.ok(onPanel(t.authbox, a.pass), "A's form stays, its words in it, to try again");
   assert.equal(byClass(t.authbox, "authmsg").textContent, REPLACED, "and says the newer sign-in took over");
   assert.deepEqual([a.user.value, a.pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.equal(button(t.authbox, "Sign in").disabled, false);
@@ -796,7 +807,7 @@ test("TUN-128 (58): the controls the game wires — Home's Close, backdrop, a pa
     assert.equal(t.elements.homeoverlay.style.display, "flex", `${what} waits`);
     assert.equal(scope(), before, `${what}: the scope is unchanged`);
   }
-  assert.ok(pass.parent); assert.equal(pass.value, "acorn map tulip wren");
+  assert.ok(onPanel(t.authbox, pass)); assert.equal(pass.value, "acorn map tulip wren");
   release(); await done;
   // Idle: each way out leaves Home, takes the form and its words, and the form reopens empty and masked.
   const idle = (leave, check) => {
@@ -870,11 +881,11 @@ test("TUN-128 round 1 (6): reopening Home while the form's load is out keeps tha
   t.g.renderAuth();
   const { user, pass, done } = submitHome(t, "brave-otter-42", "acorn map tulip wren"); await tick();
   t.g.openHome();   // Home's button, while the load is out
-  assert.ok(pass.parent, "the form, not a loading row");
+  assert.ok(onPanel(t.authbox, pass), "the form, not a loading row");
   t.session.user = "calm-wren-10";   // another tab
   release({ ok: true, status: 200, json: async () => null });
   await done;
-  assert.ok(pass.parent, "still the child's form");
+  assert.ok(onPanel(t.authbox, pass), "still the child's form");
   assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING);
   const retry = button(t.authbox, "Sign in");
@@ -975,7 +986,7 @@ test("TUN-128 round 2 (3): Home's form, offline at its load's lookup and then an
   await done;
   assert.ok(t.session.brokenHits > 0, "the load's lookup was the offline one");
   assert.equal(t.g.cloudResting, false, "a lost account, not the cloud resting");
-  assert.ok(pass.parent);
+  assert.ok(onPanel(t.authbox, pass));
   assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING);
   assert.equal(button(t.authbox, "Sign in").disabled, false);
@@ -992,7 +1003,7 @@ test("TUN-128 round 2 (4): a loss only the final redraw finds puts Home's form b
   t.g.renderAuth();
   const { user, pass, done } = submitHome(t, "brave-otter-42", "acorn map tulip wren");
   await done;
-  assert.ok(pass.parent, "the form is back on the page");
+  assert.ok(onPanel(t.authbox, pass), "the form is back on the page");
   assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"]);
   assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING);
   assert.equal(button(t.authbox, "Sign in").disabled, false);
@@ -1033,7 +1044,7 @@ test("TUN-128 round 3: the landing's sign-in at its load, Home's newer form alre
     assert.equal(applied, 0, answer); assert.equal(narrated, 0, `${answer}: nothing read aloud`);
     assert.equal(t.session.requests.filter(r => r.method === "PUT").length, 0, `${answer}: no first save for A`);
     assert.equal(t.elements.landingMsg.textContent, REPLACED, answer);
-    assert.ok(pass.parent, `${answer}: B's form is the one on the page`);
+    assert.ok(sameForm(t.authbox, user, pass), `${answer}: B's form is the one on the page`);
     assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"], answer);
     assert.equal(byClass(t.authbox, "authmsg").textContent, "Signing in…", answer);
     assert.deepEqual([button(t.authbox, "Sign in").disabled, button(t.authbox, "Cancel").disabled], [true, true], answer);
@@ -1068,7 +1079,7 @@ test("TUN-128 round 3 (2): a sign-in whose sync answers after a newer sign-in be
     assert.equal(hidden, 0, `${outcome}: the landing does not close`);
     assert.equal(landingMsg.textContent, REPLACED, outcome);
     assert.deepEqual([landingUser.value, landingPass.value], ["brave-otter-42", "acorn map tulip wren"], `${outcome}: its words kept`);
-    assert.ok(pass.parent, `${outcome}: B's form is on the page`);
+    assert.ok(sameForm(t.authbox, user, pass), `${outcome}: B's form is on the page`);
     assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"], outcome);
     t.elements.homeoverlay.style.display = "flex";
     assert.equal(t.g.leaveHome(), false, `${outcome}: B's sign-in still holds Home`);
@@ -1083,7 +1094,7 @@ test("TUN-128 round 3: an accepted load whose account changes before its outcome
     : { ok: true, status: 200, json: async () => ({ ok: true }) });
   let hidden = 0; t.g.hideLanding = () => { hidden++; };
   t.g.renderAuth(); button(t.authbox, "Sign in").onclick();   // another form owns Home's panel
-  const [user] = inputs(t.authbox); user.value = "calm-wren-10";
+  const [user, pass] = inputs(t.authbox); user.value = "calm-wren-10"; pass.value = "fig map oak ivy";
   const apply = t.g.applyProgress; t.g.applyProgress = () => { apply(); t.session.user = "calm-wren-10"; };   // the switch lands just after
   t.elements.landingUser.value = "brave-otter-42"; t.elements.landingPass.value = "acorn map tulip wren";
   await t.g.doLandingSignIn();
@@ -1091,5 +1102,66 @@ test("TUN-128 round 3: an accepted load whose account changes before its outcome
   assert.equal(t.elements.landingPass.value, "acorn map tulip wren");
   assert.match(t.elements.landingMsg.textContent, SOMETHING);
   assert.equal(t.g.cloudSync, "off");
-  assert.ok(user.parent, "the other form is untouched"); assert.equal(user.value, "calm-wren-10");
+  assert.ok(sameForm(t.authbox, user, pass), "the other form is untouched, on the page");
+  assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"]);
+});
+
+// ---------- TUN-128, PR review round 4 ----------
+test("TUN-128 round 4 (1): boot's resume, its first lookup held, and Home's form submitted meanwhile: nothing of A's lands, and B's empty copy gets this device's own garden", async () => {
+  const t = cardGame({ bootUser: "brave-otter-42", holdBoot: true });
+  t.g.onSignedIn = t.realOnSignedIn;
+  t.session.api = (method, token) => ({ ok: true, status: 200, json: async () =>
+    (method === "PUT" ? { ok: true } : token.includes("calm-wren-10") ? null : { v: 1, packages: { intro: { level: 9 } } }) });
+  await tick();
+  const device = JSON.stringify(t.g.progress);
+  let applied = 0, narrated = 0;
+  const apply = t.g.applyProgress; t.g.applyProgress = () => { applied++; apply(); };
+  const narrate = t.g.narrate; t.g.narrate = (...a) => { narrated++; return narrate(...a); };
+  let releaseB; const heldB = new Promise(r => { releaseB = r; });
+  const stub = t.g.cogSignIn;
+  t.g.cogSignIn = async (u, p) => { if (u === "calm-wren-10") await heldB; return stub(u, p); };
+  // While A's resume looks up its session, Home shows the guest's row: B's form is opened and submitted from it.
+  t.g.openHome();
+  const { user, pass, done } = submitHome(t, "calm-wren-10", "fig map oak ivy"); await tick();
+  t.releaseBoot(); for (let i = 0; i < 6; i++) await tick();   // A's resume goes on while B authenticates
+  assert.equal(applied, 0, "A's garden not applied"); assert.equal(narrated, 0, "nor read aloud");
+  assert.equal(JSON.stringify(t.g.progress), device);
+  assert.deepEqual(t.session.requests, [], "no GET, and no first save, for A");
+  assert.ok(sameForm(t.authbox, user, pass), "B's form is the one on the page");
+  assert.deepEqual([user.value, pass.value], ["calm-wren-10", "fig map oak ivy"]);
+  assert.equal(byClass(t.authbox, "authmsg").textContent, "Signing in…");
+  assert.deepEqual([button(t.authbox, "Sign in").disabled, button(t.authbox, "Cancel").disabled], [true, true]);
+  t.elements.homeoverlay.style.display = "flex";
+  assert.equal(t.g.leaveHome(), false, "B's sign-in holds Home");
+  releaseB(); await done; for (let i = 0; i < 3; i++) await tick();
+  const sent = t.session.requests.filter(r => r.method === "PUT");
+  assert.equal(sent.length, 1, "B's cloud copy was empty: her first save");
+  assert.match(sent[0].token, /token-calm-wren-10:sub-calm-wren-10$/);
+  assert.equal(sent[0].body, JSON.stringify(t.g.cloudCopy(JSON.parse(device))), "this device's own garden, not A's");
+});
+
+test("TUN-128 round 4 (2): Home's form whose load lookup saw nobody, or another sub, keeps its retry even if A is back before the sign-in goes on", async () => {
+  for (const [what, before, after] of [
+    ["nobody", s => { s.user = null; }, s => { s.user = "brave-otter-42"; }],
+    ["another sub cached, offline", s => { s.broken = true; s.subOf = n => "sub-" + n + "-reused"; },
+      s => { s.broken = false; s.subOf = n => "sub-" + n; }],
+  ]) {
+    const t = cardGame(); t.g.onSignedIn = t.realOnSignedIn;
+    // The lookup after the sign-in is the run's own: the account goes, or another is cached, while it looks; and A
+    // is back the moment it has answered — before the run goes on.
+    let armed = false; const real = t.g.freshId;
+    t.g.freshId = (a, b) => { if (!armed) return real(a, b); armed = false;
+      before(t.session); return real(a, b).then(r => { after(t.session); return r; }); };
+    const stub = t.g.cogSignIn; t.g.cogSignIn = async (u, p) => { const r = await stub(u, p); armed = true; return r; };
+    t.g.openHome();
+    const { user, pass, done } = submitHome(t, "brave-otter-42", "acorn map tulip wren");
+    await done; await tick();
+    assert.equal(t.session.user, "brave-otter-42", `${what}: A is back`);
+    assert.deepEqual(t.session.requests.filter(r => r.method === "GET"), [], `${what}: no GET`);
+    assert.equal(t.g.cloudSync, "off", what);
+    assert.ok(sameForm(t.authbox, user, pass), `${what}: the child's form is still on the page`);
+    assert.deepEqual([user.value, pass.value], ["brave-otter-42", "acorn map tulip wren"], `${what}: its words kept`);
+    assert.match(byClass(t.authbox, "authmsg").textContent, SOMETHING, `${what}: it says to try again`);
+    assert.equal(button(t.authbox, "Sign in").disabled, false, `${what}: Sign in usable`);
+  }
 });

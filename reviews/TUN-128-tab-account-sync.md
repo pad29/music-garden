@@ -478,11 +478,14 @@ switch, and the B-first ordering with the library's write modelled, wait on ques
    not agree to defer them**: its round-2 review requires both before approval. Round 3 is told so plainly, and asked
    whether anything in this PR makes those cases worse. The other options were B (fix here, larger than M) and C
    (stop with no third review); I recommended A.
-2. **open** — *GPT's round 3 (the last) requested changes; they are fixed, with tests, but no GPT round has reviewed
+2. *GPT's round 3 (the last) requested changes; they are fixed, with tests, but no GPT round has reviewed
    them. A fourth round on that delta, or not?* Options: **A)** a fourth GPT round on the round-3 delta only (a few lines in
    `onSignedIn` and `signInWith`, and their tests); **B)** no fourth round: the owner reads the round-3 delta and the PR
    goes to In Review for the playtest; **C)** something else. Recommended: **A** — the delta is small, cheap to review,
-   and sits in the code that decides which account a garden is written to.
+   and sits in the code that decides which account a garden is written to. — **A, a fourth round (D10)**: the owner,
+   relayed by the coordinator (`music-garden-5`), 2026-11-25 9:32 PM PT. Round 4 reviews only `5889f72..4f57237` against
+   round 3's findings; TUN-131 still holds the deferred cases (D9). If round 4 requests changes, they are fixed and the
+   ticket stops at Needs Input — no fifth round without the owner. Taken over by session `music-garden-54`.
 
 ### Round-2 fixes, verified (`a251db6` and the commit recording this)
 
@@ -596,3 +599,83 @@ load whose account changes before `finish()` checks it while another form owns t
 the resume not fenced, a superseded success or failure, nobody as offline, name-only refresh classification, the outcome
 unchecked — 6 killed. The full audit's other 38 mutations stand as recorded for round 2; its one equivalent survivor
 (the retry's `a.sub`) remains, and *the first save not rechecked* lands on `finish()`'s own check in the same tick.
+
+## PR review, round 4 (`gpt-6.2-astra`, through `ask.sh`), on `4f57237` — granted by the owner (D10), the round-3 delta only
+
+`ask.sh fresh read-only`, 2026-11-25 (session `music-garden-54`), on `git diff 5889f72 4f57237`. Usage: in 757,448
+(cached 675,456), out 4,331. **Verdict: REQUEST CHANGES** — two Medium (1, 2), one Low (3), all to the tests. **GPT: "The
+production delta resolves both sign-in ordering defects."** Round 3's required changes 1–3 and its test 3 resolved; tests
+1, 2, 4, 5 partly. No new cancellation of a save or a card upload; the TUN-131 cases not made worse.
+
+<details><summary>GPT's PR review, verbatim</summary>
+
+The production delta resolves both sign-in ordering defects. I request changes to the regression tests. Two cases bypass the Home form, and two assertions can pass after the form has been removed from the panel.
+
+### Round-3 disposition
+
+| Round-3 item | Disposition | Reason at `4f57237` |
+|---|---|---|
+| Required 1 · Fence automatic resume | Resolved | Boot’s `onSignedIn(false)` now records its run before yielding. A valid submission invalidates that run before authentication starts. When the held lookup returns, the run check stops it before the GET, application, narration, or seed. [Run tracking and lookup][run] · [Submission fence][submit] |
+| Required 2 · Give supersession precedence | Resolved | `signInWith` checks submission order after sync returns and in the rejection path. The landing keeps its words and re-enables Back. Home re-enables only the completing form’s controls, and the newer submission still holds the navigation lock. [Result handling][submit] · [Landing handler][landing] · [Home handler][homeform] |
+| Required 3 · Correct the verification record | Resolved | The correction identifies the pre-mounted Home form, the account returning before the caller resumes, and the skipped redraw when another form owns the panel. Those qualifications match the code. [Correction][record] · [Final ownership check][finish] |
+| Test 1 · Actual boot and B’s Home submission | Partly | Both cases start actual boot. The replacement-subject case checks zero requests and sync off. The second case checks application, narration, and the device level in B’s seed, but calls `g.signInWith(...)` directly. It never mounts or submits B’s Home form. [Boot tests][boottests] |
+| Test 2 · Landing GET with B’s Home form pending | Partly | Both progress and `null` are covered. The tests check the visible message, disabled controls, navigation lock, and zero narration, including at body completion. `pass.parent` does not establish that B’s original form is still in `authbox`. [Overlap assertions][overlap] · [Body completion][body] |
+| Test 3 · Superseded success and rejection | Resolved | The test holds delivery after real sync, then returns success or throws after B submits. Both cases require the replacement message, retained landing words, zero calls to hide the landing, and B’s navigation lock. [Result-boundary test][boundary] |
+| Test 4 · Observed loss survives A’s return | Partly | The test restores A after real `freshId` classifies each loss and before its caller resumes. It verifies writer revocation and no later PUT. The GET half checks `ok:false` and zero requests through a direct call. A child’s ability to retry is unobserved. [Lookup tests][lookup] |
+| Test 5 · `finish()` while another form owns Home | Partly | The account switches after real application. The landing reports failure and sync turns off, which distinguishes removal of `finish()`’s ownership check. The final `user.parent` assertion still passes if the entire Home form was detached. [Final-outcome test][outcome] · [Fixture removal semantics][dom] |
+
+### Required changes and missing tests
+
+1. **Medium — Submit through Home in the held-boot case.** While A’s first lookup waits, open Home, mount B’s form, fill it, and invoke its installed Sign in button. Keep the existing checks while B authenticates. After B receives explicit `null`, compare its sole PUT body with the original device progress in cloud format. [Current direct call][boottests] · [Installed handler][homeform]
+2. **Medium — Verify the mounted retry after transient identity loss.** For both lookup variants, submit a real Home form. After A returns, require zero GETs, the original form and fields in `authbox`, retained words, a visible retry message, and an enabled Sign in button. The existing writer assertions can stay. [Current GET assertions][lookup]
+3. **Low — Assert form identity from the panel.** In the held-GET and `finish()` cases, capture B’s form and inputs before A proceeds. Afterwards, look them up again from `authbox` and assert object identity. The fixture clears only the immediate child’s parent when the panel is emptied. Inputs in a detached form therefore retain both their parent and their values. [Fixture][dom] · [Held GET][overlap] · [Final outcome][outcome]
+
+I found no new cancellation of an ordinary save or reachable card upload. Ordinary saves call `cloudPush` directly. The card makes the background inert and disables dismissal while its upload runs. An uninterrupted boot proceeds normally, and the old wrapper’s `finally` clears only its own run number. Failed loads still block writes, only explicit `null` seeds an existing account, and accepted loads retain TUN-112’s narration order. The delta adds no SDK cache writes or refreshes and does not worsen the cases deferred to TUN-131. [Save path][save] · [Card modal][card] · [Run cleanup][run] · [Load and narration][finish]
+
+By source inspection, each of the six named mutations would change an asserted outcome. That supports the mutation claims while leaving the form-coverage gaps above. This was a read-only review. The reported 1,148 passing tests and six mutation kills are the author’s runs. Direct-file startup and real two-tab behavior were not independently exercised.
+
+[run]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L180-L199
+[submit]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L298-L316
+[landing]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/boot.js#L125-L137
+[homeform]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L332-L346
+[record]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/reviews/TUN-128-tab-account-sync.md#L579-L585
+[finish]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L200-L232
+[boottests]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1355-L1385
+[overlap]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1024-L1043
+[body]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1297-L1311
+[boundary]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1047-L1075
+[lookup]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/cloud-sync.test.mjs#L1388-L1410
+[outcome]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L1079-L1095
+[dom]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/tests/garden-card.test.mjs#L12-L28
+[save]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/cloud.js#L116-L130
+[card]: https://github.com/pad29/music-garden/blob/4f57237ee8075905b264340f44c02cb5cb81e798/js/garden-card.js#L102-L150
+
+REQUEST CHANGES on 4f57237ee8075905b264340f44c02cb5cb81e798
+
+</details>
+
+### My answers — all agreed, fixed in the commit that records this round, **not reviewed** (no fifth round without the owner)
+
+All three are in `tests/garden-card.test.mjs`; no source changed. `cardGame` gained `bootUser` and `holdBoot` (a stored
+session at load, its first lookup held until `releaseBoot()`), records each request's body, and passes the request's
+token to its API stub.
+
+1. **Medium, the held-boot case bypassed Home — agree.** *Round 4 (1)*: boot resumes A with its first lookup held; Home
+   is opened, B's form filled and its installed Sign in pressed; while B authenticates, nothing is applied, read aloud,
+   requested or saved for A, B's form (by identity), words, *"Signing in…"*, disabled buttons and Home's lock hold; B's
+   empty copy then gets exactly one PUT whose body is `cloudCopy` of this device's progress from before. The direct-call
+   test in `cloud-sync.test.mjs` stays.
+2. **Medium, the retry after a transient loss was unobserved — agree.** *Round 4 (2)*, both variants (nobody; another
+   sub cached while offline), through a real Home form, with A back before the run goes on: no GET, sync off, the
+   child's form on the panel by identity, its words, *"Something went wrong just now…"*, Sign in usable. The writer half
+   stays in `cloud-sync.test.mjs`.
+3. **Low, `.parent` doesn't prove the form is on the page — agree.** It held for every such check in the file, not only
+   the two named: emptying the panel unsets only its own children's parent. All fourteen now look the element up from
+   the panel (`onPanel`); the held-GET, superseded-result and `finish()` cases assert both boxes are the very objects the
+   panel holds (`sameForm`).
+
+**Verified:** suite on the merged head (below). **Mutation audit of this round's tests** (`js/cloud.js`, restored from a
+copy after each): *boot's resume not fenced* (round-3 code) — killed by round 4 (1) alone; *a failed sign-in redraws
+over its form* — killed by round 4 (2) and two older tests; *`finish()` puts no form back* — killed, but also by the
+4f57237 tests (round 2 (4) fails on its other assertions), so on this code the stricter panel checks close a gap
+without killing a mutation the old ones missed.
