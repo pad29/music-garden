@@ -91,6 +91,252 @@ test("stamping an octave twin creates an OPEN placed column", () => {
   assert.strictEqual(g.ev.stampedTool, true);
 });
 
+// TUN-15: a stamp is the whole tool or nothing. Each case records the status line, the journal, the
+// column and the goal flag, because the old bug got every one of them wrong at once.
+function stampProbe(g) {
+  const said = [], txs = [];
+  g.setStatus = (html) => said.push(html);
+  // The journal opens only through tx, and only an OUTERMOST tx makes an entry (setCell nests its own).
+  const realTx = g.tx;
+  let depth = 0;
+  g.tx = (label, fn) => {
+    if (depth === 0) txs.push(label);
+    depth++;
+    try { return realTx(label, fn); } finally { depth--; }
+  };
+  return { said, txs };
+}
+function column(g, c) {
+  const lit = [];
+  for (let r = 0; r < g.ROWS; r++) if (g.grid[r][c]) lit.push(r);
+  return lit;
+}
+
+test("TUN-15: a 9-rung pair stamped at row 1 refuses instead of planting one seed", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 0, c: 0 }, { r: 9, c: 0 }]);   // C4–A5, offsets [0, 9] on the 10-row field
+  const tall = g.toolbox[0];
+  clearMelody(g);
+  g.ev.stampedTool = false;
+  g.activeTool = tall;
+  const { said, txs } = stampProbe(g);
+
+  g.stampTool(1, 3);   // up: [1,-8] → flipped down: [1,10] — row 10 doesn't exist
+
+  assert.deepEqual(column(g, 3), [], "nothing is planted");
+  assert.deepEqual(txs, [], "a refusal writes no journal entry");
+  assert.strictEqual(g.ev.stampedTool, false, "a refused stamp is not a stamp");
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room, "the status line names the reason");
+  assert.strictEqual(g.activeTool, tall, "the tool stays armed to try elsewhere");
+
+  // …and the same tool stamps whole where it fits.
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [0, 9]);
+  assert.deepEqual(txs, ["stamp"], "one stamp = one journal entry");
+  assert.strictEqual(g.ev.stampedTool, true);
+  assert.match(said.at(-1), /^Stamped!/);
+});
+
+test("TUN-15: a stamp that fits — upward, and flipped down off the top — is unchanged", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 9, c: 0 }, { r: 7, c: 0 }, { r: 5, c: 0 }]);   // C4 E4 A4 on the pentatonic field, offsets [0,2,4]
+  const tower = g.toolbox[0];
+  clearMelody(g);
+  g.activeTool = tower;
+
+  g.stampTool(6, 2);   // upward from row 6: rows 6, 4, 2
+  assert.deepEqual(column(g, 2), [2, 4, 6]);
+  g.stampTool(1, 4);   // up runs off the top → flips down: rows 1, 3, 5
+  assert.deepEqual(column(g, 4), [1, 3, 5]);
+  assert.strictEqual(g.ev.stampedTool, true);
+});
+
+test("TUN-15: a stamp that would land on a sleeping color refuses, as cellClick does", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");                                  // rows: 0 B5 … 7 B4 … 9 G4, 11 E4, 13 C4
+  g.craftFromCells([{ r: 13, c: 0 }, { r: 11, c: 0 }, { r: 9, c: 0 }]);   // C4 E4 G4, offsets [0,2,4]
+  const tower = g.toolbox[0];
+  clearMelody(g);
+  g.setColorReveal(["F"]);                                   // B is still asleep: rows 0 and 7
+  g.ev.stampedTool = false;
+  g.activeTool = tower;
+  const { said, txs } = stampProbe(g);
+
+  g.stampTool(11, 2);   // E4 G4 B4 — the tapped row is awake, the top of the shape is not
+  assert.deepEqual(column(g, 2), []);
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.sleep);
+
+  g.stampTool(13, 2);   // C4 E4 G4 — all awake
+  assert.deepEqual(column(g, 2), [9, 11, 13]);
+  assert.strictEqual(g.ev.stampedTool, true);
+});
+
+test("TUN-15: a refused stamp through cellClick leaves notes, cursor pin, journal, goals and sound alone", () => {
+  const g = readyGame();
+  g.craftFromCells([{ r: 0, c: 0 }, { r: 9, c: 0 }]);   // offsets [0, 9]
+  const tall = g.toolbox[0];
+  clearMelody(g);
+  put(g, 5, 3);                    // a seed already in the destination column
+  g.pinCursor(6);                  // a deliberate pin: ▶ starts here
+  g.ev.stampedTool = false;
+  g.ev.played = true;              // a prior goal flag a stamp would reset
+  g.activeTool = tall;
+  const { said, txs } = stampProbe(g);
+  const sounds = [], blooms = [], saves = [];
+  g.playRow = (r) => sounds.push(r);
+  g.bloom = (...a) => blooms.push(a);
+  g.noteEdit = (label) => saves.push(label);   // the autosave hook every journalled player edit calls
+
+  g.cellClick(1, 3, {});
+
+  assert.deepEqual(column(g, 3), [5], "the existing seed stays and nothing is added");
+  assert.strictEqual(g.cursorPinned, true, "a refusal must not unpin the cursor");
+  assert.strictEqual(g.cursorCol, 6, "a refusal must not move the cursor");
+  assert.deepEqual(txs, []);
+  assert.deepEqual(saves, [], "no autosave");
+  assert.deepEqual(sounds, [], "no stamp sound");
+  assert.deepEqual(blooms, [], "no bloom");
+  assert.strictEqual(g.ev.stampedTool, false);
+  assert.strictEqual(g.ev.played, true);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room);
+
+  g.cellClick(9, 3, {});   // fits: both rows land, and now the cursor follows the hand
+
+  assert.deepEqual(column(g, 3), [0, 5, 9]);
+  assert.strictEqual(g.cursorPinned, false);
+  assert.strictEqual(g.cursorCol, 3);
+  assert.deepEqual(txs, ["stamp"]);
+  assert.deepEqual(saves, ["stamp"]);
+  assert.strictEqual(sounds.length, 2);
+  assert.strictEqual(g.ev.stampedTool, true);
+  assert.strictEqual(g.ev.played, false);
+});
+
+// Every way a saved shape can be damaged. "2" is the sly one: r-"2" coerces to a number but r+"2" does
+// not, so a guard that looked at rows after the arithmetic stamped it one way and refused it the other.
+const DAMAGED = [[], [0], [0, "2"], [0, "bad"], [0, 0], [-1, 0], [1, 2], [0, 1, 2, 3], [0, 1.5], null];
+
+test("TUN-15: restoring a toolbox drops damaged shapes and keeps valid ones, unsorted ones included", () => {
+  const g = readyGame();
+  const id = g.activePackageId();
+  g.pkgProg(id).toolbox = [
+    ...DAMAGED.map((offs) => ({ offs, midis: [60, 64] })),
+    { offs: [0, 2] },                                    // no pitches
+    { offs: [0, 2], midis: [60, "64"] },                 // a pitch that isn't a number
+    { offs: [9, 0], midis: [81, 60] },                   // valid, unsorted
+  ];
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+
+  assert.deepEqual(g.toolbox.map((t) => t.offs), [[9, 0]]);
+
+  // …so the bag can Fuse a fresh [0,2] even though a damaged [0,"2"] was saved (its sig looks the same).
+  g.craftFromCells([{ r: 9, c: 0 }, { r: 7, c: 0 }]);
+  assert.deepEqual(g.toolbox.map((t) => t.offs), [[9, 0], [0, 2]]);
+
+  // The valid unsorted pair stamps whole at either edge.
+  clearMelody(g);
+  g.activeTool = g.toolbox[0];
+  g.stampTool(9, 3);
+  g.stampTool(0, 5);   // flips down from the top
+  assert.deepEqual(column(g, 3), [0, 9]);
+  assert.deepEqual(column(g, 5), [0, 9]);
+});
+
+test("TUN-15: restore keeps a tool with fewer pitches than rungs, drops one with under two, and the kept one survives save + reload", () => {
+  const g = readyGame();
+  const id = g.activePackageId();
+  g.pkgProg(id).toolbox = [
+    { offs: [0, 2, 4], midis: [60, 64] },   // accepted: pitches are only checked loosely (never tie them to offs.length)
+    { offs: [0, 2, 4], midis: [60] },       // under two pitches
+    { offs: [0, 2, 4], midis: [] },
+  ];
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+  g.savePackageProgress();                  // entering a package saves the filtered bag straight away
+
+  const kept = [{ offs: [0, 2, 4], midis: [60, 64] }];
+  assert.deepEqual(JSON.parse(JSON.stringify(g.pkgProg(id).toolbox)), kept, "what was saved");
+
+  g.toolbox.length = 0;                     // "reload": restore again from what was saved
+  g.toolboxOwner = null;
+  g.loadScopeToolbox();
+  assert.deepEqual(JSON.parse(JSON.stringify(g.toolbox)), kept, "what came back");
+
+  clearMelody(g);
+  g.activeTool = g.toolbox[0];
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [5, 7, 9]);
+});
+
+test("TUN-15: a damaged shape that reaches the stamp anyway refuses at every row, before any arithmetic", () => {
+  const g = readyGame();
+  clearMelody(g);
+  g.ev.stampedTool = false;
+  const { said, txs } = stampProbe(g);
+
+  for (const offs of DAMAGED) {
+    g.activeTool = { offs, midis: [60, 64] };
+    for (const r of [0, 9, 4]) {
+      said.length = 0;
+      assert.doesNotThrow(() => g.stampTool(r, 3), `offs ${JSON.stringify(offs)} at row ${r}`);
+      assert.deepEqual(column(g, 3), [], `offs ${JSON.stringify(offs)} at row ${r} planted something`);
+      assert.strictEqual(said.at(-1), g.STAMP_COPY.broken, `offs ${JSON.stringify(offs)} at row ${r}`);
+    }
+  }
+  g.activeTool = { offs: [0, "2"], midis: [60, 64] };
+  assert.doesNotThrow(() => g.cellClick(9, 3, {}), "the same through cellClick");
+  assert.deepEqual(column(g, 3), []);
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false, "a damaged shape earns no stamp credit");
+});
+
+test("TUN-15: a shape taller than the whole field refuses at both edges, without edge advice", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");                                   // 14 rows
+  g.craftFromCells([{ r: 13, c: 0 }, { r: 0, c: 0 }]);        // C4–B5, offsets [0, 13]
+  const huge = g.toolbox.find((t) => Math.max(...t.offs) === 13);
+  g.setPalette("pentatonic");                                 // the Studio can switch palettes under a kept toolbox
+  g.ev.stampedTool = false;
+  g.activeTool = huge;
+  const { said, txs } = stampProbe(g);
+
+  for (const r of [0, 9, 4]) {
+    g.stampTool(r, 3);
+    assert.deepEqual(column(g, 3), [], `row ${r} planted something`);
+    assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall, `row ${r} gave edge advice`);
+  }
+  assert.deepEqual(txs, []);
+  assert.strictEqual(g.ev.stampedTool, false);
+});
+
+test("TUN-15: the too-tall line starts exactly at a span of the field's height", () => {
+  const g = readyGame();
+  g.setPalette("diatonic");
+  g.craftFromCells([{ r: 10, c: 0 }, { r: 0, c: 0 }]);        // offsets [0, 10]: one rung taller than the 10-row field can hold
+  g.craftFromCells([{ r: 9, c: 1 }, { r: 0, c: 1 }]);         // offsets [0, 9]: fits the 10-row field at its edges
+  const ten = g.toolbox.find((t) => Math.max(...t.offs) === 10);
+  const nine = g.toolbox.find((t) => Math.max(...t.offs) === 9);
+  g.setPalette("pentatonic");
+  const { said, txs } = stampProbe(g);
+
+  g.activeTool = ten;
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), []);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall);
+  g.stampTool(0, 3);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.tooTall);
+
+  g.activeTool = nine;
+  g.stampTool(4, 3);
+  assert.strictEqual(said.at(-1), g.STAMP_COPY.room, "a shape that fits somewhere gets the edge advice");
+  assert.deepEqual(txs, []);
+  g.stampTool(9, 3);
+  assert.deepEqual(column(g, 3), [0, 9]);
+});
+
 test("placed columns count raw-width bands and ignore non-pairs", () => {
   const g = readyGame();
   // C4–D4 = close; C4–E4 = bright; C4–A5 = compound open; C4–C5 = octave/open.
