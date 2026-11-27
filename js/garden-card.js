@@ -105,7 +105,8 @@ let _gardenCard=null;   // the attempt the card shows; null when the card is clo
 let _cardInerted=[];
 function setCardModal(on){
   for(const el of _cardInerted) el.inert=false; _cardInerted=[];
-  if(on) for(const el of Array.from(document.body.children||[])) if(el!==cardoverlay && !el.inert && el.tagName!=="SCRIPT"){ el.inert=true; _cardInerted.push(el); } }
+  // The toast stays live: it is no control, and a sign-in refusal raised over the card must still be read (TUN-135 review).
+  if(on) for(const el of Array.from(document.body.children||[])) if(el!==cardoverlay && el!==toastEl && !el.inert && el.tagName!=="SCRIPT"){ el.inert=true; _cardInerted.push(el); } }
 
 function showGardenCard(a,notice){ _gardenCard=a; gardencard.innerHTML="";
   gardencard.removeAttribute("aria-label"); gardencard.setAttribute("aria-labelledby","gctitle");

@@ -129,12 +129,59 @@ My answers:
 
 A third round would need the owner's yes.
 
+### Round 3 (`gpt-6.2-astra`, `ask.sh`, on `49f8489`, the owner's yes on 2026-11-27) — changes requested
+
+The owner deferred round 2's Mediums 3 and 4 to TUN-138 and TUN-139 (2026-11-27); the prompt said so.
+
+<details><summary>GPT's findings, verbatim</summary>
+
+1. **High — The quest finale can still open an empty Studio after a successful pull.** I reproduced the Home → pending sign-in → Offer route. After sign-in succeeded, I chose **Begin quest** on Home. The old finale stayed visible, but its Studio button read the new run. Seven offered notes became zero. Clearing quest runs through `?dev` also left the card visible and opened an empty Studio. Capture the offered song when the finale is shown. Add both cases using a successful deferred pull and compare the full tracks. [Quest Studio handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:264)
+
+2. **Medium — The toast’s stacking is fixed; rendered readability is still unverified.** The body-level toast at 95 clears the garden card at 90 and map tip at 80. The test compares CSS numbers. Browser access was unavailable for a paint check. Add a browser case that resolves a pending cloud Load with the garden card open on desktop and phone, plus a desktop case with a map tip overlapping the toast. Check the full sentence. The garden modal also makes the toast `inert`, so a screen reader loses the only explanation while that card is open. [Toast styling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/index.html:396) · [Modal behavior](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/garden-card.js:106)
+
+3. **Medium — Package Studio now discards edits made while congratulations is open.** The card leaves Tempo keyboard-accessible. On the actual intro finale, I changed 108 BPM to 137 through the control’s handlers. Studio reopened at 108, even without a sign-in. Add that case, then repeat with a successful pull between the edit and retry. Home, Keep playing, and backdrop dismissal each handed off the next finale’s fresh snapshot correctly in the VM. [Package snapshot](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/level-engine.js:218)
+
+4. **Medium — A typed quest name is silently lost on retry.** After a successful pull, I pressed Studio with **My fireflies** still in the name box. The song opened under its old name. The handler wrote the rename refusal, then Studio replaced it in the same click, before paint. Add a successful-pull test that checks the saved title and the final visible status. [Finale exit](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:246) · [Studio status](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:84)
+
+Reviewed `49f8489baef881c8baba92c912cea453adaa7d43`. Syntax and all 19 focused tests passed. **Changes requested.**
+
+</details>
+
+My answers:
+
+1. **High, the quest finale can still open an empty Studio (another quest begun, or the runs cleared, after the
+   pull) — agreed, fixed.** `finStudio` reads the run the finale was shown for (`questFinaleRun`) before the
+   active one, and falls back to a copy of its song taken in `questShowFinale` (`questFinaleSong`) once that run
+   is gone. It still reads the run first, so a name given in the finale is carried. Tests: another quest begun
+   after the pull (given a song of its own, so reading the active run would hand over the wrong one), and the
+   runs cleared; both compare every melody note and drum hit.
+2. **Medium, rendered readability unverified; the garden card makes the toast inert — agreed in part.** The
+   garden card no longer makes the toast inert (`setCardModal` leaves `toastEl` out). Its test reads
+   `setCardModal`'s text: the harness stub keeps no body children. Still not verified: the paint check on desktop
+   and phone — AO's browser can't hold a sign-in open, and sign-in works only on production. The toast has no
+   live region, so a screen reader is not told of it either way; that is wider than this ticket.
+3. **Medium, the package Studio discarded edits made with the card up — agreed, fixed; my round-2 change
+   caused it.** The card no longer takes its song when it is shown. `applyProgress` calls `holdCongratsSong()`
+   first, which holds the live field only if the card is up and nothing is held yet; otherwise 🎵 Studio reads
+   the live field, as before round 2. A Tempo set under the card now reaches the Studio, with and without a pull
+   between; and a later finale doesn't inherit an earlier card's held song.
+4. **Medium, a typed quest name silently lost on retry — agreed in part.** Saving the name to a run that is no
+   longer the active quest isn't possible from here (`performQuestAction` acts on the active scope only), so
+   the song keeps its name. What changed: the refusal is set after the exit, so it is the status line the
+   player is left with, rather than one the Studio's line overwrote in the same click. Test: after a pull,
+   a typed name; the song keeps its title, and the last status is the refusal.
+
+A fourth round would need the owner's yes.
+
 ## Tests
 
-- `tests/signin-song-load.test.mjs` — 9 tests (round 2 added the two successful-pull finale cases). Mutation check by hand: removing each caller's check,
+- `tests/signin-song-load.test.mjs` — 15 tests (round 2 added the two successful-pull finale cases; round 3
+  six more). Mutation check by hand: removing each caller's check,
   restoring the old `openStudioWith`, leaving the refusal's toast unraised, raising every toast, or putting
   `.toast.above` under the overlays each fails its own test; so does undoing either finale's snapshot, or
-  lowering the raised toast back to 75.
+  lowering the raised toast back to 75; and, from round 3, the quest finale reading the active run, no
+  song copy, the refusal word dropped, no hold at the pull, the snapshot back at show, a show that keeps an
+  old song, and the toast inerted.
 - `tests/famous-meter-mutations.mjs` (optional audit): its `loadSong`, `playSong` and `openStudioWith`
   anchors follow the new code, and one anchor TUN-84 had already left stale (`time.origin=meter[1]`) is
   updated; the audit runs green again.

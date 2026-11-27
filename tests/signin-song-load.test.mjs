@@ -243,3 +243,85 @@ test("TUN-135 review: after a sign-in's pull leaves the quest, the quest finale'
   assert.ok(melody(song).length > 0, "fixture: the quest's song has notes");
   assert.deepEqual(melody(g.currentSong()), melody(song), "the quest's song, not an empty Studio");
 });
+
+// GPT's PR review, round 3. Both finales again, each after a sign-in's pull that SUCCEEDS (applyProgress, run while
+// the real sign-in is held), and the songs compared whole: every melody note and every drum hit.
+const whole = song => ({ melody: melody(song), drums: Array.from(song.tracks.find(t => t.kind === "drums")?.hits || [], h => h.lane + "@" + h.c).sort() });
+async function questAfterPull(t, finName = { value: "" }) {
+  const els = { finStudio: {}, questfinale: up(), undoBtn: {} };
+  const f = completed(t, undefined, { elements: { ...els, finName } });
+  els.questfinale.style.display = "none";
+  assert.equal(f.g.questShowFinale(f.id), true);
+  const w = watch(f.g, els.undoBtn);
+  const song = clone(f.run().versions[f.run().artifact.versionId].song);
+  const letGo = signingIn(f.g, {}); snapshot(f.g, w);
+  els.finStudio.onclick();   // refused: still signing in
+  f.g.applyProgress();       // the account's progress lands
+  await letGo();
+  return { ...f, els, w, song, finName };
+}
+test("TUN-135 review 3: a quest begun after the pull doesn't change what the old finale's Studio button hands over", async t => {
+  const { g, els, song } = await questAfterPull(t);
+  const other = g.startQuestRun("waking-woods"); assert.equal(other.ok, true, "fixture: the player begins another quest");
+  assert.equal(g.isQuestScope(), true);
+  // Give the new run a song of its own, so reading the ACTIVE run would hand over the wrong one, not nothing.
+  const nr = g.QUEST_RUNS[other.runId]; nr.artifact = { versionId: nr.draft };
+  assert.notDeepEqual(whole(nr.versions[nr.draft].song), whole(song), "fixture: the new run's song differs");
+  els.finStudio.onclick();
+  assert.equal(g.isStudioScope(), true);
+  assert.ok(whole(song).melody.length > 0, "fixture: the offered song has notes");
+  assert.deepEqual(whole(g.currentSong()), whole(song), "the finale's own song, whole — not the new run's");
+});
+test("TUN-135 review 3: with the quest's runs cleared after the pull, the finale's Studio button still hands over its song", async t => {
+  const { g, id, els, song } = await questAfterPull(t);
+  delete g.QUEST_RUNS[id];   // ?dev 🧹 Clear quest runs, or anything else that drops the run
+  assert.equal(g.QUEST_RUNS[id], undefined, "fixture: the run is gone");
+  els.finStudio.onclick();
+  assert.equal(g.isStudioScope(), true);
+  assert.deepEqual(whole(g.currentSong()), whole(song), "the copy taken when the finale was shown");
+});
+test("TUN-135 review 3: a name typed into the finale that can't be saved after the pull says so, and the song keeps its name", async t => {
+  const finName = { value: "" };
+  const { g, els, w, song, finName: box } = await questAfterPull(t, finName);
+  box.value = "My fireflies";
+  els.finStudio.onclick();
+  assert.equal(g.isStudioScope(), true, "the Studio still opens");
+  assert.equal(g.currentSong().meta.title, song.meta.title, "under the name it has");
+  assert.equal(w.statuses.at(-1), "That name could not be saved — your song is safe under the name it has.",
+    "the last word on screen is the refusal, not the Studio's own line");
+});
+test("TUN-135 review 3: a Tempo set while the finale card is up goes into the Studio, with or without a sign-in's pull", async t => {
+  for (const pull of [false, true]) {
+    const { g, els, w } = game(t);
+    g.showCongrats("intro", null);
+    const field = melody(g.currentSong());
+    g.tempoEl.value = 137; g.tempoEl.oninput();   // the Tempo stays reachable from the keyboard under the card
+    if (pull) {
+      const letGo = signingIn(g, {}); snapshot(g, w);
+      els.congratsStudio.onclick();   // refused
+      g.applyProgress(); await letGo();
+    }
+    els.congratsStudio.onclick();
+    assert.equal(g.isStudioScope(), true, pull ? "after the pull" : "no sign-in");
+    assert.equal(g.currentSong().time.tempo, 137, (pull ? "after the pull: " : "") + "the Tempo the player set");
+    assert.deepEqual(melody(g.currentSong()), field, (pull ? "after the pull: " : "") + "the finale's creation");
+  }
+});
+test("TUN-135 review 3: a dismissed card's song is not carried into the next finale", async t => {
+  const { g, els, w } = game(t);
+  g.showCongrats("intro", null);
+  const letGo = signingIn(g, {}); snapshot(g, w);
+  g.applyProgress();   // a pull under the card: its song is held
+  await letGo();
+  g.dismissCongrats(false);   // ✨ Keep playing
+  g.modelSetCell(g.ROWS - 1, 5, !g.grid[g.ROWS - 1][5]);
+  const next = melody(g.currentSong());
+  g.showCongrats("intro", null);   // a later finale
+  els.congratsStudio.onclick();
+  assert.deepEqual(melody(g.currentSong()), next, "the later finale's own field");
+});
+test("TUN-135 review 3: the garden card doesn't make the toast inert", () => {
+  // setCardModal walks document.body's children, which the harness stub doesn't keep: read its own text instead.
+  const src = readFileSync(new URL("../js/garden-card.js", import.meta.url), "utf8");
+  assert.match(src, /function setCardModal\(on\)\{[\s\S]*?el!==cardoverlay && el!==toastEl && !el\.inert/, "the toast is left out of the inert set");
+});
