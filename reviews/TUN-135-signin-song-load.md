@@ -1,0 +1,259 @@
+# TUN-135 — Don't load a song into the level on screen while a sign-in is still out
+
+Branch `ao/signin-song-load/root` · PR #194 (draft, not to merge) · Size **S** (label and `## Size` agree)
+
+## Plan (Claude)
+
+**Approach.** One guard where the song lands, and a check in each caller before it closes what the player
+is looking at.
+
+- `js/home.js`: `openStudioWith(song, shared)` enters through `openSharedStudio()` (shared) or
+  `enterStudio(true)` (the rest) and returns `false`, touching nothing, when the entry is refused — the
+  rule TUN-109 gave the shared path, now for every caller. `openStudio` keeps its no-argument signature.
+- A new `studioWaitsForSignIn()`: while `authBusy`, it toasts *"☁️ Still signing in. Try again in a
+  moment."* and answers `true`. `openStudioWith`'s `false` can't tell a refusal from "nothing was cut", and
+  the callers must not hide their list or card before they know, so they ask this first:
+  - `loadSong` (`js/save-share.js`, a saved melody, the rescued sprout and the cloud list's ▶ Load after
+    its fetch): returns `null` and leaves the Jukebox open — the ticket's trap, no list, no song, no word.
+  - `playSong` (the Jukebox's ▶ Play): also goes through `loadSong`, then `start()`s and says *Now
+    playing*. Not named in the ticket, but the same caller one step out: on `null` it returns.
+  - `congratsStudio` (`js/level-engine.js`): the congratulations card stays up.
+  - `finStudio` (`js/quest-shell.js`): the finale stays up and its typed name is not committed yet.
+- Messages: the toast is the only word. No caller claims "Loaded into the Studio" or "Now playing".
+
+**Tests** (`tests/signin-song-load.test.mjs`): for each caller, with `authBusy` set — the level's tracks
+unchanged, `journalClear` never called and ↶ Undo still enabled, the Studio shut, the list or card still
+up, one toast, no claim; then with it cleared, the Studio opens with the song, undo starts fresh, the list
+or card closes. Plus `openStudioWith` itself mid-sign-in. The quest fixtures (`launch` / `compare` /
+`completed` in `tests/helpers/quest-e6-fixtures.mjs`) take optional load options, so a test can catch
+`finStudio`'s handler.
+
+## Which paths a player can reach mid-sign-in
+
+My first analysis (on `abca131`) said only the Jukebox was reachable and the landing screen and both finales
+were not. GPT's PR review showed that wrong for all three; corrected here. All overlays share z-index 70, so
+DOM order decides which is on top: Home comes last; the landing screen comes first, under everything. Home
+doesn't make the page inert (only the garden card does), so Tab reaches what lies under it.
+
+- **Jukebox ▶ Load / ▶ Play, during Home's sign-in:** Tab to ☰ under Home, then 🎵 Jukebox; it opens behind
+  Home, and Tab and Enter reach its rows. Reachable, blind.
+- **Jukebox ▶ Play / ▶ Load, during the landing's sign-in:** ☰ stays in the tab order; the Jukebox opens
+  *above* the landing, so a fresh visitor can click ▶ Play (▶ Load needs a saved melody or a rescued sprout).
+  Reachable, visible.
+- **The cloud list's ▶ Load:** it awaits `cloudSongGet`, so a song asked for before a sign-in can return
+  during one. Reachable on a slow network.
+- **The congratulations card's 🎵 Studio:** opening Home from the ☰ menu leaves the card displayed under it;
+  during Home's sign-in, Tab reaches its Studio button. Reachable, blind.
+- **The quest finale's Studio button:** with an Offer enabled, Home can be opened over the quest; during its
+  sign-in, Offer activated by keyboard behind Home opens the finale (GPT checked this in its VM), and its
+  Studio button is then reachable. Reachable, blind.
+
+None of these can be staged by hand: the sign-in is out for about a second, and works only on production.
+The tests below cover each.
+
+## PR review
+
+### Round 1 (`gpt-6.2-astra`, `ask.sh`, on `abca131`) — changes requested
+
+<details><summary>GPT's findings, verbatim</summary>
+
+1. **High — Make the refusal visible.** `studioWaitsForSignIn()` sends the only explanation to `.toast` at `z-index:60`. Home, the Jukebox, and both finales sit at `70`, so an opaque card can cover the message. This matters most when a cloud Load returns after the player has closed the list. Show the reason above the active overlay or inside it. Add a browser check with a sign-in held pending and assert the message is visible while the overlay stays open. The current toast spy passes even when the card hides every word. [Toast styling](index.html:396) · [Refusal handler](js/home.js:95)
+2. **Medium — Correct the landing-screen reachability finding.** The review correctly identifies Home’s blind keyboard route to Menu → Jukebox. The landing form also leaves the menu toggle in the tab order. Pressing Enter on Jukebox opens it **above** landing, so a fresh visitor can then **click Play**. Load is available if a saved melody or rescued sprout exists, including after a progress reset that preserved melodies. Add this case using the landing form, native keyboard navigation to Jukebox, and a pointer click on Play. Assert the list stays visible, playback stays stopped, and the level and undo history survive. [Overlay order](index.html:889) · [Menu handlers](js/cursor.js:137) · [Jukebox rows](js/save-share.js:205)
+3. **Medium — Correct both finale findings.** For a **package**, leave congratulations open and use the keyboard menu to open Home. `openHome()` leaves congratulations displayed underneath. Start sign-in, then Tab to its Studio button and press Enter. For a **quest**, open Home with an enabled Offer. `leaveQuest()` hides the finale and stops playback but retains the active quest. During sign-in, keyboard-activate Offer behind Home, then activate the newly displayed finale’s Studio button. I verified in the VM that Offer succeeds and the finale opens with Home visible and `authBusy=1`. Add these setups to the reachability checks. The existing tests start with the cards already displayed. [Home entry](js/home.js:20) · [Quest exit](js/quest-shell.js:402) · [Offer handler](js/quest-run.js:492)
+4. **Medium — Test the cloud Load across its actual `await`.** Click a rendered cloud row with `authBusy=0` and `cloudSongGet` held on a deferred promise. Close the list, start a sign-in, then resolve the song. Assert Home stays open, the refusal is visible, the tracks and undo history survive, and no loaded status appears. Finish sign-in and verify that only a **fresh** Load opens the song. Calling `loadSong()` directly with `authBusy` already set misses this ordering. [Cloud row callback](js/save-share.js:241) · [Current Load test](tests/signin-song-load.test.mjs:49)
+
+Reviewed `abca131a013ad5b38a85adcd6f5b880d536aa28e`. Syntax and all 15 focused tests passed. Browser access was unavailable, so the keyboard routes and toast visibility were traced from the DOM, CSS, and handlers.
+
+</details>
+
+My answers:
+
+1. **High, the refusal hidden under the overlays — agreed.** `.toast` is z-index 60 and every overlay 70.
+   `toast(msg, above)` now sets an `above` class on its element (z-index 75: over the overlays, under a map
+   tip at 80 and the garden card at 90), and only the refusal asks for it; every other toast is unchanged.
+   Not done: a browser check with a sign-in held pending — AO's browser can't run page code to hold one,
+   and sign-in works only on production. Instead the tests assert the refusal is raised, and that
+   `.toast.above` stacks over `.overlay` in `index.html`.
+2. **Medium, the landing screen is reachable — agreed**; the analysis above is corrected. The ▶ Play test
+   now runs during the landing's own sign-in (the real `signInWith`, with no form).
+3. **Medium, both finales are reachable — agreed**; corrected above. Their tests now run during Home's real
+   sign-in. They still start with the card already up: how it got there (a keyboard route under Home)
+   doesn't reach the code under test.
+4. **Medium, the cloud Load across its `await` — agreed, added:** the row is pressed with no sign-in out,
+   the list closed, Home opened and a sign-in started, then the fetch returns. Nothing lands, Home stays up,
+   nothing claims a load; after the sign-in a fresh Load opens the song.
+
+Every test now holds a real `signInWith` pending, so `authBusy` comes from production's own count. A second
+GPT round needs the owner's yes (one round today).
+
+### Round 2 (`gpt-6.2-astra`, `ask.sh`, on `d07db35`, the owner's yes on 2026-11-27) — changes requested
+
+<details><summary>GPT's findings, verbatim</summary>
+
+1. **High — Both finale buttons can open the wrong song after a successful sign-in.** I reproduced this in the VM with a cloud save that restores a different level. Both finale cards survive the pull. On retry, congratulations copies the newly restored field, and the quest finale finds no active quest and opens an empty Studio. Every new test ends sign-in by rejecting it. Add one successful-pull test per finale with distinguishable tracks, then retry from the retained card and assert the Studio contains the original finale song. Exercise the actual routes by opening Home over congratulations and activating Offer behind Home during sign-in. [Package hand-off](js/level-engine.js:229) · [Quest hand-off](js/quest-shell.js:258) · [Cloud restore](js/cloud.js:157)
+
+2. **High — The garden card can still hide the only refusal message.** The body-level toast at 75 clears Home, Jukebox, both finales, the instrument and power cards, mixer, companion picker, and landing at 70. The garden card is at 90. I reproduced a pending cloud Load returning with that card open and `authBusy === 1`: hold landing’s progress pull, start a cloud Load, close Jukebox, then use Home to sign out and open **Make my garden**. The card makes earlier controls inert, but the outstanding request still completes. Home’s map tooltip at 80 can also overlap the toast at `top:22%`. Add desktop and phone browser checks that the full message is readable with the garden card open, plus a desktop check with a map tip overlapping it. Rendered visibility remains unverified. [Toast and overlay styles](index.html:396) · [Garden card](js/garden-card.js:105) · [Map tooltip](js/home.js:314)
+
+3. **Medium — Another toast can erase the refusal before its first paint.** I resolved two cloud Loads together during sign-in, the first with a song and the second with an error. The second callback replaced the refusal text and removed `above` before the 250 ms fade-in could show it. The class resets correctly for ordinary toasts, but the advertised 2.6 seconds can collapse to zero. Add this ordering with the list closed and assert the refusal remains readable for its display interval, then verify a later ordinary toast uses its usual layer. [Toast lifetime](js/helpers.js:11) · [Cloud callbacks](js/save-share.js:241)
+
+4. **Medium — The landing test still skips the player’s route and misses a failed retry.** Submit the landing form, use Tab and Enter to open Jukebox, then click Play. Check the visible list, stopped playback, tracks and undo. Reject sign-in and click Play again. In the VM, Jukebox closed and Studio became active while landing stayed displayed over it. This retry behavior predates the delta, but the new test reports success without checking what the player sees. [Landing result](js/boot.js:125) · [Play test](tests/signin-song-load.test.mjs:85)
+
+5. **Low — The cloud test covers the `await`, but its retry invokes the old hidden row.** Complete sign-in successfully, reopen Jukebox and click the newly rendered cloud row. The refusal guards themselves have regression coverage: restoring the base runtime in memory failed all six behavioral tests. Syntax and all 17 focused tests passed on `d07db35e9a095bf19b639a2fecf015a8b5acdd8b`. [Cloud retry test](tests/signin-song-load.test.mjs:125)
+
+</details>
+
+My answers:
+
+1. **High, a finale retried after a successful sign-in opens the wrong song — agreed, fixed.** A sign-in that
+   succeeds redraws the game under the card (`applyProgress`), so the retry read the restored field, or found
+   no quest. The congratulations card now carries the field it was shown over (`congratsSong`, set in
+   `showCongrats`; the card covers the field, so nothing else changes it), and the quest finale the run it
+   was shown for (`questFinaleRun`, set in `questShowFinale`, used when the pull has replaced the quest
+   scope). Tests: one per finale, with the pull's `applyProgress` run while the sign-in is held, then a retry.
+   Departure: they run the pull's redraw directly rather than a full Cognito sign-in with a cloud answer —
+   what the retry reads is what `applyProgress` leaves behind. Not changed: committing a typed quest name
+   after the pull is refused (no quest scope), and the status line says so, as it does for any refused name.
+2. **High, the garden card (90) and a map tip (80) can still cover the toast — agreed, fixed:**
+   `.toast.above` is z-index 95, the highest on the page; the test now asserts that against every z-index in
+   `index.html`. Not verified: rendered visibility in a browser, on desktop or phone — a sign-in can't be held
+   in AO's browser.
+3. **Medium, a second toast can erase the refusal before it paints — agreed, not fixed here:** it changes
+   what `toast` does for every caller (hold or queue an ordinary toast behind a raised one). Filed to Backlog:
+   TUN-138.
+4. **Medium, a retry after a failed landing sign-in opens the Studio under the landing — agreed, not fixed
+   here:** it predates this PR (GPT says so), and is about the landing staying up over the game, not about a
+   song landing mid-sign-in. Filed to Backlog: TUN-139. The native-keyboard route itself can't be driven in the Node
+   harness.
+5. **Low, the cloud retry reused the old row — agreed, fixed:** the test reopens the Jukebox and presses the
+   newly listed row.
+
+A third round would need the owner's yes.
+
+### Round 3 (`gpt-6.2-astra`, `ask.sh`, on `49f8489`, the owner's yes on 2026-11-27) — changes requested
+
+The owner deferred round 2's Mediums 3 and 4 to TUN-138 and TUN-139 (2026-11-27); the prompt said so.
+
+<details><summary>GPT's findings, verbatim</summary>
+
+1. **High — The quest finale can still open an empty Studio after a successful pull.** I reproduced the Home → pending sign-in → Offer route. After sign-in succeeded, I chose **Begin quest** on Home. The old finale stayed visible, but its Studio button read the new run. Seven offered notes became zero. Clearing quest runs through `?dev` also left the card visible and opened an empty Studio. Capture the offered song when the finale is shown. Add both cases using a successful deferred pull and compare the full tracks. [Quest Studio handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:264)
+
+2. **Medium — The toast’s stacking is fixed; rendered readability is still unverified.** The body-level toast at 95 clears the garden card at 90 and map tip at 80. The test compares CSS numbers. Browser access was unavailable for a paint check. Add a browser case that resolves a pending cloud Load with the garden card open on desktop and phone, plus a desktop case with a map tip overlapping the toast. Check the full sentence. The garden modal also makes the toast `inert`, so a screen reader loses the only explanation while that card is open. [Toast styling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/index.html:396) · [Modal behavior](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/garden-card.js:106)
+
+3. **Medium — Package Studio now discards edits made while congratulations is open.** The card leaves Tempo keyboard-accessible. On the actual intro finale, I changed 108 BPM to 137 through the control’s handlers. Studio reopened at 108, even without a sign-in. Add that case, then repeat with a successful pull between the edit and retry. Home, Keep playing, and backdrop dismissal each handed off the next finale’s fresh snapshot correctly in the VM. [Package snapshot](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/level-engine.js:218)
+
+4. **Medium — A typed quest name is silently lost on retry.** After a successful pull, I pressed Studio with **My fireflies** still in the name box. The song opened under its old name. The handler wrote the rename refusal, then Studio replaced it in the same click, before paint. Add a successful-pull test that checks the saved title and the final visible status. [Finale exit](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:246) · [Studio status](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:84)
+
+Reviewed `49f8489baef881c8baba92c912cea453adaa7d43`. Syntax and all 19 focused tests passed. **Changes requested.**
+
+</details>
+
+My answers:
+
+1. **High, the quest finale can still open an empty Studio (another quest begun, or the runs cleared, after the
+   pull) — agreed, fixed.** `finStudio` reads the run the finale was shown for (`questFinaleRun`) before the
+   active one, and falls back to a copy of its song taken in `questShowFinale` (`questFinaleSong`) once that run
+   is gone. It still reads the run first, so a name given in the finale is carried. Tests: another quest begun
+   after the pull (given a song of its own, so reading the active run would hand over the wrong one), and the
+   runs cleared; both compare every melody note and drum hit.
+2. **Medium, rendered readability unverified; the garden card makes the toast inert — agreed in part.** The
+   garden card no longer makes the toast inert (`setCardModal` leaves `toastEl` out). Its test reads
+   `setCardModal`'s text: the harness stub keeps no body children. Still not verified: the paint check on desktop
+   and phone — AO's browser can't hold a sign-in open, and sign-in works only on production. The toast has no
+   live region, so a screen reader is not told of it either way; that is wider than this ticket.
+3. **Medium, the package Studio discarded edits made with the card up — agreed, fixed; my round-2 change
+   caused it.** The card no longer takes its song when it is shown. `applyProgress` calls `holdCongratsSong()`
+   first, which holds the live field only if the card is up and nothing is held yet; otherwise 🎵 Studio reads
+   the live field, as before round 2. A Tempo set under the card now reaches the Studio, with and without a pull
+   between; and a later finale doesn't inherit an earlier card's held song.
+4. **Medium, a typed quest name silently lost on retry — agreed in part.** Saving the name to a run that is no
+   longer the active quest isn't possible from here (`performQuestAction` acts on the active scope only), so
+   the song keeps its name. What changed: the refusal is set after the exit, so it is the status line the
+   player is left with, rather than one the Studio's line overwrote in the same click. Test: after a pull,
+   a typed name; the song keeps its title, and the last status is the refusal.
+
+A fourth round would need the owner's yes.
+
+### Round 4 (`gpt-6.2-astra`, `ask.sh`, on `8bbf788`, the owner's yes, "merge only if clean") — changes requested
+
+<details><summary>GPT's findings, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+1. **High — The quest finale can still open the wrong song and rename another saved melody.** I reproduced this with Firefly’s finale open during a successful sign-in and a Waking Woods run awaiting a save retry. Home’s **Try saving it again** completed Woods without calling `questShowFinale`. On the retained Firefly card, **Save this name** renamed the Woods melody and repainted the card as Woods. **Studio** then opened Firefly’s tracks. Map followed by a normally shown finale worked. Bind the name, rendered card, and Studio handoff to the same run. Test both saved titles by artifact ID and compare the opened tracks with the song on the visible card. [Home retry](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:42) · [Finale handlers](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:258)
+
+2. **High — Ordinary package replay can replace the congratulations song.** The reported Tempo regression is fixed. In the VM, 137 BPM survived boot’s resume and a second pull with the card open. A pull with the card hidden also left a later finale’s Tempo intact. But without any sign-in, I opened Home over the Shifting Shadows finale and chose **Replay**. Congratulations stayed up. Its **Studio** button opened the replay level’s three notes instead of the finale’s empty field. Add that navigation case and preserve the finale’s latest edits before replay replaces the field. [Package handoff](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/level-engine.js:235) · [Replay handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:307)
+
+3. **Medium — An untouched quest title now produces a false save error.** After a successful pull, I left the prefilled **The Firefly Crossing** alone and pressed **Studio**. The saved title was correct, yet the final status said it could not be saved. An explicit refusal is acceptable for a genuinely changed name. Test both cases against `getSaves()` and the final status. The current assertion reads `currentSong().meta.title`, which always serializes as `null`. [Exit handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:247) · [Title assertion](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/tests/signin-song-load.test.mjs:289)
+
+4. **Medium — Refusal readability remains a pre-merge check.** The inert exemption and stacking order address the identified visual causes. Browser access was unavailable, so the full sentence still needs a paint check when a pending cloud Load resolves over the garden card on desktop and phone, and over an overlapping desktop map tip. Excluding the toast from `inert` also leaves its announcement unverified because it sits outside the modal and has no live region. [Toast styling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/index.html:396) · [Modal handling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/garden-card.js:106)
+
+Reviewed `8bbf7889b4f5df4a2dc23d65f46852cae5aeb744`. Syntax and all 28 focused tests passed.
+
+</details>
+
+My answers. Per the owner, nothing was fixed after this round: the PR does not merge, and TUN-135 restarts
+from a design review.
+
+1. **High, the quest finale's name, repaint and Studio can belong to different runs — agreed, open.** Home's
+   *Try saving it again* completes another quest without `questShowFinale`. The retained card's *Save this name*
+   then acts on the active scope, the new run (`performQuestAction` reads `activeScope`), and the repaint
+   follows it, while 🎵 Studio reads `questFinaleRun`, the run the card was shown for. **On `main` too, in
+   part:** there the name and the repaint already follow the active run, and so does Studio. So `main` is
+   consistent with the repainted card, but hands over the wrong song for what the player first saw. The
+   mismatch between the card and the Studio comes from round 3's `questFinaleRun`.
+2. **High, Home → Replay under the congratulations card makes 🎵 Studio carry the replay level — agreed, open.
+   On `main` today**, with no sign-in: `main`'s `congratsStudio` reads `currentSong()` at the click, as this
+   branch does whenever no pull has happened. Nothing on this branch caused it; round 3 just didn't cover it.
+3. **Medium, an untouched prefilled title gives a false "could not be saved" after a pull — agreed, open.
+   Caused by this branch:** round 3 made the refusal the last status line, and `questFinaleLeave` sends
+   `name-song` for any non-empty box, the unchanged prefilled title included, which a pull has made refusable.
+   On `main` the same refusal was written, then overwritten by the Studio's line in the same click. The round-3
+   test reads `currentSong().meta.title`, which is always null; it should read `getSaves()`.
+4. **Medium, the refusal's rendered readability is still unverified — agreed, open.** The stacking (z 95) and
+   the inert exemption are in. Not done: a paint check over the garden card and a map tip, on desktop and
+   phone. AO's browser can't hold a sign-in open. And the toast has no live region, so a screen reader isn't
+   told of it.
+
+## Root cause, and where the design review should start
+
+The refusal itself — the ticket's *Done looks like* — holds on every caller, and four rounds found nothing
+wrong with it. Rounds 2–4 kept finding the same thing on the two **finale cards**: their buttons read
+whatever level or quest is live underneath them when pressed (`currentSong()`, `activeScope`), and both can
+change under a card that stays up. A sign-in's pull redraws the game. Home, opened over a card, can Replay a
+level or complete another quest. Patching one route at a time (a snapshot at show, then a hold at the pull,
+then the run id) only moved the gap.
+
+The design review should start from: **each finale card is bound to the run or field it was shown for** —
+its 🎵 Studio, its name box and Save, and its repaint — and decide what the card does when what it was shown
+for changes or disappears: close, hand over a copy, or refuse. Then test every way the live level or scope can
+change under it: a pull, Home → Replay, Home → another package, Home's save retry, a cleared run, a second
+finale. Much of this is on `main` today with no sign-in (round 4's finding 2, and the stale-song half of
+finding 1), so it may be its own ticket. It also decides whether rounds 2–3's holding code (`congratsSong` /
+`holdCongratsSong`, `questFinaleRun` / `questFinaleSong`, the `questFinaleLeave` status reorder) stays or
+goes.
+
+## Status
+
+**Not to merge.** Round 4, on `8bbf788`, asked for changes. The owner's rule was "merge only if clean".
+
+- **Fixed and tested on this branch:** the refusal on every caller. Its toast above everything on the page
+  (z 95), and not inert under the garden card. The cloud Load across its fetch. The round-2 and round-3
+  finale cases recorded above.
+- **Open:** round 4's findings 1–4.
+- **Deferred by the owner:** TUN-138 (a second toast can erase the refusal) and TUN-139 (the Studio opening
+  under the landing).
+
+## Tests
+
+- `tests/signin-song-load.test.mjs` — 15 tests (round 2 added the two successful-pull finale cases; round 3
+  six more). Mutation check by hand: removing each caller's check,
+  restoring the old `openStudioWith`, leaving the refusal's toast unraised, raising every toast, or putting
+  `.toast.above` under the overlays each fails its own test; so does undoing either finale's snapshot, or
+  lowering the raised toast back to 75; and, from round 3, the quest finale reading the active run, no
+  song copy, the refusal word dropped, no hold at the pull, the snapshot back at show, a show that keeps an
+  old song, and the toast inerted.
+- `tests/famous-meter-mutations.mjs` (optional audit): its `loadSong`, `playSong` and `openStudioWith`
+  anchors follow the new code, and one anchor TUN-84 had already left stale (`time.origin=meter[1]`) is
+  updated; the audit runs green again.
+- Unverified by hand: the sign-in window is about a second and works only on production, so the
+  mid-sign-in paths are covered by the tests above, not a playtest.

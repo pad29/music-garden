@@ -155,6 +155,7 @@ async function cloudSongDelete(id){ const done=cloudCall(); const t=await freshT
   try{ const r=await fetch(AUTH.apiUrl+"/songs/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+t}});
     const gone=r.ok || await songGone(r); done(gone); return gone; }catch(e){ done(false); return false; } }
 function applyProgress(){   // re-apply the progress object to the running game
+  holdCongratsSong();   // a finale card left up keeps its song through the redraw below (TUN-135 review)
   ensureInstruments();   // cloud progress may predate the gradual reveal — derive/refresh the unlocked set
   if(progress.settings){ if(progress.settings.voice) setVoice(progress.settings.voice); if(progress.settings.tempo) tempoEl.value=progress.settings.tempo;
     if(progress.settings.mix) mix=Object.assign({voice:1,band:1,drums:1}, progress.settings.mix); applyMix();

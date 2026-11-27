@@ -201,12 +201,17 @@ function questRenderPaths(m){
 // celebration is a response to an act, not a recording of one.
 let questFinaleShown=null;       // once per page session; nothing can re-enter a completed run
 let questFinaleRendered=null;    // the model the overlay last painted — a Node test's only handle
+// The run the finale was shown for, and a copy of its song: a sign-in's pull can replace the quest scope under the
+// card, and the player can then begin another quest or clear the runs (TUN-135 review). Its Studio button hands
+// over that run's song as it stands (a name given in the finale included), or the copy once the run is gone.
+let questFinaleRun=null, questFinaleSong=null;
 function questShowFinale(runId){
   const run=QUEST_RUNS[runId], def=run && QUEST_DEFINITIONS[run.questId];
   if(!run || !def || run.status!=="completed" || !run.artifact) return false;
   const key=runId+"|"+run.artifact.artifactId+"|"+run.artifact.savedAt;
   if(questFinaleShown===key) return false;
   questFinaleShown=key;          // claimed BEFORE start(), which calls renderQuestShell synchronously
+  questFinaleRun=runId; { const v=run.versions[run.artifact.versionId]; questFinaleSong=v ? jclone(v.song) : null; }
   renderQuestFinale();
   confetti();
   if(playing) stop();
@@ -242,11 +247,13 @@ function renderQuestFinale(){
 function questFinaleLeave(then){
   const inp=document.getElementById("finName");
   const typed=(inp && inp.value || "").trim();
+  let refused=false;
   if(typed){ const r=performQuestAction("name-song", { title:typed });
-    if(!r.ok && r.code!=="no-artifact")
-      setStatus("That name could not be saved — your song is safe under the name it has."); }
+    refused=!r.ok && r.code!=="no-artifact"; }
   document.getElementById("questfinale").style.display="none";
   then();
+  // AFTER the exit: the Studio or the map sets its own status line, which would otherwise hide this one (TUN-135 review).
+  if(refused) setStatus("That name could not be saved — your song is safe under the name it has.");
 }
 document.getElementById("finNameBtn").onclick=()=>{
   const inp=document.getElementById("finName");
@@ -256,9 +263,10 @@ document.getElementById("finNameBtn").onclick=()=>{
   else questExplainRefusal(r.code);
 };
 document.getElementById("finStudio").onclick=()=>{
-  const run=isQuestScope() ? QUEST_RUNS[activeScope.runId] : null;
+  if(studioWaitsForSignIn()) return;   // the finale stays, its typed name with it (TUN-135)
+  const run=QUEST_RUNS[questFinaleRun!==null ? questFinaleRun : isQuestScope() ? activeScope.runId : null] || null;
   const v=run && run.artifact && run.versions[run.artifact.versionId];
-  const song=v ? jclone(v.song) : null;
+  const song=v ? jclone(v.song) : questFinaleSong ? jclone(questFinaleSong) : null;
   questFinaleLeave(()=>{ if(song) openStudioWith(song); else openStudio(); });
 };
 document.getElementById("finMap").onclick=()=>questFinaleLeave(()=>leaveQuest());

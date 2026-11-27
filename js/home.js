@@ -82,12 +82,18 @@ function enterStudio(discover){ if(authBusy) return false;   // as openPkg
   applyRegionInstrument("studio", discover);   // the Studio gifts the guitar on first visit — not on a link
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); return true; }
-// shared: from a link. A shared song whose Studio entry was refused lands nowhere — never in the level the
-// player is on, and never clearing its undo history — so a caller other than the boot (TUN-108's paste)
-// stays safe mid-sign-in. Ordinary callers keep their old behaviour (TUN-135).
+// shared: from a link. A song whose Studio entry was refused mid-sign-in lands nowhere — never in the level the
+// player is on, and never clearing its undo history — whoever opened it: a link (TUN-109), a saved melody, the
+// finale's or a quest's hand-off (TUN-135). false: refused, or nothing was cut; the callers that close what the
+// player is looking at first ask studioWaitsForSignIn before they do.
 function openStudioWith(song, shared){
-  if(shared===true){ if(!openSharedStudio()) return false; } else openStudio();
+  if(!(shared===true ? openSharedStudio() : enterStudio(true))) return false;
   const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
+// A sign-in is out (TUN-93), so the Studio can't be entered now: says so and answers true. Asked BEFORE a caller
+// hides its list or card, so a refused open leaves the player where they were, told why (TUN-135).
+const STUDIO_WAITS_FOR_SIGNIN="☁️ Still signing in. Try again in a moment.";
+// The toast rides above the overlays: the player is looking at Home, the Jukebox or a finale (TUN-135 review).
+function studioWaitsForSignIn(){ if(!authBusy) return false; toast(STUDIO_WAITS_FOR_SIGNIN, true); return true; }
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
 //   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.

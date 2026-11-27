@@ -7,7 +7,8 @@ function setStatusText(text){ statusEl.textContent=text; }
 // For a line that is markup around someone's text — a song title inside <b> — escape the text first.
 const escapeHtml=s=>String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 let toastT; const toastEl=document.createElement("div"); toastEl.className="toast"; document.body.appendChild(toastEl);
-function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
+// above: over the overlays too (.toast.above), for a word about the card the player is looking at (TUN-135).
+function toast(msg, above){ toastEl.textContent=msg; toastEl.classList.toggle("above", above===true); toastEl.classList.add("show");
   clearTimeout(toastT); toastT=setTimeout(()=>toastEl.classList.remove("show"),2600); }
 function confetti(){ const colors=["#F4C95D","#44A35F","#F28C8C","#5AA9E6","#8A6FE8"];
   for(let i=0;i<48;i++){ const d=document.createElement("div"); d.className="confetti";

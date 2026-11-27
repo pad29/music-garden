@@ -2,8 +2,9 @@ import assert from "node:assert";
 import { loadQuestGame, completeDealtSong, continueQuest } from "./quest-fixtures.mjs";
 
 export const clone = x => JSON.parse(JSON.stringify(x));
-export function launch(t, questId="firefly-crossing") {
-  const g=loadQuestGame({fresh:true});
+// opts: more loadGame options — a test's own elements, to catch a handler the game assigns at load (TUN-135).
+export function launch(t, questId="firefly-crossing", opts={}) {
+  const g=loadQuestGame({fresh:true, ...opts});
   t.after(()=>{ if(g.playing)g.stop(); clearTimeout(g.autosaveT); });
   const begun=g.startQuestRun(questId); assert.strictEqual(begun.ok,true,begun.code);
   const id=begun.runId, def=g.QUEST_DEFINITIONS[questId], run=()=>g.QUEST_RUNS[id];
@@ -18,8 +19,8 @@ export function launch(t, questId="firefly-crossing") {
   };
   return {g,id,def,run,receipt,ready};
 }
-export function compare(t,questId) {
-  const f=launch(t,questId);
+export function compare(t,questId,opts) {
+  const f=launch(t,questId,opts);
   for(const phase of [0,1]) { f.ready(); assert.strictEqual(continueQuest(f.g).ok,true); }
   // Transport is a boundary spy here: fixtures issue receipts explicitly, never synthesize audio.
   f.g.start=()=>{};
@@ -29,8 +30,8 @@ export function compare(t,questId) {
   }
   return f;
 }
-export function completed(t,questId) {
-  const f=compare(t,questId), result=f.g.performQuestAction("offer");
+export function completed(t,questId,opts) {
+  const f=compare(t,questId,opts), result=f.g.performQuestAction("offer");
   assert.strictEqual(result.ok,true,result.code);
   return {...f,result};
 }

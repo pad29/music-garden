@@ -212,7 +212,12 @@ const congratsoverlay=document.getElementById("congratsoverlay");
 const rewardOverlayUp = () => powoverlay.style.display==="flex" || congratsoverlay.style.display==="flex";
 function newlyUnlocked(pkgId){ return Object.keys(PACKAGES).filter(id => id!==pkgId
   && (PACKAGES[id].requires||[]).flat().includes(pkgId) && isPkgUnlocked(id) && !pkgProg(id).completed); }
-function showCongrats(pkgId, finalPower){
+// The finale's creation, held only when a sign-in's pull is about to redraw the game under the card (applyProgress
+// calls holdFinaleSongs): 🎵 Studio must still carry the finale's song, not the account's level (TUN-135 review).
+// Until then the live field is the song — what the player changed with the card up (the Tempo) included.
+let congratsSong=null;
+function holdCongratsSong(){ if(congratsSong===null && congratsoverlay.style.display!=="none") congratsSong=currentSong(); }
+function showCongrats(pkgId, finalPower){ congratsSong=null;
   document.getElementById("congratsEm").textContent=(finalPower&&finalPower.em)||"🎉";
   document.getElementById("congratsName").textContent="You completed "+PACKAGES[pkgId].name+"!";
   const u=newlyUnlocked(pkgId);
@@ -226,7 +231,8 @@ function dismissCongrats(goHome){ congratsoverlay.style.display="none";
 document.getElementById("congratsHome").onclick=()=>dismissCongrats(true);
 document.getElementById("congratsStay").onclick=()=>dismissCongrats(false);
 // carry this finale's creation straight into the Studio (widest unlocked palette)
-document.getElementById("congratsStudio").onclick=()=>{ const s=currentSong();
+document.getElementById("congratsStudio").onclick=()=>{ if(studioWaitsForSignIn()) return;   // the card stays (TUN-135)
+  const s=congratsSong||currentSong(); congratsSong=null;
   congratsoverlay.style.display="none"; pendingEvolve=false; openStudioWith(s); };
 congratsoverlay.onclick=e=>{ if(e.target===congratsoverlay) dismissCongrats(false); };
 
