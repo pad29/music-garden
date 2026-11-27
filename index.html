@@ -397,6 +397,7 @@
     background:var(--gold); color:var(--soil); font-weight:700; padding:16px 26px; border-radius:14px;
     box-shadow:0 12px 34px rgba(62,58,57,.30); opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
     font-size:1.1rem; text-align:center; font-family:var(--font-display); font-weight:500;}
+  .toast.above{ z-index:75; }   /* over Home, the Jukebox and the finales (70), under a map tip (80) and the garden card (90) */
   .toast.show{ opacity:1; transform:translate(-50%,0); }
   .overlay{ position:fixed; inset:0; background:rgba(62,58,57,.42); display:flex; align-items:center; justify-content:center; z-index:70;}
   .mpanel{ width:340px; max-width:90vw; max-height:75vh; overflow:auto;}

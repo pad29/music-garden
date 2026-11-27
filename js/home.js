@@ -92,7 +92,8 @@ function openStudioWith(song, shared){
 // A sign-in is out (TUN-93), so the Studio can't be entered now: says so and answers true. Asked BEFORE a caller
 // hides its list or card, so a refused open leaves the player where they were, told why (TUN-135).
 const STUDIO_WAITS_FOR_SIGNIN="☁️ Still signing in. Try again in a moment.";
-function studioWaitsForSignIn(){ if(!authBusy) return false; toast(STUDIO_WAITS_FOR_SIGNIN); return true; }
+// The toast rides above the overlays: the player is looking at Home, the Jukebox or a finale (TUN-135 review).
+function studioWaitsForSignIn(){ if(!authBusy) return false; toast(STUDIO_WAITS_FOR_SIGNIN, true); return true; }
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
 //   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.
