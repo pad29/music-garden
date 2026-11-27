@@ -34,11 +34,15 @@ function syncCellDOM(){   // repaint .on from the projection without rebuilding 
   renderVines();
 }
 function trayCommitDone(msg){ clearGhosts(); syncCellDOM(); trayPaint(); ev.played=false; checkLevel(); if(msg) setStatus(msg); }
-function enterTray(){ if(trayMode) return; trayMode=true; initAudio(); actx.resume();
+// Refused while a vine pull owns its grip (TUN-16): arming repaints through trayPaint → renderVines, which would
+// destroy the grip holding pointer capture mid-drag — the release then misses #vines and the pull never ends.
+// Returns whether the Scoop is armed, so Fuse's "scoop the seeds" line is only said when it is.
+function enterTray(){ if(trayMode) return true; if(pull) return false; trayMode=true; initAudio(); actx.resume();
   activeTool=null; renderBag();
   trayBtn.classList.add("on"); trayBtn.textContent="✕ Done"; document.body.classList.add("scooping");
   gridEl.classList.add("traymode"); trackEl.classList.add("traymode"); scroller.style.touchAction="none";
   trayPaint(); setStatus("🧺 <b>Scoop</b>: drag a box around seeds to pick them up — then drag the pick to move it, ⧉ Copy, 🗑 Dig up, or 🔨 Fuse it.");
+  return true;
 }
 function exitTray(){ if(!trayMode) return; trayMode=false; traySel=[]; trayDrag=null; trayPlace=null; trayPtrs.clear();
   clearGhosts(); document.querySelectorAll(".cell.tsel").forEach(e=>e.classList.remove("tsel"));

@@ -296,6 +296,9 @@ function renderVines(){ if(!vinesEl) return; vinesEl.innerHTML="";
       s.style.left=stemLeft(c)+"px";                                // starts inside the seed's right edge, so it reads as growing OUT of it
       s.style.top=stemTop(r)+"px"; s.style.width=stemW(L)+"px";
       vinesEl.appendChild(s); }
-    if(grow && !choiceUp()){ const g=document.createElement("div"); g.className="grip"; g.dataset.id=n.id;   // a picker's demo is to be HEARD, not edited
+    // No grip while the Scoop is armed: growOn() refuses the drag then, and a grip that looks pullable and isn't
+    // is a lie (TUN-16). enterTray/exitTray both re-render AFTER flipping trayMode, so ✕ Done brings them back.
+    // Stems (and their .tsel) stay — they are how a pick of vines is visible.
+    if(grow && !trayMode && !choiceUp()){ const g=document.createElement("div"); g.className="grip"; g.dataset.id=n.id;   // a picker's demo is to be HEARD, not edited
       g.style.left=gripLeft(c,L)+"px"; g.style.top=(TRAY_PAD+r*TRAY_CH)+"px";
       vinesEl.appendChild(g); } } }
