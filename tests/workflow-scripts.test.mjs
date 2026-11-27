@@ -835,6 +835,129 @@ test("injection check: a failed or partial fetch, or a page that is not the game
   } finally { sb.cleanup(); }
 });
 
+// --- README § Deployment's check of the cache headers the custom domains send (TUN-134) ---
+// The block is run as README prints it, with `curl` replaced by a shell function that logs each
+// call's arguments, prints the header fixture for the URL it was asked for (h.<key>, the URL with
+// every other character than a letter or digit turned into _) and exits with that URL's code
+// (x.<key>, else $FAKE_CURL_EXIT). No network.
+
+const cacheCheck = (() => {
+  const doc = readFileSync(join(root, "README.md"), "utf8").replace(/\r\n/g, "\n");
+  const m = doc.match(/\*\*To check the cache headers from a terminal\*\*[^\n]*\n\n```sh\n([\s\S]*?)```/);
+  assert.ok(m, "README § Deployment holds the cache-header check");
+  return m[1];
+})();
+const cacheHosts = (cacheCheck.match(/for h in ([^;]+);/) || [, ""])[1].trim().split(/\s+/);
+const cachePairs = [...cacheCheck.matchAll(/"(\/[^"|]*)\|([^"]*)"/g)].map(m => ({ path: m[1], want: m[2] }));
+const urlKey = u => u.replace(/[^A-Za-z0-9]/g, "_");
+
+const FAKE_CURL_HEAD = `curl() {
+  printf '%s\n' "$@" "--end-of-call--" >> "$FAKE_STATE/curl-args"
+  # only the arguments README uses: -fsSI and one https:// URL; anything else is refused, exit 2
+  _fu=""; for _fa in "$@"; do
+    case "$_fa" in
+      -fsSI) ;;
+      https://*) [ -z "$_fu" ] || { echo "fake curl: two URLs" >&2; return 2; }; _fu=$_fa ;;
+      *) echo "fake curl: unsupported argument $_fa" >&2; return 2 ;;
+    esac
+  done
+  [ -n "$_fu" ] || { echo "fake curl: no URL specified" >&2; return 2; }
+  _fk=$(printf '%s' "$_fu" | tr -c 'A-Za-z0-9' '_')
+  if [ -e "$FAKE_STATE/x.$_fk" ]; then return "$(cat "$FAKE_STATE/x.$_fk")"; fi
+  [ "\${FAKE_CURL_EXIT:-0}" = 0 ] || return "$FAKE_CURL_EXIT"
+  [ -e "$FAKE_STATE/h.$_fk" ] || { echo "fake curl: no fixture for $_fu" >&2; return 7; }
+  cat "$FAKE_STATE/h.$_fk"
+}
+`;
+
+// An HTTP/2 response's headers as curl -I prints them: lower-case names, CRLF line ends.
+const headResponse = cacheControls => ["HTTP/2 200", "content-type: text/javascript",
+  ...cacheControls.map(v => "cache-control: " + v), "x-content-type-options: nosniff", "", ""].join("\r\n");
+
+// over: { "<url>": { cc: [values], exit } } replaces the response _headers would give for that URL.
+function runCacheCheck(sb, over = {}, curlExit = 0) {
+  for (const f of readdirSync(sb.state)) rmSync(join(sb.state, f), { force: true });
+  for (const h of cacheHosts) for (const { path, want } of cachePairs) {
+    const u = "https://" + h + path, o = over[u] || {};
+    writeFileSync(join(sb.state, "h." + urlKey(u)), headResponse(o.cc || [want]));
+    if (o.exit !== undefined) writeFileSync(join(sb.state, "x." + urlKey(u)), String(o.exit));
+  }
+  const r = spawnSync(bash, ["-c", PRELUDE + FAKE_CURL_HEAD + cacheCheck],
+    { env: { ...sb.env, FAKE_CURL_EXIT: String(curlExit) }, encoding: "utf8" });
+  const log = existsSync(join(sb.state, "curl-args")) ? readFileSync(join(sb.state, "curl-args"), "utf8") : "";
+  const calls = log.split("--end-of-call--\n").filter(Boolean).map(c => c.replace(/\n$/, "").split("\n"));
+  return { code: r.status, lines: r.stdout.trim().split("\n"), err: r.stderr, calls };
+}
+
+// The Cache-Control values _headers gives a path: every rule whose pattern matches it (`*` = the rest).
+function headersCacheControl(path) {
+  const rules = [];
+  for (const line of readFileSync(join(root, "_headers"), "utf8").split(/\r?\n/)) {
+    if (/^\//.test(line)) rules.push({ pattern: line.trim(), cc: [] });
+    else if (/^\s+Cache-Control:/i.test(line) && rules.length) rules.at(-1).cc.push(line.replace(/^\s+Cache-Control:\s*/i, "").trim());
+  }
+  const matches = p => p.endsWith("*") ? path.startsWith(p.slice(0, -1)) : path === p;
+  return { rules, values: rules.filter(r => matches(r.pattern)).flatMap(r => r.cc) };
+}
+
+test("cache check: asks both custom domains, for files that exist, expecting what _headers sets for each", () => {
+  assert.deepStrictEqual(cacheHosts, ["tunegarden.game", "www.tunegarden.game"]);
+  assert.ok(cachePairs.some(p => p.path === "/"), "the page is checked");
+  for (const { path, want } of cachePairs) {
+    const file = path === "/" ? "index.html" : path.slice(1);
+    assert.ok(existsSync(join(root, file)), `${path}: ${file} is in the repository, so the domain serves it, not the index.html fallback`);
+    assert.deepStrictEqual(headersCacheControl(path).values, [want], `${path}: the check expects what _headers sets`);
+  }
+  // every folder's cache rule (/<folder>/*) has a file in the check, so a new folder rule earns a line
+  for (const { pattern, cc } of headersCacheControl("/").rules.filter(r => /^\/[^/*]+\/\*$/.test(r.pattern) && r.cc.length))
+    assert.ok(cachePairs.some(p => p.path.startsWith(pattern.slice(0, -1))), `${pattern} has a file in the check (${cc})`);
+});
+
+test("cache check: headers as _headers sets them read ok, each URL fetched once with -fsSI", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const res = runCacheCheck(sb);
+    const urls = cacheHosts.flatMap(h => cachePairs.map(p => "https://" + h + p.path));
+    assert.strictEqual(res.code, 0, res.err);
+    assert.deepStrictEqual(res.lines.map(l => l.split(":")[0]), urls.map(() => "ok"), res.lines.join("\n") + res.err);
+    assert.deepStrictEqual(res.lines[0], "ok: https://tunegarden.game/ (Cache-Control: public, max-age=0, must-revalidate)");
+    assert.deepStrictEqual(res.calls, urls.map(u => ["-fsSI", u]));
+  } finally { sb.cleanup(); }
+});
+
+test("cache check: Cloudflare's 4-hour Browser Cache TTL, no header, or two headers read WRONG and say what came", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const js = "https://tunegarden.game/js/cloud.js", voice = "https://www.tunegarden.game/voice/108fedab.mp3",
+      vendor = "https://www.tunegarden.game/vendor/cognito/amazon-cognito-identity.min.js";
+    const res = runCacheCheck(sb, {
+      [js]: { cc: ["public, max-age=14400, must-revalidate"] },
+      [voice]: { cc: [] },
+      [vendor]: { cc: ["public, max-age=0, must-revalidate", "public, max-age=14400"] },
+    });
+    const line = u => res.lines.find(l => l.includes(" " + u + " "));
+    assert.strictEqual(line(js), `WRONG: ${js} (Cache-Control: public, max-age=14400, must-revalidate)`);
+    assert.strictEqual(line(voice), `WRONG: ${voice} (Cache-Control: none)`);
+    assert.strictEqual(line(vendor), `WRONG: ${vendor} (Cache-Control: public, max-age=0, must-revalidate;public, max-age=14400)`);
+    assert.strictEqual(res.lines.filter(l => l.startsWith("ok:")).length, res.lines.length - 3, res.lines.join("\n"));
+  } finally { sb.cleanup(); }
+});
+
+test("cache check: a failed fetch reads FAILED, never ok, and only for its own URL", { skip }, () => {
+  const sb = sandbox();
+  try {
+    // an HTTP error with -f (22), no connection (6), a transfer cut off (18)
+    for (const code of [22, 6, 18]) {
+      const res = runCacheCheck(sb, {}, code);
+      assert.ok(res.lines.length === cacheHosts.length * cachePairs.length && res.lines.every(l => l.startsWith("FAILED: ")),
+        `curl exit ${code}: ${res.lines.join("\n")}`);
+    }
+    const u = "https://www.tunegarden.game/samples/glockenspiel.js";
+    const one = runCacheCheck(sb, { [u]: { exit: 22 } });
+    assert.deepStrictEqual(one.lines.filter(l => !l.startsWith("ok:")), [`FAILED: ${u} (the fetch did not complete)`]);
+  } finally { sb.cleanup(); }
+});
+
 // --- the GPT model: one id, named in CLAUDE.md § Calling GPT, and every command in the docs uses it ---
 
 test("every GPT command in the docs goes through ask.sh, read-only but for L's test pass, and it and the reviewer setting name the model CLAUDE.md § Calling GPT names", () => {
