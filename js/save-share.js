@@ -178,10 +178,11 @@ saveBtn.onclick=()=>{ const n=(prompt("Name your melody:","My melody")||"").trim
   const a=getSaves(); a.unshift(s); setSaves(a); toast("💾 Saved to My Melodies!"); };
 const overlay=document.getElementById("moverlay"), mlist=document.getElementById("mlist");
 function mkBtn(t,fn){ const b=document.createElement("button"); b.className="secondary"; b.textContent=t; b.onclick=fn; return b; }
-function loadSong(s){ overlay.style.display="none"; const cut=openStudioWith(s);
+// null: refused while a sign-in is out (TUN-135). The list stays open and nothing on screen changes.
+function loadSong(s){ if(studioWaitsForSignIn()) return null; overlay.style.display="none"; const cut=openStudioWith(s);
   setStatus("Loaded into the Studio — press <b>▶ Play</b>!"+(cut?SONG_CUT_NOTE:"")); return cut; }
 // A title is the player's (or a stranger's) text: it reaches setStatus's markup only escaped (TUN-84).
-function playSong(s){ const cut=loadSong(s); start();                          // jukebox: land in the Studio AND start looping it right away
+function playSong(s){ const cut=loadSong(s); if(cut===null) return; start();                          // jukebox: land in the Studio AND start looping it right away
   if(s.meta&&s.meta.title) setStatus("🎵 Now playing: <b>"+escapeHtml(s.meta.title)+"</b> — tinker freely, or press ■ to stop."+(cut?SONG_CUT_NOTE:"")); }
 function mhint(text,top){ const e=document.createElement("div"); e.className="hint"; if(top) e.style.marginTop="10px"; e.textContent=text; return e; }
 // --- Jukebox built-ins: the famous examples that are complete enough to "collect" as songs. (The thin teaching

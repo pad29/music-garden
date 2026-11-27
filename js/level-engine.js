@@ -226,7 +226,8 @@ function dismissCongrats(goHome){ congratsoverlay.style.display="none";
 document.getElementById("congratsHome").onclick=()=>dismissCongrats(true);
 document.getElementById("congratsStay").onclick=()=>dismissCongrats(false);
 // carry this finale's creation straight into the Studio (widest unlocked palette)
-document.getElementById("congratsStudio").onclick=()=>{ const s=currentSong();
+document.getElementById("congratsStudio").onclick=()=>{ if(studioWaitsForSignIn()) return;   // the card stays (TUN-135)
+  const s=currentSong();
   congratsoverlay.style.display="none"; pendingEvolve=false; openStudioWith(s); };
 congratsoverlay.onclick=e=>{ if(e.target===congratsoverlay) dismissCongrats(false); };
 

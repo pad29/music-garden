@@ -256,6 +256,7 @@ document.getElementById("finNameBtn").onclick=()=>{
   else questExplainRefusal(r.code);
 };
 document.getElementById("finStudio").onclick=()=>{
+  if(studioWaitsForSignIn()) return;   // the finale stays, its typed name with it (TUN-135)
   const run=isQuestScope() ? QUEST_RUNS[activeScope.runId] : null;
   const v=run && run.artifact && run.versions[run.artifact.versionId];
   const song=v ? jclone(v.song) : null;
