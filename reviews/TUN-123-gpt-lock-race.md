@@ -116,10 +116,22 @@ the regular file the lock uses; nothing ever makes `owner` a FIFO or device but 
   gone, directory left) and a successor claim present before recovery. Both fail on `e047c66`.
 - *A claim that cannot be created removes nothing* (read-only directory standing for another
   session's, not yet claimed): exit 1, the directory intact, still *writing its claim*, not this
-  session's to release. Fails on `e047c66` (its `rm -rf` removed the directory). Linux/macOS only.
+  session's to release. Linux/macOS only, so not run against `e047c66`: by reading, its `rmdir` (and
+  `origin/main`'s `rm -rf`) removes that empty directory, which the test asserts is still there.
 - *A claim created but not written*: `owner` a symlink to `/dev/full`, so it opens and takes no bytes
   — `acquire` and `wait` exit 1, no `[GPT]` rename, the lock free, a fresh session acquires.
   Linux/macOS only. The partial-claim variant (`"<session> "` written, then failure) runs the same
   branch — any failed write removes the claim, whatever it holds — and can't be staged.
 - **Not added:** forcing a hand-off *between* the two claim reads of finding 4. There is now one
   read, so there is no "between"; staging it would need a hook inside the script.
+
+## Tests
+
+- CI (`ubuntu-26.04`), head `5decc25`: 1264/1265, one skipped (the Windows-only busy-directory
+  release) — with the many-at-once test at 200 rounds and the fake-`mkdir` test's concurrent part at
+  200 rounds, every round passing. Without the fix (head `ffe99e4`, run 46045638364): 3 failed.
+- Git Bash on Windows: the gpt-lock tests, 12/14 with the two Linux-only ones skipped; both release-race
+  tests fail on `e047c66`. The many-round Windows loop's result is on PR #190.
+- Not verified: the Linux-only read-only-directory test against the old script (by reading only); a
+  partial claim write; a hand-off between two claim reads (there is no longer a second read).
+- Second GPT round: not run — it needs the owner's yes (the task's rule for a Blocker or High).
