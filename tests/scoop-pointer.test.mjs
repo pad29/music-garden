@@ -217,3 +217,25 @@ test("a second finger's lost capture ends the two-finger pan, and the first fing
   assert.strictEqual(g.camBusy(), false);
   assert.strictEqual(g.trayMode, true);
 });
+
+test("a move cut off by the release puts nothing down, and its late pointerup moves nothing", () => {
+  const { g, win, track } = boot();
+  for (let c = 0; c < 3; c++) g.modelSetCell(g.ROWS - 1 - c, c, true);
+  g.enterTray();
+  const n = g.melTrack().notes[0];
+  const at = g.trayCellOf(n);
+  g.traySel = [n.id];
+  const px = (q) => ptr(5, g.TRAY_PAD + (q.c + 0.5) * g.TRAY_CW, g.TRAY_PAD + (q.r + 0.5) * g.TRAY_CH);
+  const before = JSON.stringify(g.melTrack().notes);
+  track.emit("pointerdown", px(at));
+  assert.strictEqual(g.trayDrag && g.trayDrag.mode, "move", "a press on the pick starts a move");
+  track.emit("pointermove", px({ r: at.r, c: at.c + 4 }));
+  assert.deepStrictEqual([g.trayDrag.d.r, g.trayDrag.d.c], [0, 4], "the move is four columns right, in flight");
+  win.emit("blur");
+  assert.strictEqual(g.trayDrag, null);
+  assert.strictEqual(g.trayGhosts.length, 0, "the move's ghosts are cleared");
+  assert.strictEqual(g.camBusy(), false);
+  track.emit("pointerup", px({ r: at.r, c: at.c + 4 }));
+  assert.strictEqual(JSON.stringify(g.melTrack().notes), before, "no seed moved");
+  assert.deepStrictEqual([...g.traySel], [n.id], "and the pick is still held");
+});

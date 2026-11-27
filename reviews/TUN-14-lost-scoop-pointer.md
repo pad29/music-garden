@@ -31,4 +31,6 @@ Branch `ao/scoop-pointer/root` · Size S · AO session `music-garden-58`
 - **Checked the tests bite:** with the fix reverted, 8 of the 12 fail (the 4 that pass are the "does
   nothing" cases, and `resetTransient`, which `exitTray()` already covered); dropping the
   `lostpointercapture` guard fails the foreign-pointer test; a release that clears the set but not the
-  gesture fails 6.
+  gesture fails 6; one that clears `trayDrag` but leaves the marquee box and the move ghosts fails 5.
+- **Added while waiting for GPT:** an interrupted move — the late `pointerup` moves no seed, the ghosts are
+  cleared, the pick is kept (13 tests).
