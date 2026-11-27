@@ -43,12 +43,12 @@ renderBag(); buildDrums(); renderLevel(); updateTitle();   // renderLevel syncs 
   const inline=(location.hash||"").match(/(?:^#|&)s=([^&]*)/);
   if(inline){ const s=decodeSong(inline[1]);   // null: empty, too long to read (SHARE_IN_MAX), or not a v3 song
     if(!s){ toast(SONG_LINK_FAILED); return; }
-    const cut=openStudioWith(s);
+    const cut=openStudioWith(s, true);   // shared: no instrument discovery card (TUN-109)
     setStatus("🎵 A melody from a friend — press <b>▶ Play</b> to listen, then remix it!"+(cut?SONG_CUT_NOTE:"")); toast("🎵 A melody from a friend!"); return; }
   const cloud=(location.hash||"").match(/(?:^#|&)song=([^&]*)/);
   if(cloud){ let id=""; try{ id=decodeURIComponent(cloud[1]); }catch(e){}   // #song=% must not throw the boot away
     if(!id){ toast(SONG_LINK_FAILED); return; }
-    openStudio(); const tok=songLoadToken;
+    openSharedStudio(); const tok=songLoadToken;   // no instrument discovery card (TUN-109)
     cloudSongGet(id).then(res=>{
       // The player can walk into a package while this request is still in flight, and renderLevel bumps
       // the token on every entry. Landing a stranger's song — and now its BARS — in the level they chose

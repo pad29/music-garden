@@ -69,14 +69,20 @@ function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull w
   applyRegionInstrument(regionOf(id));   // region default voice + first-visit discovery card (before renderLevel so the card's narration wins)
   renderLevel(); }
 // Open the free-play Studio (widest unlocked palette, every tool on). finaleQuiet suppresses the package-complete congrats.
-function openStudio(){ if(authBusy) return;   // as openPkg
+// openStudio takes no arguments: ▶ Open Studio hands it a click event.
+function openStudio(){ enterStudio(true); }
+// A shared-song link (#s= / #song=) opens the Studio in its usual voice but WITHOUT the guitar's gift or its
+// discovery card (TUN-109): the visitor came to hear a song, not to meet an instrument the song may not use.
+function openSharedStudio(){ enterStudio(false); }
+function enterStudio(discover){ if(authBusy) return;   // as openPkg
   setPlayScope({kind:"studio"});
   narrateReady=true;   // deliberate entry into the studio
   leaveHome();
-  applyRegionInstrument("studio");   // the Studio gifts the guitar on first visit
+  applyRegionInstrument("studio", discover);   // the Studio gifts the guitar on first visit — not on a link
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
-function openStudioWith(song){ openStudio(); const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
+function openStudioWith(song, shared){ (shared===true ? openSharedStudio : openStudio)();   // shared: from a link
+  const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.
 //   ADD A PACKAGE  → nothing to do here: the region's land re-splits into one territory per package.

@@ -144,6 +144,10 @@ Save/share moves **out of package finales** into a first-class **Studio** reache
 - Full toolbox, drums, mixer, save/share — and the **widest palette the player has unlocked** (reads `progress.colors` / unlocked palettes).
 - Package free-play finales become a **"✨ Keep building in the Studio"** deep-link that hands their current content over pre-loaded (via the in-memory song seam, `finaleQuiet`-style entry).
 - This is what cleanly retires "diatonic = local-only": the Studio supports any unlocked palette and shares through the v3 format.
+- **A shared link (`#s=` / `#song=`) opens the Studio quietly** (TUN-109): `openSharedStudio()` sets the
+  Studio's guitar as the default voice but neither gifts it nor shows its discovery card, so a friend who
+  came to hear a song is not introduced to an instrument it may not use. The song's own voice then wins,
+  as always. The guitar's card comes on the visitor's first real ▶ Open Studio.
 
 ---
 
