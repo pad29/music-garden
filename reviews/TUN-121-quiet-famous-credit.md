@@ -29,6 +29,9 @@ S ticket that says "no new mechanism", and the credit's text is written to the s
 
 None asked: the ticket has no open questions and is not `needs-owner`.
 
+1. *The credit after Read aloud off-then-on: dropped, not queued after the story* — **accepted, no code change
+   wanted**: the owner, relayed by the orchestrator in the AO session, 2026-11-26.
+
 ## PR review (`gpt-6.2-astra`, `ask.sh` in place of AO's reviewer) — round 1, on `9a7786f`
 
 <details><summary>GPT's review, verbatim</summary>
