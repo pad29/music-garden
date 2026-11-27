@@ -191,7 +191,8 @@ function fuseField(){                              // Fuse pressed with no pick:
   if(cand.length===1 && colCount(cand[0])<=3){
     const c=cand[0], list=[]; for(let r=0;r<ROWS;r++) if(grid[r][c]) list.push({r,c});
     craftFromCells(list); return; }
-  enterTray(); setStatus("A few stacks here — 🧺 <b>scoop the 2–3 seeds</b> you want to bond, then press <b>🔨 Fuse</b>.");
+  if(!enterTray()) return;   // a vine pull owns the field — Fuse waits for the release
+  setStatus("A few stacks here — 🧺 <b>scoop the 2–3 seeds</b> you want to bond, then press <b>🔨 Fuse</b>.");
 }
 // A stamp is the WHOLE tool or nothing (TUN-15): a shape that doesn't fit used to be trimmed to
 // whatever rows were left — one seed, still "Stamped!", still a stamp goal. Each refusal names its wall

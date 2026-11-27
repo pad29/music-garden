@@ -104,12 +104,15 @@ function txLog(g) {
 
 function boot() {
   const vines = makeVines();
+  const doc = listenerBag();          // the one keydown ladder (js/playback.js) registers on document
+  const growBtn = keep(), trimBtn = keep();
   const body = new Proxy({ classList: classList(), style: {} }, { get: (o, p) => (p in o ? o[p] : noop()), set: () => true });
   const g = loadGame({
     fresh: true,
     elements: {
       vines,
-      trayBtn: keep(),            // the stub would swallow its onclick, and the test presses it
+      trayBtn: keep(),            // the stubs would swallow these onclicks, and the tests press them
+      growBtn, trimBtn,
       // A real, unzoomed 1000×600 field at the viewport's origin, so the pull's field coordinates are plain arithmetic.
       grid: new Proxy({ offsetWidth: 1000, getBoundingClientRect: () => ({ left: 0, top: 0, right: 1000, bottom: 600, width: 1000, height: 600 }) },
         { get: (o, p) => (p in o ? o[p] : noop()), set: () => true }),
@@ -117,11 +120,17 @@ function boot() {
     setup: (w) => {
       Object.defineProperty(w.document, "body", { value: body });
       Object.defineProperty(w.document, "createElement", { value: () => makeDiv() });
+      Object.defineProperty(w.document, "addEventListener", { value: doc.addEventListener });
+      Object.defineProperty(w.document, "removeEventListener", { value: doc.removeEventListener });
     },
   });
   g.openStudio();
-  return { g, vines, body };
+  return { g, vines, body, doc, growBtn, trimBtn };
 }
+
+const esc = (doc) => doc.emit("keydown", { key: "Escape", target: { tagName: "DIV" }, preventDefault() {} });
+const noteById = (g, id) => g.melTrack().notes.find((q) => q.id === id);   // undo swaps the doc's note objects
+const gripPtr = (grip, x) => ({ target: grip, pointerId: 1, clientX: x, clientY: 20, preventDefault() {}, stopPropagation() {} });
 
 const grips = (vines) => vines.children.filter((k) => k.className === "grip");
 const stems = (vines) => vines.children.filter((k) => k.className.split(" ").includes("stem"));
@@ -171,8 +180,37 @@ test("an edit while scooping re-renders the vines without grips", () => {
   const { g, vines } = boot();
   seedVine(g);
   g.enterTray();
-  g.setCell(g.ROWS - 3, 8, true);   // setCell is the edit path that re-renders the vines itself
-  assert.strictEqual(grips(vines).length, 0, "a re-render while armed still draws no grip");
+  assert.strictEqual(stems(vines).length, 1);
+  g.setCell(g.ROWS - 1, 0, false);  // dig up the vine: setCell re-renders the vines itself
+  assert.strictEqual(stems(vines).length, 0, "the re-render ran: the dug-up vine's stem is gone");
+  assert.strictEqual(grips(vines).length, 0, "and it drew no grip while armed");
+});
+
+test("Esc walks the ladder: the first drops the pick with no grip, the next leaves and brings them back", () => {
+  const { g, vines, doc } = boot();
+  const n = seedVine(g);
+  g.enterTray();
+  g.traySel = [n.id];
+  g.trayPaint();
+  esc(doc);
+  assert.strictEqual(g.trayMode, true, "the first Esc keeps the Scoop armed");
+  assert.strictEqual(stems(vines)[0].className, "stem", "the pick's highlight is gone");
+  assert.strictEqual(grips(vines).length, 0, "and no grip came back with it");
+  esc(doc);
+  assert.strictEqual(g.trayMode, false, "the second Esc leaves the Scoop");
+  assert.strictEqual(grips(vines).length, 2, "and the grips are back");
+});
+
+// The rule is !trayMode, not growOn(): a stamp is outside this ticket (reviews/TUN-16-hide-vine-grips.md).
+// TUN-137 hides the grips under a stamp too; when it lands, this test's last assertion flips with it.
+test("arming a stamp while scooping leaves the Scoop, and the grips follow trayMode, not the stamp", () => {
+  const { g, vines } = boot();
+  seedVine(g);
+  g.enterTray();
+  g.toggleStamp({ offs: [0, 4], midis: [60, 64] });
+  assert.ok(g.activeTool, "the stamp is armed");
+  assert.strictEqual(g.trayMode, false, "and arming it left the Scoop");
+  assert.strictEqual(grips(vines).length, 2, "the grips are drawn again: the rule is !trayMode alone");
 });
 
 test("✕ Done brings every grip back", () => {
@@ -204,31 +242,62 @@ test("a grip pull after ✕ Done still commits exactly one tx(\"grow\")", () => 
   const grip = grips(vines).find((k) => String(k.dataset.id) === String(n.id));
   assert.ok(grip, "the vine's grip is drawn again");
   const txs = txLog(g);
-  const ptr = (x) => ({ target: grip, pointerId: 1, clientX: x, clientY: 20, preventDefault() {}, stopPropagation() {} });
-  vines.emit("pointerdown", ptr(100));
+  vines.emit("pointerdown", gripPtr(grip, 100));
   assert.ok(g.pull, "the grip answers the press");
-  vines.emit("pointermove", ptr(100 + 2 * g.TRAY_CW));   // two steps longer: 3 → 5
-  vines.emit("pointerup", ptr(100 + 2 * g.TRAY_CW));
+  vines.emit("pointermove", gripPtr(grip, 100 + 2 * g.TRAY_CW));   // two steps longer: 3 → 5
+  vines.emit("pointerup", gripPtr(grip, 100 + 2 * g.TRAY_CW));
   assert.deepStrictEqual(txs, ["grow"], "exactly one transaction, and it is a grow");
   assert.strictEqual(n.durationTicks, 5 * g.TICKS_PER_COL, "the vine is two steps longer");
   assert.strictEqual(grips(vines).length, 2, "the release re-renders with its grips");
+  // The journal itself, not just the tx call: one undo must take back exactly the grow. Were no entry written,
+  // undo would take back the column-5 plant instead, to a state where the vine was still a single seed.
+  g.undoEdit();
+  assert.strictEqual(noteById(g, n.id).durationTicks, 3 * g.TICKS_PER_COL, "one undo restores the three-step vine");
+  assert.strictEqual(g.melTrack().notes.length, 2, "and nothing else");
 });
 
-test("Grow and Trim still work while the Scoop is armed, on the pick", () => {
+test("Scoop is refused while a grip is mid-pull; the pull ends cleanly, then the Scoop arms", () => {
   const { g, vines } = boot();
   const n = seedVine(g);
+  const grip = grips(vines).find((k) => String(k.dataset.id) === String(n.id));
+  vines.emit("pointerdown", gripPtr(grip, 100));
+  vines.emit("pointermove", gripPtr(grip, 100 + 2 * g.TRAY_CW));
+  g.trayBtn.onclick();                 // Enter on a focused Scoop button is this click, mid-drag
+  assert.strictEqual(g.enterTray(), false, "and every other way in (Fuse's) is refused too");
+  assert.strictEqual(g.trayMode, false, "the Scoop did not arm");
+  assert.strictEqual(grip.parentNode, vines, "the grip holding pointer capture was not re-rendered away");
+  assert.ok(g.pull, "the pull is still live");
+  vines.emit("pointerup", gripPtr(grip, 100 + 2 * g.TRAY_CW));
+  assert.strictEqual(g.pull, null, "the release ends the pull");
+  g.undoEdit();
+  assert.strictEqual(noteById(g, n.id).durationTicks, 3 * g.TICKS_PER_COL, "and it was journalled as one grow");
+  g.redoEdit();
+  g.trayBtn.onclick();
+  assert.strictEqual(g.trayMode, true, "now the Scoop arms");
+  assert.strictEqual(grips(vines).length, 0, "with no grip");
+});
+
+test("Grow and Trim still work while the Scoop is armed, on the pick, not the cursor", () => {
+  const { g, vines, growBtn, trimBtn } = boot();
+  const n = seedVine(g);
+  const other = g.melTrack().notes.find((q) => g.noteCol(q) === 5);
+  g.pinCursor(5);               // the cursor on the OTHER seed, so acting on the cursor would show
   g.enterTray();
   g.traySel = [n.id];
   g.trayPaint();
   const txs = txLog(g);
-  g.growTrim(+1);               // what 🌿 Grow and the G key both call (#growBtn's handler is growTrim(+1))
-  assert.strictEqual(n.durationTicks, 4 * g.TICKS_PER_COL, "🌿 grows the picked vine while scooping");
-  g.growTrim(-1);               // ✂ Trim
-  assert.strictEqual(n.durationTicks, 3 * g.TICKS_PER_COL, "✂ trims it back");
+  const after = (what, len) => {
+    assert.strictEqual(noteById(g, n.id).durationTicks, len * g.TICKS_PER_COL, `${what}: the picked vine is ${len} steps`);
+    assert.strictEqual(noteById(g, other.id).durationTicks, g.TICKS_PER_COL, `${what}: the seed under the cursor is untouched`);
+    assert.strictEqual(stems(vines)[0].className, "stem tsel", `${what}: the pick still shows on its stem`);
+    assert.strictEqual(grips(vines).length, 0, `${what}: and its repaint draws no grip`);
+  };
+  growBtn.onclick();            // #growBtn's own handler
+  after("Grow", 4);
+  trimBtn.onclick();            // #trimBtn's
+  after("Trim", 3);
   assert.deepStrictEqual(txs, ["grow", "grow"], "one transaction per press");
   assert.strictEqual(g.trayMode, true, "the Scoop stays armed");
-  assert.strictEqual(stems(vines)[0].className, "stem tsel", "the pick still shows on its stem");
-  assert.strictEqual(grips(vines).length, 0, "and Grow's own repaint draws no grip");
 });
 
 test("a grip press while scooping is refused (growOn), as before", () => {
