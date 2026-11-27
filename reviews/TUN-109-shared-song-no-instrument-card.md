@@ -65,7 +65,7 @@ Syntax and all seven new tests passed. I did not run the full suite. The private
    `openStudioWith(song, true)` returns `false` without touching the field or its undo history when a
    pending sign-in refuses the entry. New test: *a shared song whose Studio entry is refused mid-sign-in
    lands nowhere*. The ordinary callers (`loadSong`, the finale's "Keep building", the quest finale)
-   already apply a song when the entry is refused — that predates this ticket, so it is filed to Backlog
+   already apply a song when the entry is refused — that predates this ticket, so it is filed to Backlog as TUN-135
    rather than changed here.
 2. **Low, stray lines — agreed, removed.**
 3. **Missing test, undiscovered author voice — added** (harp, both link types).

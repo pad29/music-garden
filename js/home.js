@@ -84,7 +84,7 @@ function enterStudio(discover){ if(authBusy) return false;   // as openPkg
   setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); return true; }
 // shared: from a link. A shared song whose Studio entry was refused lands nowhere — never in the level the
 // player is on, and never clearing its undo history — so a caller other than the boot (TUN-108's paste)
-// stays safe mid-sign-in. Ordinary callers keep their old behaviour (filed separately).
+// stays safe mid-sign-in. Ordinary callers keep their old behaviour (TUN-135).
 function openStudioWith(song, shared){
   if(shared===true){ if(!openSharedStudio()) return false; } else openStudio();
   const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
