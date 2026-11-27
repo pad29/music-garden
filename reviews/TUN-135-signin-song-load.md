@@ -1,6 +1,6 @@
 # TUN-135 — Don't load a song into the level on screen while a sign-in is still out
 
-Branch `ao/signin-song-load/root` · PR #194 · Size **S** (label and `## Size` agree)
+Branch `ao/signin-song-load/root` · PR #194 (draft, not to merge) · Size **S** (label and `## Size` agree)
 
 ## Plan (Claude)
 
@@ -172,6 +172,76 @@ My answers:
    a typed name; the song keeps its title, and the last status is the refusal.
 
 A fourth round would need the owner's yes.
+
+### Round 4 (`gpt-6.2-astra`, `ask.sh`, on `8bbf788`, the owner's yes, "merge only if clean") — changes requested
+
+<details><summary>GPT's findings, verbatim</summary>
+
+VERDICT: CHANGES REQUESTED
+
+1. **High — The quest finale can still open the wrong song and rename another saved melody.** I reproduced this with Firefly’s finale open during a successful sign-in and a Waking Woods run awaiting a save retry. Home’s **Try saving it again** completed Woods without calling `questShowFinale`. On the retained Firefly card, **Save this name** renamed the Woods melody and repainted the card as Woods. **Studio** then opened Firefly’s tracks. Map followed by a normally shown finale worked. Bind the name, rendered card, and Studio handoff to the same run. Test both saved titles by artifact ID and compare the opened tracks with the song on the visible card. [Home retry](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:42) · [Finale handlers](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:258)
+
+2. **High — Ordinary package replay can replace the congratulations song.** The reported Tempo regression is fixed. In the VM, 137 BPM survived boot’s resume and a second pull with the card open. A pull with the card hidden also left a later finale’s Tempo intact. But without any sign-in, I opened Home over the Shifting Shadows finale and chose **Replay**. Congratulations stayed up. Its **Studio** button opened the replay level’s three notes instead of the finale’s empty field. Add that navigation case and preserve the finale’s latest edits before replay replaces the field. [Package handoff](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/level-engine.js:235) · [Replay handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/home.js:307)
+
+3. **Medium — An untouched quest title now produces a false save error.** After a successful pull, I left the prefilled **The Firefly Crossing** alone and pressed **Studio**. The saved title was correct, yet the final status said it could not be saved. An explicit refusal is acceptable for a genuinely changed name. Test both cases against `getSaves()` and the final status. The current assertion reads `currentSong().meta.title`, which always serializes as `null`. [Exit handler](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/quest-shell.js:247) · [Title assertion](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/tests/signin-song-load.test.mjs:289)
+
+4. **Medium — Refusal readability remains a pre-merge check.** The inert exemption and stacking order address the identified visual causes. Browser access was unavailable, so the full sentence still needs a paint check when a pending cloud Load resolves over the garden card on desktop and phone, and over an overlapping desktop map tip. Excluding the toast from `inert` also leaves its announcement unverified because it sits outside the modal and has no live region. [Toast styling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/index.html:396) · [Modal handling](C:/Users/pavel/.ao/data/worktrees/music-garden/music-garden-62/js/garden-card.js:106)
+
+Reviewed `8bbf7889b4f5df4a2dc23d65f46852cae5aeb744`. Syntax and all 28 focused tests passed.
+
+</details>
+
+My answers. Per the owner, nothing was fixed after this round: the PR does not merge, and TUN-135 restarts
+from a design review.
+
+1. **High, the quest finale's name, repaint and Studio can belong to different runs — agreed, open.** Home's
+   *Try saving it again* completes another quest without `questShowFinale`. The retained card's *Save this name*
+   then acts on the active scope, the new run (`performQuestAction` reads `activeScope`), and the repaint
+   follows it, while 🎵 Studio reads `questFinaleRun`, the run the card was shown for. **On `main` too, in
+   part:** there the name and the repaint already follow the active run, and so does Studio. So `main` is
+   consistent with the repainted card, but hands over the wrong song for what the player first saw. The
+   mismatch between the card and the Studio comes from round 3's `questFinaleRun`.
+2. **High, Home → Replay under the congratulations card makes 🎵 Studio carry the replay level — agreed, open.
+   On `main` today**, with no sign-in: `main`'s `congratsStudio` reads `currentSong()` at the click, as this
+   branch does whenever no pull has happened. Nothing on this branch caused it; round 3 just didn't cover it.
+3. **Medium, an untouched prefilled title gives a false "could not be saved" after a pull — agreed, open.
+   Caused by this branch:** round 3 made the refusal the last status line, and `questFinaleLeave` sends
+   `name-song` for any non-empty box, the unchanged prefilled title included, which a pull has made refusable.
+   On `main` the same refusal was written, then overwritten by the Studio's line in the same click. The round-3
+   test reads `currentSong().meta.title`, which is always null; it should read `getSaves()`.
+4. **Medium, the refusal's rendered readability is still unverified — agreed, open.** The stacking (z 95) and
+   the inert exemption are in. Not done: a paint check over the garden card and a map tip, on desktop and
+   phone. AO's browser can't hold a sign-in open. And the toast has no live region, so a screen reader isn't
+   told of it.
+
+## Root cause, and where the design review should start
+
+The refusal itself — the ticket's *Done looks like* — holds on every caller, and four rounds found nothing
+wrong with it. Rounds 2–4 kept finding the same thing on the two **finale cards**: their buttons read
+whatever level or quest is live underneath them when pressed (`currentSong()`, `activeScope`), and both can
+change under a card that stays up. A sign-in's pull redraws the game. Home, opened over a card, can Replay a
+level or complete another quest. Patching one route at a time (a snapshot at show, then a hold at the pull,
+then the run id) only moved the gap.
+
+The design review should start from: **each finale card is bound to the run or field it was shown for** —
+its 🎵 Studio, its name box and Save, and its repaint — and decide what the card does when what it was shown
+for changes or disappears: close, hand over a copy, or refuse. Then test every way the live level or scope can
+change under it: a pull, Home → Replay, Home → another package, Home's save retry, a cleared run, a second
+finale. Much of this is on `main` today with no sign-in (round 4's finding 2, and the stale-song half of
+finding 1), so it may be its own ticket. It also decides whether rounds 2–3's holding code (`congratsSong` /
+`holdCongratsSong`, `questFinaleRun` / `questFinaleSong`, the `questFinaleLeave` status reorder) stays or
+goes.
+
+## Status
+
+**Not to merge.** Round 4, on `8bbf788`, asked for changes. The owner's rule was "merge only if clean".
+
+- **Fixed and tested on this branch:** the refusal on every caller. Its toast above everything on the page
+  (z 95), and not inert under the garden card. The cloud Load across its fetch. The round-2 and round-3
+  finale cases recorded above.
+- **Open:** round 4's findings 1–4.
+- **Deferred by the owner:** TUN-138 (a second toast can erase the refusal) and TUN-139 (the Studio opening
+  under the landing).
 
 ## Tests
 
