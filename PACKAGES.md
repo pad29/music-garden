@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `js/packages.js`. Keep it out of code.*
-Last updated: 2026-08-13 — **20 packages are BUILT** (the intro, every Wave A–C package, the ★ milestone and Wave D's `sun-and-moon-garden`; **Wave A, Stone Chorus Canyon and Wave C are COMPLETE**; Pulse Woods waits on its fifth package, `march-and-waltz`); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-08-13 — **20 packages are BUILT** (the intro, every Wave A–C package, the ★ milestone and Wave D's `sun-and-moon-garden`; **Wave A, Stone Chorus Canyon and Wave C are COMPLETE**; Pulse Woods waits on its fifth package, `march-and-waltz`); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs (all but two — §3 names them).
 
 ---
 
@@ -164,7 +164,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 6. The 24 packages — high-level specs
 
-> Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) specs come in the next pass for the first 8.
+> Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) as-built specs are in `PACKAGES-DETAILED.md` for every built expansion package except `two-new-colors` and `two-kinds-of-walking`, specified here (§3 says the same).
 
 ### REGION 1 — Paths of Song  *(cluster: voice · pentatonic)*
 
@@ -293,7 +293,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **World hook:** *(diegetic)* — the new "Color Spring" region; the world widens as each color is found.
 - **Sandbox:** each new note becomes placeable as it is revealed (locked rows un-dim one at a time).
 - **System needs (L) — built:** the **palette system** (§1a engine note) — a `PALETTES` table + `setPalette()` that swaps `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid per-package; the package runs on the new **14-row `diatonic`** palette. The staged gate is done via **per-level row-locking** (`colors:["F"]` → `["F","B"]`; `setColorReveal`/`isLockedRow` dim & block undiscovered notes) rather than a third palette. Detectors: `placedF`/`placedB`, `bThenC` (leading-tone pull), `craftedNewTriad` (a standing tower using F or B). Sets a persistent `progress.colors=["F","B"]` on completion (future sandbox reads it). The **phased transposition toggle is deferred** (shape-based default works unchanged on the diatonic grid); **no active rails** (dissonance is the lesson). Save/share does NOT support diatonic yet (see DESIGN §11/§12).
-- **9 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
+- **8 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
 - **Why:** unblocks Regions 4–7. Framed as wonder, introduced one note at a time so intuition never breaks.
 
 ### REGION 4 — Weather of Wanting  *(cluster: flow/home · diatonic)*
