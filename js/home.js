@@ -73,15 +73,20 @@ function openPkg(id,lvl){ if(authBusy) return;   // a sign-in is out: its pull w
 function openStudio(){ enterStudio(true); }
 // A shared-song link (#s= / #song=) opens the Studio in its usual voice but WITHOUT the guitar's gift or its
 // discovery card (TUN-109): the visitor came to hear a song, not to meet an instrument the song may not use.
-function openSharedStudio(){ enterStudio(false); }
-function enterStudio(discover){ if(authBusy) return;   // as openPkg
+// Returns whether the Studio opened: a pending sign-in refuses the entry (see enterStudio).
+function openSharedStudio(){ return enterStudio(false); }
+function enterStudio(discover){ if(authBusy) return false;   // as openPkg
   setPlayScope({kind:"studio"});
   narrateReady=true;   // deliberate entry into the studio
   leaveHome();
   applyRegionInstrument("studio", discover);   // the Studio gifts the guitar on first visit — not on a link
   finaleQuiet=true; renderLevel(); finaleQuiet=false;
-  setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); }
-function openStudioWith(song, shared){ (shared===true ? openSharedStudio : openStudio)();   // shared: from a link
+  setStatus("🎵 <b>Studio</b> — build anything, then 💾 Save or 🔗 Share it."); return true; }
+// shared: from a link. A shared song whose Studio entry was refused lands nowhere — never in the level the
+// player is on, and never clearing its undo history — so a caller other than the boot (TUN-108's paste)
+// stays safe mid-sign-in. Ordinary callers keep their old behaviour (filed separately).
+function openStudioWith(song, shared){
+  if(shared===true){ if(!openSharedStudio()) return false; } else openStudio();
   const cut=!!(song && applySong(song)); journalClear(); return cut; }   // cut: applySong left part of the song behind   // carry a finale's creation into the Studio; undo starts fresh from the loaded song
 // ---------- The continent: a fictional world map (the Home menu) ----------
 // Each region is a hand-drawn land (blob polygon); its packages get territories by auto-splitting the land.

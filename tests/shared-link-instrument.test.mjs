@@ -125,3 +125,52 @@ test("TUN-109: the ▶ Open Studio button's click event never makes it a quiet o
   assert.equal(b.cards(), 1);
   assert.ok(b.g.progress.instruments.includes("guitar"));
 });
+
+// ---------- TUN-109 PR review (gpt-6.2-astra): the missing tests it listed ----------
+
+// Fault caught: a regression that swaps any LOCKED author voice for the music box — the fixtures above
+// use the music box, which every fresh profile owns, so they could not tell.
+test("TUN-109 review: an undiscovered author voice (harp) plays through either link, still hidden and undiscovered", async () => {
+  const HARP = [3, "pentatonic", 16, 108, 0, "harp", [[60, 0]], []];
+  for (const hash of ["#s=" + ref.b64url(JSON.stringify(HARP)), "#song=harpfix"]) {
+    const b = boot({ hash, cloud: { id: "harpfix", song: ref.unpackSong(HARP) } });
+    for (let i = 0; i < 5; i++) await tick();
+    assert.equal(b.g.instrEl.value, "harp", `${hash}: the author's voice`);
+    assert.equal(b.g.instrEl.options.find(o => o.value === "harp").hidden, true, `${hash}: still hidden in the picker`);
+    assert.deepEqual([...b.g.progress.instruments], ["musicbox"], hash);
+    const saved = b.saved();
+    if (saved) assert.deepEqual(saved.instruments, ["musicbox"], `${hash}: nothing saved as discovered`);
+    assert.equal(b.cards(), 0, hash);
+    assert.deepEqual(b.clips, [], `${hash}: no narration`);
+    assert.deepEqual(b.spoken, [], hash);
+  }
+});
+
+// Fault caught: openStudioWith(song) turning every song-bearing entry quiet. The tests above enter the
+// Studio through openStudio() directly; a saved melody comes through loadSong → openStudioWith.
+test("TUN-109 review: loading a saved melody is a real Studio entry — the guitar card once, and saved", async () => {
+  const b = boot();
+  await tick();
+  b.g.loadSong(ref.unpackSong(PACKED));
+  assert.equal(b.cards(), 1, "the first song-bearing entry shows the card");
+  assert.ok(b.saved().instruments.includes("guitar"), "and the discovery is saved");
+  b.instroverlay.style.display = "none";
+  b.g.loadSong(ref.unpackSong(PACKED));
+  assert.equal(b.cards(), 1, "never twice");
+});
+
+// Fault caught: a shared song applied into whatever level is on screen, its undo history cleared, when a
+// pending sign-in refuses the Studio entry — the case TUN-108's paste handler could reach.
+test("TUN-109 review: a shared song whose Studio entry is refused mid-sign-in lands nowhere", async () => {
+  const b = boot();
+  await tick();
+  const before = JSON.stringify(b.g.currentSong().tracks);
+  let cleared = 0; const realClear = b.g.journalClear; b.g.journalClear = () => { cleared++; realClear(); };
+  b.g.authBusy = 1;
+  try { assert.equal(b.g.openStudioWith(ref.unpackSong(PACKED), true), false, "reports it did not open"); }
+  finally { b.g.authBusy = 0; b.g.journalClear = realClear; }
+  assert.equal(b.g.isStudioScope(), false, "the Studio did not open");
+  assert.equal(JSON.stringify(b.g.currentSong().tracks), before, "the level on screen is untouched");
+  assert.equal(cleared, 0, "its undo history is kept");
+  assert.equal(b.cards(), 0);
+});
