@@ -58,12 +58,14 @@ const instrUnlocked = id => Array.isArray(progress.instruments) && progress.inst
 // locked voices are hidden from the picker but stay settable by code — a shared song or old save
 // still PLAYS with its author's voice; discovery only gates what the player can browse.
 function refreshVoices(){ [...instrEl.options].forEach(o=>{ o.hidden=!instrUnlocked(o.value); }); }
-// entering a region: its instrument becomes the voice; first time ever → the discovery card
+// entering a region: its instrument becomes the voice; first time ever → the discovery card.
+// discover===false (a shared-song link opening the Studio, TUN-109) sets the voice ONLY: the visitor came to
+// hear a song, so nothing is gifted, saved or introduced — their first real entry still shows the card.
 const instroverlay=document.getElementById("instroverlay");
 const instrCardUp = () => instroverlay.style.display==="flex";
-function applyRegionInstrument(reg){
+function applyRegionInstrument(reg, discover=true){
   const inst=REGION_INSTR[reg]; if(!inst||!INSTR_INFO[inst]) return;
-  if(!instrUnlocked(inst)){
+  if(discover!==false && !instrUnlocked(inst)){
     progress.instruments.push(inst);
     commitProgress();                                         // persist even if no level gets saved this session
     refreshVoices(); showInstrCard(inst);
