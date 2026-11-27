@@ -245,8 +245,10 @@ the docs are what is tested — under Git Bash (or bash), with fake `ao`,
 `gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins, and its lock is
 really there (3 rounds locally, 200 on CI, `GPT_LOCK_ROUNDS` to override) — also with a fake `mkdir` that
 exits 0 on an existing directory, as Ubuntu 26.04's uutils `mkdir` can under a race (TUN-123), where the
-holder's claim is never overwritten or removed; a claim that can't be written is an error that leaves no
-lock; an empty claim reads as one still being written; a dead holder's lock
+holder's claim is never overwritten or removed; a claim that can't be created is an error that removes
+nothing, and one created but not written (a full disk) is an error that removes it again (both
+Linux/macOS only); a release never overwrites the claim of a session that took the lock meanwhile, even
+when its removal fails; an empty claim reads as one still being written; a dead holder's lock
 is never broken automatically, and `status`, a busy `acquire` and `wait` print the command that clears
 it by hand, which works; a lock it can't create, or (on Windows, where a busy directory can't be
 removed) can't release, is an error that keeps the holder's name on the lock, not "busy" or "released";

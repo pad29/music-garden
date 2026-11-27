@@ -39,36 +39,52 @@ display_name() {
     try{const s=(JSON.parse(d).data||[]).find(x=>x.id===process.argv[1]);console.log(s&&s.displayName||"")}catch(e){}})' "$1"
 }
 
-# Write my claim, only if there is none: noclobber (set -C) makes bash open the file with
+# claim: write my claim, only if there is none. noclobber (set -C) makes bash open the file with
 # O_CREAT|O_EXCL, so of any number of sessions claiming at once exactly one creates it.
-claim() { ( set -C; printf '%s %s\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock/owner" ) 2>/dev/null; }
+#   0  mine
+#   1  not created: another session's claim is there, or the file could not be made — nothing here is
+#      mine, so nothing is removed
+#   2  created but not written (a full disk): mine, so removed again, with the directory once empty
+claim() {
+  local made=
+  set -C
+  { made=1; printf '%s %s\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >&3; } 2>/dev/null 3>"$lock/owner"
+  local s=$?
+  set +C
+  [ $s -eq 0 ] && return 0
+  [ -n "$made" ] || return 1
+  rm -f "$lock/owner"; rmdir "$lock" 2>/dev/null; return 2
+}
 
-# The claim as written, for status and busy messages. Missing or still empty: being written.
-claim_text() { local c; c=$(cat "$lock/owner" 2>/dev/null); echo "${c:-a session still writing its claim}"; }
+# read_claim: the claim as written, and who it names, from one read, so a message never names two
+# sessions. A claim missing or still empty is one being written.
+read_claim() {
+  claim_text=$(cat "$lock/owner" 2>/dev/null); claimant=${claim_text%% *}
+  [ -n "$claim_text" ] || claim_text="a session still writing its claim"
+}
 
 try_acquire() {
   local err
   if err=$(mkdir "$lock" 2>&1) || { [ ! -e "$lock" ] && err=$(mkdir "$lock" 2>&1); }; then
-    if claim; then
-      local name; name=$(display_name "$me")
-      case "$name" in "[GPT]"*) name=${name#"[GPT] "} ;; esac
-      printf '%s' "$name" > "$lock/name"
-      ao session rename "$me" "[GPT] ${name:-$me}" >/dev/null 2>&1
-      echo "acquired"; return 0
-    fi
-    # Someone's claim is there: their mkdir exited 0 too — contention, below; nothing is removed. No
-    # claim: writing failed. rmdir removes the lock only while it is empty, so never a claimed one.
-    if [ ! -e "$lock/owner" ]; then
-      rmdir "$lock" 2>/dev/null; echo "error: could not write $lock/owner" >&2; return 1
-    fi
+    claim; case $? in
+      0) local name; name=$(display_name "$me")
+         case "$name" in "[GPT]"*) name=${name#"[GPT] "} ;; esac
+         printf '%s' "$name" > "$lock/name"
+         ao session rename "$me" "[GPT] ${name:-$me}" >/dev/null 2>&1
+         echo "acquired"; return 0 ;;
+      2) echo "error: could not write $lock/owner" >&2; return 1 ;;
+    esac
+    # Not created. With a claim there, another session's mkdir exited 0 too: contention, below. With
+    # none, the file could not be made — and the directory may be another session's, about to claim.
+    [ -e "$lock/owner" ] || { echo "error: could not write $lock/owner" >&2; return 1; }
   else
     # mkdir failed twice and there is still no lock: not contention, a filesystem error
     [ -e "$lock" ] || { echo "error: could not create $lock: $err" >&2; return 1; }
   fi
-  local h; h=$(holder)
-  if [ "$h" = "$me" ]; then echo "acquired (already yours)"; return 0; fi
-  echo "busy: held by $(claim_text)"
-  how_to_clear "$h"
+  local claim_text claimant; read_claim
+  if [ "$claimant" = "$me" ]; then echo "acquired (already yours)"; return 0; fi
+  echo "busy: held by $claim_text"
+  how_to_clear "$claimant"
   return 75
 }
 
@@ -87,17 +103,20 @@ case "${1:-}" in
     [ "$h" = "$me" ] || { echo "not yours: held by ${h:-nobody}"; exit 1; }
     name=$(cat "$lock/name" 2>/dev/null)
     ao session rename "$me" "${name:-$me}" >/dev/null 2>&1
-    if rm -rf "$lock" 2>/dev/null && [ ! -e "$lock" ]; then echo "released"
-    else
-      # rm -rf may have taken the owner file before failing on the directory: put the claim back, so
-      # the lock that is still there still names its holder
-      [ -d "$lock" ] && printf '%s %s\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock/owner" 2>/dev/null
-      echo "error: could not remove $lock; it is still held by $me" >&2; exit 1
-    fi ;;
+    # Once rm -rf has succeeded the lock is gone: whatever is there afterwards is the next holder's.
+    if rm -rf "$lock" 2>/dev/null; then echo "released"; exit 0; fi
+    # It failed (Windows won't remove a directory a process is in), perhaps after taking the owner file:
+    # put my claim back, only where no claim is — never over a session that has taken the lock since.
+    [ -d "$lock" ] && claim
+    read_claim
+    if [ "$claimant" = "$me" ]; then echo "error: could not remove $lock; it is still held by $me" >&2; exit 1; fi
+    if [ -n "$claimant" ]; then echo "released"; exit 0; fi
+    echo "error: could not remove $lock, nor put the claim back" >&2; how_to_clear "$me" >&2; exit 1 ;;
   status)
     if [ -d "$lock" ]; then
-      echo "held by $(claim_text)"
-      how_to_clear "$(holder)"
+      read_claim
+      echo "held by $claim_text"
+      how_to_clear "$claimant"
     else echo "free"; fi ;;
   *) echo "usage: gpt-lock.sh acquire|wait|release|status" >&2; exit 1 ;;
 esac
