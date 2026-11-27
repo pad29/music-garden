@@ -266,3 +266,63 @@ test("a signed-in reload: silent until the cloud answers, then the cloud level's
   assert.deepEqual(log.clips.map(c => c.src), [cloudStory(g)]);
   assert.deepEqual(log.spoken, []);
 });
+
+// ---- TUN-121: a famous tune's spoken credit. revealFamous books it to speak just after the tune's first play, so
+// Read aloud can change while the tune plays. Every timer is held here; the credit's is the last one revealFamous
+// books (the rest are the sweep's visual timers: the camera, the lit cells).
+function famousGame() {
+  const speak = { onclick: null, textContent: "", title: "", classList: { toggle() {} } };   // the 🔊 button
+  const { g, log } = game({ elements: { speak } });
+  g.voice = () => {};
+  const id = Object.keys(g.FAMOUS).find(k => g.famousOwner(k));
+  const owner = g.famousOwner(id);
+  g.openPkg(owner, g.PACKAGES[owner].levels.findIndex(l => l.famous === id));
+  g.speakOn = true; g.narrateReady = true;
+  const held = [], cams = [], realCam = g.camEnsure;
+  g.camEnsure = (...a) => { cams.push(a[0]); return realCam(...a); };
+  const reveal = () => {
+    log.clips.length = 0; log.spoken.length = 0;   // what opening the level read is not under test
+    g.__window.setTimeout = (fn, ms) => (held.push({ fn, ms }), held.length);
+    g.revealFamous(id);
+    assert.ok(held.length >= 2, "the sweep's timers and the credit's were booked");
+    const credit = held.at(-1), visual = held.slice(0, -1);
+    assert.deepEqual(log.clips, [], "nothing is read while the tune plays");
+    return { credit, visual };
+  };
+  const runVisual = visual => { for (const t of visual) t.fn(); };
+  return { g, log, speak, id, reveal, runVisual, cams };
+}
+
+test("a famous tune with Read aloud left on: its credit is read once, after the tune", () => {
+  const { g, log, id, reveal } = famousGame();
+  const { credit } = reveal();
+  credit.fn();
+  assert.deepEqual(log.clips.map(c => c.src), [clipOf(g, g.FAMOUS[id].credit)], "the credit, once");
+  assert.deepEqual(log.spoken, []);
+});
+
+test("Read aloud turned off while a famous tune plays: the credit is not read", async () => {
+  const { g, log, speak, reveal, runVisual, cams } = famousGame();
+  const { credit, visual } = reveal();
+  speak.onclick(); assert.equal(g.speakOn, false);
+  assert.equal(g.famousTimers.length, visual.length + 1, "the toggle cancels none of the tune's timers");
+  runVisual(visual); credit.fn(); await tick();
+  assert.deepEqual(log.clips, [], "no credit clip");
+  assert.deepEqual(log.spoken, [], "and no browser voice");
+  assert.ok(cams.length > 0, "the camera still followed the sweep");
+});
+
+test("Read aloud turned off and back on while a famous tune plays: the story it starts is not cut off by the credit", async () => {
+  const { g, log, speak, reveal, runVisual, cams } = famousGame();
+  const { credit, visual } = reveal();
+  speak.onclick(); speak.onclick(); assert.equal(g.speakOn, true);
+  const story = log.clips.at(-1);
+  assert.deepEqual(log.clips.map(c => c.src), [clipOf(g, g.curStage().intro)], "turning it on reads the level story");
+  story.start(); await tick();
+  runVisual(visual); credit.fn(); await tick();
+  assert.deepEqual(log.clips, [story], "the story stays the only clip");
+  assert.equal(g.curClip, story);
+  assert.equal(story.paused, false, "still sounding");
+  assert.deepEqual(log.spoken, []);
+  assert.ok(cams.length > 0, "the camera still followed the sweep");
+});
