@@ -201,3 +201,86 @@ the successor's claim inside the `rm` hook. The cut-short and still-being-writte
 after it — no outside command runs between them to hook (the claim's `date` runs only after the open
 succeeds); `cat`/`cut` wrappers for the two-read bug — the claim is now read once, by the `read`
 builtin.
+
+## PR review, round 3 (`gpt-6.2-astra`, `ask.sh` fresh read-only) — head `39a4600`
+
+The owner's yes (D8). The GPT lock taken with origin/main's script (`wait`), released after; exit 0. The prompt carried rounds 1 and 2 verbatim, what changed, and the delta `eb8c021..1ac8fc9`. Verdict: **Changes requested**.
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **Blocker — `.claude/gpt/gpt-lock.sh:115` — Two releases by the same session can delete a successor’s live lock.** Both releases can pass the ownership check at line 111 before either reaches `rm`. The first removes A’s lock, B acquires and starts work, then A’s delayed second `rm -rf` removes B’s lock. C can now acquire while B is running. This predates the round-2 delta and works with a correct `mkdir` on either platform. The destructive step needs to apply only to the claim that the release validated.
+
+2. **High — `.claude/gpt/gpt-lock.sh:118` — Failed-release recovery can claim a later session’s directory.** Start with the failed-removal handoff already modeled at `tests/workflow-scripts.test.mjs:217`. B acquires after A’s `rm` unlinks `owner`. Pause A before recovery, let B release, then let C create a fresh directory and pause before opening `owner`. A resumes and successfully writes **A’s** claim into **C’s** directory. C gets `busy`, and the lock again names A even though B already acquired and released it. Exclusive creation protects an existing file. Recovery also needs to establish that it is acting on the directory whose removal failed.
+
+3. **Medium — `.claude/gpt/gpt-lock.sh:85` — The retry still confuses contention and filesystem errors in both directions.** With an ordinary `mkdir`, B can create the directory and then fail to create `owner` with `ENOSPC`. The recursive call gets `EEXIST` on B’s empty directory and returns 75. `wait` can spend its entire budget on a write error. The read-only-directory test masks this path by making **every** `mkdir` return success. Conversely, two successive holders can each release between B’s lost exclusive open and line 84, making the second handoff exit 1 at line 86. Even with a correct `mkdir`, a single release between the existence checks at lines 72 and 90 can terminate `wait` with exit 1. The recursion is bounded and propagates its result without a second acquire or rename. The remaining defect is how it determines the reason for failure.
+
+4. **Medium — `.claude/gpt/gpt-lock.sh:122` — Release can report success after restoring its own claim.** Line 118 discards `claim`’s return value. For example, A can acquire normally, then release under `umask 0777`. If removal fails after unlinking `owner`, recovery can create a mode-`000` file and write A’s complete claim through the open descriptor. For an unprivileged user, `read_claim` then fails, `[ -e "$lock/owner" ]` succeeds, and A prints `released`. Other sessions remain blocked. Preserve the recovery result and distinguish a failed read from an observed successor writing its claim.
+
+Round 2 did fix the partial-ID case. The old writer supplied the terminating newline, and a CR in a CRLF record comes after the timestamp, outside the session ID. Line 33 checks for a space and a newline, so `"<session> \n"` also passes, but a truncated prefix of the normal record cannot supply that final newline. Removing only the failed writer’s regular file and leaving the directory for hand clearing is consistent with decision 9.
+
+**Missing tests**
+
+- Pause one A release after its ownership check, finish a second A release, and acquire as B. Resume the first release. Assert B’s exact claim survives and C receives 75.
+- Extend the partial-`rm` hook so B acquires **and releases**, then pause C after its real `mkdir`. Resume A’s recovery. Assert C finishes acquiring and A cannot release C’s lock.
+- Have the first real `mkdir` create a non-writable directory and retain ordinary `EEXIST` behavior afterward. As a non-root user, assert both `acquire` and `wait` exit 1 immediately. Separately, force consecutive handoffs before the owner checks and assert `wait` retries and renames the eventual winner once.
+- Run failed-release recovery under `umask 0777` as a non-root user. Assert it exits 1, then restore read permission in the fixture and verify the claim still names A.
+- In the mid-claim test, keep the successor’s file descriptor open across A’s recovery, then finish writing through it and release as B. The current fixture verifies that an empty file remains at the pathname. The `ulimit -f 0` and cut-short fixtures do exercise their respective zero-byte write and reader cases.
+
+I reviewed `39a4600` by source inspection. I did not run tests, invoke AO, or access the real lock.
+
+**Changes requested**
+
+</details>
+
+### My answers (work in progress when the owner stopped it)
+
+All four agreed. Committed as work in progress on the branch, **never reviewed by GPT**:
+
+1. **Blocker — two releases by one session can delete a successor's lock. Agreed.** It **predates this
+   PR**: `origin/main`'s release (`h=$(holder)` … `rm -rf "$lock"`) has the same window. Release now
+   takes the lock off its path in one step (`mv -T "$lock" "$lock.released.<me>.<pid>"`, a rename),
+   then reads the claim it took; if that claim is another session's, it renames it back. Test: *two
+   releases by one session never take the next holder's lock* (a hook inside `ao session rename`).
+2. **High — failed-release recovery can claim a later session's directory. Agreed;** gone with the
+   recovery itself: a release that cannot rename the lock (Windows' busy directory — checked: Git
+   Bash's `mv -T` exits 1 and moves nothing) has changed nothing, so it reports *still held* and never
+   writes a claim.
+3. **Medium — the retry confuses contention and filesystem errors. Agreed.** A claim not made, with
+   the lock still there, is now an error at once (no retry); with the lock gone, one retry, then busy
+   75. The same once-more applies when `mkdir` failed and the lock vanished before the check. Test
+   (Linux/macOS): an ordinary `mkdir` whose directory refuses files — `acquire` and `wait` exit 1 at
+   once.
+4. **Medium — release can report success after restoring its own claim. Agreed;** gone with the
+   recovery (no claim is ever restored).
+
+Missing tests: 1 and 3 (the first half) added as above, plus *a release whose leftover can't be
+deleted still releases*. Not added: 2, 4 and 5 (their code path no longer exists); the consecutive
+hand-offs of 3 (no outside command to hook between the steps).
+
+## Where this stands (2026-11-27, 11:37 AM PT)
+
+**The owner's decision (D11, A, through the coordinator): "stop patching and restart TUN-123 from a
+design review."** No fourth GPT round; no further changes to `gpt-lock.sh` today; PR #190 does not
+merge — it is a draft. The work restarts another day from a GPT design review of the lock.
+
+- **Settled and evidenced:** the cause (§ Cause) and the core fix — a claim created with `O_EXCL`
+  decides who holds the lock, not `mkdir`. Rounds 1–3 found nothing wrong with that; every finding was
+  in the paths around it.
+- **Fixed and reviewed:** round 1's four findings, re-reviewed in round 2; round 2's five, re-reviewed
+  in round 3 (round 3: "Round 2 did fix the partial-ID case"; leaving the directory after a failed
+  write "is consistent with decision 9").
+- **Fixed, not reviewed:** round 3's four, above (work in progress on the branch).
+- **Open:** every round found new interleavings in release and in the failure paths — round 3's
+  Blocker among them, which predates this PR — because each fix is a path-based step on a directory
+  other sessions can remove and recreate. That is a design question, not a patch.
+
+**What the design review should start from:** this file; the cause; the `O_EXCL` claim as the one
+mechanism that has held; the thirteen findings of rounds 1–3, most of them interleavings, as the
+requirements a design must survive (a test each); decision 9 (no automatic break); both platforms
+(Git Bash's GNU tools; uutils on `ubuntu-26.04`); and the question it never answered — whether the
+lock should be a **file** with an atomic claim (no directory to remove and recreate), or keep the
+directory and make every removal a rename aside, as the work in progress began to.
+
+**Windows 200-round loop:** never completed. It was stopped twice — once because the script was
+about to change under it, once when round 2's fixes changed it again — and was not restarted after
+round 3. The 200-round evidence is Linux CI's (heads `e047c66`, `5decc25`, `eb8c021`, `39a4600`).
