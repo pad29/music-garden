@@ -268,8 +268,8 @@ test("a signed-in reload: silent until the cloud answers, then the cloud level's
 });
 
 // ---- TUN-121: a famous tune's spoken credit. revealFamous books it to speak just after the tune's first play, so
-// Read aloud can change while the tune plays. Every timer is held here; the credit's is the last one revealFamous
-// books (the rest are the sweep's visual timers: the camera, the lit cells).
+// Read aloud can change while the tune plays. The reveal runs on a fake clock that honours setTimeout AND
+// clearTimeout, so a toggle that cancelled the tune's timers would show up as a camera that stopped following it.
 function famousGame() {
   const speak = { onclick: null, textContent: "", title: "", classList: { toggle() {} } };   // the 🔊 button
   const { g, log } = game({ elements: { speak } });
@@ -278,51 +278,77 @@ function famousGame() {
   const owner = g.famousOwner(id);
   g.openPkg(owner, g.PACKAGES[owner].levels.findIndex(l => l.famous === id));
   g.speakOn = true; g.narrateReady = true;
-  const held = [], cams = [], realCam = g.camEnsure;
-  g.camEnsure = (...a) => { cams.push(a[0]); return realCam(...a); };
+  // The clock: from here on, every timer the game books waits for advance().
+  const w = g.__window, pending = new Map(); let now = 0, nextId = 1;
+  w.setTimeout = (fn, ms = 0) => { const t = nextId++; pending.set(t, { fn, at: now + (+ms || 0), t }); return t; };
+  w.clearTimeout = t => { pending.delete(t); };
+  const advance = to => {   // run every timer due by `to`, in time order, including ones booked on the way
+    for (;;) {
+      const due = [...pending.values()].filter(x => x.at <= to).sort((a, b) => a.at - b.at || a.t - b.t)[0];
+      if (!due) break;
+      pending.delete(due.t); now = due.at; due.fn();
+    }
+    now = Math.max(now, to);
+  };
+  const cams = [], realCam = g.camEnsure;
+  g.camEnsure = (c, ...a) => { cams.push({ c, at: now }); return realCam(c, ...a); };
   const reveal = () => {
     log.clips.length = 0; log.spoken.length = 0;   // what opening the level read is not under test
-    g.__window.setTimeout = (fn, ms) => (held.push({ fn, ms }), held.length);
     g.revealFamous(id);
-    assert.ok(held.length >= 2, "the sweep's timers and the credit's were booked");
-    const credit = held.at(-1), visual = held.slice(0, -1);
-    assert.deepEqual(log.clips, [], "nothing is read while the tune plays");
-    return { credit, visual };
+    assert.deepEqual(log.clips, [], "nothing is read as the tune starts");
   };
-  const runVisual = visual => { for (const t of visual) t.fn(); };
-  return { g, log, speak, id, reveal, runVisual, cams };
+  const clips = () => log.clips.map(c => c.src);
+  const toEnd = () => advance(1e9);
+  return { g, log, speak, id, reveal, advance, toEnd, cams, clips, now: () => now };
 }
+/** The camera columns an uninterrupted reveal of the same tune visits, in order. */
+function uninterruptedCams() { const f = famousGame(); f.reveal(); f.toEnd(); return f.cams.map(x => x.c); }
 
-test("a famous tune with Read aloud left on: its credit is read once, after the tune", () => {
-  const { g, log, id, reveal } = famousGame();
-  const { credit } = reveal();
-  credit.fn();
-  assert.deepEqual(log.clips.map(c => c.src), [clipOf(g, g.FAMOUS[id].credit)], "the credit, once");
+test("a famous tune with Read aloud left on: its credit is read once, just after the tune's last column", () => {
+  const { g, log, id, reveal, advance, toEnd, cams, clips } = famousGame();
+  reveal();
+  toEnd();
+  const last = cams.at(-1).at;                                   // the last column sounds (and lights) here…
+  assert.ok(cams.length > 1 && last > 0, "the camera followed the sweep");
+  const due = last + g.stepDur() + 900;                          // …it ends one column later; the credit comes 900 ms after
+  const again = famousGame(); again.reveal();
+  again.advance(due - 1);
+  assert.deepEqual(again.clips(), [], "no credit before the tune has settled");
+  again.advance(due + 1);
+  assert.deepEqual(again.clips(), [clipOf(again.g, again.g.FAMOUS[again.id].credit)], "the credit, at its time");
+  again.toEnd();
+  assert.equal(again.log.clips.length, 1, "once");
+  assert.deepEqual(clips(), [clipOf(g, g.FAMOUS[id].credit)]);
   assert.deepEqual(log.spoken, []);
 });
 
-test("Read aloud turned off while a famous tune plays: the credit is not read", async () => {
-  const { g, log, speak, reveal, runVisual, cams } = famousGame();
-  const { credit, visual } = reveal();
+test("Read aloud turned off while a famous tune plays: no credit, and the camera follows the whole tune", async () => {
+  const whole = uninterruptedCams();
+  const { g, log, speak, reveal, advance, toEnd, cams } = famousGame();
+  reveal();
+  advance(1000);                                                 // partway through the sweep
+  assert.ok(cams.length > 0 && cams.length < whole.length, "the toggle lands mid-tune");
   speak.onclick(); assert.equal(g.speakOn, false);
-  assert.equal(g.famousTimers.length, visual.length + 1, "the toggle cancels none of the tune's timers");
-  runVisual(visual); credit.fn(); await tick();
+  toEnd(); await tick();
   assert.deepEqual(log.clips, [], "no credit clip");
   assert.deepEqual(log.spoken, [], "and no browser voice");
-  assert.ok(cams.length > 0, "the camera still followed the sweep");
+  assert.deepEqual(cams.map(x => x.c), whole, "the same camera columns, in the same order, as an uninterrupted reveal");
 });
 
-test("Read aloud turned off and back on while a famous tune plays: the story it starts is not cut off by the credit", async () => {
-  const { g, log, speak, reveal, runVisual, cams } = famousGame();
-  const { credit, visual } = reveal();
+test("Read aloud turned off and back on while a famous tune plays: the story it starts is not cut off, and the camera follows the whole tune", async () => {
+  const whole = uninterruptedCams();
+  const { g, log, speak, reveal, advance, toEnd, cams } = famousGame();
+  reveal();
+  advance(1000);
+  assert.ok(cams.length > 0 && cams.length < whole.length, "the toggles land mid-tune");
   speak.onclick(); speak.onclick(); assert.equal(g.speakOn, true);
   const story = log.clips.at(-1);
   assert.deepEqual(log.clips.map(c => c.src), [clipOf(g, g.curStage().intro)], "turning it on reads the level story");
   story.start(); await tick();
-  runVisual(visual); credit.fn(); await tick();
+  toEnd(); await tick();
   assert.deepEqual(log.clips, [story], "the story stays the only clip");
   assert.equal(g.curClip, story);
   assert.equal(story.paused, false, "still sounding");
   assert.deepEqual(log.spoken, []);
-  assert.ok(cams.length > 0, "the camera still followed the sweep");
+  assert.deepEqual(cams.map(x => x.c), whole, "the same camera columns, in the same order, as an uninterrupted reveal");
 });
