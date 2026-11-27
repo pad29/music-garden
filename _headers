@@ -22,6 +22,8 @@
 
 # Always re-checked: these names do not change when their content does, so a long cache would keep
 # players on old code after a deploy. (Cloudflare Pages sends this by default; it is written down so it stays.)
+# On tunegarden.game it holds only while the zone's Browser Cache TTL is "Respect Existing Headers"
+# (TUN-134): any other value replaces this max-age. README § Deployment has the curl check.
 /
   Cache-Control: public, max-age=0, must-revalidate
 

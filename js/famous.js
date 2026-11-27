@@ -302,7 +302,11 @@ function revealFamous(id){ const f=id&&FAMOUS[id]; if(!f) return;
   if((curStage().famous||currentLevel().famous)!==id) return;                   // navigated away before the reveal fired — skip
   const durMs=playFamous(id);                                                     // plant the chords+melody and play it once
   goalHint.innerHTML='🎧 <b>You built the famous one!</b> It\'s planted in your garden now — press <b>▶</b> to hear it again.';
-  if(speakOn) famousTimers.push(setTimeout(()=>narrate(f.credit), durMs+900));    // voice the explanation ONCE, just after the song's first play settles
+  // Voice the explanation ONCE, just after the song's first play settles — if Read aloud is still on then, and
+  // nothing has spoken since (TUN-121): turning Read aloud off during the tune silences it, and turning it back
+  // on reads the level story, which the credit must not cut off. Dropped, not queued after that story.
+  const seq=narrateSeq;
+  if(speakOn) famousTimers.push(setTimeout(()=>{ if(speakOn && narrateSeq===seq) narrate(f.credit); }, durMs+900));
 }
 // ARCS: the campaign groups into four "awakening arcs". The arc: field on intro levels still drives companion
 // evolution (arcEndsFor) — but the arc label is NOT shown in the level title (removed 2026-07-03: noise for players).
