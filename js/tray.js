@@ -146,6 +146,17 @@ function trayUp(e){ trayPtrs.delete(e.pointerId);
 }
 function trayCancel(e){ trayPtrs.delete(e.pointerId); if(trayMode) trayCancelGesture(); }   // interrupted gesture: discard, never commit
 trackEl.addEventListener("pointerup",trayUp); trackEl.addEventListener("pointercancel",trayCancel);
+// A pointer can go without its up or cancel ever reaching trackEl — the tab hidden or the window blurred
+// mid-gesture, the capture lost. Left in trayPtrs, it holds camBusy() true and the camera stops following
+// the playhead for the rest of the Scoop session (TUN-14; pinchDrop() in grid.js is the same fix for pinch).
+// Idempotent, and it never commits: the in-flight marquee or move is discarded, the pick and an armed copy stay.
+function trayPtrsDrop(){ if(!trayPtrs.size && !trayDrag) return; trayPtrs.clear(); trayCancelGesture(); }
+// lostpointercapture also follows every ordinary pointerup, by which time trayUp has deleted the pointer —
+// so only a pointer still in the set means the gesture was lost, and the release that just committed stands.
+trackEl.addEventListener("lostpointercapture",e=>{ if(trayPtrs.has(e.pointerId)) trayPtrsDrop(); });
+document.addEventListener("visibilitychange",()=>{ if(document.hidden) trayPtrsDrop(); });
+window.addEventListener("pagehide",trayPtrsDrop);
+window.addEventListener("blur",trayPtrsDrop);
 document.getElementById("trayCopy").onclick=()=>{ const ns=trayNotes(); if(!ns.length) return;
   const qs=ns.map(n=>trayCellOf(n)), minR=Math.min(...qs.map(q=>q.r)), minC=Math.min(...qs.map(q=>q.c));
   trayPlace={ rel:qs.map((q,i)=>({dr:q.r-minR, dc:q.c-minC, dur:ns[i].durationTicks})),   // carry LENGTH: copying a vine must not flatten it

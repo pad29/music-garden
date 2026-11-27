@@ -63,7 +63,7 @@ function resetTransient(){ cancelCompletionSession("reset");   // wipe playback/
   // six-column band. Only an incompatible groove moves, so a player's Ballad still follows them in.
   if(normalizeGroove()) renderGrooveOptions();
   cursorCol=0; cursorPinned=false; loopStart=0; loopEnd=0; syncCursor();   // every level/step starts with the cursor at the top, unpinned, looping from the top
-  zoomTapDrop(); pinchDrop(); swallowTapUntil=0;   // …with no half-finished gesture and no pending swallow carried across the seam
+  zoomTapDrop(); pinchDrop(); trayPtrsDrop(); swallowTapUntil=0;   // …with no half-finished gesture and no pending swallow carried across the seam
   if(fieldZoom!==1) setFieldZoom(1);   // …and at full size: zoom is a way of LOOKING at one garden, never a saved setting
   ev=freshEv(); wipe(); wipeDrums(); renderBag();
   if(COLS>16) removeColumns(COLS-16);   // a long Jukebox/famous tune may have widened the field — every level starts at its base length (a reveal that needs room re-widens itself)
