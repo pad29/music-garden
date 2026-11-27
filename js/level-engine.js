@@ -212,7 +212,10 @@ const congratsoverlay=document.getElementById("congratsoverlay");
 const rewardOverlayUp = () => powoverlay.style.display==="flex" || congratsoverlay.style.display==="flex";
 function newlyUnlocked(pkgId){ return Object.keys(PACKAGES).filter(id => id!==pkgId
   && (PACKAGES[id].requires||[]).flat().includes(pkgId) && isPkgUnlocked(id) && !pkgProg(id).completed); }
-function showCongrats(pkgId, finalPower){
+// The finale's creation, as the card was shown over it. The card covers the field, so nothing the player does
+// changes it meanwhile; a sign-in's pull can (TUN-135 review), and 🎵 Studio must still carry the finale's song.
+let congratsSong=null;
+function showCongrats(pkgId, finalPower){ congratsSong=currentSong();
   document.getElementById("congratsEm").textContent=(finalPower&&finalPower.em)||"🎉";
   document.getElementById("congratsName").textContent="You completed "+PACKAGES[pkgId].name+"!";
   const u=newlyUnlocked(pkgId);
@@ -227,7 +230,7 @@ document.getElementById("congratsHome").onclick=()=>dismissCongrats(true);
 document.getElementById("congratsStay").onclick=()=>dismissCongrats(false);
 // carry this finale's creation straight into the Studio (widest unlocked palette)
 document.getElementById("congratsStudio").onclick=()=>{ if(studioWaitsForSignIn()) return;   // the card stays (TUN-135)
-  const s=currentSong();
+  const s=congratsSong||currentSong(); congratsSong=null;
   congratsoverlay.style.display="none"; pendingEvolve=false; openStudioWith(s); };
 congratsoverlay.onclick=e=>{ if(e.target===congratsoverlay) dismissCongrats(false); };
 

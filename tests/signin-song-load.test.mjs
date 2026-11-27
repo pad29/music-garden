@@ -120,7 +120,9 @@ test("TUN-135 review: a cloud song whose fetch returns mid-sign-in lands nowhere
   await letGo();
   assert.equal(g.isStudioScope(), false, "the refused song is not queued for later");
 
-  const again = load.fn(); answer({ id: "c1", song: clone(song) }); await again;
+  els.moverlay.style.display = "flex"; rows.length = 0; await g.openMelodies();   // the player opens the list again
+  const fresh = rows.filter(r => r.label === "▶ Load").at(-1);
+  const again = fresh.fn(); answer({ id: "c1", song: clone(song) }); await again;
   assert.equal(g.isStudioScope(), true, "a fresh Load opens the Studio");
   assert.deepEqual(melody(g.currentSong()), melody(song), "with the cloud song");
 });
@@ -130,6 +132,7 @@ test("TUN-135 review: a cloud song whose fetch returns mid-sign-in lands nowhere
 test("TUN-135: a finale's 🎵 Studio during Home's sign-in keeps its card, then carries the song", async t => {
   const { g, els, w } = game(t);
   const field = melody(g.currentSong());
+  g.showCongrats("intro", null);   // the card, over the finale's field
   const letGo = signingIn(g, {}), before = snapshot(g, w);
   els.congratsStudio.onclick();
   untouched(g, before, "🎵 Studio");
@@ -147,8 +150,10 @@ test("TUN-135: a finale's 🎵 Studio during Home's sign-in keeps its card, then
 test("TUN-135: a quest finale's Studio button during Home's sign-in keeps the finale and its typed name, then hands the song over", async t => {
   const finName = { value: "Firefly tune" };
   const els = { finStudio: {}, questfinale: up(), undoBtn: {} };
-  const { g, run } = completed(t, undefined, { elements: { ...els, finName } });
-  els.questfinale.style.display = "flex";   // the finale, up
+  const { g, id, run } = completed(t, undefined, { elements: { ...els, finName } });
+  els.questfinale.style.display = "none";
+  assert.equal(g.questShowFinale(id), true, "the finale, shown as the Offer button shows it");
+  finName.value = "Firefly tune";   // the player types a name into it
   const named = []; const act = g.performQuestAction; g.performQuestAction = (id, o) => { named.push(id); return act(id, o); };
   const w = watch(g, els.undoBtn);
   const song = clone(run().versions[run().artifact.versionId].song);
@@ -185,9 +190,56 @@ test("TUN-135 review: the refusal's toast is raised above every overlay a song i
   const z = sel => { const m = html.match(new RegExp(sel.replace(/[.#]/g, "\\$&") + "\\s*\\{[^}]*z-index:\\s*(\\d+)"));
     assert.ok(m, "a z-index for " + sel); return +m[1]; };
   assert.ok(z(".toast.above") > z(".overlay"), "above Home, the Jukebox, the congratulations card and the quest finale");
+  // Round 2: the garden card (90) and a map tip (80) sit above the overlays too. Nothing on the page may cover it.
+  const all = Array.from(html.matchAll(/z-index:\s*(\d+)/g), m => +m[1]);
+  assert.equal(z(".toast.above"), Math.max(...all), "nothing on the page stacks above the refusal");
+  assert.equal(all.filter(n => n === z(".toast.above")).length, 1, "and nothing shares its layer");
   assert.ok(z(".toast") < z(".overlay"), "an ordinary toast stays where it was");
   // toast's element is the harness's swallowing stub (and `toastEl` shares a line with `let toastT`, so it isn't
   // handed back): read toast's own text instead — it sets the class on every call, so the next toast drops it.
   const helpers = readFileSync(new URL("../js/helpers.js", import.meta.url), "utf8");
   assert.match(helpers, /function toast\(msg, above\)\{[^}]*classList\.toggle\("above", above===true\)/, "toast(msg, true) raises it, and only true");
+});
+
+// GPT's PR review, round 2 (High): a sign-in that SUCCEEDS redraws the game under a finale card that stays up —
+// its pull (onSignedIn → applyProgress) restores the account's level and package scope. Told to try again, the
+// player presses the card's Studio button: it must still carry the finale's own song, not the restored field and
+// not an empty Studio. applyProgress here is exactly what the pull runs once the account's progress is loaded.
+test("TUN-135 review: after a sign-in's pull redraws the level, the finale card's 🎵 Studio still carries the finale's song", async t => {
+  const { g, els, w } = game(t);
+  const field = melody(g.currentSong());
+  g.showCongrats("intro", null);
+  const letGo = signingIn(g, {}), before = snapshot(g, w);
+  els.congratsStudio.onclick();
+  untouched(g, before, "🎵 Studio");
+  g.applyProgress();   // the account's progress lands: the level is drawn afresh
+  assert.notDeepEqual(melody(g.currentSong()), field, "fixture: the pull replaced the field on screen");
+  await letGo();
+  assert.equal(els.congratsoverlay.style.display, "flex", "the card is still up");
+
+  els.congratsStudio.onclick();
+  assert.equal(g.isStudioScope(), true);
+  assert.deepEqual(melody(g.currentSong()), field, "the finale's creation, not the restored level");
+});
+
+test("TUN-135 review: after a sign-in's pull leaves the quest, the quest finale's Studio button still hands over the quest's song", async t => {
+  const els = { finStudio: {}, questfinale: up(), undoBtn: {} };
+  const { g, id, run } = completed(t, undefined, { elements: { ...els, finName: { value: "" } } });
+  els.questfinale.style.display = "none";
+  assert.equal(g.questShowFinale(id), true, "the Offer button's own step: the shell throws the party");
+  assert.equal(els.questfinale.style.display, "flex", "fixture: the finale is up");
+  const w = watch(g, els.undoBtn);
+  const song = clone(run().versions[run().artifact.versionId].song);
+  const letGo = signingIn(g, {}), before = snapshot(g, w);
+  els.finStudio.onclick();
+  untouched(g, before, "the finale's Studio button");
+  g.applyProgress();   // the pull: restoreLastPackage puts the player back on a package
+  assert.equal(g.isQuestScope(), false, "fixture: the pull replaced the quest scope");
+  await letGo();
+  assert.equal(els.questfinale.style.display, "flex", "the finale is still up");
+
+  els.finStudio.onclick();
+  assert.equal(g.isStudioScope(), true);
+  assert.ok(melody(song).length > 0, "fixture: the quest's song has notes");
+  assert.deepEqual(melody(g.currentSong()), melody(song), "the quest's song, not an empty Studio");
 });

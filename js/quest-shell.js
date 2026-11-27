@@ -201,12 +201,16 @@ function questRenderPaths(m){
 // celebration is a response to an act, not a recording of one.
 let questFinaleShown=null;       // once per page session; nothing can re-enter a completed run
 let questFinaleRendered=null;    // the model the overlay last painted — a Node test's only handle
+// The run the finale was shown for: a sign-in's pull can replace the quest scope under the card (TUN-135 review),
+// and its Studio button must still hand over that run's song, not an empty Studio.
+let questFinaleRun=null;
 function questShowFinale(runId){
   const run=QUEST_RUNS[runId], def=run && QUEST_DEFINITIONS[run.questId];
   if(!run || !def || run.status!=="completed" || !run.artifact) return false;
   const key=runId+"|"+run.artifact.artifactId+"|"+run.artifact.savedAt;
   if(questFinaleShown===key) return false;
   questFinaleShown=key;          // claimed BEFORE start(), which calls renderQuestShell synchronously
+  questFinaleRun=runId;
   renderQuestFinale();
   confetti();
   if(playing) stop();
@@ -257,7 +261,7 @@ document.getElementById("finNameBtn").onclick=()=>{
 };
 document.getElementById("finStudio").onclick=()=>{
   if(studioWaitsForSignIn()) return;   // the finale stays, its typed name with it (TUN-135)
-  const run=isQuestScope() ? QUEST_RUNS[activeScope.runId] : null;
+  const run=QUEST_RUNS[isQuestScope() ? activeScope.runId : questFinaleRun] || null;
   const v=run && run.artifact && run.versions[run.artifact.versionId];
   const song=v ? jclone(v.song) : null;
   questFinaleLeave(()=>{ if(song) openStudioWith(song); else openStudio(); });

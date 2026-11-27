@@ -86,11 +86,54 @@ My answers:
 Every test now holds a real `signInWith` pending, so `authBusy` comes from production's own count. A second
 GPT round needs the owner's yes (one round today).
 
+### Round 2 (`gpt-6.2-astra`, `ask.sh`, on `d07db35`, the owner's yes on 2026-11-27) — changes requested
+
+<details><summary>GPT's findings, verbatim</summary>
+
+1. **High — Both finale buttons can open the wrong song after a successful sign-in.** I reproduced this in the VM with a cloud save that restores a different level. Both finale cards survive the pull. On retry, congratulations copies the newly restored field, and the quest finale finds no active quest and opens an empty Studio. Every new test ends sign-in by rejecting it. Add one successful-pull test per finale with distinguishable tracks, then retry from the retained card and assert the Studio contains the original finale song. Exercise the actual routes by opening Home over congratulations and activating Offer behind Home during sign-in. [Package hand-off](js/level-engine.js:229) · [Quest hand-off](js/quest-shell.js:258) · [Cloud restore](js/cloud.js:157)
+
+2. **High — The garden card can still hide the only refusal message.** The body-level toast at 75 clears Home, Jukebox, both finales, the instrument and power cards, mixer, companion picker, and landing at 70. The garden card is at 90. I reproduced a pending cloud Load returning with that card open and `authBusy === 1`: hold landing’s progress pull, start a cloud Load, close Jukebox, then use Home to sign out and open **Make my garden**. The card makes earlier controls inert, but the outstanding request still completes. Home’s map tooltip at 80 can also overlap the toast at `top:22%`. Add desktop and phone browser checks that the full message is readable with the garden card open, plus a desktop check with a map tip overlapping it. Rendered visibility remains unverified. [Toast and overlay styles](index.html:396) · [Garden card](js/garden-card.js:105) · [Map tooltip](js/home.js:314)
+
+3. **Medium — Another toast can erase the refusal before its first paint.** I resolved two cloud Loads together during sign-in, the first with a song and the second with an error. The second callback replaced the refusal text and removed `above` before the 250 ms fade-in could show it. The class resets correctly for ordinary toasts, but the advertised 2.6 seconds can collapse to zero. Add this ordering with the list closed and assert the refusal remains readable for its display interval, then verify a later ordinary toast uses its usual layer. [Toast lifetime](js/helpers.js:11) · [Cloud callbacks](js/save-share.js:241)
+
+4. **Medium — The landing test still skips the player’s route and misses a failed retry.** Submit the landing form, use Tab and Enter to open Jukebox, then click Play. Check the visible list, stopped playback, tracks and undo. Reject sign-in and click Play again. In the VM, Jukebox closed and Studio became active while landing stayed displayed over it. This retry behavior predates the delta, but the new test reports success without checking what the player sees. [Landing result](js/boot.js:125) · [Play test](tests/signin-song-load.test.mjs:85)
+
+5. **Low — The cloud test covers the `await`, but its retry invokes the old hidden row.** Complete sign-in successfully, reopen Jukebox and click the newly rendered cloud row. The refusal guards themselves have regression coverage: restoring the base runtime in memory failed all six behavioral tests. Syntax and all 17 focused tests passed on `d07db35e9a095bf19b639a2fecf015a8b5acdd8b`. [Cloud retry test](tests/signin-song-load.test.mjs:125)
+
+</details>
+
+My answers:
+
+1. **High, a finale retried after a successful sign-in opens the wrong song — agreed, fixed.** A sign-in that
+   succeeds redraws the game under the card (`applyProgress`), so the retry read the restored field, or found
+   no quest. The congratulations card now carries the field it was shown over (`congratsSong`, set in
+   `showCongrats`; the card covers the field, so nothing else changes it), and the quest finale the run it
+   was shown for (`questFinaleRun`, set in `questShowFinale`, used when the pull has replaced the quest
+   scope). Tests: one per finale, with the pull's `applyProgress` run while the sign-in is held, then a retry.
+   Departure: they run the pull's redraw directly rather than a full Cognito sign-in with a cloud answer —
+   what the retry reads is what `applyProgress` leaves behind. Not changed: committing a typed quest name
+   after the pull is refused (no quest scope), and the status line says so, as it does for any refused name.
+2. **High, the garden card (90) and a map tip (80) can still cover the toast — agreed, fixed:**
+   `.toast.above` is z-index 95, the highest on the page; the test now asserts that against every z-index in
+   `index.html`. Not verified: rendered visibility in a browser, on desktop or phone — a sign-in can't be held
+   in AO's browser.
+3. **Medium, a second toast can erase the refusal before it paints — agreed, not fixed here:** it changes
+   what `toast` does for every caller (hold or queue an ordinary toast behind a raised one). Filed to Backlog.
+4. **Medium, a retry after a failed landing sign-in opens the Studio under the landing — agreed, not fixed
+   here:** it predates this PR (GPT says so), and is about the landing staying up over the game, not about a
+   song landing mid-sign-in. Filed to Backlog. The native-keyboard route itself can't be driven in the Node
+   harness.
+5. **Low, the cloud retry reused the old row — agreed, fixed:** the test reopens the Jukebox and presses the
+   newly listed row.
+
+A third round would need the owner's yes.
+
 ## Tests
 
-- `tests/signin-song-load.test.mjs` — 7 tests. Mutation check by hand: removing each caller's check,
+- `tests/signin-song-load.test.mjs` — 9 tests (round 2 added the two successful-pull finale cases). Mutation check by hand: removing each caller's check,
   restoring the old `openStudioWith`, leaving the refusal's toast unraised, raising every toast, or putting
-  `.toast.above` under the overlays each fails its own test.
+  `.toast.above` under the overlays each fails its own test; so does undoing either finale's snapshot, or
+  lowering the raised toast back to 75.
 - `tests/famous-meter-mutations.mjs` (optional audit): its `loadSong`, `playSong` and `openStudioWith`
   anchors follow the new code, and one anchor TUN-84 had already left stale (`time.origin=meter[1]`) is
   updated; the audit runs green again.
