@@ -2,7 +2,7 @@
 
 *Design source-of-truth for the package DAG. Companion to DESIGN.md (§2b three-layer architecture, §11b package model) and REQUIREMENTS.md.*
 *This markdown is the **design** layer; it later compiles into the `PACKAGES` data object in `js/packages.js`. Keep it out of code.*
-Last updated: 2026-08-13 — **20 packages are BUILT** (the intro, every Wave A–C package, the ★ milestone and Wave D's `sun-and-moon-garden`; **Wave A, Stone Chorus Canyon and Wave C are COMPLETE**; Pulse Woods waits on its fifth package, `march-and-waltz`); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs.
+Last updated: 2026-08-13 — **20 packages are BUILT** (the intro, every Wave A–C package, the ★ milestone and Wave D's `sun-and-moon-garden`; **Wave A, Stone Chorus Canyon and Wave C are COMPLETE**; Pulse Woods waits on its fifth package, `march-and-waltz`); statuses and as-built prereqs marked per package below. The `PACKAGES` object in `js/packages.js` is the runtime truth (it lived in `index.html` until TUN-7, 2026-09-29); `PACKAGES-DETAILED.md` holds the as-built level-by-level specs (all but two — §3 names them).
 
 ---
 
@@ -84,7 +84,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 3. Package spec template (finalized — use for every package)
 
-> The **high-level** form below uses §3's fields in compact bullet form. The **detailed** form (for packages in active design) expands §6 into a full level-by-level set with per-level success logic. **The first 8 detailed specs live in `PACKAGES-DETAILED.md`** (with the difficulty-ramp doctrine they all follow).
+> The **high-level** form below uses §3's fields in compact bullet form. The **detailed** form (for packages in active design) expands §6 into a full level-by-level set with per-level success logic. **The detailed specs live in `PACKAGES-DETAILED.md`** (with the difficulty-ramp doctrine they all follow) — for every built expansion package except `two-new-colors` and `two-kinds-of-walking`, whose specs are in §6 below.
 
 ```
 ## <slug> — <Player-facing name>   [shorthand: PS-1]
@@ -148,7 +148,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ---
 
-## 5. Build waves (palette-aware reorder of the 24)
+## 5. Build waves (palette-aware reorder of the original 24)
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
@@ -162,9 +162,9 @@ Tag every rhythm-touching package with the tier it needs.
 
 ---
 
-## 6. The 24 packages — high-level specs
+## 6. The packages — high-level specs
 
-> Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) specs come in the next pass for the first 8.
+> Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) as-built specs are in `PACKAGES-DETAILED.md` for every built expansion package except `two-new-colors` and `two-kinds-of-walking`, specified here (§3 says the same).
 
 ### REGION 1 — Paths of Song  *(cluster: voice · pentatonic)*
 
@@ -197,7 +197,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M) — built:** **phrase A/B boundary** on the timeline (the field splits into a call half, cols 0–7, and an answer half, cols 8–15) + phrase-pair evaluation (open = ends away from HOME, closed = lands on HOME — reuses the existing tonic detection, no new pitch system). The phrase-split seam is reused by `ways-home`.
 - **Why:** teaches deep formal logic intuitively; the first real bridge from melody toward form.
 
-#### `tiny-motifs` — Tiny Motifs  [PS-4]  — **BUILT ✅ (2026-07-05)** *(as-built spec in PACKAGES-DETAILED §14)*
+#### `tiny-motifs` — Tiny Motifs  [PS-4]  — **BUILT ✅ (2026-07-05)** *(as-built spec in PACKAGES-DETAILED §15)*
 - **Capability:** turn a small idea into something memorable via repetition + variation.
 - **Theory:** motif, repetition (repeat/sequence), variation, inversion. **Palette:** pentatonic. **Prereqs:** *(as built)* stepping-stones, question-and-answer.
 - **Patterns:** build_constraint, transform, repair, compare, capstone. **Success:** broad/targeted.
@@ -293,7 +293,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **World hook:** *(diegetic)* — the new "Color Spring" region; the world widens as each color is found.
 - **Sandbox:** each new note becomes placeable as it is revealed (locked rows un-dim one at a time).
 - **System needs (L) — built:** the **palette system** (§1a engine note) — a `PALETTES` table + `setPalette()` that swaps `MIDI`/`NAMES`/`ROWS`/`TONIC_PC` and rebuilds the grid per-package; the package runs on the new **14-row `diatonic`** palette. The staged gate is done via **per-level row-locking** (`colors:["F"]` → `["F","B"]`; `setColorReveal`/`isLockedRow` dim & block undiscovered notes) rather than a third palette. Detectors: `placedF`/`placedB`, `bThenC` (leading-tone pull), `craftedNewTriad` (a standing tower using F or B). Sets a persistent `progress.colors=["F","B"]` on completion (future sandbox reads it). The **phased transposition toggle is deferred** (shape-based default works unchanged on the diatonic grid); **no active rails** (dissonance is the lesson). Save/share does NOT support diatonic yet (see DESIGN §11/§12).
-- **9 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
+- **8 levels:** A Hint of More (hidden color via jam, both locked) → The First Color F → Sing with F (F + home) → The Second Color B → The Pull Home B→C (leading tone) → A Brand-New Tower (triad using F/B) → The Whole Scale (F + B + home) → Free Colors finale. Companion: **Prism** 🌫️→🌈✨ (The Color Spring region).
 - **Why:** unblocks Regions 4–7. Framed as wonder, introduced one note at a time so intuition never breaks.
 
 ### REGION 4 — Weather of Wanting  *(cluster: flow/home · diatonic)*
@@ -338,7 +338,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 #### `pull-of-the-moon` — Pull of the Moon  [WW-3]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §11)*
 - **Capability:** create stronger longing/pull before returning home.
-- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built yet); the tension groundwork comes from `twin-blooms-plus` instead.
+- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built at the time); the tension groundwork comes from `twin-blooms-plus` instead.
 - **Patterns:** transform, compare, finish, match_feel. **Success:** targeted/broad.
 - **World hook:** *Raise the moon / celestial gates* open on strong pull + release.
 - **Sandbox:** gravity visualization; "longing" intensity; strong-return templates.
@@ -358,7 +358,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 #### `sun-and-moon-garden` — Sun Garden / Moon Garden  [CC-1]  — **BUILT ✅ (2026-06-20), in region 🌗 The Twin Gardens** *(as-built spec in PACKAGES-DETAILED §13; moved out of the planned Color Caverns into its own twin-biome region)*
 - **Capability:** shift the same idea bright vs. wistful.
-- **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built yet).
+- **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built at the time).
 - **Patterns:** transform, match_feel, compare, repair. **Success:** broad/targeted.
 - **World hook:** *Twin biomes* — day garden & night garden; a character's day-song vs. night-song.
 - **Sandbox:** mood palette switch; bright/dusk/moonlit presets.
