@@ -253,7 +253,15 @@ for the *Cloudflare Pages* check alone, takes the branch preview only from the c
 and never exits 0 without one — its `gh --jq` filters are not run by the fake, and were checked on live
 PRs) and the test-output recipe in `CLAUDE.md` § Working lean — the last three taken from the docs, so
 the docs are what is tested — under Git Bash (or bash), with fake `ao`,
-`gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins; a dead holder's lock
+`gh` and `sleep` first on PATH: of six sessions acquiring at once exactly one wins, and its lock is
+really there (3 rounds locally, 200 on CI, `GPT_LOCK_ROUNDS` to override) — also with a fake `mkdir` that
+exits 0 on an existing directory, as Ubuntu 26.04's uutils `mkdir` can under a race (TUN-123), where the
+holder's claim is never overwritten or removed; a claim that can't be created is an error that removes
+nothing, and one created but not written (a file-size limit of 0, as on a full disk) is an error that
+removes that file only (both Linux/macOS only); a release never touches the claim of a session that
+took the lock meanwhile, even when one session releases twice at once, and one that can't take the lock
+off its path changes nothing (TUN-123's release is work in progress: `reviews/TUN-123-gpt-lock-race.md`);
+an empty claim, or one cut short of its newline, names nobody; a dead holder's lock
 is never broken automatically, and `status`, a busy `acquire` and `wait` print the command that clears
 it by hand, which works; a lock it can't create, or (on Windows, where a busy directory can't be
 removed) can't release, is an error that keeps the holder's name on the lock, not "busy" or "released";

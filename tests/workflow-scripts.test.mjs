@@ -50,7 +50,8 @@ function sandbox() {
 s="$FAKE_STATE"
 case "$1 $2" in
   "session ls") [ -e "$s/ao-fails" ] && { echo "ao: daemon down" >&2; exit 1; }; cat "$s/sessions.json" ;;
-  "session rename") printf '%s|%s\\n' "$3" "$4" >> "$s/renames.log" ;;
+  "session rename") printf '%s|%s\\n' "$3" "$4" >> "$s/renames.log"
+    if [ -s "$s/rename-hook.sh" ]; then h=$(<"$s/rename-hook.sh"); : > "$s/rename-hook.sh"; eval "$h"; fi ;;
   "review ls")
     n=$(( $(cat "$s/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$s/n"
     while [ $n -gt 1 ] && [ ! -e "$s/review$n.json" ] && [ ! -e "$s/review$n.fail" ]; do n=$((n-1)); done
@@ -97,20 +98,246 @@ function lockAsync(sb, session, cmd) {
   });
 }
 
-test("gpt-lock: of many sessions acquiring at the same instant, exactly one gets the lock", { skip }, async () => {
-  for (let round = 0; round < 3; round++) {
-    const sb = sandbox();
-    try {
-      const ids = Array.from({ length: 6 }, (_, i) => `music-garden-${10 + i}`);
-      sb.sessions(ids);
-      const results = await Promise.all(ids.map(id => lockAsync(sb, id, "acquire")));
-      const winners = results.filter(r => r.code === 0);
-      assert.strictEqual(winners.length, 1, JSON.stringify(results));
-      assert.ok(results.filter(r => r.code !== 0).every(r => r.code === 75 && /^busy: held by /.test(r.out)),
-        JSON.stringify(results));
-      assert.match(lock(sb, ids[0], "status").out, new RegExp(`held by ${winners[0].session} `));
-    } finally { sb.cleanup(); }
+// Six sessions acquire at once, `rounds` times, each round on a fresh lock: exactly one wins, the rest
+// are busy, and the winner's lock is really there — status names it and its release succeeds (TUN-123:
+// a loser's `rm -rf` once left a winner printing "acquired" with no lock behind it).
+async function acquireAtOnce(sb, rounds) {
+  const ids = Array.from({ length: 6 }, (_, i) => `music-garden-${10 + i}`);
+  sb.sessions(ids);
+  for (let round = 0; round < rounds; round++) {
+    sb.env.GPT_LOCK_DIR = join(sb.dir, `lock${round}`);
+    const results = await Promise.all(ids.map(id => lockAsync(sb, id, "acquire")));
+    const at = `round ${round + 1}/${rounds}: ${JSON.stringify(results)}`;
+    const winners = results.filter(r => r.code === 0);
+    assert.strictEqual(winners.length, 1, at);
+    assert.strictEqual(winners[0].out, "acquired", at);
+    assert.ok(results.filter(r => r.code !== 0).every(r => r.code === 75 && /^busy: held by /.test(r.out)), at);
+    assert.match(lock(sb, ids[0], "status").out, new RegExp(`^held by ${winners[0].session} `), at);
+    assert.strictEqual(lock(sb, winners[0].session, "release").out, "released", at);
   }
+}
+
+// 3 rounds locally (Git Bash spawns slowly); 200 on CI, whose Linux is where the race showed
+// (GPT_LOCK_ROUNDS overrides both, for a loop by hand).
+const atOnceRounds = Number(process.env.GPT_LOCK_ROUNDS) || (process.env.CI ? 200 : 3);
+
+test("gpt-lock: of many sessions acquiring at the same instant, exactly one gets the lock", { skip }, async () => {
+  const sb = sandbox();
+  try { await acquireAtOnce(sb, atOnceRounds); } finally { sb.cleanup(); }
+});
+
+// uutils' mkdir up to 0.10.0 — Ubuntu 26.04's default, so GitHub's ubuntu-latest runner — exits 0 when
+// mkdir(2) says EEXIST and the path is a directory (uutils issue #13970): two sessions racing for the
+// lock both "make" it. This fake does that every time, not only in the race, by running the real mkdir
+// (the PATH without the fake bin) and exiting 0 whenever the directory then exists.
+function eexistIgnoringMkdir(sb) {
+  writeFileSync(join(sb.dir, "bin", "mkdir"), `#!/usr/bin/env bash
+PATH="\${PATH#"$FAKE_BIN:"}" mkdir "$@" 2>/dev/null || [ -d "\${!#}" ]
+`, { mode: 0o755 });
+}
+
+test("gpt-lock: with a mkdir that exits 0 on an existing directory, exactly one session gets the lock, and its claim stands", { skip }, async () => {
+  const sb = sandbox();
+  try {
+    eexistIgnoringMkdir(sb);
+    sb.sessions(["music-garden-4", "music-garden-6"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").out, "acquired");
+    const owner = join(sb.env.GPT_LOCK_DIR, "owner");
+    const claim = readFileSync(owner, "utf8");
+    const late = lock(sb, "music-garden-4", "acquire");                // its mkdir "succeeds" too
+    assert.strictEqual(late.code, 75, late.out);
+    assert.match(late.out, /^busy: held by music-garden-6 /);
+    assert.strictEqual(readFileSync(owner, "utf8"), claim, "the holder's claim is never overwritten");
+    assert.strictEqual(readFileSync(join(sb.env.GPT_LOCK_DIR, "name"), "utf8"), "name of music-garden-6",
+      "nor its lock removed");
+    assert.strictEqual(lock(sb, "music-garden-4", "release").code, 1);
+    assert.strictEqual(lock(sb, "music-garden-6", "release").out, "released");
+    // and all at once: every round, every session's mkdir "succeeds", so the claim alone decides
+    await acquireAtOnce(sb, Number(process.env.GPT_LOCK_ROUNDS) || (process.env.CI ? 200 : 2));
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a mkdir that exits 0 but makes nothing leaves no lock behind — busy, never acquired", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);
+    writeFileSync(join(sb.dir, "bin", "mkdir"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 }); // makes nothing
+    const r = lock(sb, "music-garden-6", "acquire");   // reads as a lock gone from under it, twice
+    assert.strictEqual(r.code, 75, r.out);
+    assert.strictEqual(r.out, "busy: the lock changed hands while acquiring");
+    assert.strictEqual(lock(sb, "music-garden-6", "status").out, "free");
+  } finally { sb.cleanup(); }
+});
+
+// One-shot hooks into release's steps: $FAKE_STATE/rename-hook.sh runs inside `ao session rename`
+// (release has checked its claim and not yet taken the lock), $FAKE_STATE/mv-hook.sh right after its
+// `mv` (the lock is off its path). Each is emptied before it runs, so it runs once.
+function releaseHooks(sb, { rename, mv, mvFails = false, rmFails = false } = {}) {
+  sb.env.LOCK_SCRIPT = lockScript;
+  sb.env.LOCK_POSIX = posix(sb.env.GPT_LOCK_DIR);
+  if (rename) writeFileSync(join(sb.state, "rename-hook.sh"), rename);
+  if (mv) writeFileSync(join(sb.state, "mv-hook.sh"), mv);
+  writeFileSync(join(sb.dir, "bin", "mv"), `#!/usr/bin/env bash
+${mvFails ? "exit 1" : ""}
+PATH="\${PATH#"$FAKE_BIN:"}" command mv "$@"; s=$?
+if [ -s "$FAKE_STATE/mv-hook.sh" ]; then h=$(<"$FAKE_STATE/mv-hook.sh"); : > "$FAKE_STATE/mv-hook.sh"; eval "$h"; fi
+exit $s
+`, { mode: 0o755 });
+  if (rmFails) writeFileSync(join(sb.dir, "bin", "rm"), "#!/usr/bin/env bash\nexit 1\n", { mode: 0o755 });
+}
+const as = (id, cmd) => `AO_SESSION_ID=${id} "$BASH" "$LOCK_SCRIPT" ${cmd} >> "$FAKE_STATE/${id}.out" 2>&1; `;
+const saveClaim = `cat "$LOCK_POSIX/owner" > "$FAKE_STATE/claim.saved"; `;
+const hookOut = (sb, id) => readFileSync(join(sb.state, `${id}.out`), "utf8").trim();
+
+test("gpt-lock: a release never touches the claim of a session that took the lock meanwhile", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    releaseHooks(sb, { mv: as("music-garden-9", "acquire") + saveClaim }); // 9 acquires once the lock is off its path
+    const rel = lock(sb, "music-garden-6", "release");
+    assert.strictEqual(hookOut(sb, "music-garden-9"), "acquired");
+    assert.strictEqual(rel.code, 0, rel.out);
+    assert.strictEqual(rel.out, "released");
+    const owner = join(sb.env.GPT_LOCK_DIR, "owner");
+    const claim = readFileSync(join(sb.state, "claim.saved"), "utf8");      // as 9 wrote it
+    assert.match(claim, /^music-garden-9 /);
+    assert.strictEqual(readFileSync(owner, "utf8"), claim, "the successor's claim stands, byte for byte");
+    const again = lock(sb, "music-garden-6", "acquire");
+    assert.strictEqual(again.code, 75, again.out);
+    assert.match(again.out, /^busy: held by music-garden-9 /);
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: two releases by one session never take the next holder's lock", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9", "music-garden-11"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    // the first release has checked its claim; a second runs to the end, and 9 acquires
+    releaseHooks(sb, { rename: as("music-garden-6", "release") + as("music-garden-9", "acquire") + saveClaim });
+    const rel = lock(sb, "music-garden-6", "release");
+    assert.strictEqual(hookOut(sb, "music-garden-6"), "released");
+    assert.strictEqual(hookOut(sb, "music-garden-9"), "acquired");
+    assert.strictEqual(rel.code, 0, rel.out);
+    assert.strictEqual(rel.out, "released");
+    const claim = readFileSync(join(sb.state, "claim.saved"), "utf8");
+    assert.strictEqual(readFileSync(join(sb.env.GPT_LOCK_DIR, "owner"), "utf8"), claim, "9's lock is back, byte for byte");
+    const late = lock(sb, "music-garden-11", "acquire");
+    assert.strictEqual(late.code, 75, late.out);
+    assert.match(late.out, /^busy: held by music-garden-9 /);
+    assert.strictEqual(lock(sb, "music-garden-9", "release").out, "released");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a release that cannot take the lock off its path changes nothing, and says it still holds it", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    releaseHooks(sb, { mvFails: true });           // as Windows does for a directory a process is in
+    const r = lock(sb, "music-garden-6", "release");
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /error: could not remove .*; it is still held by music-garden-6/);
+    assert.match(lock(sb, "music-garden-9", "status").out, /^held by music-garden-6 /);
+    assert.strictEqual(lock(sb, "music-garden-9", "acquire").code, 75);
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a release whose leftover can't be deleted still releases, and says what to delete", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-9"]);
+    assert.strictEqual(lock(sb, "music-garden-6", "acquire").code, 0);
+    releaseHooks(sb, { rmFails: true });
+    const r = lock(sb, "music-garden-6", "release");
+    assert.strictEqual(r.code, 0, r.out);
+    assert.match(r.out, /^released\nwarning: could not delete .*\.released\.music-garden-6\.\d+, which no longer holds anything/);
+    assert.strictEqual(lock(sb, "music-garden-9", "status").out, "free");
+    assert.strictEqual(lock(sb, "music-garden-9", "acquire").out, "acquired");
+  } finally { sb.cleanup(); }
+});
+
+test("gpt-lock: a claim cut short names nobody — never \"already yours\", never releasable", { skip }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-1", "music-garden-10"]);
+    mkdirSync(sb.env.GPT_LOCK_DIR);
+    // music-garden-10's write stopped after "music-garden-1"; then after "music-garden-10 "
+    for (const [partial, reader] of [["music-garden-1", "music-garden-1"], ["music-garden-10 ", "music-garden-10"]]) {
+      writeFileSync(join(sb.env.GPT_LOCK_DIR, "owner"), partial);
+      const a = lock(sb, reader, "acquire");
+      assert.strictEqual(a.code, 75, a.out);
+      assert.match(a.out, /^busy: held by a session still writing its claim\n  stuck\? once <holder> is gone/);
+      assert.strictEqual(lock(sb, reader, "release").code, 1);
+      assert.match(lock(sb, reader, "status").out, /^held by a session still writing its claim\n/);
+    }
+  } finally { sb.cleanup(); }
+});
+
+// Linux and macOS: a read-only directory, and a file-size limit of 0, are how a claim's creation, or
+// its write, fails.
+const posixOnly = skip || (process.platform === "win32" && "needs a read-only directory and ulimit -f")
+  || (process.getuid?.() === 0 && "root ignores a read-only directory");
+
+test("gpt-lock: a claim that cannot be created removes nothing — the directory may be another session's", { skip: posixOnly }, () => {
+  const sb = sandbox();
+  try {
+    eexistIgnoringMkdir(sb);
+    sb.sessions(["music-garden-6"]);
+    mkdirSync(sb.env.GPT_LOCK_DIR, { mode: 0o555 });                   // another session's, not yet claimed
+    const r = lock(sb, "music-garden-6", "acquire");                   // its mkdir "succeeds"; its claim can't be made
+    assert.strictEqual(r.code, 1, r.out);
+    assert.match(r.out, /^error: could not write .*owner$/);
+    assert.ok(existsSync(sb.env.GPT_LOCK_DIR), "the other session's directory is still there");
+    assert.match(lock(sb, "music-garden-6", "status").out, /^held by a session still writing its claim\n/);
+    assert.strictEqual(lock(sb, "music-garden-6", "release").code, 1, "and it is not this session's");
+  } finally { spawnSync("chmod", ["755", sb.env.GPT_LOCK_DIR]); sb.cleanup(); }
+});
+
+test("gpt-lock: a claim that can't be made in the directory its own mkdir made is an error at once, not busy", { skip: posixOnly }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6"]);
+    // an ordinary mkdir, whose new directory then refuses files
+    writeFileSync(join(sb.dir, "bin", "mkdir"), `#!/usr/bin/env bash
+PATH="\${PATH#"$FAKE_BIN:"}" command mkdir "$@" && chmod 555 "\${!#}"
+`, { mode: 0o755 });
+    for (const cmd of ["acquire", "wait"]) {
+      sb.env.GPT_LOCK_TRIES = "3";
+      const r = lock(sb, "music-garden-6", cmd);
+      assert.strictEqual(r.code, 1, `${cmd}: ${r.out}`);
+      assert.match(r.out, /^error: could not write .*owner$/);
+      spawnSync("chmod", ["755", sb.env.GPT_LOCK_DIR]); rmSync(sb.env.GPT_LOCK_DIR, { recursive: true });
+    }
+  } finally { spawnSync("chmod", ["755", sb.env.GPT_LOCK_DIR]); sb.cleanup(); }
+});
+
+// As on a full disk: a file-size limit of 0 lets bash create the claim file — a regular one, with
+// O_EXCL — and fails its write (EFBIG; SIGXFSZ ignored, so the write fails rather than the process).
+function fullDisk(sb, session, cmd) {
+  const r = spawnSync(bash, ["-c", PRELUDE + 'trap "" XFSZ; ulimit -f 0; exec "$BASH" "$@"', "_", lockScript, cmd],
+    { env: { ...sb.env, AO_SESSION_ID: session }, encoding: "utf8" });
+  return { code: r.status, out: (r.stdout + r.stderr).trim() };
+}
+
+test("gpt-lock: a claim created but not written is an error that removes only that file", { skip: posixOnly }, () => {
+  const sb = sandbox();
+  try {
+    sb.sessions(["music-garden-6", "music-garden-7"]);
+    mkdirSync(sb.env.GPT_LOCK_DIR);              // 7's: made, its claim not yet written
+    eexistIgnoringMkdir(sb);                     // 6's mkdir "succeeds" on it too
+    for (const cmd of ["acquire", "wait"]) {
+      sb.env.GPT_LOCK_TRIES = "3";
+      const r = fullDisk(sb, "music-garden-6", cmd);
+      assert.strictEqual(r.code, 1, r.out);
+      assert.match(r.out, /^error: could not write .*owner$/);
+      assert.ok(existsSync(sb.env.GPT_LOCK_DIR), "7's directory is still there");
+      assert.ok(!existsSync(join(sb.env.GPT_LOCK_DIR, "owner")), "6's own claim file is gone");
+    }
+    assert.ok(!existsSync(join(sb.state, "renames.log")), "no [GPT] rename");
+    assert.strictEqual(lock(sb, "music-garden-7", "acquire").out, "acquired", "7 can still finish acquiring");
+  } finally { sb.cleanup(); }
 });
 
 test("gpt-lock: a session holding the lock keeps it against a later, lower-numbered session", { skip }, () => {
@@ -188,6 +415,9 @@ test("gpt-lock: a lock whose claim is not yet written reads as held, never free,
     assert.strictEqual(busy.code, 75, busy.out);
     assert.match(busy.out, /^busy: held by a session still writing its claim\n/);
     assert.strictEqual(lock(sb, "music-garden-6", "release").code, 1);
+    writeFileSync(join(sb.env.GPT_LOCK_DIR, "owner"), "");             // claim created, not yet written
+    assert.match(lock(sb, "music-garden-6", "status").out, /^held by a session still writing its claim\n/);
+    assert.match(lock(sb, "music-garden-6", "acquire").out, /^busy: held by a session still writing its claim\n/);
   } finally { sb.cleanup(); }
 });
 
