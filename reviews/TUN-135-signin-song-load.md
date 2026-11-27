@@ -118,10 +118,11 @@ My answers:
    `index.html`. Not verified: rendered visibility in a browser, on desktop or phone — a sign-in can't be held
    in AO's browser.
 3. **Medium, a second toast can erase the refusal before it paints — agreed, not fixed here:** it changes
-   what `toast` does for every caller (hold or queue an ordinary toast behind a raised one). Filed to Backlog.
+   what `toast` does for every caller (hold or queue an ordinary toast behind a raised one). Filed to Backlog:
+   TUN-138.
 4. **Medium, a retry after a failed landing sign-in opens the Studio under the landing — agreed, not fixed
    here:** it predates this PR (GPT says so), and is about the landing staying up over the game, not about a
-   song landing mid-sign-in. Filed to Backlog. The native-keyboard route itself can't be driven in the Node
+   song landing mid-sign-in. Filed to Backlog: TUN-139. The native-keyboard route itself can't be driven in the Node
    harness.
 5. **Low, the cloud retry reused the old row — agreed, fixed:** the test reopens the Jukebox and presses the
    newly listed row.
