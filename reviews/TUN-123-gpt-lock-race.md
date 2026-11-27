@@ -127,11 +127,77 @@ the regular file the lock uses; nothing ever makes `owner` a FIFO or device but 
 
 ## Tests
 
-- CI (`ubuntu-26.04`), head `5decc25`: 1264/1265, one skipped (the Windows-only busy-directory
-  release) — with the many-at-once test at 200 rounds and the fake-`mkdir` test's concurrent part at
-  200 rounds, every round passing. Without the fix (head `ffe99e4`, run 46045638364): 3 failed.
-- Git Bash on Windows: the gpt-lock tests, 12/14 with the two Linux-only ones skipped; both release-race
-  tests fail on `e047c66`. The many-round Windows loop's result is on PR #190.
+- CI (`ubuntu-26.04`), heads `5decc25` and `eb8c021`: 1264/1265, one skipped (the Windows-only
+  busy-directory release) — with the many-at-once test at 200 rounds and the fake-`mkdir` test's
+  concurrent part at 200 rounds, every round passing. Without the fix (head `ffe99e4`, run
+  46045638364): 3 failed. Round 2's head: on PR #190.
+- Git Bash on Windows, after round 2: the gpt-lock tests 14/16, the two Linux-only ones skipped; the
+  release-race tests fail on `e047c66`, the cut-short and still-being-written ones on `eb8c021`. The
+  many-round Windows loop's result is on PR #190.
 - Not verified: the Linux-only read-only-directory test against the old script (by reading only); a
-  partial claim write; a hand-off between two claim reads (there is no longer a second read).
-- Second GPT round: not run — it needs the owner's yes (the task's rule for a Blocker or High).
+  partial write staged for real (the reader's rule is tested with a cut-short file); a release between
+  a lost exclusive create and the check after it.
+- Second GPT round: run on the owner's yes — below; a third, on the owner's yes, after it.
+
+## PR review, round 2 (`gpt-6.2-astra`, `ask.sh` fresh read-only) — head `eb8c021`
+
+The owner's yes (D3). The GPT lock taken with origin/main's script and released after; exit 0. The prompt carried round 1 verbatim, what changed, and the delta `e047c66..eb8c021`. Verdict: **Changes requested**.
+
+<details><summary>GPT's review, verbatim</summary>
+
+1. **High — `.claude/gpt/gpt-lock.sh:56` — A failed writer can still remove another session’s directory.** A creates the directory and pauses before opening `owner`. B’s racing `mkdir` also returns 0. B creates `owner`, its write fails, and line 56 removes both the file and **A’s directory**. A resumes and cannot create its claim. This needs neither a release nor a third session. Creating `owner` proves ownership of that file only. The decision at line 79 to leave an unclaimed directory in place is correct. Apply the same ownership rule at line 56.
+
+2. **High — `.claude/gpt/gpt-lock.sh:85` — Another invocation can accept a partial claim before cleanup.** Suppose a failed write for `music-garden-10` leaves `music-garden-1` on disk. Before line 56 unlinks it, an acquire by `music-garden-1` reads those bytes, recognizes itself, and returns `acquired (already yours)`. Cleanup then frees the lock while that session believes it holds it. A partial `"<session> "` likewise fools a concurrent retry by that session. Line 103 also accepts the partial ID for release. Publish a complete claim atomically, or require evidence of a complete record before granting either ownership operation. The failed writer itself now exits 1 correctly.
+
+3. **High — `.claude/gpt/gpt-lock.sh:114` — Failed release can give hand-clear instructions for the wrong session.** A’s removal fails after unlinking `owner`. B wins the exclusive open and pauses before writing its ID. A’s recovery open fails, its one read sees an empty file, and it tells the operator to clear the lock once **A** is gone. B can finish acquiring and still be running when that condition is met. An unreadable or incomplete claim must not authorize clearing based on A’s identity. The `released` result at line 113 is correct when a complete claim identifies B. The successful-`rm` branch and the single-read busy/status messages also fix their round-1 findings.
+
+4. **Medium — `.claude/gpt/gpt-lock.sh:79` — Ordinary contention can terminate `wait` with a filesystem error.** B loses the exclusive open to A’s regular `owner`. A releases before B reaches the existence check. B now reports `could not write` and `wait` exits 1 even though the lock is free. Preserve the distinction between a lost exclusive create and a genuine creation error. Looking up the pathname afterward cannot recover the original reason.
+
+5. **Medium — `tests/workflow-scripts.test.mjs:249` — The write-failure test rewards deleting an entry the acquire did not create.** The fixture creates the `owner` symlink before calling `acquire`. Bash opens the existing character device without `O_EXCL`, sets `made=1`, and the test requires cleanup to unlink the fixture’s symlink. It never exercises exclusive creation of a regular file or a partial write. Against `e047c66`, the old holder read can also hang reading `/dev/full`, which supplies zero bytes indefinitely. Replace the fixture with a bounded write failure on a newly created regular file. The read-only-directory test, by contrast, does catch the old `rmdir` because its parent is writable. [Bash `noclobber_open`](https://sources.debian.org/src/bash/5.2.37-2/redir.c/#L664) · [Linux `full(4)`](https://man7.org/linux/man-pages/man4/full.4.html)
+
+The brace group itself is sound in Bash 5.x, including Git Bash. A failed fd 3 redirection skips the group, so `made` stays empty. Every normal return passes through `set +C`. That does clear an *inherited* `noclobber` setting for the rest of the script, but executing the script cannot change the invoking shell’s setting. I reviewed `eb8c021` against `f565da9` by source inspection. I did not run tests or access AO or the real lock.
+
+**Missing tests**
+
+- Pause A after its real `mkdir`. Give B the false-success `mkdir` and inject a zero-byte write failure after B creates a regular `owner`. Assert B exits 1 without renaming, A’s directory survives, and A finishes acquiring. Exercise `wait` as well as `acquire`.
+- Use a sandbox `BASH_ENV` wrapper for the claim’s `printf` to write a partial ID, signal a barrier, and return failure. While paused, try `acquire` and `release` as the matching shorter session. Repeat with `"<session> "` and a same-session retry. Neither may claim ownership. Verify a fresh session can acquire after cleanup.
+- During failed release, pause B after its exclusive open and before its write. Assert A’s diagnostic never directs clearing based on A being gone, then let B finish and verify its claim survives.
+- Let A release after B loses the exclusive open and before B checks the pathname. Assert B’s `wait` can acquire on retry. Keep the genuine creation-error case exiting 1.
+- In both release-race tests, save B’s exact claim **inside the `rm` hook**, immediately after B acquires. Compare those bytes after A returns. Both tests catch the `e047c66` overwrite, but the current byte-for-byte baseline at line 202 is taken after release has already returned.
+- For busy `acquire` and `status`, have sandbox `cat`/`cut` wrappers change the fixture from A to B immediately after serving the first owner read. Assert the displayed holder and the session named in the hand-clear instruction agree. This catches reintroduction of the two-read bug without a production hook.
+
+**Changes requested**
+
+</details>
+
+### My answers
+
+1. **High — a failed writer can still remove another session's directory. Agreed; fixed.** A claim
+   created but not written removes only its own `owner` file, never the directory. Cost: on a full
+   disk with a correct `mkdir`, the empty directory stays and reads as *still writing its claim*,
+   cleared by hand (decision 9).
+2. **High — another invocation can accept a partial claim. Agreed; fixed** by requiring evidence of a
+   complete record: `read_claim` — bash's `read`, which succeeds only on a newline-terminated line,
+   holding `<session> <time>` — is the only way any command learns the holder, so a claim cut short
+   names nobody: not *already yours*, not releasable, *still writing its claim*.
+3. **High — a failed release can give hand-clear instructions for the wrong session. Agreed; fixed.**
+   After a failed removal, any `owner` file that is not this session's complete claim — complete or
+   still being written — means this session holds nothing: `released`, no hand-clearing lines.
+4. **Medium — ordinary contention can end `wait` with a filesystem error. Agreed; fixed** without
+   errno: a claim not created, with no claim there, retries the whole acquire once. The race GPT
+   describes (the winner released already) then acquires or answers busy; a real creation error fails
+   twice and exits 1, as the read-only-directory test shows.
+5. **Medium — the write-failure test rewards deleting an entry the acquire did not create. Agreed;
+   replaced.** A file-size limit of 0 (`ulimit -f 0`, `SIGXFSZ` ignored) lets bash create a regular
+   `owner` with `O_EXCL` and fails its write; no `/dev/full`.
+
+**Missing tests — added:** a failed writer (file-size limit 0, `acquire` and `wait`) leaves the other
+session's directory, removes only its own file, renames nothing, and the other session finishes
+acquiring (Linux/macOS); a claim cut short (`music-garden-1` of `music-garden-10`, and
+`"music-garden-10 "`) is never *already yours* nor releasable; a failed release that finds a claim
+still being written says `released` and never names itself to clear; both release-race tests now save
+the successor's claim inside the `rm` hook. The cut-short and still-being-written tests fail on
+`eb8c021` (run on Git Bash). **Not added:** a release between a lost exclusive create and the check
+after it — no outside command runs between them to hook (the claim's `date` runs only after the open
+succeeds); `cat`/`cut` wrappers for the two-read bug — the claim is now read once, by the `read`
+builtin.

@@ -24,7 +24,16 @@ command -v cygpath >/dev/null 2>&1 && lock=$(cygpath -u "$lock")   # Git Bash: C
 me="${AO_SESSION_ID:-}"
 [ -n "$me" ] || { echo "error: AO_SESSION_ID is not set" >&2; exit 1; }
 
-holder() { cut -d' ' -f1 "$lock/owner" 2>/dev/null; }
+# read_claim: the claim and who it names, from one read, so a message never names two sessions. A claim
+# counts only once complete — "<session> <time>" and its newline, which `read` needs to succeed — so a
+# write cut short ("music-garden-1" of music-garden-10) names nobody. Missing, empty or incomplete: a
+# claim still being written.
+read_claim() {
+  local line=
+  if IFS= read -r line 2>/dev/null < "$lock/owner" && [ "${line#* }" != "$line" ]; then
+    claim_text=$line; claimant=${line%% *}
+  else claim_text="a session still writing its claim"; claimant=; fi
+}
 
 # How to clear a stuck lock by hand, for status and busy messages.
 how_to_clear() {
@@ -44,7 +53,8 @@ display_name() {
 #   0  mine
 #   1  not created: another session's claim is there, or the file could not be made — nothing here is
 #      mine, so nothing is removed
-#   2  created but not written (a full disk): mine, so removed again, with the directory once empty
+#   2  created but not written (a full disk): the file is mine, so it is removed again — the file only,
+#      as the directory may be another session's whose mkdir exited 0 too
 claim() {
   local made=
   set -C
@@ -53,16 +63,10 @@ claim() {
   set +C
   [ $s -eq 0 ] && return 0
   [ -n "$made" ] || return 1
-  rm -f "$lock/owner"; rmdir "$lock" 2>/dev/null; return 2
+  rm -f "$lock/owner"; return 2
 }
 
-# read_claim: the claim as written, and who it names, from one read, so a message never names two
-# sessions. A claim missing or still empty is one being written.
-read_claim() {
-  claim_text=$(cat "$lock/owner" 2>/dev/null); claimant=${claim_text%% *}
-  [ -n "$claim_text" ] || claim_text="a session still writing its claim"
-}
-
+# try_acquire [again]
 try_acquire() {
   local err
   if err=$(mkdir "$lock" 2>&1) || { [ ! -e "$lock" ] && err=$(mkdir "$lock" 2>&1); }; then
@@ -75,8 +79,12 @@ try_acquire() {
       2) echo "error: could not write $lock/owner" >&2; return 1 ;;
     esac
     # Not created. With a claim there, another session's mkdir exited 0 too: contention, below. With
-    # none, the file could not be made — and the directory may be another session's, about to claim.
-    [ -e "$lock/owner" ] || { echo "error: could not write $lock/owner" >&2; return 1; }
+    # none, either the claim it lost to was released already — so try once more — or the file could not
+    # be made, and the directory, which may be another session's about to claim, is left alone.
+    if [ ! -e "$lock/owner" ]; then
+      [ -z "${1:-}" ] && { try_acquire again; return; }
+      echo "error: could not write $lock/owner" >&2; return 1
+    fi
   else
     # mkdir failed twice and there is still no lock: not contention, a filesystem error
     [ -e "$lock" ] || { echo "error: could not create $lock: $err" >&2; return 1; }
@@ -99,8 +107,8 @@ case "${1:-}" in
     done
     echo "$out"; echo "gave up after $tries tries"; exit 75 ;;
   release)
-    h=$(holder)
-    [ "$h" = "$me" ] || { echo "not yours: held by ${h:-nobody}"; exit 1; }
+    read_claim
+    [ "$claimant" = "$me" ] || { echo "not yours: held by ${claimant:-nobody}"; exit 1; }
     name=$(cat "$lock/name" 2>/dev/null)
     ao session rename "$me" "${name:-$me}" >/dev/null 2>&1
     # Once rm -rf has succeeded the lock is gone: whatever is there afterwards is the next holder's.
@@ -110,8 +118,9 @@ case "${1:-}" in
     [ -d "$lock" ] && claim
     read_claim
     if [ "$claimant" = "$me" ]; then echo "error: could not remove $lock; it is still held by $me" >&2; exit 1; fi
-    if [ -n "$claimant" ]; then echo "released"; exit 0; fi
-    echo "error: could not remove $lock, nor put the claim back" >&2; how_to_clear "$me" >&2; exit 1 ;;
+    # Another session's claim is there, complete or still being written: this session holds nothing.
+    if [ -e "$lock/owner" ]; then echo "released"; exit 0; fi
+    echo "error: could not remove $lock, nor put the claim back" >&2; exit 1 ;;
   status)
     if [ -d "$lock" ]; then
       read_claim
