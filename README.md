@@ -263,7 +263,7 @@ See `backend/README.md` for first-time setup. The API is throttled to a nominal 
 **Response headers** (TUN-86) live in **`_headers`** at the repository root. The build copies it into `site/`, and Cloudflare Pages reads it from there. What it sends:
 - **A content security policy.** Scripts, fonts, narration clips and everything else only from the site itself; connections only to the backend (`AUTH.apiUrl` in `js/cloud.js`) and Cognito's endpoint for `AUTH.region`. No inline script, `eval` or `on…=` attribute is allowed, so the page must never use one. Styles allow `'unsafe-inline'`, because the page has an inline `<style>` block and `style=` attributes.
 - **No framing** by other sites (`frame-ancestors 'none'` and `X-Frame-Options: DENY`), `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`.
-- **Caching.** `voice/*` clips are kept for 30 days: their names are a hash of their text. `index.html`, `CREDITS.md`, the licence files, `js/`, `samples/` and `vendor/` are always re-checked (`max-age=0, must-revalidate`); `CREDITS.md` and the licence files are also sent as `text/plain`, so a browser shows them rather than downloading them, because their names do not change when their content does. Not a year for the clips: `node tools/gen-voice.mjs --force` re-voices them under the same names, and a clip that does not exist yet is answered with `index.html`, which a browser then keeps under that clip's name. So **bake a story's clip in the same deploy as the story**, or players who hear it first fall back to the browser voice for up to 30 days.
+- **Caching.** `voice/*` clips are kept for 30 days: their names are a hash of their text. `index.html`, `CREDITS.md`, the licence files, `js/`, `samples/` and `vendor/` are always re-checked (`max-age=0, must-revalidate`); `CREDITS.md` and the licence files are also sent as `text/plain`, so a browser shows them rather than downloading them, because their names do not change when their content does. Not a year for the clips: `node tools/gen-voice.mjs --force` re-voices them under the same names, and a clip that does not exist yet is answered with `index.html`, which a browser then keeps under that clip's name. So **bake a story's clip in the same deploy as the story**, or players who hear it first fall back to the browser voice for up to 30 days. On the custom domains, the rules hold only while Cloudflare's **Browser Cache TTL** is *Respect Existing Headers* (below).
 
 **To change them**, edit `_headers`. Each header must come from **one** rule per path: Cloudflare joins a header two matching rules both set with a comma. `tests/site-headers.test.mjs` works out the headers for every published file and fails on a duplicate, a missing cache rule, a policy that allows another host, or a `connect-src` that no longer matches `js/cloud.js`. A new runtime folder needs a cache rule there too. A policy mistake only shows on a real host, so check a preview with the console open: the policy blocks anything it doesn't allow and logs a "violates the following Content Security Policy directive" error.
 
@@ -290,6 +290,30 @@ done
 ```
 
 The console of the live site, with the page freshly loaded, shows only the cross-origin kind: a "violates the following Content Security Policy directive" line there means a switch is on. `tests/workflow-scripts.test.mjs` runs this block against fake pages. The policy stays as strict as it is — no `static.cloudflareinsights.com`, no third-party analytics (owner, 2026-11-15) — so the fix for an injected script is always the dashboard switch, never `_headers`.
+
+**A Cloudflare setting that must keep its value** (TUN-134): **Browser Cache TTL** must be **Respect Existing Headers**. It is under the domain `tunegarden.game` → **Caching** → **Configuration** (where Cloudflare's docs put it in November 2026), and it covers `www.tunegarden.game` too. Any other value replaces a shorter `max-age` than its own in what the custom domains send, `_headers`' `max-age=0` included. Its default is 4 hours. The game's script files keep their names from one deploy to the next, so with that default a returning player's browser runs the old `js/`, `samples/` and `vendor/` files for up to 4 hours after a deploy, or a mix of old and new ones, without asking whether they changed. That is what happened until the owner set it on 2026-11-26: `js/cloud.js` came with `max-age=14400` from `tunegarden.game` and `max-age=0` from `music-garden.pages.dev` and from a preview. The setting belongs to the `tunegarden.game` zone and does not touch `*.music-garden.pages.dev`, so those hosts can read right while the custom domains read wrong: check the custom domains. `tests/site-headers.test.mjs` checks the file, not what a domain sends. A player who loaded the game before a fix keeps the cached copies until they expire; nothing in the repository can shorten that.
+
+**To check the cache headers from a terminal**, after any change to the Cloudflare settings or to `_headers`' cache rules, ask both custom domains for the page and one file per folder's cache rule (a new folder rule earns a line here). Each line should start `ok`, which means that URL answered `200` itself, not a redirect, with the `Cache-Control` that `_headers` sets for it. `WRONG` names what came instead (`none` for no header, two values for two headers). `FAILED` means the check proved nothing: the fetch did not complete, or the answer was not a `200`. Only the final response's headers count. Each file is one the repository publishes, so its `200` is the file itself, not the `index.html` that answers a missing path:
+
+```sh
+for h in tunegarden.game www.tunegarden.game; do
+  for c in "/|public, max-age=0, must-revalidate" "/js/cloud.js|public, max-age=0, must-revalidate" \
+    "/samples/glockenspiel.js|public, max-age=0, must-revalidate" \
+    "/vendor/cognito/amazon-cognito-identity.min.js|public, max-age=0, must-revalidate" \
+    "/voice/108fedab.mp3|public, max-age=2592000"; do
+    u="https://$h${c%%|*}"; want=${c#*|}
+    if ! hd=$(curl -fsSI "$u"); then echo "FAILED: $u (the fetch did not complete)"; continue; fi
+    hd=$(printf '%s\n' "$hd" | tr -d '\r' | awk '/^HTTP\//{b=""} {b=b $0 "\n"} END{printf "%s", b}')
+    st=$(printf '%s\n' "$hd" | sed -n '1s/^HTTP\/[^ ]* \([0-9]*\).*/\1/p')
+    [ "$st" = 200 ] || { echo "FAILED: $u (answered ${st:-no status}, not 200)"; continue; }
+    got=$(printf '%s\n' "$hd" | grep -i '^cache-control:' | sed 's/^[^:]*:[[:space:]]*//; s/[[:space:]]*$//' | paste -sd ';' -)
+    if [ "$got" = "$want" ]; then r=ok; else r=WRONG; fi
+    echo "$r: $u (Cache-Control: ${got:-none})"
+  done
+done
+```
+
+`tests/workflow-scripts.test.mjs` runs this block against fake responses, and fails if a path it asks for is not a file the build publishes, if a value it expects is not the one `_headers` sets for that file, or if a folder's cache rule in `_headers` has no file here.
 
 ⚠️ If you add a runtime asset folder, **add it to `cloudflare-build.sh`** (and to the test's list), or it silently won't exist in production (the game's fallbacks can mask this — e.g. missing samples just means the synth voice plays). `tests/cloudflare-publish.test.mjs` fails when the script publishes something outside its list, or leaves out something on it. Code is not silent: `index.html` is served in place of a missing `js/` file, the browser cannot parse it, and the game never starts. The game also expects to live at the site root — at a nested path like `/a/` its relative `js/` URLs miss in the same way.
 
