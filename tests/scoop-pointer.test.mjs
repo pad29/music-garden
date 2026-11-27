@@ -239,3 +239,62 @@ test("a move cut off by the release puts nothing down, and its late pointerup mo
   assert.strictEqual(JSON.stringify(g.melTrack().notes), before, "no seed moved");
   assert.deepStrictEqual([...g.traySel], [n.id], "and the pick is still held");
 });
+
+// GPT's PR review, round 1 (Medium): a finger trayPtrsDrop() let go of may still be down, and must not
+// steer, cancel or end the next gesture.
+test("a finger the release let go of cannot steer, cancel or end the next gesture", () => {
+  const { g, track } = boot();
+  for (let c = 0; c < 3; c++) g.modelSetCell(g.ROWS - 1 - c, c, true);
+  g.enterTray();
+  const n = g.melTrack().notes[0];
+  const at = g.trayCellOf(n);
+  g.traySel = [n.id];
+  const px = (id, q) => ptr(id, g.TRAY_PAD + (q.c + 0.5) * g.TRAY_CW, g.TRAY_PAD + (q.r + 0.5) * g.TRAY_CH);
+  track.emit("pointerdown", ptr(1, 100, 100));     // A
+  track.emit("pointerdown", ptr(2, 300, 100));     // B: two-finger pan
+  track.emit("lostpointercapture", ptr(2, 300, 100));
+  assert.strictEqual(g.trayPtrs.size, 0, "B's lost capture released both");
+  track.emit("pointerdown", px(3, at));             // C presses the picked seed: a move
+  track.emit("pointermove", px(3, { r: at.r, c: at.c + 1 }));
+  track.emit("pointermove", px(1, { r: at.r, c: at.c + 4 }));   // A, still down, drifts four columns
+  assert.deepStrictEqual([g.trayDrag.d.r, g.trayDrag.d.c], [0, 1], "A does not steer C's move");
+  track.emit("pointercancel", px(1, { r: at.r, c: at.c + 4 }));
+  assert.strictEqual(g.trayDrag && g.trayDrag.mode, "move", "nor does A's late cancel discard it");
+  track.emit("pointerup", px(1, { r: at.r, c: at.c + 4 }));
+  assert.strictEqual(g.trayDrag && g.trayDrag.mode, "move", "nor does A's late up end it");
+  track.emit("pointerup", px(3, { r: at.r, c: at.c + 1 }));
+  assert.strictEqual(g.trayCellOf(n).c, at.c + 1, "C's up moves the seed exactly one column");
+  assert.strictEqual(g.trayCellOf(n).r, at.r);
+  assert.strictEqual(g.camBusy(), false);
+});
+
+test("an untracked pointer still shows an armed copy's hover ghost", () => {
+  const { g, track } = boot();
+  g.enterTray();
+  g.trayPlace = { rel: [{ dr: 0, dc: 0, dur: 1 }], h: 0, w: 0 };
+  g.trayGhosts = [];
+  track.emit("pointermove", ptr(9, g.TRAY_PAD + 2.5 * g.TRAY_CW, g.TRAY_PAD + 0.5 * g.TRAY_CH));   // a mouse hovering, never pressed
+  assert.strictEqual(g.trayGhosts.length, 1, "the copy's preview follows the hover");
+});
+
+test("an armed copy through a two-finger pan: an ordinary lift and its lost capture keep the other finger", () => {
+  const { g, track } = boot();
+  for (let c = 0; c < 3; c++) g.modelSetCell(g.ROWS - 1 - c, c, true);
+  g.enterTray();
+  const notes = g.melTrack().notes.length;
+  g.traySel = [g.melTrack().notes[0].id];
+  g.trayPlace = { rel: [{ dr: 0, dc: 0, dur: g.melTrack().notes[0].durationTicks }], h: 0, w: 0 };
+  track.emit("pointerdown", ptr(1, 500, 300));     // A: a placing tap begins…
+  track.emit("pointerdown", ptr(2, 700, 300));     // …B lands: pan
+  track.emit("pointerup", ptr(2, 700, 300));       // B lifts normally…
+  track.emit("lostpointercapture", ptr(2, 700, 300));   // …and the browser then releases its capture
+  assert.strictEqual(g.trayPtrs.size, 1, "A is still tracked");
+  assert.ok(g.trayPtrs.has(1));
+  assert.strictEqual(g.camBusy(), true, "and holds the camera until it lifts");
+  track.emit("pointerup", ptr(1, 500, 300));
+  track.emit("lostpointercapture", ptr(1, 500, 300));
+  assert.strictEqual(g.camBusy(), false);
+  assert.ok(g.trayPlace, "the copy stays armed");
+  assert.strictEqual(g.traySel.length, 1, "the pick survives");
+  assert.strictEqual(g.melTrack().notes.length, notes, "and a pan never plants the copy");
+});

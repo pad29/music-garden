@@ -97,6 +97,7 @@ trackEl.addEventListener("pointermove",e=>{ if(!trayMode) return;
   const prev=trayPtrs.get(e.pointerId);
   if(prev) trayPtrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(trayPtrs.size>=2){ if(prev) scroller.scrollLeft-=(e.clientX-prev.x)/zoomOf(); return; }   // two-finger pan — scrollLeft is FIELD px, the finger is viewport px
+  if(trayDrag&&!prev) return;   // a gesture answers only to a finger it tracks: one trayPtrsDrop() let go of may still be down (TUN-14)
   if(trayPlace){
     if(trayDrag&&trayDrag.mode==="placetap"){
       if(Math.hypot(e.clientX-trayDrag.from.x,e.clientY-trayDrag.from.y)>TRAY_SLOP) trayDrag.panned=true;
@@ -144,7 +145,7 @@ function trayUp(e){ trayPtrs.delete(e.pointerId);
       clearGhosts(); }
   } else clearGhosts();
 }
-function trayCancel(e){ trayPtrs.delete(e.pointerId); if(trayMode) trayCancelGesture(); }   // interrupted gesture: discard, never commit
+function trayCancel(e){ if(trayPtrs.delete(e.pointerId) && trayMode) trayCancelGesture(); }   // interrupted gesture: discard, never commit
 trackEl.addEventListener("pointerup",trayUp); trackEl.addEventListener("pointercancel",trayCancel);
 // A pointer can go without its up or cancel ever reaching trackEl — the tab hidden or the window blurred
 // mid-gesture, the capture lost. Left in trayPtrs, it holds camBusy() true and the camera stops following
