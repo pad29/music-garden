@@ -47,7 +47,16 @@ title, no coverage or status line, § 14's "18 … (as of 2026-07-13)" heading, 
 
 ## Owner's decisions
 
-None needed — the ticket has no open questions.
+The ticket had no open questions. At Review 1 (2026-11-27, relayed by the coordinator):
+
+- **No second GPT round** on #191.
+- **Both GPT points I had declined are accepted and fixed** — the owner's words: *"I'd like to accept both
+  GPT points and fix them."* PACKAGES.md § 6's heading drops the numeral ("The packages — high-level
+  specs"; § 5 now says "reorder of the original 24", which stays true) — no link or test pointed at its
+  anchor, and the test finds § 6 by its number. The two old notes now say "not built at the time", in both
+  files that carry them (`PACKAGES-DETAILED.md` §§ 11 and 13; `PACKAGES.md` § 6's `pull-of-the-moon` and
+  `sun-and-moon-garden`). The test now fails a § 6 heading whose count is not its entry count, and a "not
+  built" note about a shipped package without "at the time"; mutation cases put each old text back.
 
 ## PR review, round 1 (`gpt-6.2-astra`, `ask.sh fresh read-only`, on `0f8b461`)
 
@@ -99,7 +108,7 @@ passed every criterion but left the full suite "Unverified", is omitted):
    doc truthfully for it and expects no problem.
 3. **Medium, PACKAGES.md § 6 "next pass for the first 8" — agree, fixed**, and its opening now says "all
    but two — §3 names them"; the test holds § 3's and § 6's exception lists to the runtime. **"The 24
-   packages" heading — not changed:** it is the catalog's planned set (§ 5 is "reorder of the 24"), the
+   packages" heading — not changed at first (the owner overruled this; now fixed, see *Owner's decisions*):** it is the catalog's planned set (§ 5 is "reorder of the 24"), the
    ticket's *Read first* names it, and renaming it changes its anchor; out of scope.
 4. **Medium, pointer checks too loose — agree.** The opening must link `PACKAGES.md` and `DESIGN.md`
    by target; the *Guided campaign* entry must be inside DESIGN § 10 with the intro's runtime level count;
@@ -112,7 +121,7 @@ passed every criterion but left the full suite "Unverified", is omitted):
 6. **Low, the history overstates what the dates establish — agree, partly.** The opening now says §§1–8
    are "the original group of specs, updated as-built" and that a dated BUILT stamp is the ship date,
    notes "as of when written". **The old "not built" notes inside `pull-of-the-moon` and
-   `sun-and-moon-garden` are left as they are:** they are per-package historical records, which the
+   `sun-and-moon-garden` were left at first (the owner overruled this; now fixed, see *Owner's decisions*):** they are per-package historical records, which the
    ticket says to keep; the new opening line covers them.
 7. **Low, `two-new-colors` says 9 levels, lists 8 — agree, fixed** (the runtime has 8), and this file's
    "only" corrected.

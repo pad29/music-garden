@@ -311,7 +311,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ## 11. `pull-of-the-moon` — Pull of the Moon  [WW-3]  ✅ BUILT (2026-06-22) — DIATONIC · dominant
 
-- **Region / cluster:** Weather of Wanting / flow·home · **Palette:** **diatonic** · **Prereqs:** two-new-colors, river-turns *(the planned `soft-wobble-strong-wobble` prereq was dropped — not built; `twin-blooms-plus` covers the tension groundwork)*.
+- **Region / cluster:** Weather of Wanting / flow·home · **Palette:** **diatonic** · **Prereqs:** two-new-colors, river-turns *(the planned `soft-wobble-strong-wobble` prereq was dropped — not built at the time; `twin-blooms-plus` covers the tension groundwork)*.
 - **Fantasy:** "The dominant chord aches to come home — build the longing, strong or gentle, then release it."
 - **Capability:** command the *strength* of the pull home. **Hidden theory:** the dominant, authentic (V→I) vs. plagal (IV→I) cadence, the leading tone as the engine of the pull.
 - **Reuses** the river-turns chord machinery; adds `leadingToneResolves()` (the top voice climbs B→C across V→I).
@@ -355,7 +355,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ## 13. `sun-and-moon-garden` — Sun & Moon Garden  [CC-1 → region 🌗 The Twin Gardens]  ✅ BUILT (2026-06-20) — DIATONIC · major/minor mood
 
-- **Region / cluster:** **The Twin Gardens** / color·mood *(moved out of the planned "Color Caverns" — the twin-biome fantasy earned its own region on the map)* · **Palette:** **diatonic** · **Prereqs:** two-new-colors, ways-home *(the planned `tiny-motifs` prereq was dropped — not built)*.
+- **Region / cluster:** **The Twin Gardens** / color·mood *(moved out of the planned "Color Caverns" — the twin-biome fantasy earned its own region on the map)* · **Palette:** **diatonic** · **Prereqs:** two-new-colors, ways-home *(the planned `tiny-motifs` prereq was dropped — not built at the time)*.
 - **Fantasy:** "The same notes, two feelings — bright like sunlight (major) or wistful like moonlight (minor)."
 - **Capability:** flip the same material bright vs. wistful. **Hidden theory:** major vs. minor triads (the 3rd), relative major/minor (C-home vs A-home over the same 7 notes), mode as mood.
 - **New systems:** the **mood wash** — levels carry `mood:"sun"|"moon"` and `setMood()` tints the whole page (gold wash vs. twilight-purple); detectors `countBrightChords()`/`countWistfulChords()` (major/minor triad recognition over placed columns), `restsAtHome()` re-read against the moon's home A.

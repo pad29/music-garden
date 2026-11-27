@@ -148,7 +148,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ---
 
-## 5. Build waves (palette-aware reorder of the 24)
+## 5. Build waves (palette-aware reorder of the original 24)
 
 > Reordered from the brainstorm so each wave is **buildable when reached**. Melody + rhythm first (current engine); the `two-new-colors` milestone sits before harmony/function.
 
@@ -162,7 +162,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ---
 
-## 6. The 24 packages — high-level specs
+## 6. The packages — high-level specs
 
 > Format per package: capability · hidden theory · palette · prereqs · level patterns · world hook · sandbox unlock · **system needs (complexity)** · why it matters. Detailed (level-by-level) as-built specs are in `PACKAGES-DETAILED.md` for every built expansion package except `two-new-colors` and `two-kinds-of-walking`, specified here (§3 says the same).
 
@@ -338,7 +338,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 #### `pull-of-the-moon` — Pull of the Moon  [WW-3]  — **BUILT ✅ (2026-06-22)** *(as-built spec in PACKAGES-DETAILED §11)*
 - **Capability:** create stronger longing/pull before returning home.
-- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built yet); the tension groundwork comes from `twin-blooms-plus` instead.
+- **Theory:** dominant gravity, tendency tones. **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, river-turns — `soft-wobble-strong-wobble` was dropped from the chain (not built at the time); the tension groundwork comes from `twin-blooms-plus` instead.
 - **Patterns:** transform, compare, finish, match_feel. **Success:** targeted/broad.
 - **World hook:** *Raise the moon / celestial gates* open on strong pull + release.
 - **Sandbox:** gravity visualization; "longing" intensity; strong-return templates.
@@ -358,7 +358,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 #### `sun-and-moon-garden` — Sun Garden / Moon Garden  [CC-1]  — **BUILT ✅ (2026-06-20), in region 🌗 The Twin Gardens** *(as-built spec in PACKAGES-DETAILED §13; moved out of the planned Color Caverns into its own twin-biome region)*
 - **Capability:** shift the same idea bright vs. wistful.
-- **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built yet).
+- **Theory:** major/minor & modal contrast (as built: relative major/minor — C-home vs A-home over the same diatonic notes). **Palette:** diatonic. **Prereqs:** *(as built)* two-new-colors, ways-home — `tiny-motifs` was dropped from the chain (not built at the time).
 - **Patterns:** transform, match_feel, compare, repair. **Success:** broad/targeted.
 - **World hook:** *Twin biomes* — day garden & night garden; a character's day-song vs. night-song.
 - **Sandbox:** mood palette switch; bright/dusk/moonlit presets.

@@ -104,7 +104,8 @@ expansion packages", the packages it names as specified elsewhere (each with a B
 `PACKAGES.md` § 6) and its status count, README's two counts, § 14's heading, build history (dates against
 the BUILT stamps), DAG rows (each package's exact `requires`) and *Not yet built* list, the link targets
 and the sections they land in, `PACKAGES.md`'s exception lists and "as-built spec in PACKAGES-DETAILED §N"
-pointers, and `CONTRIBUTING.md` § 2's level row. So **a package that ships without its docs fails here.**
+pointers, § 6's heading count, "not built" notes about a shipped package (they must say "at the time"), and
+`CONTRIBUTING.md` § 2's level row. So **a package that ships without its docs fails here.**
 The checks are one pure function; its mutation cases derive from the live data and run on every suite run,
 and a made-up package released with every doc updated truthfully must pass — so the next real one does.
 

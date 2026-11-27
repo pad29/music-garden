@@ -158,6 +158,14 @@ function problems(docs, pkg) {
     if (!line) out.push(`${what} does not say which specs live in PACKAGES-DETAILED.md`);
     else if (!same(ticked(line.split("except")[1] || ""), elsewhere)) out.push(`${what}'s exceptions are not [${elsewhere}]`);
   }
+  // PACKAGES.md § 6's heading may state no count but its own: it once said "The 24 packages" over 29 entries.
+  const sixHead = catalog.split("\n")[0], sixCount = sixHead.match(/\b(\d+) packages\b/);
+  const entries = (catalog.match(/^#### `/gm) || []).length;
+  if (sixCount && +sixCount[1] !== entries) out.push(`PACKAGES.md §6's heading says ${sixCount[1]} packages over ${entries} entries`);
+  // A note saying a package is "not built" reads as current: once the package has shipped, it says "at the time".
+  for (const [file, text] of [["PACKAGES-DETAILED.md", detailed], ["PACKAGES.md", packages]])
+    for (const m of text.matchAll(/`([a-z0-9-]+)`([^`\n]*?)\bnot built\b( yet)?(?! at the time)/g))
+      if (pkg[m[1]] && !pkg[m[1]].hidden && m[2].length < 80) out.push(`${file} says "${m[1]}" is not built without "at the time": …${m[0].slice(-60)}`);
   const row = (readme.match(/^\| \*\*`PACKAGES-DETAILED\.md`\*\* \|[^\n]*/m) || [""])[0];
   if (!row || /\b(every|all)( \w+)? expansion package/i.test(row)) out.push(`README's repository map claims it covers every package: ${row}`);
   const level = (contributing.match(/^\| Fix or change a level \|[^\n]*/m) || [""])[0];
@@ -250,6 +258,19 @@ test("mutation: a pointer to the wrong place fails — opening, DESIGN §10, PAC
   expectProblem(swap(DOCS, "contributing", "[`PACKAGES.md`](PACKAGES.md) § 6", "[`PACKAGES.md`](DESIGN.md) § 6"), /level row no longer says/);
   const ptr = DOCS.packages.match(/as-built spec in PACKAGES-DETAILED §(\d+)/);
   expectProblem(swap(DOCS, "packages", ptr[0], "as-built spec in PACKAGES-DETAILED §14"), /at PACKAGES-DETAILED §14, which is no package/);
+});
+
+test("mutation: a stale count in PACKAGES.md §6's heading, or a bare 'not built' about a shipped package, fails", () => {
+  const head = DOCS.packages.match(/^## 6\.[^\n]*/m)[0];
+  const n = (section(DOCS.packages, "6.").match(/^#### `/gm) || []).length;
+  expectProblem(swap(DOCS, "packages", head, `## 6. The ${n - 5} packages — high-level specs`), new RegExp(`heading says ${n - 5} packages over ${n} entries`));
+  assert.deepEqual(problems(swap(DOCS, "packages", head, `## 6. The ${n} packages — high-level specs`), PKG), []);
+  // The owner's TUN-119 fix: the two old notes, with "at the time" taken out again, in both files.
+  for (const [key, from, to] of [
+    ["detailed", "prereq was dropped — not built at the time;", "prereq was dropped — not built;"],
+    ["detailed", "prereq was dropped — not built at the time)*", "prereq was dropped — not built)*"],
+    ["packages", "dropped from the chain (not built at the time);", "dropped from the chain (not built yet);"]])
+    expectProblem(swap(DOCS, key, from, to), /is not built without "at the time"/);
 });
 
 test("mutation: README's map row or counts drifting fails", () => {
