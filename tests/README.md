@@ -98,6 +98,15 @@ published address but the conduct alias, and checks the issue chooser (each temp
 or dropped in a mutation case), the pull request template and the pointers from README, `AGENTS.md` and
 `MAKING-QUESTS.md`.
 
+**What `PACKAGES-DETAILED.md` covers (TUN-119).** `packages-detailed.test.mjs` reads the `PACKAGES` object
+(its hidden `studio` entry left out) and holds the summaries to it: the opening's "covers N of the M
+expansion packages", the packages it names as specified elsewhere (each with a BUILT spec in
+`PACKAGES.md` § 6) and its status count, README's two counts, § 14's heading, build history, DAG line and
+*Not yet built* list, `PACKAGES.md`'s "as-built spec in PACKAGES-DETAILED §N" pointers, and
+`CONTRIBUTING.md` § 2's level row. So **a package that ships without its docs fails here.** The checks are one
+pure function, and its mutation cases — the stale text the ticket replaced, a package added to `PACKAGES` —
+run on every suite run.
+
 **Cloud progress sync (TUN-106).** `cloud-sync.test.mjs` signs a stub Cognito user in (a protocol stub,
 not the SDK) and answers `GET`/`PUT /progress` with a per-test `fetch`: a load that returns progress, `null`,
 429, 500, 503, a network error, a body that is not JSON, or a 200 that is not progress. A failed load must

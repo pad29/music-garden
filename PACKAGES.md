@@ -84,7 +84,7 @@ Tag every rhythm-touching package with the tier it needs.
 
 ## 3. Package spec template (finalized — use for every package)
 
-> The **high-level** form below uses §3's fields in compact bullet form. The **detailed** form (for packages in active design) expands §6 into a full level-by-level set with per-level success logic. **The first 8 detailed specs live in `PACKAGES-DETAILED.md`** (with the difficulty-ramp doctrine they all follow).
+> The **high-level** form below uses §3's fields in compact bullet form. The **detailed** form (for packages in active design) expands §6 into a full level-by-level set with per-level success logic. **The detailed specs live in `PACKAGES-DETAILED.md`** (with the difficulty-ramp doctrine they all follow) — for every built expansion package except `two-new-colors` and `two-kinds-of-walking`, whose specs are in §6 below.
 
 ```
 ## <slug> — <Player-facing name>   [shorthand: PS-1]
@@ -197,7 +197,7 @@ Tag every rhythm-touching package with the tier it needs.
 - **System needs (M) — built:** **phrase A/B boundary** on the timeline (the field splits into a call half, cols 0–7, and an answer half, cols 8–15) + phrase-pair evaluation (open = ends away from HOME, closed = lands on HOME — reuses the existing tonic detection, no new pitch system). The phrase-split seam is reused by `ways-home`.
 - **Why:** teaches deep formal logic intuitively; the first real bridge from melody toward form.
 
-#### `tiny-motifs` — Tiny Motifs  [PS-4]  — **BUILT ✅ (2026-07-05)** *(as-built spec in PACKAGES-DETAILED §14)*
+#### `tiny-motifs` — Tiny Motifs  [PS-4]  — **BUILT ✅ (2026-07-05)** *(as-built spec in PACKAGES-DETAILED §15)*
 - **Capability:** turn a small idea into something memorable via repetition + variation.
 - **Theory:** motif, repetition (repeat/sequence), variation, inversion. **Palette:** pentatonic. **Prereqs:** *(as built)* stepping-stones, question-and-answer.
 - **Patterns:** build_constraint, transform, repair, compare, capstone. **Success:** broad/targeted.

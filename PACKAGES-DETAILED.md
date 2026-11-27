@@ -1,7 +1,10 @@
-# Tune Garden — Detailed Package Specs (all shipped expansion packages)
+# Tune Garden — Detailed Package Specs (most built expansion packages)
 
-*Production-oriented, level-by-level specs. Sibling to PACKAGES.md (the catalog/DAG + template + standards). Each package is designed against the difficulty-ramp doctrine below. §§1–8 were written as pre-build specs and updated as-built; §§9–13 are as-built records of the packages that followed. The `two-new-colors` ★ milestone's level list lives in PACKAGES.md §6 (it's an engine milestone more than a level design).*
-Last updated: 2026-07-05 — all 14 expansion packages currently in the game are documented here or in PACKAGES.md.
+*Production-oriented, level-by-level specs. Sibling to PACKAGES.md (the catalog/DAG + template + standards). Each package is designed against the difficulty-ramp doctrine below. §§1–8 were written as pre-build specs and updated as-built; §§9–13 and §§15–18 are as-built records of the packages that followed.*
+
+**What this file covers: 17 of the 19 expansion packages** (§§1–13, §§15–18), plus the difficulty-ramp doctrine (§0) and the build order (§14). **Specified elsewhere:** `two-new-colors` (the ★ milestone — an engine milestone more than a level design) and `two-kinds-of-walking` in [PACKAGES.md](PACKAGES.md) §6 — search it for the package ID; the intro's 13 levels in the *Guided campaign* entry of [DESIGN.md](DESIGN.md) §10, which records how they were designed.
+
+**Status: 20 packages are built** — the intro and 19 expansion packages, as README § Current status says. The `PACKAGES` object in `js/packages.js` is the runtime truth; its hidden `studio` entry is the Studio, not a package. Each section's "BUILT (date)" stamp is when that package shipped.
 
 ---
 
@@ -373,7 +376,7 @@ Per-level notation below: **Ln — Name** *(level_pattern · success_logic · ra
 
 ---
 
-## 14. Build order & dependencies — 18 EXPANSION PACKAGES BUILT ✅ (as of 2026-07-13)
+## 14. Build order & dependencies — 19 EXPANSION PACKAGES BUILT ✅ (with the intro, 20)
 
 Build history (alternating melody/rhythm/harmony to avoid fatigue):
 
@@ -384,7 +387,7 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 5. **standing-towers** ✅ 2026-06-14 (triads)
 6. **question-and-answer** ✅ 2026-06-18 (phrase Q&A — the A/B timeline split)
 7. **wind-and-gaps** ✅ 2026-06-18 (rests, R2-lite — density eval + meter)
-8. **two-new-colors** ★ ✅ 2026-06-18 (the diatonic milestone: `PALETTES` + `setPalette`; staged F-then-B reveal; persistent `progress.colors`)
+8. **two-new-colors** ★ ✅ 2026-06-18 (the diatonic milestone: `PALETTES` + `setPalette`; staged F-then-B reveal; persistent `progress.colors`) — *spec in PACKAGES.md §6*
 9. **ways-home** ✅ 2026-06-18 (melodic cadence strength)
 10. **sun-and-moon-garden** ✅ 2026-06-20 (major/minor mood — opened The Twin Gardens region)
 11. **twin-blooms-plus** ✅ 2026-06-20 (tension/tritone; + the per-package toolbox fix)
@@ -395,12 +398,13 @@ Build history (alternating melody/rhythm/harmony to avoid fatigue):
 16. **off-the-path** ✅ 2026-07-09 (syncopation, the push, off-beat melody, swing feel — 3rd Pulse Woods package) — *spec in §16 below*
 17. **shifting-shadows** ✅ 2026-07-11 (inversions/revoicing, common tones, smooth bass — 4th Stone Chorus Canyon package, Geo's final form) — *spec in §17 below*
 18. **soft-wobble-strong-wobble** ✅ 2026-07-13 (graded tension: the 4-grade weather scale + the weather glass — 5th canyon package, completes Stone Chorus Canyon and Wave C) — *spec in §18 below*
+19. **two-kinds-of-walking** ✅ 2026-08-13 (note duration, R3: 🌿 Grow / ✂ Trim, the first package to use the duration tools — 4th Pulse Woods package, completes Wave A) — *spec in PACKAGES.md §6*
 
-**DAG as built** (runtime truth = `PACKAGES[*].requires` in `js/packages.js`): intro → {fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus** → (+ two-new-colors) → **soft-wobble-strong-wobble**; (stepping-stones + Q&A) → **tiny-motifs**; (two-new-colors + standing-towers) → **shifting-shadows**.
+**DAG as built** (runtime truth = `PACKAGES[*].requires` in `js/packages.js`): intro → {follow-the-fireflies → {stepping-stones, question-and-answer}, footsteps → wind-and-gaps → **off-the-path** → **two-kinds-of-walking**, twin-blooms → standing-towers → **two-new-colors**}; (two-new-colors + Q&A + standing-towers) → **ways-home**; (two-new-colors + ways-home) → {**river-turns**, **sun-and-moon-garden**}; (two-new-colors + river-turns) → **pull-of-the-moon**; (river-turns + pull-of-the-moon) → **false-doors**; (twin-blooms + two-new-colors) → **twin-blooms-plus** → (+ two-new-colors) → **soft-wobble-strong-wobble**; (stepping-stones + Q&A) → **tiny-motifs**; (two-new-colors + standing-towers) → **shifting-shadows**.
 
 Reusable systems unlocked along the way: **compare pickers** (fireflies → melodies; twin-blooms → pairs/chords; footsteps → drums; wind-and-gaps → full patterns; river-turns → progressions) — the recognition pattern now spans every domain; **phrase A/B split** (Q&A) → reused by ways-home; **chord-progression machinery** (river-turns) → reused by pull-of-the-moon + false-doors and ready for Region 6+; **mood wash** (sun-and-moon) → ready for modal "atmosphere world" packages; **🎧 famous-example rewards** on capstones (see DESIGN §10) → every future package should ship with one.
 
-**Not yet built** (next candidates, per PACKAGES.md §5): `two-kinds-of-walking` (the last Wave A/C leftover — needs a real meter change); `secret-doors`/`mist-paths` (Wave D — need chromatic/modal palettes); then the system-gated waves (duration editor / multi-voice / sections / styles).
+**Not yet built** (next candidates, per PACKAGES.md §§5–6): `march-and-waltz` (Pulse Woods' fifth package — meter, the material parked when Two Kinds of Walking was built); `secret-doors`/`mist-paths` (Wave D — need chromatic/modal palettes); then the system-gated waves (multi-voice / sections / styles).
 
 ---
 
