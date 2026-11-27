@@ -151,7 +151,8 @@ test("gpt-lock: with a mkdir that exits 0 on an existing directory, exactly one 
       "nor its lock removed");
     assert.strictEqual(lock(sb, "music-garden-4", "release").code, 1);
     assert.strictEqual(lock(sb, "music-garden-6", "release").out, "released");
-    await acquireAtOnce(sb, 2);                                        // and all at once
+    // and all at once: every round, every session's mkdir "succeeds", so the claim alone decides
+    await acquireAtOnce(sb, Number(process.env.GPT_LOCK_ROUNDS) || (process.env.CI ? 200 : 2));
   } finally { sb.cleanup(); }
 });
 

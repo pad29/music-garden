@@ -6,9 +6,12 @@
 #   gpt-lock.sh release   give it back           exit 0 = released; 1 = not yours, or an error
 #   gpt-lock.sh status    who holds it, and how to clear it by hand
 #
-# The lock is a directory: mkdir is atomic, so of two sessions acquiring at once exactly one wins —
-# unlike a session name, which two sessions can both set. While held, the session's AO name carries a
-# [GPT] prefix, so the owner sees who is using GPT.
+# The lock is a directory holding its holder's claim, `owner`. The claim decides who holds it, not mkdir:
+# bash's noclobber creates `owner` with O_EXCL, so of any number of sessions acquiring at once exactly
+# one wins — unlike a session name, which two sessions can both set. mkdir alone can't be trusted with
+# that: uutils' mkdir up to 0.10.0 (Ubuntu 26.04's default) exits 0 when the directory already exists
+# under a race, so two sessions could both "make" the lock (TUN-123). While held, the session's AO name
+# carries a [GPT] prefix, so the owner sees who is using GPT.
 #
 # A lock is never broken automatically (owner, 2026-11-11, PR #88 decision 9): every automatic break GPT
 # reviewed could, in some interleaving, remove a live holder's lock. A lock whose holder has died stays
@@ -36,24 +39,35 @@ display_name() {
     try{const s=(JSON.parse(d).data||[]).find(x=>x.id===process.argv[1]);console.log(s&&s.displayName||"")}catch(e){}})' "$1"
 }
 
+# Write my claim, only if there is none: noclobber (set -C) makes bash open the file with
+# O_CREAT|O_EXCL, so of any number of sessions claiming at once exactly one creates it.
+claim() { ( set -C; printf '%s %s\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock/owner" ) 2>/dev/null; }
+
+# The claim as written, for status and busy messages. Missing or still empty: being written.
+claim_text() { local c; c=$(cat "$lock/owner" 2>/dev/null); echo "${c:-a session still writing its claim}"; }
+
 try_acquire() {
   local err
   if err=$(mkdir "$lock" 2>&1) || { [ ! -e "$lock" ] && err=$(mkdir "$lock" 2>&1); }; then
-    if ! printf '%s %s\n' "$me" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lock/owner" 2>/dev/null \
-       || [ "$(holder)" != "$me" ]; then
-      rm -rf "$lock"; echo "error: could not write $lock/owner" >&2; return 1
+    if claim; then
+      local name; name=$(display_name "$me")
+      case "$name" in "[GPT]"*) name=${name#"[GPT] "} ;; esac
+      printf '%s' "$name" > "$lock/name"
+      ao session rename "$me" "[GPT] ${name:-$me}" >/dev/null 2>&1
+      echo "acquired"; return 0
     fi
-    local name; name=$(display_name "$me")
-    case "$name" in "[GPT]"*) name=${name#"[GPT] "} ;; esac
-    printf '%s' "$name" > "$lock/name"
-    ao session rename "$me" "[GPT] ${name:-$me}" >/dev/null 2>&1
-    echo "acquired"; return 0
+    # Someone's claim is there: their mkdir exited 0 too — contention, below; nothing is removed. No
+    # claim: writing failed. rmdir removes the lock only while it is empty, so never a claimed one.
+    if [ ! -e "$lock/owner" ]; then
+      rmdir "$lock" 2>/dev/null; echo "error: could not write $lock/owner" >&2; return 1
+    fi
+  else
+    # mkdir failed twice and there is still no lock: not contention, a filesystem error
+    [ -e "$lock" ] || { echo "error: could not create $lock: $err" >&2; return 1; }
   fi
-  # mkdir failed twice and there is still no lock: not contention, a filesystem error
-  [ -e "$lock" ] || { echo "error: could not create $lock: $err" >&2; return 1; }
   local h; h=$(holder)
   if [ "$h" = "$me" ]; then echo "acquired (already yours)"; return 0; fi
-  echo "busy: held by $(cat "$lock/owner" 2>/dev/null || echo "a session still writing its claim")"
+  echo "busy: held by $(claim_text)"
   how_to_clear "$h"
   return 75
 }
@@ -82,7 +96,7 @@ case "${1:-}" in
     fi ;;
   status)
     if [ -d "$lock" ]; then
-      echo "held by $(cat "$lock/owner" 2>/dev/null || echo "a session still writing its claim")"
+      echo "held by $(claim_text)"
       how_to_clear "$(holder)"
     else echo "free"; fi ;;
   *) echo "usage: gpt-lock.sh acquire|wait|release|status" >&2; exit 1 ;;

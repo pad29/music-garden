@@ -47,3 +47,13 @@ retry, which still calls `mkdir`; the test, whose sandboxes are separate directo
   never overwritten or removed (fails on the old script every time); the many-at-once test runs 200
   rounds on CI (Linux), 3 locally; an empty `owner` reads as held; a claim that cannot be written is an
   error that leaves nothing behind.
+
+## Without the fix, on CI
+
+Head `ffe99e4` (the tests alone, on the old script), *Checks* run 46045638364, `ubuntu-26.04`: 1257/1261
+— the three new tests fail. With the fake `mkdir`, the late session also got the lock (`actual: 0,
+expected: 75`); an empty claim read as `held by ` with no name; a claim that could not be written leaked
+bash's own *"line 42: …/owner: No such file or directory"* (a failed redirection is reported before its
+`2>/dev/null` applies). The 200 real-race rounds **passed** (11.7 s): the race is rare — four failures
+in the recorded runs of 3 rounds each — so the fake, which ignores `EEXIST` every time, is what shows the
+mechanism; the 200 rounds guard against it coming back.
