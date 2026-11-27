@@ -14,7 +14,7 @@
 // Cognito SDK (vendor/, optional since the start, when it came from a CDN) and anything else on the page are
 // ignored here.
 // Every kind of player input the game listens for (tests/load-gate.test.mjs fails if a new one is wired unlisted).
-const LOAD_GATE_EVENTS=["pointerdown","pointermove","pointerup","pointercancel","pointerleave","mousedown","mouseup",
+const LOAD_GATE_EVENTS=["pointerdown","pointermove","pointerup","pointercancel","lostpointercapture","pointerleave","mousedown","mouseup",
   "mouseover","mouseleave","click","touchstart","touchmove","touchend","touchcancel","keydown","keyup","input","change"];
 let gameScriptFailed=false, gameScriptsChecked=false, loadGateOpen=false;
 function loadGateSwallow(e){ e.stopImmediatePropagation(); }
