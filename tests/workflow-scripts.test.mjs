@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -863,23 +863,25 @@ const FAKE_CURL_HEAD = `curl() {
   done
   [ -n "$_fu" ] || { echo "fake curl: no URL specified" >&2; return 2; }
   _fk=$(printf '%s' "$_fu" | tr -c 'A-Za-z0-9' '_')
-  if [ -e "$FAKE_STATE/x.$_fk" ]; then return "$(cat "$FAKE_STATE/x.$_fk")"; fi
-  [ "\${FAKE_CURL_EXIT:-0}" = 0 ] || return "$FAKE_CURL_EXIT"
   [ -e "$FAKE_STATE/h.$_fk" ] || { echo "fake curl: no fixture for $_fu" >&2; return 7; }
+  # the headers first, then the exit code: a transfer can fail after the headers have arrived
   cat "$FAKE_STATE/h.$_fk"
+  if [ -e "$FAKE_STATE/x.$_fk" ]; then return "$(cat "$FAKE_STATE/x.$_fk")"; fi
+  return "\${FAKE_CURL_EXIT:-0}"
 }
 `;
 
 // An HTTP/2 response's headers as curl -I prints them: lower-case names, CRLF line ends.
-const headResponse = cacheControls => ["HTTP/2 200", "content-type: text/javascript",
+const headResponse = (cacheControls, status = "HTTP/2 200") => [status, "content-type: text/javascript",
   ...cacheControls.map(v => "cache-control: " + v), "x-content-type-options: nosniff", "", ""].join("\r\n");
 
-// over: { "<url>": { cc: [values], exit } } replaces the response _headers would give for that URL.
+// over: { "<url>": { cc: [values], raw: "<whole response>", exit } } replaces the response _headers
+// would give for that URL.
 function runCacheCheck(sb, over = {}, curlExit = 0) {
   for (const f of readdirSync(sb.state)) rmSync(join(sb.state, f), { force: true });
   for (const h of cacheHosts) for (const { path, want } of cachePairs) {
     const u = "https://" + h + path, o = over[u] || {};
-    writeFileSync(join(sb.state, "h." + urlKey(u)), headResponse(o.cc || [want]));
+    writeFileSync(join(sb.state, "h." + urlKey(u)), o.raw ?? headResponse(o.cc || [want]));
     if (o.exit !== undefined) writeFileSync(join(sb.state, "x." + urlKey(u)), String(o.exit));
   }
   const r = spawnSync(bash, ["-c", PRELUDE + FAKE_CURL_HEAD + cacheCheck],
@@ -900,14 +902,33 @@ function headersCacheControl(path) {
   return { rules, values: rules.filter(r => matches(r.pattern)).flatMap(r => r.cc) };
 }
 
-test("cache check: asks both custom domains, for files that exist, expecting what _headers sets for each", () => {
+// What is wrong with a probe: a path that is not a file the build publishes (cloudflare-build.sh's
+// list), whose 200 would be the index.html fallback or a folder, or an expected value _headers does not set.
+const PUBLISHED_FOLDERS = ["js", "voice", "samples", "vendor"];
+function probeProblems({ path, want }) {
+  const problems = [];
+  const file = path === "/" ? "index.html" : path.slice(1);
+  const published = path === "/" || PUBLISHED_FOLDERS.includes(file.split("/")[0]);
+  const isFile = existsSync(join(root, file)) && statSync(join(root, file)).isFile();
+  if (!published || !isFile) problems.push(`${path}: not a file the build publishes`);
+  const values = headersCacheControl(path).values;
+  if (values.length !== 1 || values[0] !== want) problems.push(`${path}: expects ${want}, _headers sets ${JSON.stringify(values)}`);
+  return problems;
+}
+
+test("cache check: asks both custom domains, for published files, expecting what _headers sets for each", () => {
   assert.deepStrictEqual(cacheHosts, ["tunegarden.game", "www.tunegarden.game"]);
   assert.ok(cachePairs.some(p => p.path === "/"), "the page is checked");
-  for (const { path, want } of cachePairs) {
-    const file = path === "/" ? "index.html" : path.slice(1);
-    assert.ok(existsSync(join(root, file)), `${path}: ${file} is in the repository, so the domain serves it, not the index.html fallback`);
-    assert.deepStrictEqual(headersCacheControl(path).values, [want], `${path}: the check expects what _headers sets`);
-  }
+  // the build's list, so a folder it starts publishing is checked here too
+  const build = readFileSync(join(root, "cloudflare-build.sh"), "utf8");
+  for (const f of PUBLISHED_FOLDERS) assert.match(build, new RegExp(`\\b${f}\\b`), `cloudflare-build.sh publishes ${f}/`);
+  for (const p of cachePairs) assert.deepStrictEqual(probeProblems(p), [], JSON.stringify(p));
+  // the probe check itself: a folder, a file the build leaves out, and a wrong value are refused
+  const ok = "public, max-age=0, must-revalidate";
+  assert.notDeepStrictEqual(probeProblems({ path: "/js/", want: ok }), [], "/js/ is a folder, not a script");
+  assert.notDeepStrictEqual(probeProblems({ path: "/js/no-such-file.js", want: ok }), []);
+  assert.notDeepStrictEqual(probeProblems({ path: "/README.md", want: ok }), [], "README.md is not published");
+  assert.notDeepStrictEqual(probeProblems({ path: "/voice/108fedab.mp3", want: ok }), [], "voice/ is kept 30 days");
   // every folder's cache rule (/<folder>/*) has a file in the check, so a new folder rule earns a line
   for (const { pattern, cc } of headersCacheControl("/").rules.filter(r => /^\/[^/*]+\/\*$/.test(r.pattern) && r.cc.length))
     assert.ok(cachePairs.some(p => p.path.startsWith(pattern.slice(0, -1))), `${pattern} has a file in the check (${cc})`);
@@ -955,6 +976,42 @@ test("cache check: a failed fetch reads FAILED, never ok, and only for its own U
     const u = "https://www.tunegarden.game/samples/glockenspiel.js";
     const one = runCacheCheck(sb, { [u]: { exit: 22 } });
     assert.deepStrictEqual(one.lines.filter(l => !l.startsWith("ok:")), [`FAILED: ${u} (the fetch did not complete)`]);
+    // the right headers arrive, then the transfer is cut off (curl exit 18)
+    const cut = runCacheCheck(sb, { [u]: { exit: 18 } });
+    assert.deepStrictEqual(cut.lines.filter(l => !l.startsWith("ok:")), [`FAILED: ${u} (the fetch did not complete)`]);
+  } finally { sb.cleanup(); }
+});
+
+test("cache check: a redirect with the right header reads FAILED, never ok; only the final response counts", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const want = "public, max-age=0, must-revalidate";
+    const apex = "https://tunegarden.game/js/cloud.js", www = "https://www.tunegarden.game/js/cloud.js";
+    const redirected = runCacheCheck(sb, { [www]: { raw: headResponse([want], "HTTP/2 302").replace("\r\n", "\r\nlocation: https://tunegarden.game/js/cloud.js\r\n") } });
+    const line = (res, u) => res.lines.find(l => l.includes(" " + u + " "));
+    assert.strictEqual(line(redirected, apex), `ok: ${apex} (Cache-Control: ${want})`);
+    assert.strictEqual(line(redirected, www), `FAILED: ${www} (answered 302, not 200)`);
+    // the header only on an earlier response block (a proxy's), none on the final 200
+    const interim = "HTTP/1.1 200 Connection established\r\ncache-control: " + want + "\r\n\r\n" + headResponse([]);
+    const proxied = runCacheCheck(sb, { [apex]: { raw: interim } });
+    assert.strictEqual(line(proxied, apex), `WRONG: ${apex} (Cache-Control: none)`);
+    // a final response with the header and an earlier one without it reads ok
+    const later = "HTTP/1.1 200 Connection established\r\n\r\n" + headResponse([want]);
+    assert.strictEqual(line(runCacheCheck(sb, { [apex]: { raw: later } }), apex), `ok: ${apex} (Cache-Control: ${want})`);
+    // no status line at all
+    assert.strictEqual(line(runCacheCheck(sb, { [apex]: { raw: "cache-control: " + want + "\r\n\r\n" } }), apex),
+      `FAILED: ${apex} (answered no status, not 200)`);
+  } finally { sb.cleanup(); }
+});
+
+test("cache check: an HTTP/1.1 header in mixed case, with a tab after the colon and trailing spaces, reads ok", { skip }, () => {
+  const sb = sandbox();
+  try {
+    const u = "https://www.tunegarden.game/voice/108fedab.mp3";
+    const raw = "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nCache-CONTROL:\tpublic, max-age=2592000 \t\r\n\r\n";
+    const res = runCacheCheck(sb, { [u]: { raw } });
+    assert.ok(res.lines.every(l => l.startsWith("ok: ")), res.lines.join("\n") + res.err);
+    assert.ok(res.lines.includes(`ok: ${u} (Cache-Control: public, max-age=2592000)`), res.lines.join("\n"));
   } finally { sb.cleanup(); }
 });
 
