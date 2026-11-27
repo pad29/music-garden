@@ -27,10 +27,10 @@ me="${AO_SESSION_ID:-}"
 # read_claim: the claim and who it names, from one read, so a message never names two sessions. A claim
 # counts only once complete — "<session> <time>" and its newline, which `read` needs to succeed — so a
 # write cut short ("music-garden-1" of music-garden-10) names nobody. Missing, empty or incomplete: a
-# claim still being written.
+# claim still being written. read_claim [dir]: the lock's, or that of the directory given.
 read_claim() {
   local line=
-  if IFS= read -r line 2>/dev/null < "$lock/owner" && [ "${line#* }" != "$line" ]; then
+  if IFS= read -r line 2>/dev/null < "${1:-$lock}/owner" && [ "${line#* }" != "$line" ]; then
     claim_text=$line; claimant=${line%% *}
   else claim_text="a session still writing its claim"; claimant=; fi
 }
@@ -79,15 +79,23 @@ try_acquire() {
       2) echo "error: could not write $lock/owner" >&2; return 1 ;;
     esac
     # Not created. With a claim there, another session's mkdir exited 0 too: contention, below. With
-    # none, either the claim it lost to was released already — so try once more — or the file could not
-    # be made, and the directory, which may be another session's about to claim, is left alone.
+    # none and no lock either, the claim it lost to was released already: contention — once more, then
+    # busy. With none but the lock still there, the file could not be made: an error at once, and the
+    # directory, which may be another session's about to claim, is left alone.
     if [ ! -e "$lock/owner" ]; then
-      [ -z "${1:-}" ] && { try_acquire again; return; }
+      if [ ! -e "$lock" ]; then
+        [ -z "${1:-}" ] && { try_acquire again; return; }
+        echo "busy: the lock changed hands while acquiring"; return 75
+      fi
       echo "error: could not write $lock/owner" >&2; return 1
     fi
   else
-    # mkdir failed twice and there is still no lock: not contention, a filesystem error
-    [ -e "$lock" ] || { echo "error: could not create $lock: $err" >&2; return 1; }
+    # mkdir failed twice and there is no lock now: a holder released it in between — once more — or,
+    # failing again, a filesystem error
+    if [ ! -e "$lock" ]; then
+      [ -z "${1:-}" ] && { try_acquire again; return; }
+      echo "error: could not create $lock: $err" >&2; return 1
+    fi
   fi
   local claim_text claimant; read_claim
   if [ "$claimant" = "$me" ]; then echo "acquired (already yours)"; return 0; fi
@@ -111,16 +119,25 @@ case "${1:-}" in
     [ "$claimant" = "$me" ] || { echo "not yours: held by ${claimant:-nobody}"; exit 1; }
     name=$(cat "$lock/name" 2>/dev/null)
     ao session rename "$me" "${name:-$me}" >/dev/null 2>&1
-    # Once rm -rf has succeeded the lock is gone: whatever is there afterwards is the next holder's.
-    if rm -rf "$lock" 2>/dev/null; then echo "released"; exit 0; fi
-    # It failed (Windows won't remove a directory a process is in), perhaps after taking the owner file:
-    # put my claim back, only where no claim is — never over a session that has taken the lock since.
-    [ -d "$lock" ] && claim
-    read_claim
-    if [ "$claimant" = "$me" ]; then echo "error: could not remove $lock; it is still held by $me" >&2; exit 1; fi
-    # Another session's claim is there, complete or still being written: this session holds nothing.
-    if [ -e "$lock/owner" ]; then echo "released"; exit 0; fi
-    echo "error: could not remove $lock, nor put the claim back" >&2; exit 1 ;;
+    # Take the lock off its path in one step — a rename, atomic — and only then look at what was taken:
+    # the claim checked above may have been released and replaced since (two releases by one session).
+    aside="$lock.released.$me.$$"
+    if ! mv -T "$lock" "$aside" 2>/dev/null; then
+      # Nothing moved (Windows won't rename a directory a process is in): if the claim is still mine,
+      # the lock is still mine
+      read_claim
+      [ "$claimant" = "$me" ] && { echo "error: could not remove $lock; it is still held by $me" >&2; exit 1; }
+      echo "released"; exit 0
+    fi
+    read_claim "$aside"
+    if [ "$claimant" != "$me" ]; then
+      # another session's lock, taken by mistake: put it back
+      mv -T "$aside" "$lock" 2>/dev/null && { echo "released"; exit 0; }
+      echo "error: took ${claimant:-another session}'s lock off $lock and could not put it back; once nothing is there:" >&2
+      echo "  mv -T \"$aside\" \"$lock\"" >&2; exit 1
+    fi
+    rm -rf "$aside" 2>/dev/null || echo "warning: could not delete $aside, which no longer holds anything; delete it by hand" >&2
+    echo "released" ;;
   status)
     if [ -d "$lock" ]; then
       read_claim
